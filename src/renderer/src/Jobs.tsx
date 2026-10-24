@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type JSX,
+  type RefObject,
+} from 'react'
 import { composeJobLog, describeJobState, jobSubject, type Job } from '../../shared/jobs'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -75,6 +84,14 @@ export function describeJob(job: Job): string {
  * said last: the region is emptied now and filled on the next frame, so a
  * second "Layout run, finished." or a retry's failure changes the DOM and
  * is spoken. Sentences arriving before that frame are said together.
+ *
+ * "Now" has to mean that the empty text is in the DOM when this returns.
+ * A `write` that is a React state setter does not mean it: called from an
+ * IPC callback it is scheduled, not rendered, and a starved window can run
+ * both frames first, so the refill joins the clear's batch, equals what the
+ * region already shows, and writes nothing (issue 330). `write` is
+ * therefore a write to the element itself - `writeToRegion` - and the
+ * region is a node React never gives children to.
  */
 export function createAnnouncer(
   write: (text: string) => void,
@@ -91,6 +108,64 @@ export function createAnnouncer(
       write(text)
     })
   }
+}
+
+/**
+ * The writer for `createAnnouncer`: the text goes into the live region's
+ * element at once, with no render in between, so the region is seen empty
+ * and then full whatever the page's scheduling. It is not `flushSync`
+ * around a state setter, which a run that ends while React is committing
+ * (a start that fails at once from an effect) cannot use: React then
+ * refuses to flush and the clear is scheduled again. A region written
+ * this way is rendered with no children, so React never writes its text.
+ */
+export function writeToRegion(region: RefObject<HTMLElement | null>): (text: string) => void {
+  return (text) => {
+    if (region.current !== null) region.current.textContent = text
+  }
+}
+
+/** Two animation frames: the first lets the empty region be painted, the second is the wait. */
+export const afterTwoFrames = (then: () => void): number =>
+  requestAnimationFrame(() => requestAnimationFrame(then))
+
+/**
+ * The window's job-end announcement: the ref to give a `LiveRegion`, and
+ * the announcer that writes to its element.
+ */
+export function useAnnouncer(nextFrame: (then: () => void) => unknown = afterTwoFrames): {
+  region: RefObject<HTMLParagraphElement | null>
+  announce: (sentence: string) => void
+} {
+  const region = useRef<HTMLParagraphElement>(null)
+  // Kept for the life of the component, by state and not by a memo: a new
+  // announcer would forget a sentence still queued, and React may drop a
+  // memo, which it does not promise to keep.
+  const [announce] = useState(() => createAnnouncer(writeToRegion(region), nextFrame))
+  return { region, announce }
+}
+
+type LiveRegionProps = Omit<ComponentProps<'p'>, 'children' | 'dangerouslySetInnerHTML' | 'ref'> & {
+  /** The ref the announcer's writer reads (`useAnnouncer`, or one of the caller's own). */
+  region: RefObject<HTMLParagraphElement | null>
+}
+
+/**
+ * The live region an announcer writes to: a `<p>` that is given no children,
+ * by its type and again when it renders. Its text is put there by
+ * `writeToRegion` and React must never hold a text node of its own in it,
+ * because the writer replaces every child, and React's next update or its
+ * unmount would then act on a node that is no longer there. Every region an
+ * announcer writes to is drawn by this, so that is not left to a habit.
+ */
+export function LiveRegion({ region, ...props }: LiveRegionProps): JSX.Element {
+  // Children written after the spread win over any `children` in `props`,
+  // so even a caller that got past the type draws an empty element.
+  return (
+    <p {...props} ref={region}>
+      {null}
+    </p>
+  )
 }
 
 /** Where focus stands after the list has rendered, for the job it was handed to. */

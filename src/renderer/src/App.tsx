@@ -15,7 +15,7 @@ import {
 } from './engine/runs'
 import Icon from './icons/Icon'
 import Inspector, { INSPECTOR_ID, NARROW_QUERY, toggleName } from './Inspector'
-import { createAnnouncer } from './Jobs'
+import { LiveRegion, useAnnouncer } from './Jobs'
 import Button from './kit/Button'
 import Library from './Library'
 import MismatchDialog from './MismatchDialog'
@@ -79,19 +79,18 @@ export default function App(): JSX.Element {
 
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const toggleRef = useRef<HTMLElement>(null)
-  // Only what the header and the announcement need lives here: the running
-  // count and the sentence. The list itself is the inspector's own state,
+  // Only what the header needs lives here as state: the running count. The
+  // announcement is written to its element (below). The list itself is the inspector's own state,
   // mounted only while it is open, so a run's progress re-renders the
   // inspector and never the screen beside it. Setting the same count again
   // is a render React skips.
   const [running, setRunning] = useState(() => runningCount())
-  const [announcement, setAnnouncement] = useState('')
+  // Cleared and then set a frame later, so the same sentence twice - a
+  // second "Layout run, finished.", a retry after a failure - is said twice.
+  // The region is written to directly, never rendered from state, so the
+  // clear is in the DOM before the wait starts (issue 330).
+  const { region: announcementRegion, announce } = useAnnouncer()
   useEffect(() => {
-    // Cleared and then set a frame later, so the same sentence twice - a
-    // second "Layout run, finished.", a retry after a failure - is said twice.
-    const announce = createAnnouncer(setAnnouncement, (then) =>
-      requestAnimationFrame(() => requestAnimationFrame(then)),
-    )
     const offChanges = subscribeToJobs(() => setRunning(runningCount()))
     const offEnds = onJobEnded((job) => {
       if (unnamedProjects([job]).length === 0) return announce(endSentence(job))
@@ -105,7 +104,7 @@ export default function App(): JSX.Element {
       offChanges()
       offEnds()
     }
-  }, [])
+  }, [announce])
 
   // Below 900px the inspector covers the main region; what it covers is
   // made inert, so Shift+Tab cannot reach controls a person cannot see. The
@@ -197,9 +196,13 @@ export default function App(): JSX.Element {
       {/* One polite line for the ends of jobs, on every screen, never shown.
           `data-announces` names it for a test: other polite lines are
           visually hidden too, such as a combobox's match count (issue 272). */}
-      <p className="visually-hidden" role="status" aria-live="polite" data-announces="jobs">
-        {announcement}
-      </p>
+      <LiveRegion
+        region={announcementRegion}
+        className="visually-hidden"
+        role="status"
+        aria-live="polite"
+        data-announces="jobs"
+      />
       <div className="app-body" data-inspector={inspectorOpen ? 'open' : 'closed'}>
         <div className="app-main" inert={inspectorOpen && narrow}>
           {screen.screen === 'settings' ? (

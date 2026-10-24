@@ -398,16 +398,19 @@ const HEARD_MS = 20_000
 
 /**
  * What a sentence that never came leaves to be read: which job it was, what
- * the region holds, whether the window is painting at all, and every
- * sentence the page did hear. A failure that said only "expected 21,
- * received 20" could not be told from a lost refill or from a window that
- * drew no frames, which are different faults.
+ * the region holds, whether the window is painting at all, every sentence
+ * the page did hear and, apart from them, every mutation the region saw, raw.
+ * A failure that said only "expected 21, received 20" could not be told from
+ * a lost refill, from a refill that equalled what the region showed and so
+ * wrote nothing (issue 330), or from a window that drew no frames, which are
+ * different faults.
  */
 async function unheard(
   page: Page,
   count: number,
   job: string | null,
   said: () => Promise<string[]>,
+  mutations: () => Promise<string[]>,
 ): Promise<string> {
   const region = await announcement(page).textContent()
   const frame = await afterFrames(page, 1, 2_000).then(
@@ -415,10 +418,12 @@ async function unheard(
     () => 'no frame was drawn in 2 s',
   )
   const heard = await said()
+  const log = await mutations()
   return (
     `job ${count} of 21 (${job}) ended and is the first in the list, but the live region was given ` +
     `${heard.length} sentence(s) in ${HEARD_MS} ms, not ${count}. It holds ${JSON.stringify(region)} ` +
-    `now; the window is ${await visibilityOf(page)} and ${frame}. Heard: ${JSON.stringify(heard)}`
+    `now; the window is ${await visibilityOf(page)} and ${frame}. Heard: ${JSON.stringify(heard)}. ` +
+    `Every mutation of the region, in order (${log.length}): ${JSON.stringify(log)}`
   )
 }
 
@@ -434,18 +439,47 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
     await openNewProject(page, 'Los Angeles')
     await openInspector(page)
     await expect(inspector(page).getByText('There are no jobs this session.')).toBeVisible()
-    // Every sentence the live region is given, as a screen reader hears
-    // it: the same sentence twenty-one times has to be twenty-one changes.
+    // Every sentence the live region is given, as a screen reader hears it:
+    // a screen reader speaks a change, and a text replaced by itself is none.
+    // So a sentence counts when the region becomes non-empty after having
+    // been empty, never for text that replaces text; the same sentence
+    // twenty-one times has to be twenty-one passes through empty. The
+    // observer reads each batch's records rather than the region's text when
+    // it runs, which is the one text a clear and a refill in the same batch
+    // would leave. A write that joins several ends counts each of them. The
+    // raw log of every record is kept for the message of a failure.
     await page.evaluate(() => {
       const region = document.querySelector('[data-announces="jobs"]') as HTMLElement
       const said: string[] = []
-      ;(window as unknown as { said: string[] }).said = said
-      new MutationObserver(() => {
-        if (region.textContent !== '') said.push(region.textContent ?? '')
+      const log: string[] = []
+      const w = window as unknown as { said: string[]; mutations: string[] }
+      w.said = said
+      w.mutations = log
+      let empty = region.textContent === ''
+      new MutationObserver((records) => {
+        for (const record of records) {
+          const text =
+            record.type === 'characterData'
+              ? ((record.target as CharacterData).data ?? '')
+              : Array.from(record.addedNodes)
+                  .map((node) => node.textContent ?? '')
+                  .join('')
+          log.push(
+            `${record.type} +${record.addedNodes.length} -${record.removedNodes.length} ${JSON.stringify(text)}`,
+          )
+          if (text === '') {
+            empty = true
+            continue
+          }
+          if (empty) said.push(...text.split(/(?<=\.)\s+/).filter((one) => one !== ''))
+          empty = false
+        }
       }).observe(region, { childList: true, characterData: true, subtree: true })
     })
     const said = (): Promise<string[]> =>
       page.evaluate(() => (window as unknown as { said: string[] }).said)
+    const mutations = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { mutations: string[] }).mutations)
     const layOut = page.getByRole('main').getByRole('button', { name: 'Lay out', exact: true })
     // Each job is told apart by the id its heading carries, so a count that
     // has not moved yet cannot pass for one that has.
@@ -470,7 +504,7 @@ test('twenty-one finished jobs keep the newest twenty', async () => {
       try {
         await expect.poll(async () => (await said()).length, { timeout: HEARD_MS }).toBe(i)
       } catch (error) {
-        throw new Error(await unheard(page, i, newest, said), { cause: error })
+        throw new Error(await unheard(page, i, newest, said, mutations), { cause: error })
       }
     }
     expect(new Set(await said())).toEqual(new Set(['Los Angeles: Layout run, failed.']))
