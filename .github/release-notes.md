@@ -16,6 +16,8 @@ Not sure which Mac you have? Apple menu › About This Mac: a "Chip" line naming
 
 The Mac app is not signed with an Apple Developer ID or notarised, and the Windows installer is not signed. macOS will say it cannot verify the app, and Windows SmartScreen will say it protected your PC. **[The install guide]({{install_url}})** walks through opening the app anyway on each system, what the app writes and where, how to remove it completely, and how to report a problem.
 
+The app does not check for updates. A newer version is on this repository's Releases page, and you install it over the old one.
+
 ## What is inside
 
 | Component | Version | Licence |

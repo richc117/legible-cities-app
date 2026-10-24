@@ -5,9 +5,11 @@ transit timetable (a GTFS feed) into a schematic map and an animation, and
 exports stills, reels and GIFs. This page is for installing it from a
 release. You do not need anything else: the app carries everything it runs.
 
-The app is at its first release, 0.1.0, and its installers are **not
-signed**. Your computer will warn you before it opens the app the first
-time, and this page shows you how to get past that warning on each system.
+The installers are **not signed**, and the app does not update itself. Your
+computer will warn you before it opens the app the first time, and this page
+shows you how to get past that warning on each system. To get a newer version,
+download it from the Releases page and install it over the old one; your
+projects and settings stay where they are.
 
 - [What you need](#what-you-need)
 - [Which file to download](#which-file-to-download)
