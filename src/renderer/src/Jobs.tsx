@@ -2,9 +2,9 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
+  type ComponentProps,
   type JSX,
   type RefObject,
 } from 'react'
@@ -130,22 +130,42 @@ export const afterTwoFrames = (then: () => void): number =>
   requestAnimationFrame(() => requestAnimationFrame(then))
 
 /**
- * The window's job-end announcement: the element to give the live region as
- * its `ref` (and no children), and the announcer that writes to it.
+ * The window's job-end announcement: the ref to give a `LiveRegion`, and
+ * the announcer that writes to its element.
  */
 export function useAnnouncer(nextFrame: (then: () => void) => unknown = afterTwoFrames): {
   region: RefObject<HTMLParagraphElement | null>
   announce: (sentence: string) => void
 } {
   const region = useRef<HTMLParagraphElement>(null)
-  // The frame is read once: a test hands in its own and a component never
-  // changes it, and a new announcer would forget a sentence still queued.
-  const announce = useMemo(
-    () => createAnnouncer(writeToRegion(region), nextFrame),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  )
+  // Kept for the life of the component, by state and not by a memo: a new
+  // announcer would forget a sentence still queued, and React may drop a
+  // memo, which it does not promise to keep.
+  const [announce] = useState(() => createAnnouncer(writeToRegion(region), nextFrame))
   return { region, announce }
+}
+
+type LiveRegionProps = Omit<ComponentProps<'p'>, 'children' | 'ref'> & {
+  /** The ref the announcer's writer reads (`useAnnouncer`, or one of the caller's own). */
+  region: RefObject<HTMLParagraphElement | null>
+}
+
+/**
+ * The live region an announcer writes to: a `<p>` that is given no children,
+ * by its type and again when it renders. Its text is put there by
+ * `writeToRegion` and React must never hold a text node of its own in it,
+ * because the writer replaces every child, and React's next update or its
+ * unmount would then act on a node that is no longer there. Every region an
+ * announcer writes to is drawn by this, so that is not left to a habit.
+ */
+export function LiveRegion({ region, ...props }: LiveRegionProps): JSX.Element {
+  // Children written after the spread win over any `children` in `props`,
+  // so even a caller that got past the type draws an empty element.
+  return (
+    <p {...props} ref={region}>
+      {null}
+    </p>
+  )
 }
 
 /** Where focus stands after the list has rendered, for the job it was handed to. */

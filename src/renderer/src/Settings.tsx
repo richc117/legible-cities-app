@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import {
   APP_THEMES,
   describeReset,
@@ -28,7 +28,7 @@ import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
 import { useFirstRun } from './FirstRunDialog'
 import { focusLost } from './focusHandback'
-import { afterTwoFrames, createAnnouncer, writeToRegion } from './Jobs'
+import { afterTwoFrames, createAnnouncer, LiveRegion, writeToRegion } from './Jobs'
 import {
   engineClient,
   forgetAllProjectJobs,
@@ -193,10 +193,10 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
   // a sentence emptied and refilled through a state setter can be batched
   // into no change at all (issue 330).
   const licenceLine = useRef<HTMLParagraphElement>(null)
-  const sayLicence = useMemo(() => {
+  const [sayLicence] = useState(() => {
     const put = writeToRegion(licenceLine)
     return licenceAnnouncer((message) => put(message ?? ''), afterTwoFrames)
-  }, [])
+  })
   useEffect(() => {
     let left = false
     window.api.licences.read().then(
@@ -542,7 +542,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
             )}
           </Fragment>
         ))}
-        <p ref={licenceLine} className="message" role="status" aria-live="polite" />
+        <LiveRegion region={licenceLine} className="message" role="status" aria-live="polite" />
       </section>
 
       <section aria-labelledby="settings-reset">

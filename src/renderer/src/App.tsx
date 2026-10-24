@@ -15,7 +15,7 @@ import {
 } from './engine/runs'
 import Icon from './icons/Icon'
 import Inspector, { INSPECTOR_ID, NARROW_QUERY, toggleName } from './Inspector'
-import { useAnnouncer } from './Jobs'
+import { LiveRegion, useAnnouncer } from './Jobs'
 import Button from './kit/Button'
 import Library from './Library'
 import MismatchDialog from './MismatchDialog'
@@ -196,8 +196,8 @@ export default function App(): JSX.Element {
       {/* One polite line for the ends of jobs, on every screen, never shown.
           `data-announces` names it for a test: other polite lines are
           visually hidden too, such as a combobox's match count (issue 272). */}
-      <p
-        ref={announcementRegion}
+      <LiveRegion
+        region={announcementRegion}
         className="visually-hidden"
         role="status"
         aria-live="polite"

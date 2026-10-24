@@ -15,17 +15,25 @@
 // every value its text was set to, which is what a MutationObserver would
 // see. No dependency is added (compare line-options-hook.test.tsx).
 //
-// Mutation, watched failing: `writeToRegion` in src/renderer/src/Jobs.tsx
-// putting its text in after a microtask (`queueMicrotask(() => ...)`), which
-// is "scheduled, not rendered": nothing is in the region when `announce`
-// returns or when the frame has run, and three of the six tests fail with
-// "expected '' to be 'Los Angeles: Layout run, failed.'" and an empty list
-// of writes.
+// Mutations, watched failing:
+// - `writeToRegion` in src/renderer/src/Jobs.tsx putting its text in after a
+//   microtask (`queueMicrotask(() => ...)`), which is "scheduled, not
+//   rendered": three tests fail ("is full a frame later", "goes empty, full,
+//   empty, full" and "says two ends ... together"), on "expected '' to be
+//   'Los Angeles: Layout run, failed.'" and an empty list of writes. The
+//   "starved window" test passes under it, because its `act` waits for
+//   microtasks; it is the fault of a state setter, which the microtask only
+//   resembles, and it does not guard the write.
+// - `LiveRegion` drawing the `children` it is given instead of `{null}`: only
+//   "draws no children" fails, on "expected 'text of its own' to be ''". The
+//   type half of that refusal (`@ts-expect-error` in the same test) is held
+//   by `npm run typecheck`, which covers the tests, and is what turns
+//   `{announcement}` put back into a region's markup into a build error.
 
 import { act, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useAnnouncer } from '../../src/renderer/src/Jobs'
+import { LiveRegion, useAnnouncer } from '../../src/renderer/src/Jobs'
 
 // React's client reads this to know it is driven by `act`.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
@@ -94,17 +102,22 @@ let announce: (sentence: string) => void
 /** The frames the announcer waits on, run by hand: a frame is a thing that happens or does not. */
 let frames: (() => void)[]
 
-/** The window's own live region, as App draws it, over the hook it uses. */
-function Region(): JSX.Element {
+/**
+ * The window's own live region, as App draws it: the hook and the component
+ * it uses, with the attributes it gives them. `extra` is whatever a test
+ * tries to put in it that the component refuses.
+ */
+function Region({ extra = {} }: { extra?: object }): JSX.Element {
   const hook = useAnnouncer((then) => frames.push(then))
   announce = hook.announce
   return (
-    <p
-      ref={hook.region}
+    <LiveRegion
+      region={hook.region}
       className="visually-hidden"
       role="status"
       aria-live="polite"
       data-announces="jobs"
+      {...extra}
     />
   )
 }
@@ -142,9 +155,8 @@ describe('the jobs live region, rendered', () => {
     expect(region.written).toEqual([])
   })
 
-  it('is empty when the announcement returns, before any frame, then full a frame later', () => {
+  it('is full a frame later, from one announcement, and not before', () => {
     announce(SENTENCE)
-    expect(region.textContent, 'cleared at once, with no render between').toBe('')
     expect(frames).toHaveLength(1)
     frames.shift()?.()
     expect(region.textContent).toBe(SENTENCE)
@@ -184,6 +196,16 @@ describe('the jobs live region, rendered', () => {
     expect(frames).toHaveLength(1)
     frames.shift()?.()
     expect(region.written).toEqual(['', 'A: Layout run, finished. B: Export as x, cancelled.'])
+  })
+
+  it("draws no children, whatever it is given: a text of React's own would be lost to the writer", async () => {
+    // The type refuses `children` (below); this is the same refusal at run
+    // time, for a caller that got past it.
+    await act(async () => root.render(<Region extra={{ children: 'text of its own' }} />))
+    expect(region.firstChild).toBeNull()
+    expect(region.textContent).toBe('')
+    // @ts-expect-error a live region takes no children
+    void (<LiveRegion region={{ current: null }}>text</LiveRegion>)
   })
 
   it('keeps what it was told across a render of the screen that holds it', async () => {
