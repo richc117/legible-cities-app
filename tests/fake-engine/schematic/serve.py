@@ -85,6 +85,12 @@ writes before the app starts (every key optional):
     forget_stall_ms   wait this long in a build's forgetting of itself, before its entry goes: a
                       build that answers before it forgets itself leaves its stages drawable
                       for a moment, as a starved thread would on a loaded machine (default 0)
+    holds_after_stage {method: {"stage": s, "ms": n}}, for map.build and export.encode: once the
+                      method has reported stage s (export.encode: its first report of it), it
+                      waits up to n ms for a cancel before going on, so a cancel is read while
+                      the method is still running whatever the machine's speed, as octi_child
+                      does for graph.build. A cancel ends it at its next step, as without the
+                      control; none lets it go on after n ms
     cancel_too_late   {method: ms}, for graph.build, map.build, export.encode and feeds.add: a
                       cancel of that method comes after its point of no return, as engine
                       v0.18.0 answers one (its issue 80). No cancel stops the method's own
@@ -1147,6 +1153,16 @@ class Engine:
             with self.children_lock:
                 self.octi_children.discard(child)
 
+    def hold_after(self, msg_id, method: str, stage: str) -> None:
+        """Wait for a cancel after ``method`` has reported ``stage``, when the
+        control file asks (``holds_after_stage``), up to the ms it names."""
+        spec = (self.control.get("holds_after_stage") or {}).get(method) or {}
+        if spec.get("stage") != stage:
+            return
+        deadline = time.monotonic() + spec.get("ms", 0) / 1000
+        while msg_id not in self.cancelled and time.monotonic() < deadline:
+            time.sleep(0.01)
+
     def end_children(self) -> None:
         with self.children_lock:
             self.stopping = True
@@ -1355,6 +1371,7 @@ class Engine:
             if i <= 4:
                 report["layout"] = params["layout"]
             write({"jsonrpc": "2.0", "method": "job/progress", "params": report})
+            self.hold_after(msg_id, "map.build", stage)
             if i == 4 and drawn_lines is not None and not drawn_lines:
                 # Every line the layout carries hidden: refused once the
                 # stored layout has been read, as `pipeline.run` refuses it
@@ -2155,6 +2172,8 @@ class Engine:
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": "encode", "fraction": i / steps,
                               "message": f"{len(frames) * i // steps} of {len(frames)} frames"}})
+            if i == 1:
+                self.hold_after(msg_id, "export.encode", "encode")
         if self.control.get("encode_fails"):
             remove()
             error(msg_id, -32000, "the stand-in could not encode", "export")
