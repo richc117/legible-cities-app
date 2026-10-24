@@ -29,7 +29,7 @@ import type { TextInputHandle } from '../kit/TextInput'
 import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
-import { redrawOnOpen, redrawPageOnOpen } from './olderPage'
+import { keepFocusInCell, redrawOnOpen, redrawPageOnOpen } from './olderPage'
 
 // Everything the project screen holds, in one hook (A5.5-08).
 //
@@ -366,8 +366,11 @@ export function useProjectState(
     })
     if (now.kind === 'wait') return
     redrawSettled.current = true
-    if (now.kind === 'redraw')
+    if (now.kind === 'redraw') {
+      // Out of the control a run is about to disable, before it does.
+      keepFocusInCell(document.activeElement)
       redrawPageOnOpen(run, project, engine, { older: opened.older, drawnHere: drawn })
+    }
     // The record, the engine, the runs and the redraw count are what move this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, project, engine?.state, layingOut, exporting, settling, drawn])

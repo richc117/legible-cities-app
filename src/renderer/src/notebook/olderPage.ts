@@ -25,8 +25,13 @@ import type { RunAllPlan } from '../runAll'
 // held would wait for that write and then draw the old day and write it back
 // over the one just chosen. Run all waits, makes the plan again from the
 // record the writes left (`openPlanOf`), and where that plan is nothing - the
-// day is now one a person chose and has not drawn - withdraws without a
-// trace.
+// day is now one a person chose and has not drawn - withdraws: no job ends,
+// and nothing is drawn or written. It is not unseen, though. For the round
+// trip of the write it waited on, the run reads running as cell 03's rebuild,
+// its job is listed and cell 03's controls are out of reach; and the person
+// has just picked a day, so focus is in one of them. Focus is therefore handed
+// to the cell's heading before the redraw is asked for (`keepFocusInCell`),
+// as cell 03's own rebuild hands it.
 //
 // What it never does is draw anything the map did not already show but the
 // engine it was drawn by. So no redraw where the record's day is one a person
@@ -98,8 +103,8 @@ export function redrawOnOpen(facts: OnOpenFacts): OnOpen {
  * made from whichever record it reads - the screen's at the start, and the
  * one the writes on their way leave once they have landed - so the day is
  * the record's as it then stands. A rebuild for that day where the rule
- * still answers a redraw, and nothing otherwise, which Run all withdraws
- * without a job ending or a cell saying anything. The engine and the page
+ * still answers a redraw, and nothing otherwise, which Run all withdraws: no
+ * job ends, and nothing is drawn or written. The engine and the page
  * were judged ready when the redraw was asked for, and Run all refuses a
  * start itself where they are not.
  */
@@ -133,4 +138,31 @@ export function redrawPageOnOpen(
   facts: Pick<OnOpenFacts, 'older' | 'drawnHere'>,
 ): void {
   run.runAll(project, engine, openPlanOf(facts, project.readOnly))
+}
+
+/** What `keepFocusInCell` reads of the focused element: where it sits. */
+export type FocusedElement = Pick<Element, 'closest'>
+
+/** What it hands focus to: a cell's heading. */
+export type CellHeading = Pick<HTMLElement, 'focus'>
+
+/**
+ * Hand focus to the heading of the cell it is in, when it is in one, before
+ * the redraw is asked for: a run disables the controls of the cell it belongs
+ * to and Chromium blurs a disabled element, which would leave focus on the
+ * body - and the redraw can start while a person is in a control, since the
+ * day they have just picked is what makes it wait (A6-07). It is the handback
+ * cell 03's own rebuild makes (`ServiceDay.tsx`), made for whichever cell
+ * holds focus, since a redraw that waits reads running in cell 03 and one that
+ * goes holds the page every cell drives. Focus on the heading already, or
+ * anywhere outside a cell, is left where it is. Answers whether it moved focus.
+ */
+export function keepFocusInCell(active: FocusedElement | null): boolean {
+  if (active === null) return false
+  const cell = active.closest('.cell')
+  if (cell === null) return false
+  const heading = cell.querySelector<HTMLElement>('.disclosure-heading')
+  if (heading === null || heading === active) return false
+  ;(heading as CellHeading).focus({ preventScroll: true })
+  return true
 }

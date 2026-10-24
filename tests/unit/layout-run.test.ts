@@ -3347,6 +3347,25 @@ describe('the redraw of an older page as its project opens', () => {
     expect(run.job(), 'and no job is left').toBeNull()
   })
 
+  it('draws nothing over a day whose write was already on its way when it was asked for', async () => {
+    // The other order: the day was sent before the redraw was asked for, not
+    // flushed by its start. Mutation: the redraw started as cell 03's rebuild
+    // for the day the screen held - it waits for the write in flight and
+    // then draws the 15th over the 20th.
+    const { run, calls, record, completeRebuild } = setup(drawnFor15())
+    const write = held()
+    void run.writing(write.promise)
+    const before = run.snapshot
+    redrawPageOnOpen(run, screen(record), READY, OLDER)
+    write.answer({ ...record, date: '2026-09-20', modified: '2026-09-02T00:00:00.000Z' })
+    await tick()
+    await tick()
+    expect(calls, 'nothing was drawn').toHaveLength(0)
+    expect(completeRebuild, 'and no day was written').not.toHaveBeenCalled()
+    expect(run.snapshot, 'the run is as it was before').toBe(before)
+    expect(run.job(), 'and no job is left').toBeNull()
+  })
+
   it('that fails is cell 03’s own failure, the cells under it behind it', async () => {
     // What a failed redraw on open shows (the maintainer's question on it is
     // open; this pins the answer as built): a failed rebuild, in cell 03.
@@ -3363,10 +3382,10 @@ describe('the redraw of an older page as its project opens', () => {
     expect(run.job()).toMatchObject({ kind: 'rebuild', state: 'failed' })
     expect(completeRebuild).not.toHaveBeenCalled()
     expect(cellOfRun(run.snapshot)).toBe('frame')
-    expect(
-      stoppedSentence('failed', false, true),
-      'the sentence cell 03 says for any rebuild that failed',
-    ).toBe(stoppedSentence(run.snapshot.state, false, run.snapshot.rebuilt))
+    // The sentence cell 03 says for any rebuild that failed.
+    expect(stoppedSentence(run.snapshot.state, run.snapshot.replaced, run.snapshot.rebuilt)).toBe(
+      'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.',
+    )
     const cells = runGraph({ record, run: run.snapshot, exportRun: null })
     expect(cells.frame).toEqual({ state: 'error', because: 'failed' })
     for (const cell of ['style', 'lines', 'export'] as const)

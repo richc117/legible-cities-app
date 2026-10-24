@@ -405,7 +405,9 @@ while it goes and `ready` after, and where it fails it is cell 03's own
 failure, `error` in cell 03 and `upstream` below it, like any rebuild that
 failed. It is started through Run all (`notebook/olderPage.ts`), so its day
 is the record's once the writes on their way have landed, and where that
-record asks for nothing it withdraws without a trace. It is not started
+record asks for nothing it withdraws: no job ends, and nothing is drawn or
+written, though for the round trip of the write it waited on cell 03 reads
+`running` and the job is listed. It is not started
 where the record has no `drawn`, holds a day not yet drawn, names a layout
 or a `made` the map was not drawn from, or is read-only. Where it does not
 run - the engine away, for one - the reload with the theme in the address,

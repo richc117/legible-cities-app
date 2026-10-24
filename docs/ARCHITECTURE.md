@@ -1133,7 +1133,12 @@ day is decided from the record once the writes on their way have landed: a
 start flushes cell 03's held day first, and a rebuild for the day the
 screen held would draw the old day and write it back over the one just
 chosen (the issue 407 fault). Where the record those writes leave asks for
-nothing, Run all withdraws and leaves no trace. It is asked once per
+nothing, Run all withdraws: no job ends, and nothing is drawn or written,
+though for the round trip of the write it waited on its job is listed and
+cell 03 reads running. Since that is when a person has just picked a day,
+focus is first handed to the heading of the cell it is in, as cell 03's own
+rebuild hands it, so a control the run disables does not drop it to the
+body (`keepFocusInCell`). It is asked once per
 opening of the screen, waits while the engine is not ready or a run or an
 export holds the page, and is not asked at all where a draw would show
 something the map did not already show - a day chosen and not drawn, a

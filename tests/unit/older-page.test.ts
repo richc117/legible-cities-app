@@ -4,7 +4,12 @@
 // project opened on (`redrawOnOpen`).
 
 import { describe, expect, it } from 'vitest'
-import { redrawOnOpen, type OnOpenFacts } from '../../src/renderer/src/notebook/olderPage'
+import {
+  keepFocusInCell,
+  redrawOnOpen,
+  type FocusedElement,
+  type OnOpenFacts,
+} from '../../src/renderer/src/notebook/olderPage'
 import type { DrawnFrom, ServiceWindow } from '../../src/shared/project'
 import {
   PAGE_SEAMS,
@@ -170,5 +175,53 @@ describe('redrawing the page a project opened on', () => {
 
   it('never redraws a record from before `drawn` existed, which keeps today’s fallback', () => {
     expect(redrawOnOpen(facts({}, { drawn: null }))).toEqual({ kind: 'never' })
+  })
+})
+
+// A redraw on open can start while a person is in a control the run disables
+// - the day they have just picked is what makes it wait - and Chromium blurs a
+// disabled element to the body. So focus goes to the cell's heading first.
+describe('focus as the redraw is asked for', () => {
+  /** A cell with a heading, and a control in it, as far as the handback reads them. */
+  function cellWith(heading: boolean) {
+    const focused: unknown[] = []
+    const head = { focus: (options?: unknown) => focused.push(options) }
+    const cell = {
+      querySelector: (selector: string) =>
+        heading && selector === '.disclosure-heading' ? head : null,
+    }
+    const inCell = (el: object): FocusedElement =>
+      ({
+        ...el,
+        closest: (selector: string) => (selector === '.cell' ? cell : null),
+      }) as unknown as FocusedElement
+    return { focused, head: inCell(head), control: inCell({}) }
+  }
+
+  it('goes from a control in a cell to that cell’s heading, without scrolling', () => {
+    // Mutation: `keepFocusInCell` returning before it focuses anything - focus
+    // stays in the control the run disables, and falls to the body.
+    const { focused, control } = cellWith(true)
+    expect(keepFocusInCell(control)).toBe(true)
+    expect(focused).toEqual([{ preventScroll: true }])
+  })
+
+  it('stays where it is on the heading, outside any cell, or nowhere', () => {
+    const { focused } = cellWith(true)
+    const heading = { focus: () => focused.push('again') }
+    const cell = { querySelector: () => heading }
+    const onHeading = { closest: () => cell } as unknown as FocusedElement
+    Object.assign(heading, onHeading)
+    expect(keepFocusInCell(heading as unknown as FocusedElement), 'already on it').toBe(false)
+    const outside = { closest: () => null } as unknown as FocusedElement
+    expect(keepFocusInCell(outside), 'outside a cell').toBe(false)
+    expect(keepFocusInCell(null), 'nothing focused').toBe(false)
+    expect(focused).toEqual([])
+  })
+
+  it('stays where it is in a cell with no heading to take it', () => {
+    const { focused, control } = cellWith(false)
+    expect(keepFocusInCell(control)).toBe(false)
+    expect(focused).toEqual([])
   })
 })
