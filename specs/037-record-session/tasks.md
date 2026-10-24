@@ -15,7 +15,7 @@ Stories: US1 (`drawn` is true), US2 (a choice is never lost), US3 (the cheap edi
 ## Phase 1: Part 1, #489. First, the ordering property (blocking)
 
 - [ ] T001 [US2] Write `tests/e2e/record-order.spec.ts`. From the renderer, interleave N `projects.setTheme`/`setExport` writes of increasing values with `projects.get` calls, with main kept busy (a CPU spin started in main through the test harness). Assert that each `get` sees every write sent before it, and that answers arrive in send order. Run it 10 times locally. **If it fails, stop and report (research R3).**
-- [ ] T002 [US2] Audit every `projects:*` handler in `src/main/ipc.ts:344-393` for an `await` before the store call. Add a unit guard over the handlers' source that refuses one.
+- [x] T002 [US2] Audit every `projects:*` handler in `src/main/ipc.ts:344-393` for an `await` before the store call. Add a unit guard over the handlers' source that refuses one.
 
 ## Phase 2: Part 1, the session
 

@@ -2,6 +2,8 @@
 // process, so their shape is checked before the store sees them, and only
 // the interface's top frame may call at all.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import {
@@ -506,6 +508,74 @@ describe('registerProjectHandlers', () => {
       /too long/,
     )
     expect(calls).toEqual([])
+  })
+})
+
+// The record session rests on one ordering property (spec 037, FR-008):
+// main is handed a frame's invokes in the order they were sent, which
+// `tests/e2e/record-order.spec.ts` holds, and each handler reaches the
+// store's queue in the turn it is handed its message, which is this. An
+// `await` before the store call - a check made asynchronous, a read of
+// something first - would let a call sent later reach the queue earlier, and
+// a run's read of its inputs would miss a write sent before the press.
+describe('registerProjectHandlers reaches the store in the turn it is called', () => {
+  const ID = 'abcdefghijk1'
+  /** One well-formed call per project channel. */
+  const CALLS: [string, ...unknown[]][] = [
+    [CHANNELS.projectsList],
+    [CHANNELS.projectsGet, ID],
+    [CHANNELS.projectsCreate, { name: 'A', feed: 'la-metro-rail' }],
+    [CHANNELS.projectsRename, ID, 'B'],
+    [CHANNELS.projectsDelete, ID],
+    [
+      CHANNELS.projectsCompleteLayout,
+      ID,
+      { date: '2026-09-08', layout: 'a'.repeat(64), service: WINDOW, made: MADE, built: BUILT },
+    ],
+    [CHANNELS.projectsCompleteRebuild, ID, { date: '2026-09-12' }],
+    [CHANNELS.projectsSetInputs, ID, { mode: 'all', agency: null }],
+    [CHANNELS.projectsCompleteColors, ID, { colors: {}, defaultColor: '#888888' }],
+    [CHANNELS.projectsCompleteOrder, ID, ['A']],
+    [CHANNELS.projectsCompleteStyle, ID, { lineWidth: 12 }],
+    [CHANNELS.projectsCompleteLines, ID, { A: { hidden: true } }],
+    [CHANNELS.projectsSetDate, ID, '2026-09-15'],
+    [CHANNELS.projectsSetTheme, ID, 'sepia'],
+    [CHANNELS.projectsSetTuning, ID, { grid: 'hexalinear' }],
+    [CHANNELS.projectsMarkOpened, ID],
+    [CHANNELS.projectsSetExport, ID, { preset: 'instagram-reel', options: {} }],
+  ]
+
+  it('has a well-formed call for every project channel', () => {
+    expect(CALLS.map(([channel]) => channel).sort()).toEqual(
+      Object.values(CHANNELS)
+        .filter((c) => c.startsWith('projects:'))
+        .sort(),
+    )
+  })
+
+  it.each(CALLS)('%s calls the store before its handler returns', async (channel, ...args) => {
+    const { call, calls } = harness()
+    const answer = call(channel, ...args)
+    // Nothing has been awaited yet: the store was reached synchronously, or
+    // not at all.
+    expect(calls, `${channel} reached the store in the turn it was called`).toHaveLength(1)
+    await answer
+  })
+
+  it('awaits nothing in the project handlers, so the source cannot drift from the rule', () => {
+    const source = readFileSync(resolve(__dirname, '../../src/main/ipc.ts'), 'utf8')
+    const start = source.indexOf('export function registerProjectHandlers(')
+    expect(start, 'registerProjectHandlers is where this test reads it').toBeGreaterThan(-1)
+    const end = source.indexOf('\n}\n', start)
+    const body = source
+      .slice(start, end)
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n')
+    expect(body, 'no await between a project message and the store').not.toMatch(/\bawait\b/)
+    // And the guard reads what it means to: the body holds the handlers.
+    expect(body).toContain('CHANNELS.projectsGet')
+    expect(body).toContain('CHANNELS.projectsSetExport')
   })
 })
 
