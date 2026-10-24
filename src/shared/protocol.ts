@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.18.0, protocol 1.
+// Engine: v0.19.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -178,7 +178,9 @@ export interface GraphBuildParams {
   /**
    * What gtfs2graph keeps of the feed (LOOM's -m): names such as tram,
    * subway, rail, bus, ferry or all, or route_type numbers, comma-joined for
-   * several; the registry entry's when omitted.
+   * several; the registry entry's when omitted. A name gtfs2graph does not
+   * know is refused by the server with the params kind, which the pattern
+   * cannot say.
    */
   mode?: string
   /**
@@ -1231,10 +1233,15 @@ export interface FeedsAddParams {
    */
   source: string
   key?: FeedKey
+  /**
+   * The feed's name, kept trimmed. At most 120 characters as sent, before
+   * the trim. Text of only whitespace is refused by the server.
+   */
   name?: string
   /**
    * What gtfs2graph keeps of the feed (LOOM's -m); all when omitted.
-   * feeds.inspect suggests one.
+   * feeds.inspect suggests one. A name gtfs2graph does not know is refused
+   * by the server with the params kind, which the pattern cannot say.
    */
   mode?: string
   /**

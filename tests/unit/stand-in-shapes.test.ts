@@ -1353,6 +1353,37 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
       ).not.toEqual([])
   })
 
+  // Engine v0.19.0 (its issue 83) judges params as the schema does: a null in
+  // an optional field is refused, where it was taken for the field left out.
+  // The app leaves `style` and `lines` out and never sends a null, so the
+  // stand-in refusing one is what keeps a change that began sending it from
+  // passing here and failing against the engine (app issue 471).
+  it('refuses a null style and a null lines, which the engine takes no more for the field left out', async () => {
+    // Mutation: style_problem and lines_problem return None for a null (the
+    // v0.18.0 stand-in's `if style is None: return None`) - the null is then
+    // drawn here and refused by the engine.
+    const layout = await layoutOf()
+    const refused = (extra: Record<string, unknown>): Promise<Refusal> =>
+      refusal(ask('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }))
+    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
+    expect(await refused({ style: null })).toEqual(params('style must be an object'))
+    expect(await refused({ lines: null })).toEqual(
+      params(
+        "lines must be an object of line label to the line's name, hidden, width, casing and dash",
+      ),
+    )
+    // The description refuses a null in both too, so no test can send one by mistake.
+    for (const extra of [{ style: null }, { lines: null }])
+      expect(
+        paramsProblems('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }),
+        JSON.stringify(extra),
+      ).not.toEqual([])
+    // Left out, each is taken as it always was.
+    const left = { key: 'la-metro-rail', layout, date: '2026-06-16' }
+    expect(paramsProblems('map.build', left)).toEqual([])
+    expect(await ask('map.build', left)).toBeTruthy()
+  })
+
   // Issue 394 (spec 036): a line's name, hidden, width, casing and dash, as
   // engine v0.16.0 takes them in `map.build`'s `lines`.
   it('takes a line’s five options and shows what it did with hidden and name in the page it writes', async () => {
