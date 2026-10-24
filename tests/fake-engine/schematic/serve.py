@@ -436,9 +436,10 @@ def _label_font_problem(left: dict) -> str | None:
 
 def style_problem(style) -> str | None:
     """The engine's refusal of `map.build`'s `style`, in its order and its
-    sentences (`serve._style` at v0.15.0), or None when it takes it."""
-    if style is None:
-        return None
+    sentences (`serve._style` at v0.15.0), or None when it takes it. Called
+    only when the parameter is present: since v0.19.0 a null is refused as
+    the schema refuses it, not taken for the style left out (engine issue
+    83), so it is the caller who tells the two apart."""
     if not isinstance(style, dict):
         return "style must be an object"
     left = dict(style)
@@ -508,9 +509,9 @@ LINE_DASHES = ("solid", "dashed", "dotted")
 def lines_problem(lines) -> str | None:
     """The engine's refusal of `map.build`'s `lines`, in its order and its
     sentences (`serve._lines` at v0.16.0), the label in Python's repr, or None
-    when it takes them. A label the layout does not carry is not refused."""
-    if lines is None:
-        return None
+    when it takes them. A label the layout does not carry is not refused.
+    Called only when the parameter is present: a null is refused as the schema
+    refuses it since v0.19.0, as `style_problem`'s is."""
     if not isinstance(lines, dict):
         return ("lines must be an object of line label to the line's name, hidden, "
                 "width, casing and dash")
@@ -973,12 +974,12 @@ class Engine:
                 error(msg_id, -32602, "date is required: the service day to draw, as "
                       "YYYY-MM-DD. The engine never picks one, because its choice "
                       "would depend on the day you asked.", "params")
-            elif style_problem(params.get("style")) is not None:
-                error(msg_id, -32602, style_problem(params.get("style")), "params")
+            elif "style" in params and style_problem(params["style"]) is not None:
+                error(msg_id, -32602, style_problem(params["style"]), "params")
             elif animation_problem(params) is not None:
                 error(msg_id, -32602, animation_problem(params), "params")
-            elif lines_problem(params.get("lines")) is not None:
-                error(msg_id, -32602, lines_problem(params.get("lines")), "params")
+            elif "lines" in params and lines_problem(params["lines"]) is not None:
+                error(msg_id, -32602, lines_problem(params["lines"]), "params")
             elif layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
