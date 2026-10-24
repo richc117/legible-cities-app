@@ -66,8 +66,11 @@ describe('watchDismissals', () => {
       if (!listeners.has(type)) listeners.set(type, new Set())
       listeners.get(type)!.add(handler)
     },
-    removeEventListener: (type: string, handler: Handler): void => {
-      listeners.get(type)?.delete(handler)
+    // A listener added in the capture phase is removed only by a removal in
+    // the capture phase, as the platform has it; a cleanup that forgot the
+    // flag would leave every listener on the page.
+    removeEventListener: (type: string, handler: Handler, capture: boolean): void => {
+      if (capture === true) listeners.get(type)?.delete(handler)
     },
   }
   const fire = (type: string, event: object): void =>
