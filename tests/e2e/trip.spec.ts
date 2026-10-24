@@ -437,14 +437,18 @@ test('a second trip that reads as the first is announced again, after a pass thr
 
     // Alpha to Bravo, one stop; then Start changed straight to Charlie, which
     // is Charlie to Bravo, one stop: the same words from a different trip,
-    // with no press of "Show the whole network" between.
+    // with no press of "Show the whole network" between. Typing into Start
+    // empties the picker first, and that is a setTrip(null) of its own (the
+    // emptied picker's), so the page is asked three times and the trip goes
+    // to the view `none` before the new one arrives: the region is emptied
+    // in a render of its own here, as the comment above says.
     await chooseStation(page, START, 'alp')
     await chooseStation(page, END, 'bra')
     await expect(region.locator('.trip-summary')).toHaveText(SENTENCE)
     await expect.poll(async () => (await said()).length, { timeout: 20_000 }).toBe(1)
     await chooseStation(page, START, 'char')
     await expect(picker(page, START)).toHaveValue('Charlie')
-    await expect.poll(() => trips(app), { timeout: 20_000 }).toHaveLength(2)
+    await expect.poll(() => trips(app), { timeout: 20_000 }).toHaveLength(3)
     await expect(region.locator('.trip-summary')).toHaveText(SENTENCE)
     try {
       await expect.poll(async () => (await said()).length, { timeout: 20_000 }).toBe(2)
@@ -457,6 +461,7 @@ test('a second trip that reads as the first is announced again, after a pass thr
     expect(await said()).toEqual([SENTENCE, SENTENCE])
     expect(await trips(app)).toEqual([
       ['setTrip', ALPHA, BRAVO],
+      ['setTrip', null, null],
       ['setTrip', CHARLIE, BRAVO],
     ])
   })
