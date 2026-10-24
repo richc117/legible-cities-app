@@ -145,7 +145,7 @@ export function useAnnouncer(nextFrame: (then: () => void) => unknown = afterTwo
   return { region, announce }
 }
 
-type LiveRegionProps = Omit<ComponentProps<'p'>, 'children' | 'ref'> & {
+type LiveRegionProps = Omit<ComponentProps<'p'>, 'children' | 'dangerouslySetInnerHTML' | 'ref'> & {
   /** The ref the announcer's writer reads (`useAnnouncer`, or one of the caller's own). */
   region: RefObject<HTMLParagraphElement | null>
 }

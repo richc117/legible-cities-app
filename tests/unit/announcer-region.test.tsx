@@ -158,6 +158,8 @@ describe('the jobs live region, rendered', () => {
   it('is full a frame later, from one announcement, and not before', () => {
     announce(SENTENCE)
     expect(frames).toHaveLength(1)
+    // A writer that filled the region at once would be caught here.
+    expect(region.textContent).toBe('')
     frames.shift()?.()
     expect(region.textContent).toBe(SENTENCE)
   })
