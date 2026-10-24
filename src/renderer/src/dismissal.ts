@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MutableRefObject } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 
 // A tooltip a person sent away with Escape stays away until the pointer and
 // the focus have both left what it belongs to (WCAG 1.4.13). The first
@@ -49,7 +49,7 @@ export function keyOf(
  */
 export function watchDismissals(
   attribute: string,
-  hovered: MutableRefObject<string | null>,
+  hovered: RefObject<string | null>,
   apply: (hoveredKey: string | null, focusedKey: string | null) => void,
 ): () => void {
   const focusedNow = (): string | null => keyOf(document.activeElement, attribute)
@@ -92,7 +92,7 @@ export function watchDismissals(
 export function useDismissalWatch(
   attribute: string,
   showing: boolean,
-  hovered: MutableRefObject<string | null>,
+  hovered: RefObject<string | null>,
   apply: (hoveredKey: string | null, focusedKey: string | null) => void,
 ): void {
   const latest = useRef(apply)
