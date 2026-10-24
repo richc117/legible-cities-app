@@ -108,8 +108,20 @@ let root: Root
 let region: StandInElement
 let mounted = false
 
-const show = (view: TripAnswer) =>
-  act(async () => root.render(<TripSummary view={view} nextFrame={(then) => frames.push(then)} />))
+/** What the region was given, in order, a run of empty writes counted as one. */
+const passes = (element: StandInElement): string[] =>
+  element.written.filter((text, i) => i === 0 || text !== element.written[i - 1])
+
+const show = (
+  view: TripAnswer,
+  nextFrame: (then: () => void) => unknown = (then) => frames.push(then),
+) => act(async () => root.render(<TripSummary view={view} nextFrame={nextFrame} />))
+
+/** The next frame, run as the page runs one: React may render what it sets. */
+const runFrame = (): Promise<void> =>
+  act(async () => {
+    frames.shift()?.()
+  })
 
 beforeEach(async () => {
   frames = []
@@ -138,44 +150,44 @@ describe("the trip's summary, rendered", () => {
     await show(viewOf())
     expect(frames).toHaveLength(1)
     expect(region.textContent).toBe('')
-    frames.shift()?.()
+    await runFrame()
     expect(region.textContent).toBe(SAID)
   })
 
   it('goes empty, full, empty, full when the same trip is shown again as a new view', async () => {
     await show(viewOf())
-    frames.shift()?.()
+    await runFrame()
     expect(region.textContent).toBe(SAID)
     // The page answered again with the same legs: a new object, the same words.
     await show(viewOf())
     expect(region.textContent, 'emptied again, though it is the sentence shown').toBe('')
-    frames.shift()?.()
+    await runFrame()
     expect(region.textContent).toBe(SAID)
-    expect(region.written.filter((text) => text !== '')).toEqual([SAID, SAID])
-    // Every sentence is preceded by a pass through empty.
-    const passes = region.written.filter((text, i) => text === '' && region.written[i + 1] === SAID)
-    expect(passes).toHaveLength(2)
+    expect(passes(region)).toEqual(['', SAID, '', SAID])
   })
 
-  it('is empty, full, empty, full in a starved window, where the frames run before any render', async () => {
-    // Every step in one turn inside one act, so a render scheduled by any of
-    // them has not run when the next does: the case a state setter lost.
-    await act(async () => {
-      root.render(<TripSummary view={viewOf()} nextFrame={(then) => frames.push(then)} />)
-    })
-    await act(async () => {
-      frames.shift()?.()
-      root.render(<TripSummary view={viewOf()} nextFrame={(then) => frames.push(then)} />)
-    })
-    await act(async () => {
-      frames.shift()?.()
-    })
+  it('does so in a starved window, where the frames run before React renders anything', async () => {
+    // The fault of issue 466: the frames are run by the call that asks for
+    // them, so a refill comes before any render of the clear. A state setter
+    // batches the two into one render that equals what shows, and writes
+    // nothing; a write to the element does not.
+    const now = (then: () => void): void => then()
+    // A summary of its own: the announcer keeps the wait it was made with.
+    await act(async () => root.unmount())
+    const into = container()
+    root = createRoot(into as unknown as Element)
+    await show(NONE, now)
+    region = into.firstChild as StandInElement
+    await show(viewOf(), now)
     expect(region.textContent).toBe(SAID)
-    const sentences = region.written.filter((text) => text !== '')
-    expect(sentences).toEqual([SAID, SAID])
-    expect(region.written.indexOf(SAID, region.written.indexOf(SAID) + 1)).toBeGreaterThan(
-      region.written.indexOf('', region.written.indexOf(SAID)),
-    )
+    await show(viewOf(), now)
+    expect(region.textContent).toBe(SAID)
+    expect(passes(region), 'the second sentence had no pass through empty').toEqual([
+      '',
+      SAID,
+      '',
+      SAID,
+    ])
   })
 
   it('empties at once when the trip goes, and a sentence still waiting is not said after it', async () => {
@@ -183,7 +195,7 @@ describe("the trip's summary, rendered", () => {
     expect(frames).toHaveLength(1)
     await show(NONE)
     expect(region.textContent).toBe('')
-    frames.shift()?.()
+    await runFrame()
     expect(region.textContent, 'the withdrawn sentence came after the trip had gone').toBe('')
     expect(region.written.filter((text) => text !== '')).toEqual([])
   })
@@ -191,7 +203,7 @@ describe("the trip's summary, rendered", () => {
   it('says only the latest trip when the view changes again before the frame', async () => {
     await show(viewOf())
     await show(viewOf({ ...TRIP, legs: [{ ...TRIP.legs[0], stops: 5 }], changes: 1 }))
-    for (const frame of frames.splice(0)) frame()
+    while (frames.length > 0) await runFrame()
     expect(region.textContent).toBe('5 stops, 1 change.')
     expect(region.written.filter((text) => text !== '')).toEqual(['5 stops, 1 change.'])
   })
