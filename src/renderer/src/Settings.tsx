@@ -112,14 +112,18 @@ export async function copyDiagnostics(bridge: {
  * What the Licences section's status line is told: a sentence, emptied and
  * written again a frame later as the jobs inspector's announcement is, so a
  * second press on the same unavailable button is said a second time rather
- * than being a render React skips; null clears it at once.
+ * than being a render React skips; null clears it at once and withdraws
+ * what was waiting.
  */
 export function licenceAnnouncer(
   write: (message: string | null) => void,
   nextFrame: (then: () => void) => unknown,
 ): (message: string | null) => void {
   const announce = createAnnouncer((text) => write(text === '' ? null : text), nextFrame)
-  return (message) => (message === null ? write(null) : announce(message))
+  // Null takes back a sentence still waiting for its frame as well as
+  // clearing the line: a press that finds nothing to say after one that did
+  // must not be followed by the first one's sentence (issue 466).
+  return (message) => (message === null ? announce.silence() : announce(message))
 }
 
 /**

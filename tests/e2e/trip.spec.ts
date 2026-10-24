@@ -383,14 +383,20 @@ test('a trip chosen by keyboard is one setTrip, its steps and one announcement, 
   })
 })
 
-test('the same trip chosen twice is announced twice, each after a pass through empty', async () => {
+test('a second trip that reads as the first is announced again, after a pass through empty (a regression guard)', async () => {
   test.setTimeout(TRIP_TIMEOUT)
   const engineHome = home()
   await withApp(engineHome, async (page, app) => {
     await projectWithAPage(page, engineHome)
     const region = tripRegion(page)
     // What the summary's live region is given, as a screen reader hears it
-    // (issue 466, after issue 330): a sentence counts when the region becomes
+    // (issue 466, after issue 330). This is a regression guard and not a
+    // discriminator: a choice sends the page its question after setting the
+    // view to none (`send` in Trip.tsx), so the region is emptied in a render
+    // of its own whichever way the summary is written, and this test passes
+    // against the old state-setter code as well. The unit test of a starved
+    // window (tests/unit/trip-summary-region.test.tsx) is what fails on it.
+    // A sentence counts when the region becomes
     // non-empty after having been empty, never for text that replaces text.
     // Each batch's records are read, not the region's text when the observer
     // runs, which is the one text a clear and a refill in the same batch
@@ -427,19 +433,18 @@ test('the same trip chosen twice is announced twice, each after a pass through e
       page.evaluate(() => (window as unknown as { tripSaid: string[] }).tripSaid)
     const everyRecord = (): Promise<string[]> =>
       page.evaluate(() => (window as unknown as { tripLog: string[] }).tripLog)
-    const SENTENCE = '2 stops, no changes.'
+    const SENTENCE = '1 stop, no changes.'
 
+    // Alpha to Bravo, one stop; then Start changed straight to Charlie, which
+    // is Charlie to Bravo, one stop: the same words from a different trip,
+    // with no press of "Show the whole network" between.
     await chooseStation(page, START, 'alp')
-    await chooseStation(page, END, 'cha')
+    await chooseStation(page, END, 'bra')
     await expect(region.locator('.trip-summary')).toHaveText(SENTENCE)
     await expect.poll(async () => (await said()).length, { timeout: 20_000 }).toBe(1)
-
-    // The whole network, then the same pair again: the sentence is the one
-    // already said, and has to be said again.
-    await region.getByRole('button', { name: WHOLE_NETWORK }).click()
-    await expect(region.locator('.trip-summary')).toHaveText('')
-    await chooseStation(page, START, 'alp')
-    await chooseStation(page, END, 'cha')
+    await chooseStation(page, START, 'char')
+    await expect(picker(page, START)).toHaveValue('Charlie')
+    await expect.poll(() => trips(app), { timeout: 20_000 }).toHaveLength(2)
     await expect(region.locator('.trip-summary')).toHaveText(SENTENCE)
     try {
       await expect.poll(async () => (await said()).length, { timeout: 20_000 }).toBe(2)
@@ -450,10 +455,9 @@ test('the same trip chosen twice is announced twice, each after a pass through e
       )
     }
     expect(await said()).toEqual([SENTENCE, SENTENCE])
-    expect(await trips(app), 'two trips asked of the page, and the whole network between').toEqual([
-      ['setTrip', ALPHA, CHARLIE],
-      ['setTrip', null, null],
-      ['setTrip', ALPHA, CHARLIE],
+    expect(await trips(app)).toEqual([
+      ['setTrip', ALPHA, BRAVO],
+      ['setTrip', CHARLIE, BRAVO],
     ])
   })
 })

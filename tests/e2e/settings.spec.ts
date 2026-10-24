@@ -690,6 +690,11 @@ test('names the licences, and says a development run bundles nothing to open', a
     const licences = page.getByRole('region', { name: 'Licences' })
     await expect(licences).toContainText('GNU General Public License, version 3 or later')
     await expect(licences.locator('dt').first()).toHaveText('The legible-cities engine')
+    // Before any press the status line is empty, and it is still in the
+    // accessibility tree (issue 466): a role locator skips `display: none`,
+    // so this finds none where the line is taken out of the tree while empty.
+    await expect(licences.getByRole('status')).toHaveCount(1)
+    await expect(licences.getByRole('status')).toHaveText('')
     for (const term of ['LOOM', 'FFmpeg', 'Electron', 'Chromium, inside Electron']) {
       await expect(licences.locator('dt', { hasText: new RegExp(`^${term}$`) })).toHaveCount(1)
     }
