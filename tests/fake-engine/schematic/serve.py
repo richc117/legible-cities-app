@@ -1583,11 +1583,8 @@ class Engine:
             return True
         if method == "style.presets":
             # The engine's looks (v0.15.0, its issue 73), a method with no
-            # parameters, as `serve._no_params` refuses one sent some.
-            if message.get("params") not in (None, {}):
-                error(msg_id, -32602, "style.presets takes no parameters", "params")
-            else:
-                write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": STYLE_PRESETS}})
+            # parameters, which `params_problem` has seen it sent none.
+            write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": STYLE_PRESETS}})
             return True
         if method == "export.presets":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": EXPORT_PRESETS}})
@@ -1687,13 +1684,8 @@ class Engine:
     def build(self, msg_id, params: dict) -> None:
         if self.control.get("silent"):
             return
-        # The tuning is judged before any tool starts, as the engine judges
-        # it (v0.14.0); its flags then name the layout with the rest.
-        if "tuning" in params:
-            problem = tuning_problem(params["tuning"])
-            if problem is not None:
-                error(msg_id, -32602, problem, "params")
-                return
+        # The tuning was judged before any tool starts (`params_problem`); its
+        # flags name the layout with the rest.
         flags = tuning_flags(params.get("tuning"))
         delay = self.control.get("progress_delay_ms", 30) / 1000
         # The lines follow the mode, so a narrower choice draws fewer: the

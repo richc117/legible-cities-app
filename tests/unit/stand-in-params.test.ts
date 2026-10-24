@@ -48,7 +48,8 @@ interface Reply {
   }
 }
 
-const DEADLINE_MS = 30_000
+// Under vitest's own test timeout, so a row that hangs says which request it was.
+const DEADLINE_MS = 20_000
 
 /**
  * The server on its stdio, spoken to in its framing with the params as JSON
@@ -62,6 +63,7 @@ class Server {
   #waiting = new Map<number, (reply: Reply) => void>()
   #next = 1
   #exited = false
+  #why = 'the server has exited'
   #ended: (() => void)[] = []
 
   constructor(command: string, env: Record<string, string>, cwd: string) {
@@ -73,10 +75,19 @@ class Server {
     })
     // Drained and dropped: the server logs to its stderr and nothing here reads it.
     this.#child.stderr.resume()
-    this.#child.once('exit', () => {
+    const ended = (why: string): void => {
+      if (this.#exited) return
       this.#exited = true
+      this.#why = why
       for (const end of this.#ended) end()
-    })
+    }
+    this.#child.once('exit', () => ended('the server has exited'))
+    // An interpreter that is not there never starts, and says so only here.
+    this.#child.once('error', (error) =>
+      ended(`the server could not be run (${command}): ${error.message}`),
+    )
+    // A write to a server that exited between the check and the write.
+    this.#child.stdin.on('error', () => {})
     this.#child.stdout.on('data', (chunk: Buffer) => {
       this.#buffer = Buffer.concat([this.#buffer, chunk])
       this.#read()
@@ -108,14 +119,14 @@ class Server {
       '}'
     return new Promise<Reply>((resolve, reject) => {
       // A server that has ended answers nothing, so say so at once and not at the deadline.
-      if (this.#exited) return reject(new Error(`${method}: the server has exited`))
+      if (this.#exited) return reject(new Error(`${method}: ${this.#why}`))
       const timer = setTimeout(() => {
         this.#waiting.delete(id)
         reject(new Error(`${method} was not answered in ${DEADLINE_MS} ms`))
       }, DEADLINE_MS)
       this.#ended.push(() => {
         clearTimeout(timer)
-        reject(new Error(`${method}: the server exited unanswered`))
+        reject(new Error(`${method}: ${this.#why}, unanswered`))
       })
       this.#waiting.set(id, (reply) => {
         clearTimeout(timer)
@@ -138,7 +149,13 @@ class Server {
 
 // --------------------------------------------------------------- the table
 
-const KEY = 'la-metro-rail'
+// A key that fits the pattern and that no registry has, in every refusal row
+// whose field under test is not the key: were the engine ever to disagree with a
+// row, it would stop at its registry check with a feed error and fail the row
+// cleanly, and not go on to download a feed and start LOOM.
+const KEY = 'no-such-feed'
+// A feed the stand-in has, for the requests it must take.
+const FEED = 'la-metro-rail'
 const LAYOUT = 'a'.repeat(64)
 const HERE = mkdtempSync(join(tmpdir(), 'lc-params-table-'))
 
@@ -1150,12 +1167,12 @@ const taken: Taken[] = [
   { method: 'style.presets', what: 'with no params', then: 'result' },
   { method: 'export.presets', what: 'with no params', then: 'result' },
   { method: 'export.storyboards', what: 'with no params', then: 'result' },
-  { method: 'graph.build', what: 'with its key alone', params: { key: KEY }, then: 'result' },
+  { method: 'graph.build', what: 'with its key alone', params: { key: FEED }, then: 'result' },
   {
     method: 'graph.build',
     what: 'with every field it may take',
     params: {
-      key: KEY,
+      key: FEED,
       force: false,
       mode: 'tram,subway',
       agency: '',
@@ -1168,14 +1185,14 @@ const taken: Taken[] = [
   {
     method: 'map.build',
     what: 'with the three it requires',
-    params: { key: KEY, layout: LAYOUT, date: '2026-06-16' },
+    params: { key: FEED, layout: LAYOUT, date: '2026-06-16' },
     then: { kind: 'layout' },
   },
   {
     method: 'map.build',
     what: 'with every field it may take',
     params: {
-      key: KEY,
+      key: FEED,
       layout: LAYOUT,
       date: '2026-06-16',
       out: 'abcdefghijk1',
@@ -1198,20 +1215,20 @@ const taken: Taken[] = [
     },
     then: { kind: 'layout' },
   },
-  { method: 'feeds.service', what: 'with its key alone', params: { key: KEY }, then: 'result' },
+  { method: 'feeds.service', what: 'with its key alone', params: { key: FEED }, then: 'result' },
   {
     method: 'feeds.service',
     what: 'with an anchor and lines',
-    params: { key: KEY, anchor: '2026-06-16', lines: ['A'] },
+    params: { key: FEED, anchor: '2026-06-16', lines: ['A'] },
     then: 'result',
   },
   {
     method: 'feeds.inspect',
     what: 'with an anchor',
-    params: { key: KEY, anchor: '2026-06-16' },
+    params: { key: FEED, anchor: '2026-06-16' },
     then: 'result',
   },
-  { method: 'feeds.remove', what: 'with its key', params: { key: KEY }, then: { kind: 'feed' } },
+  { method: 'feeds.remove', what: 'with its key', params: { key: FEED }, then: { kind: 'feed' } },
   {
     method: 'feeds.add',
     what: 'with every field it may take',
@@ -1228,7 +1245,7 @@ const taken: Taken[] = [
     method: 'render.stage',
     what: 'with every field it may take',
     params: {
-      key: KEY,
+      key: FEED,
       layout: LAYOUT,
       stage: 'topo',
       width: 1200,
@@ -1240,14 +1257,14 @@ const taken: Taken[] = [
   {
     method: 'export.plan',
     what: 'with its key and preset',
-    params: { key: KEY, preset: 'instagram-reel' },
+    params: { key: FEED, preset: 'instagram-reel' },
     then: 'result',
   },
   {
     method: 'export.plan',
     what: 'with every field it may take',
     params: {
-      key: KEY,
+      key: FEED,
       preset: 'instagram-reel',
       page: 'app://local/projects/abcdefghijk1/la.html',
       date: '2026-06-16',
@@ -1274,14 +1291,18 @@ const taken: Taken[] = [
   {
     method: 'export.encode',
     what: 'with a plan whole, its colours null, and no provenance',
-    params: { plan: PLAN, source: join(HERE, 'frames'), dest: join(HERE, 'out.mp4') },
+    params: {
+      plan: { ...PLAN, key: FEED },
+      source: join(HERE, 'frames'),
+      dest: join(HERE, 'out.mp4'),
+    },
     then: { kind: 'io' },
   },
   {
     method: 'export.encode',
     what: 'with a whole number written with a point, and every provenance field',
     raw: JSON.stringify({
-      plan: PLAN,
+      plan: { ...PLAN, key: FEED },
       source: join(HERE, 'frames'),
       dest: join(HERE, 'out.mp4'),
       provenance: {
@@ -1398,7 +1419,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s refusals of params${WH
 // stand-in and the engine cannot drift apart again: the sentences are no
 // longer only copied but checked. The engine's own interpreter, a home of its
 // own, and nothing written into the checkout.
-const ENGINE = resolveInterpreter({
+const RESOLUTION = resolveInterpreter({
   config: {
     enginePython: process.env.LEGIBLE_ENGINE_PYTHON ?? null,
     engineCheckout: process.env.LEGIBLE_ENGINE_CHECKOUT ?? null,
@@ -1407,11 +1428,11 @@ const ENGINE = resolveInterpreter({
   resourcesPath: '',
   platform: process.platform,
   exists: existsSync,
-}).interpreter
-const WHY_NOT_ENGINE =
-  ENGINE === null
-    ? ' (skipped: LEGIBLE_ENGINE_CHECKOUT or LEGIBLE_ENGINE_PYTHON is not set in the environment)'
-    : ''
+})
+const ENGINE = RESOLUTION.interpreter
+// A skipped block prints only its title, so the title says why, in the words
+// the resolution gave.
+const WHY_NOT_ENGINE = RESOLUTION.interpreter === null ? ` (skipped: ${RESOLUTION.reason})` : ''
 
 describe.skipIf(ENGINE === null)(
   `the same table, asked of the real engine${WHY_NOT_ENGINE}`,
