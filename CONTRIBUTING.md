@@ -5,14 +5,23 @@ what keeps it coherent as it grows.
 
 ## Where things stand
 
-The repository holds its charter, the Phase 0 spike reports and decision
-records, and the application: a front door of projects and sample cities,
-a project as a notebook of six cells under its map, the engine supervised
-as a child process, and exports for the engine's social presets, with
-checks on three
-platforms (`README.md`, "What it does" and "Developing"). The roadmap is
-the milestones on this repository, which its Milestones page lists in
-order. Version 0.1.0 has been released. An issue with the `type:spike` label is a timeboxed
+The repository is public and **open to outside contributions**: you do not
+need to be asked, and you do not need to know the maintainer. It holds its
+charter, the Phase 0 spike reports and decision records, and the
+application: a front door of projects and sample cities, a project as a
+notebook of six cells under its map, the engine supervised as a child
+process, and exports for the engine's social presets, with checks on three
+platforms (`README.md`, "What it does" and "Developing"). Version 0.1.0 has
+been released; work goes on after it.
+
+The roadmap is the milestones on this repository, and its Milestones page
+lists them: Phase 0 - Foundation, Phase 5.5 - The notebook, Phase 5.6 - The
+front door, Phase 6 - Release readiness, Phase 7 - Polish, Consolidation,
+and After 0.1.0. An issue labelled `good first issue` or `help wanted` is
+one the maintainer would be glad to see taken; any open issue may be, once
+you have said so on it. If what you want to change has no issue, open one
+first and say what you would do, so that nobody builds a change the project
+would not take. An issue with the `type:spike` label is a timeboxed
 experiment whose deliverable is a decision record, not code.
 
 ### Labels, milestones and issue codes
@@ -36,35 +45,70 @@ number. It is a reading aid, not something a tool checks.
 ## Setting up a checkout
 
 You need Node.js 22.12 or later (`engines` in `package.json`; CI runs
-Node 22). The app starts the `legible-cities` engine as a sidecar. For the
-development loop, and for the tests that talk to the real engine, check out
-the engine beside this repository at the tag the app pins (`engine.tag` in
-`vendor/pins.json`), give that checkout its own virtual environment with the
-package installed in it, and name it in `.env.local` (gitignored; copy
-`.env.example`) as `LEGIBLE_ENGINE_CHECKOUT`. Without one, the suite that
-needs the real engine skips and the rest runs against a stand-in. Anything
-the app needs from the pipeline is a change to the engine, versioned and
-tagged, never a copy here.
+Node 22), and git. On a Mac, Windows or Linux machine, with no engine at all:
 
 ```
-cp .env.example .env.local        # then edit; the file is gitignored
 npm ci
 npx install-electron --no         # the Electron binary is fetched separately since Electron 42
-npm run dev                       # the app against the sibling engine
 npm run lint && npm run typecheck && npm test && npm run build
-npm run test:e2e                  # Playwright launches the built app
+npm run test:e2e                  # Playwright launches the built app (on Linux: xvfb-run -a npm run test:e2e)
 ```
 
 `README.md`, "Developing", says what each check proves. Do not run two
 launches of the app at once: its single-instance lock makes the second quit.
 
+### The engine
+
+The app starts the Python engine, `legible-cities`
+([its repository](https://github.com/richc117/legible-cities)), as a
+sidecar, and each release of the app pins one tag of it (`engine.tag` in
+`vendor/pins.json`). **Without an engine checkout, most of the work runs:**
+the unit tests run against a stand-in engine (`tests/fake-engine/`, which
+needs a `python3` on your `PATH`), and so do the end-to-end tests that
+can be run against it. CI is set up that way too, so a green `ci`
+does not exercise the real engine. **What needs the real engine** is
+`npm run dev`, the unit tests whose names end in `-real`, and the
+end-to-end specs that generate a map with the engine's own pipeline (the
+export, reel, capture, layout, feeds, inspect and determinism specs among
+them); each skips when no engine is named, and the end-to-end run prints a
+warning at its start saying so. If your change touches any of that, name an
+engine checkout, run them, and say in the pull request that you did.
+
+To get one on macOS or Linux, you need [`uv`](https://docs.astral.sh/uv/)
+and a clone of the engine beside this repository (in a folder called
+`legible-cities` or `OpenSchematicMaps`, or anywhere, with `--engine`):
+
+```
+git clone https://github.com/richc117/legible-cities.git ../legible-cities
+scripts/pin-engine.sh "$(node -p "require('./vendor/pins.json').engine.tag")"
+cp .env.example .env.local        # gitignored; then edit it, see below
+```
+
+`scripts/pin-engine.sh <tag>` makes a git worktree of the engine at the tag
+(`lc-engine-<tag>`, beside the engine clone), gives it a virtual
+environment with the package installed, and moves one link,
+`lc-engine-current`, beside this checkout, to it. It refuses a tag that is
+not the pinned one unless given `--force`, and it never edits `.env.local`.
+In `.env.local`, set `LEGIBLE_ENGINE_CHECKOUT` to the path of that link
+(`../lc-engine-current`) once; a new pin then needs no further edit. A
+variable set in the environment outranks the file, so
+`LEGIBLE_ENGINE_CHECKOUT` and `LEGIBLE_ENGINE_PYTHON` given as absolute paths
+on a command point one run at another engine. On Windows the script does not
+run: make the checkout and its environment by hand and name them in the same
+two variables. Anything the app needs from the pipeline is a change to the
+engine, versioned and tagged, never a copy here; send that to the engine's
+repository.
+
 ## What a pull request carries
 
-- One issue, one branch, one pull request.
+- One issue, one branch, one pull request. From a fork, name the branch for
+  the issue (`123-geographic-view`).
 - A spec under `specs/` first, if it is a feature (see **Specs**).
-- The checks green: lint, typecheck, test and build locally, and `ci` on the
-  pull request.
-- `bin/preflight` clean, and `gitleaks` if you have it.
+- The checks green: lint, typecheck, test and build locally, and the checks
+  below on the pull request.
+- `bin/preflight` clean, and `gitleaks` if you have it. Install the hooks
+  once (**Local hooks**, below): they are the same scanners the pull request
+  check runs, and they tell you before you push instead of after.
 - An interface change drawn in the design system: tokens from the token
   stylesheets under `src/renderer/src/styles/` (`theme.css`, `scale.css`,
   `figui-adapter.css`), controls from the wrappers
@@ -73,8 +117,20 @@ launches of the app at once: its single-instance lock makes the second quit.
   section 8.2.
 - The gate documents changed too when an app sentence or a control name
   changes (below).
-- No machine paths, e-mail addresses, private hostnames, keys or planning
-  notes anywhere in the diff, the commit messages or the pull request.
+- No machine paths, e-mail addresses, private hostnames, keys, links to a
+  tool session or planning notes anywhere in the diff, the commit messages
+  or the pull request.
+- The pull request template (`.github/PULL_REQUEST_TEMPLATE.md`) filled in,
+  honestly. The issue goes in the pull request's body, and a closing
+  keyword belongs there and not in a commit message. Say which systems you
+  tried the change on; if you have one, that is enough, and CI covers the
+  three.
+
+The checks that must be green before a merge are `gitleaks`, `preflight`
+and the three `ci` jobs (Ubuntu, macOS, Windows), and the branch must be up
+to date with `main` (`docs/repository-settings.md` lists the protection).
+Other workflows (the installers, the determinism run, the acceptance run)
+are the maintainer's and run on dispatch, on a tag or on a schedule.
 
 ### The gate documents
 
@@ -97,8 +153,21 @@ changing these in the same pull request.
    one pull request. `main` only changes through pull requests with green
    checks: since 2026-09-07, when the `ci` check landed with the skeleton,
    branch protection refuses a direct push, the maintainer's included.
-4. **Review.** A maintainer reviews; automated checks must pass; the pull
-   request template's checklist must be honest.
+4. **Review.** The maintainer reviews every pull request; automated checks
+   must pass; the pull request template's checklist must be honest.
+   **If this is your first contribution here, the checks do not start by
+   themselves.** The repository is set to require approval for workflows from
+   first-time contributors (`docs/repository-settings.md`), so a pull request
+   from a fork shows its checks as waiting until the maintainer approves
+   them, and a contributor's later pull requests run on their own. Nothing
+   is wrong when the checks wait. The workflows run with read-only access
+   and without the repository's secrets, so a fork's run can prove less
+   than the maintainer's but cannot reach more. Run the checks locally
+   meanwhile, so approval finds them green.
+   **`main` must be up to date.** When GitHub says your branch is behind
+   `main`, rebase it onto `main` (`git fetch origin && git rebase
+   origin/main`) and push with `git push --force-with-lease`; do not merge
+   `main` into it. The checks run again, after approval if you are new.
    **A failed check is re-run once before it is believed**
    (`gh run rerun <id> --failed`). The end-to-end tests launch a real
    application on shared runners, and a few of them still fail now and
@@ -110,17 +179,32 @@ changing these in the same pull request.
    tracks it, with the run's id, rather than forgotten. A failure's rate
    is measured with the `e2e-loop` workflow, which repeats one spec up to
    sixty times on one platform, with or without load, from a hand dispatch.
-5. **Squash merge.** `main` reads as one commit per issue.
+5. **Squash merge.** The maintainer merges, and `main` reads as one commit per
+   issue, so your pull request's title becomes the subject line: write it as
+   one.
 
 ## Commits
 
 - Subject: an imperative sentence under 72 characters. Body: why, not what.
 - `Co-Authored-By:` trailers are welcome for pair and tool-assisted work.
   Do not add trailers that link to tool sessions or private services.
-- **Sign-off.** The project does not currently ask for a `Signed-off-by`
-  line. `bin/preflight` refuses a commit message that contains a personal
-  address (it lists the domains it checks), so leave such lines out. (This sentence stands until the maintainer decides
-  whether sign-off is used.)
+- **Sign-off is not used.** The project does not ask for a DCO
+  `Signed-off-by` line: a contribution arrives under the GPL by being
+  submitted (**Licence of contributions**, below), and nothing checks for a
+  sign-off. Leave one out. If you do add a `Signed-off-by:` or a
+  `Co-authored-by:` trailer, **its address must not be a personal one**:
+  `bin/preflight` reads every commit message the pull request adds (the whole
+  message, trailers included) and fails the required `preflight` check on an
+  address at `gmail.com`, `icloud.com` or `outlook.com`, and a pull request
+  whose message does has to have its commits rewritten before it can merge.
+  Use your GitHub no-reply address instead
+  (`<id>+<username>@users.noreply.github.com`, shown under Settings, Emails),
+  and treat any other personal domain the same way though the list does not
+  name it. What is **not** scanned is the commit's author and committer
+  fields, which git records and which stay in the public history: if you do
+  not want your own address there, set `git config user.email` to the same
+  no-reply address before you commit, and turn on "Keep my email addresses
+  private" on GitHub.
 - Never put a closing keyword (`Closes #N`) in a commit message; it belongs
   in the pull request body, and `bin/preflight` refuses it.
 - Run `bin/preflight` before pushing. It refuses personal file paths,

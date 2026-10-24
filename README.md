@@ -78,9 +78,11 @@ processes and the bridge are put together; `docs/DESIGN.md` sections 8.2
 and 9 and `specs/028-the-notebook/contracts/run-graph.md` say how the
 notebook is.
 
-You need Node.js 22.12 or later (`engines` in `package.json`). Optionally, for the development loop and the
-tokens test, check out the engine beside this repository and point
-`LEGIBLE_ENGINE_CHECKOUT` at it in `.env.local`:
+You need Node.js 22.12 or later (`engines` in `package.json`). Optionally,
+for the development loop and the tests that talk to the real engine, check
+out the engine beside this repository at the tag the app pins
+(`scripts/pin-engine.sh <tag>` does it; `CONTRIBUTING.md`, "The engine", walks
+through it) and point `LEGIBLE_ENGINE_CHECKOUT` at it in `.env.local`:
 
 ```
 cp .env.example .env.local        # then edit; the file is gitignored
@@ -110,8 +112,10 @@ it looks like and why.
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Issues are the unit of work; every
-feature starts as a spec with acceptance criteria. Please read the
+Outside contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md),
+which says how to set up a checkout (with or without the engine), what a
+pull request carries and what to expect from review. Issues are the unit of
+work; every feature starts as a spec with acceptance criteria. Please read the
 [code of conduct](CODE_OF_CONDUCT.md), and run `pre-commit install` once in
 your checkout so that `gitleaks` and `bin/preflight` see every commit: this
 is a public repository, and they refuse keys, personal paths and addresses

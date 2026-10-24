@@ -24,6 +24,18 @@ Everything below is free for a public repository.
 - [ ] Workflow permissions: **read repository contents**. A job that needs
       more asks for it in its own `permissions:` block.
 - [ ] Do not allow GitHub Actions to create or approve pull requests.
+- [x] **Approval for running workflows from outside collaborators:
+      "Require approval for first-time contributors"** (Settings, Actions,
+      General, "Fork pull request workflows from outside collaborators"; the
+      API calls it `first_time_contributors`). Read on 2026-10-24. The
+      repository is open to outside contributors, and a workflow from a
+      stranger's fork would otherwise run on the maintainer's runners
+      unreviewed. With this setting a first pull request from a fork has its
+      checks wait until the maintainer presses "Approve and run", and
+      that person's later pull requests run unattended. The weaker choice,
+      first-time contributors who are new to GitHub only, lets most strangers
+      through unreviewed; the stronger one, all outside collaborators, makes
+      every return visit wait. `CONTRIBUTING.md` tells contributors to expect the wait.
 
 ## Branch protection on `main`
 
