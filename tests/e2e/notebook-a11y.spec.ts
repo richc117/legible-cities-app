@@ -281,6 +281,16 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     const trigger = panel.getByRole('button', { name: /^What .* means$/ }).first()
     const tooltip = page.locator(`[id="${await trigger.getAttribute('aria-describedby')}"]`)
     await trigger.focus()
+    // The focus scrolls cell 02 into view under a pointer left where the
+    // chip was, which can then be over this very row; an explanation
+    // dismissed there stays away until both have left (DESIGN.md 8.2), so
+    // the pointer is put elsewhere and this walk is the focus's alone.
+    await page.mouse.move(0, 0)
+    await expect
+      .poll(() => panel.locator('[data-metric]:hover').count(), {
+        message: 'the pointer is off every row',
+      })
+      .toBe(0)
     await expect(tooltip).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(tooltip).toBeHidden()
