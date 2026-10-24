@@ -13,7 +13,7 @@ import {
   NOT_COPIED,
   copyReport,
   explainedAfterEscape,
-  explainedAfterLeaving,
+  explainedAfterMoving,
   explainedAfterPress,
 } from '../../src/renderer/src/Diagnostics'
 import type { Diagnostics } from '../../src/shared/protocol'
@@ -141,8 +141,20 @@ describe('an explanation that can be dismissed', () => {
 
   it('brings one back when the pointer and the focus have left its row', () => {
     const dismissed = { asked: null, dismissed: ['edges', 'stations'] }
-    expect(explainedAfterLeaving(dismissed, 'edges').dismissed).toEqual(['stations'])
-    expect(explainedAfterLeaving(none, 'edges')).toBe(none)
+    expect(explainedAfterMoving(dismissed, 'stations', null).dismissed).toEqual(['stations'])
+    expect(explainedAfterMoving(dismissed, null, 'stations').dismissed).toEqual(['stations'])
+    expect(explainedAfterMoving(dismissed, null, null).dismissed).toEqual([])
+    expect(explainedAfterMoving(none, 'edges', null)).toBe(none)
+  })
+
+  it('keeps what was asked for by a press when a dismissal goes', () => {
+    const now = { asked: 'crossings', dismissed: ['edges'] }
+    expect(explainedAfterMoving(now, null, null)).toEqual({ asked: 'crossings', dismissed: [] })
+  })
+
+  it('is the same state when nobody moved on to anything that matters', () => {
+    const dismissed = { asked: null, dismissed: ['edges'] }
+    expect(explainedAfterMoving(dismissed, 'edges', 'stations')).toBe(dismissed)
   })
 
   it('shows one again on a press, and a second press puts it away', () => {

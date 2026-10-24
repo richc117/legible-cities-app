@@ -556,14 +556,6 @@ test('four drags in a row are one build', async () => {
 })
 
 test('an arrow carries its name as a tooltip on hover and on focus, and Escape sends it away', async () => {
-  // Under xvfb the arrow stayed dismissed for the whole wait after the
-  // pointer left it, three times in a row and once on the macOS runner,
-  // never on a desk, and the keyboard half below needs that leave; the app
-  // ships on macOS and Windows (issue 327).
-  test.skip(
-    process.platform === 'linux',
-    'the pointer-leave is not delivered under xvfb (issue 327)',
-  )
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
@@ -594,18 +586,46 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
     // Nothing holds focus inside the arrow while the pointer is on it: the
     // dismissal below is then the pointer's alone, and the pointer's leave
     // clears it. An arrow that held focus would be dismissed as focused and
-    // keep its mark until the focus left as well, which is the one way the
-    // leave half can fail with the pointer gone; a failure says who held it.
+    // keep its mark until the focus left as well; a failure says who holds
+    // it, read again where it fails and not only here (issue 327).
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.())
+    // What the arrow was told about the pointer, kept in the page so that a
+    // failure can print it: the mark once stayed after a leave, and whether
+    // the leave arrived at all is what nothing recorded.
+    await arrow.evaluate((element) => {
+      const seen: string[] = []
+      ;(window as unknown as { arrowPointerEvents: string[] }).arrowPointerEvents = seen
+      const started = performance.now()
+      for (const type of ['pointerover', 'pointerout', 'mouseout']) {
+        element.addEventListener(
+          type,
+          (event) => {
+            const to = (event as MouseEvent).relatedTarget as Element | null
+            seen.push(
+              `${type}@${Math.round(performance.now() - started)}ms->${to?.tagName ?? 'nothing'}`,
+            )
+          },
+          true,
+        )
+      }
+    })
+    const focusNow = (): Promise<string> =>
+      page.evaluate(() => {
+        const active = document.activeElement
+        if (active === null || active === document.body) return 'nothing'
+        const name =
+          active.getAttribute('aria-label') ?? active.textContent?.trim().slice(0, 40) ?? ''
+        return `${active.tagName.toLowerCase()} "${name}"${active.closest('[data-arrow]') ? ' inside an arrow' : ''}`
+      })
+    const eventsNow = (): Promise<string> =>
+      page.evaluate(
+        () =>
+          (window as unknown as { arrowPointerEvents?: string[] }).arrowPointerEvents?.join(', ') ??
+          'none recorded',
+      )
     await page.mouse.move(over.x, over.y, { steps: 4 })
     await expect(tip).toBeVisible()
-    const holder = await page.evaluate(() => {
-      const active = document.activeElement
-      if (active === null || active === document.body) return 'nothing'
-      const name =
-        active.getAttribute('aria-label') ?? active.textContent?.trim().slice(0, 40) ?? ''
-      return `${active.tagName.toLowerCase()} "${name}"${active.closest('[data-arrow]') ? ' inside an arrow' : ''}`
-    })
+    const holder = await focusNow()
     expect(holder, 'what held focus while the pointer was over the arrow').not.toContain(
       'inside an arrow',
     )
@@ -615,8 +635,28 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
     await expect(arrow).toHaveAttribute('data-dismissed', 'true')
     // ...until the pointer has left it. Waited for, because the pointer's
     // moves are delivered a frame at a time and two in one frame are one.
+    const afterEscape = await focusNow()
+    // A blur while the pointer is still over the arrow does not end the
+    // mark: both must have left (issue 327). Two frames are waited for, so
+    // that a clear on the blur would have drawn by the time it is read.
+    await up.focus()
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.())
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    )
+    await expect(arrow, 'a blur with the pointer still over the arrow').toHaveAttribute(
+      'data-dismissed',
+      'true',
+    )
     await page.mouse.move(away.x, away.y, { steps: 4 })
-    await expect(arrow, `focus was on ${holder}`).not.toHaveAttribute('data-dismissed', 'true')
+    try {
+      await expect(arrow).not.toHaveAttribute('data-dismissed', 'true')
+    } catch (error) {
+      throw new Error(
+        `${(error as Error).message}\nfocus before Escape: ${holder}; after Escape: ${afterEscape}; at the failure: ${await focusNow()}\nthe arrow's pointer events: ${await eventsNow()}`,
+        { cause: error },
+      )
+    }
     await page.mouse.move(over.x, over.y, { steps: 4 })
     await expect(tip).toBeVisible()
     await page.mouse.move(away.x, away.y, { steps: 4 })
