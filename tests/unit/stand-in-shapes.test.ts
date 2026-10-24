@@ -19,7 +19,15 @@
 // `export.presets` and `export.storyboards`; and, since v0.18.0, the result
 // of `graph.build`, `map.build`, `export.encode` and `feeds.add` that a
 // cancel came too late for, which carries `cancel_too_late` (never a
-// `feeds.list` entry). The requests the tests send are
+// `feeds.list` entry). The last four of the fifteen methods were checked by
+// shape from issue 498: `engine.info` (the handshake; `home` and `python`
+// are required, `protocol` is the number 1), `engine.shutdown` (exactly
+// `{ok: true}`), `feeds.service` (four days, the anchor echoed) and
+// `feeds.inspect` (for a preset, a feed with headways and a person's own; its
+// `service` is the same four days or null). Each was shown red by breaking the
+// stand-in's answer in serve.py: `info` without `home`, `engine.shutdown`
+// answering `{"ok": "yes"}`, `service` without `anchor`, and `inspection` with
+// `trips` as a string. The requests the tests send are
 // held to the description's params as well, so a test cannot ask the stand-in
 // for something the engine would refuse for its shape. The refusals it
 // answers are held to the engine's handler as well, over the protocol: the
@@ -234,6 +242,58 @@ describe('the check of an answer against the description', () => {
     expect(answerProblems('feeds.remove', { ok: true, cancel_too_late: false })).not.toEqual([])
     expect(answerProblems('feeds.remove', { ok: true, removed: 'x' })).not.toEqual([])
     expect(answerProblems('feeds.remove', {})).toEqual(['feeds.remove: lacks "ok"'])
+  })
+
+  it('requires the handshake’s members and the shutdown’s exact ok', () => {
+    const info = {
+      engine: '0.2.0',
+      protocol: 1,
+      python: '3.12.0',
+      loom: { commit: null, backend: 'docker' },
+      ffmpeg: null,
+      home: '/h',
+    }
+    expect(answerProblems('engine.info', info)).toEqual([])
+    const without: Record<string, unknown> = { ...info }
+    delete without.home
+    expect(answerProblems('engine.info', without)).toEqual(['engine.info: lacks "home"'])
+    expect(answerProblems('engine.info', { ...info, protocol: '1' })).not.toEqual([])
+    expect(answerProblems('engine.info', { ...info, loom: { commit: null } })).not.toEqual([])
+    expect(answerProblems('engine.shutdown', { ok: true })).toEqual([])
+    expect(answerProblems('engine.shutdown', { ok: 'yes' })).not.toEqual([])
+    expect(answerProblems('engine.shutdown', {})).toEqual(['engine.shutdown: lacks "ok"'])
+  })
+
+  it('requires a service answer’s four days and an inspection’s service to be one or null', () => {
+    const service = {
+      start: '2026-01-01',
+      end: '2026-12-31',
+      busiest_weekday: '2026-06-16',
+      anchor: '2026-06-15',
+    }
+    expect(answerProblems('feeds.service', service)).toEqual([])
+    const without: Record<string, unknown> = { ...service }
+    delete without.anchor
+    expect(answerProblems('feeds.service', without)).toEqual(['feeds.service: lacks "anchor"'])
+    expect(answerProblems('feeds.service', { ...service, start: 20260101 })).not.toEqual([])
+    const inspection = {
+      key: 'x',
+      name: 'X',
+      tables: [],
+      agencies: [],
+      routes: [],
+      route_types: [],
+      stops: { stops: 0, stations: 0, entrances: 0, generic_nodes: 0, boarding_areas: 0, total: 0 },
+      trips: 0,
+      frequency_trips: 0,
+      service: null,
+      suggested_mode: null,
+      warnings: [],
+    }
+    expect(answerProblems('feeds.inspect', inspection)).toEqual([])
+    expect(answerProblems('feeds.inspect', { ...inspection, service })).toEqual([])
+    expect(answerProblems('feeds.inspect', { ...inspection, service: {} })).not.toEqual([])
+    expect(answerProblems('feeds.inspect', { ...inspection, trips: '0' })).not.toEqual([])
   })
 })
 
@@ -673,6 +733,53 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     )
     const listed = (await ask('feeds.list')) as { feeds: { key: string; headways: boolean }[] }
     expect(listed.feeds.find((f) => f.key === 'older')?.headways).toBe(false)
+  })
+
+  // ---- the handshake and the two calls about a feed's days (issue 498)
+
+  it('answers engine.info as the handshake the description shapes', async () => {
+    const info = await ask('engine.info')
+    expect(paramsProblems('engine.info', {})).toEqual([])
+    expect(answerProblems('engine.info', info)).toEqual([])
+    expect(info).toMatchObject({ engine: '0.2.0', protocol: 1, loom: { backend: 'docker' } })
+  })
+
+  it('answers feeds.service with the window and the day, the anchor echoed or the default', async () => {
+    const params = { key: 'la-metro-rail', anchor: '2026-09-11' }
+    expect(paramsProblems('feeds.service', params)).toEqual([])
+    const answer = await ask('feeds.service', params)
+    expect(answerProblems('feeds.service', answer)).toEqual([])
+    expect(answer).toEqual({
+      start: '2026-01-01',
+      end: '2026-12-31',
+      busiest_weekday: '2026-06-16',
+      anchor: '2026-09-11',
+    })
+    // With no anchor the engine's own day is echoed, so a caller can store it.
+    const bare = await ask('feeds.service', { key: 'la-metro-rail' })
+    expect(answerProblems('feeds.service', bare)).toEqual([])
+    expect(bare).toMatchObject({ anchor: '2026-06-15' })
+  })
+
+  it('answers feeds.inspect in shape for a preset, a feed with headways and a feed of the person’s', async () => {
+    const params = { key: 'la-metro-rail', anchor: '2026-09-11' }
+    expect(paramsProblems('feeds.inspect', params)).toEqual([])
+    const la = (await ask('feeds.inspect', params)) as { key: string; service: { anchor: string } }
+    expect(answerProblems('feeds.inspect', la)).toEqual([])
+    expect(la).toMatchObject({ key: 'la-metro-rail', service: { anchor: '2026-09-11' } })
+
+    const cdmx = (await ask('feeds.inspect', { key: 'cdmx-metro' })) as { frequency_trips: number }
+    expect(answerProblems('feeds.inspect', cdmx)).toEqual([])
+    expect(cdmx.frequency_trips).toBeGreaterThan(0)
+
+    await ask('feeds.add', { source: 'https://feeds.example.org/inspected.zip', key: 'inspected' })
+    try {
+      const mine = await ask('feeds.inspect', { key: 'inspected' })
+      expect(answerProblems('feeds.inspect', mine)).toEqual([])
+      expect(mine).toMatchObject({ key: 'inspected' })
+    } finally {
+      await ask('feeds.remove', { key: 'inspected' })
+    }
   })
 
   // ---- engine v0.12.0
@@ -2653,5 +2760,47 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
     expect(beside.data).toMatchObject({ kind: 'params', hint: sentence })
     expect(readFileSync(source, 'utf8'), 'the source is as it was').toBe('a still')
     expect(readFileSync(shotPart, 'utf8')).toBe('a still')
+  })
+})
+
+describe.skipIf(PYTHON === null)(`the stand-in engine’s shutdown${WHY}`, () => {
+  let home = ''
+  let sidecar: Sidecar
+
+  beforeAll(async () => {
+    home = mkdtempSync(join(tmpdir(), 'lc-shutdown-'))
+    sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((s) => {
+        if (s.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+  }, READY_MS + 5_000)
+
+  afterAll(async () => {
+    await sidecar?.stop()
+    if (home !== '') rmSync(home, { recursive: true, force: true })
+  })
+
+  it('answers engine.shutdown with exactly ok, as the description shapes it', async () => {
+    expect(paramsProblems('engine.shutdown', {})).toEqual([])
+    const answer = await sidecar.request('engine.shutdown', {}, { deadlineMs: READY_MS }).result
+    expect(answerProblems('engine.shutdown', answer)).toEqual([])
+    expect(answer).toEqual({ ok: true })
   })
 })
