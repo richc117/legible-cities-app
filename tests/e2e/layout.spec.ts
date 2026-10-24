@@ -1928,7 +1928,7 @@ test('a redraw gives the map back the speed and the pause it had, in the theme c
   })
 })
 
-test('a scrub while a run holds the page is refused with a sentence', async () => {
+test('a press on Play while a run holds the page is refused with a sentence', async () => {
   test.setTimeout(TRANSPORT_TIMEOUT)
   // Slow enough that the rebuild is still going while the press is made:
   // eight stages at 400ms is over three seconds.
@@ -1939,9 +1939,18 @@ test('a scrub while a run holds the page is refused with a sentence', async () =
     const before = (await seenSettled(app)).length
 
     // A rebuild: the one press that draws the map again from the stored
-    // layout, which rewrites the page this scrub would be scrubbing.
+    // layout, which rewrites the page this press would be driving.
+    const draw = cell(page, 'frame').getByRole('button', { name: 'Draw for this day' })
     await cell(page, 'frame').getByLabel('Draw for another day').fill('2026-06-20')
-    await cell(page, 'frame').getByRole('button', { name: 'Draw for this day' }).click()
+    await draw.click()
+    // The press does not start the run: it writes the chosen day first, a
+    // round trip to the main process and a record write, and only then
+    // draws. A press on Play inside that gap is carried out and answered
+    // with no sentence (issue 464, a Windows runner). The button is enabled
+    // until the run is going and disabled while it goes, and the transport
+    // refuses from that same run's state, so this is the run's own word
+    // that it has started.
+    await expect(draw, 'the run has started').toBeDisabled()
 
     await transport(page)
       .getByRole('button', { name: /^(Play day|Pause)$/ })
