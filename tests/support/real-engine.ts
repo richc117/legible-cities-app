@@ -88,10 +88,17 @@ export const BART = 'bart'
 /**
  * A temporary engine home holding the BART fixture's feed and stored layout
  * and nothing else. The caller removes the folder it answers.
+ *
+ * The feed's zip is checked for before any engine sees the home: a request
+ * that reads a feed whose zip is not cached - graph.build, feeds.inspect,
+ * feeds.service - downloads it from the agency, which no run of these
+ * suites may do. A seed that went wrong fails here instead.
  */
 export function bartHome(prefix: string): string {
   const home = mkdtempSync(join(tmpdir(), prefix))
   seedHome(home)
+  if (!existsSync(join(home, 'data', 'feeds', `${BART}.zip`)))
+    throw new Error(`the seeded home has no ${BART}.zip, and the engine would download it`)
   return home
 }
 

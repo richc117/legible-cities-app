@@ -25,14 +25,14 @@
 // what the page *asks for*, not what Chromium then does with it. The
 // end-to-end suite covers the second half by loading a page for real.
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { pagePath, prepareProject, seedHome } from '../support/determinism'
+import { pagePath, prepareProject } from '../support/determinism'
 import {
   ENGINE_TEST_MS,
   NO_ENGINE,
+  bartHome,
   enginePageTemplate,
   failIfRequired,
   localConfig,
@@ -90,10 +90,8 @@ afterAll(() => {
  * nothing is downloaded.
  */
 async function fixturePage(): Promise<string> {
-  const dir = mkdtempSync(join(tmpdir(), 'lc-viewer-real-'))
-  made.push(dir)
-  const home = join(dir, 'engine')
-  seedHome(home)
+  const home = bartHome('lc-viewer-real-')
+  made.push(home)
   await prepareProject(INTERPRETER as string, home)
   return readFileSync(pagePath(home), 'utf8')
 }
