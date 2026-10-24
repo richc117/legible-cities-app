@@ -633,14 +633,14 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
     await page.keyboard.press('Escape')
     await expect(tip).toBeHidden()
     await expect(arrow).toHaveAttribute('data-dismissed', 'true')
-    // ...until the pointer has left it. Waited for, because the pointer's
-    // moves are delivered a frame at a time and two in one frame are one.
     const afterEscape = await focusNow()
     // A blur while the pointer is still over the arrow does not end the
     // mark: both must have left (issue 327). Two frames are waited for, so
     // that a clear on the blur would have drawn by the time it is read.
     await up.focus()
+    await expect(up).toBeFocused()
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.())
+    await expect(up).not.toBeFocused()
     await page.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     )
@@ -648,6 +648,8 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
       'data-dismissed',
       'true',
     )
+    // ...until the pointer has left it. Waited for, because the pointer's
+    // moves are delivered a frame at a time and two in one frame are one.
     await page.mouse.move(away.x, away.y, { steps: 4 })
     try {
       await expect(arrow).not.toHaveAttribute('data-dismissed', 'true')
@@ -656,6 +658,42 @@ test('an arrow carries its name as a tooltip on hover and on focus, and Escape s
         `${(error as Error).message}\nfocus before Escape: ${holder}; after Escape: ${afterEscape}; at the failure: ${await focusNow()}\nthe arrow's pointer events: ${await eventsNow()}`,
         { cause: error },
       )
+    }
+
+    // The same again with the leave lost, as it was on the runners that
+    // failed: a listener on the window runs in the capture phase before the
+    // interface's own and the document's, and stops the boundary events
+    // there, while the pointer's moves still arrive. The mark must then be
+    // cleared by the next move, which only the document's watcher sees.
+    await page.mouse.move(over.x, over.y, { steps: 4 })
+    await expect(tip).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(arrow).toHaveAttribute('data-dismissed', 'true')
+    const loseLeaves = (on: boolean): Promise<void> =>
+      page.evaluate((lose) => {
+        const w = window as unknown as {
+          lostLeaves?: { types: string[]; stop: (event: Event) => void }
+        }
+        if (w.lostLeaves === undefined) {
+          w.lostLeaves = {
+            types: ['pointerout', 'pointerover', 'mouseout', 'mouseover'],
+            stop: (event) => event.stopImmediatePropagation(),
+          }
+        }
+        for (const type of w.lostLeaves.types) {
+          if (lose) window.addEventListener(type, w.lostLeaves.stop, true)
+          else window.removeEventListener(type, w.lostLeaves.stop, true)
+        }
+      }, on)
+    await loseLeaves(true)
+    try {
+      await page.mouse.move(away.x, away.y, { steps: 4 })
+      await expect(
+        arrow,
+        'the leave was lost, so only the document watcher can have cleared the mark',
+      ).not.toHaveAttribute('data-dismissed', 'true')
+    } finally {
+      await loseLeaves(false)
     }
     await page.mouse.move(over.x, over.y, { steps: 4 })
     await expect(tip).toBeVisible()
