@@ -31,6 +31,7 @@ import {
   seedHome,
   startEngine,
 } from '../support/determinism'
+import { failIfRequired } from '../support/real-engine'
 
 const repo = resolve(__dirname, '../..')
 
@@ -61,13 +62,10 @@ function interpreter(): string | null {
 const PYTHON = interpreter()
 const WHY = PYTHON === null ? ' (skipped: no interpreter with the engine is named)' : ''
 // The determinism workflow opts in, and there a skip would read as proof.
-const REQUIRED = process.env.LEGIBLE_DETERMINISM_TEST === '1'
-
-it.runIf(REQUIRED && PYTHON === null)(
-  'is proven when the determinism test is opted in, so no interpreter is a failure',
-  () => {
-    throw new Error('LEGIBLE_DETERMINISM_TEST=1, but no interpreter with the engine is named')
-  },
+failIfRequired(
+  'the determinism fixture on the pinned engine',
+  PYTHON === null,
+  'no interpreter with the engine is named',
 )
 const made: string[] = []
 

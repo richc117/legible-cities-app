@@ -16,40 +16,34 @@
 //      they are still its own. `animate.py` inlines present.js into every
 //      generated page, so its fallbacks are in what is read here.
 //
-// Gated like the other real-engine tests: it needs a checkout whose layout
-// cache is warm, and skips saying so without one. It reads a page the engine
-// wrote; it does not run a browser, so what it proves about the policy is
+// The page is one a checkout's engine wrote, where a checkout is named and
+// holds one carrying the seam; otherwise the engine the interpreter runs
+// draws one now, by map.build from the BART layout the determinism fixture
+// commits, in a home seeded from it. Without either it skips, saying so,
+// unless the determinism workflow opted in, where that fails. It reads the
+// page; it does not run a browser, so what it proves about the policy is
 // what the page *asks for*, not what Chromium then does with it. The
 // end-to-end suite covers the second half by loading a page for real.
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { resolveConfig } from '../../src/main/config'
+import { join } from 'node:path'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { pagePath, prepareProject, seedHome } from '../support/determinism'
+import {
+  ENGINE_TEST_MS,
+  NO_ENGINE,
+  enginePageTemplate,
+  failIfRequired,
+  localConfig,
+  realInterpreter,
+} from '../support/real-engine'
 import { PAGE_PLAYING, PAGE_SPEED } from '../../src/renderer/src/transportState'
 import { PAGE_SEAMS, VIEWER_METHODS } from '../../src/shared/viewer'
 
-const repo = resolve(__dirname, '../..')
-
-function checkout(): string | null {
-  let fileText: string | undefined
-  try {
-    fileText = readFileSync(join(repo, '.env.local'), 'utf8')
-  } catch {
-    fileText = undefined
-  }
-  return resolveConfig({
-    fileText,
-    env: process.env,
-    userData: tmpdir(),
-    desktop: tmpdir(),
-    loomPin: '',
-    baseDir: repo,
-  }).engineCheckout
-}
-
-const CHECKOUT = checkout()
+const CONFIG = localConfig()
+const CHECKOUT = CONFIG.engineCheckout
+const INTERPRETER = realInterpreter(CONFIG)
 
 /**
  * A page the engine has written **with this seam**. A checkout can hold
@@ -77,15 +71,61 @@ function generatedPage(): string | null {
 }
 
 const PAGE = generatedPage()
-const WHY =
-  CHECKOUT === null
-    ? ' (skipped: LEGIBLE_ENGINE_CHECKOUT names no engine)'
-    : PAGE === null
-      ? ' (skipped: the checkout has no page carrying the seam; run a map build once)'
-      : ''
+/** Where the page comes from: the checkout's, else one drawn now from the fixture. */
+const SOURCE = PAGE !== null ? 'checkout' : INTERPRETER !== null ? 'fixture' : null
+const WHY = SOURCE === null ? NO_ENGINE : ''
 
-describe.skipIf(PAGE === null)(`the real generated page${WHY}`, () => {
-  const html = PAGE === null ? '' : readFileSync(PAGE, 'utf8')
+failIfRequired('the real generated page', SOURCE === null, 'no engine')
+
+const made: string[] = []
+
+afterAll(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true })
+})
+
+/**
+ * A page the engine draws now: the determinism fixture's project, drawn by
+ * map.build from the fixture's stored layout in a home seeded from it,
+ * which is the page the determinism test exports. Nothing is laid out and
+ * nothing is downloaded.
+ */
+async function fixturePage(): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), 'lc-viewer-real-'))
+  made.push(dir)
+  const home = join(dir, 'engine')
+  seedHome(home)
+  await prepareProject(INTERPRETER as string, home)
+  return readFileSync(pagePath(home), 'utf8')
+}
+
+/**
+ * The page template of the engine the seam is held to: the checkout's where
+ * one is named, else the installed engine's, found through the interpreter.
+ * The determinism workflow has no checkout, so this is how a check of the
+ * template runs there too.
+ */
+const ENGINE_TEMPLATE =
+  CHECKOUT === null && INTERPRETER === null ? null : enginePageTemplate(CHECKOUT, INTERPRETER)
+
+describe.skipIf(CHECKOUT === null && INTERPRETER === null)(
+  `the engine's page template${CHECKOUT === null && INTERPRETER === null ? NO_ENGINE : ''}`,
+  () => {
+    it('is found where the engine keeps it, and writes the seam as one object', () => {
+      expect(ENGINE_TEMPLATE, 'no page.html in the checkout or the installed engine').not.toBeNull()
+      const html = readFileSync(ENGINE_TEMPLATE as string, 'utf8')
+      expect(html, 'the template no longer writes window.__present as one object').toContain(
+        'window.__present = {',
+      )
+    })
+  },
+)
+
+describe.skipIf(SOURCE === null)(`the real generated page${WHY}`, () => {
+  let html = ''
+
+  beforeAll(async () => {
+    html = PAGE !== null ? readFileSync(PAGE, 'utf8') : await fixturePage()
+  }, ENGINE_TEST_MS)
 
   it('still exposes every method the app names', () => {
     // The seam is written as `window.__present = { name(…) {…}, … }`, so each

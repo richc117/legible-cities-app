@@ -22,11 +22,11 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
 
 ## Phase 2: FR-002, the real suites in `determinism.yml` (pull request 2; US2)
 
-- [ ] T003 [US2] Make the interpreter resolution of `protocol-real`, `feeds-real`, `layout-real`, `opening-real` and `sidecar-real` (`tests/unit/*-real.test.ts`) take `LEGIBLE_ENGINE_PYTHON` from the environment, as `determinism-real.test.ts` does. Do it through a shared helper in `tests/support/` if three or more would repeat it.
-- [ ] T004 [US2] Give `feeds-real` and `layout-real` a second source for what they need. Where no engine checkout supplies a feed or a stored layout, use a temporary `SCHEMATIC_HOME` seeded from `tests/fixtures/determinism/bart/data/` (R5 b). Keep their LA assertions for a checkout, and add BART equivalents that run in CI.
-- [ ] T005 [US2] Make `viewer-real` draw its page by a `map.build` from the seeded home when no checkout page exists (R5 c). Resolve the page template for the `PAGE_SEAMS` gate from the installed engine package when there is no checkout (R5 note).
+- [x] T003 [US2] Make the interpreter resolution of `protocol-real`, `feeds-real`, `layout-real`, `opening-real` and `sidecar-real` (`tests/unit/*-real.test.ts`) take `LEGIBLE_ENGINE_PYTHON` from the environment, as `determinism-real.test.ts` does. Do it through a shared helper in `tests/support/` if three or more would repeat it.
+- [x] T004 [US2] Give `feeds-real` and `layout-real` a second source for what they need. Where no engine checkout supplies a feed or a stored layout, use a temporary `SCHEMATIC_HOME` seeded from `tests/fixtures/determinism/bart/data/` (R5 b). Keep their LA assertions for a checkout, and add BART equivalents that run in CI.
+- [x] T005 [US2] Make `viewer-real` draw its page by a `map.build` from the seeded home when no checkout page exists (R5 c). Resolve the page template for the `PAGE_SEAMS` gate from the installed engine package when there is no checkout (R5 note).
 - [ ] T006 [US2] In `.github/workflows/determinism.yml`, run `npx vitest run tests/unit/*-real.test.ts` in place of the one file, with `LEGIBLE_DETERMINISM_TEST=1`. Prove it by dispatching the workflow on the branch with `repeats: 1`, with no suite skipped on any platform (contracts/ci-layers.md).
-- [ ] T007 [US2] Locally, run all seven with only `LEGIBLE_ENGINE_PYTHON` set (no checkout), per quickstart.md. All run, none skips.
+- [x] T007 [US2] Locally, run all seven with only `LEGIBLE_ENGINE_PYTHON` set (no checkout), per quickstart.md. All run, none skips.
 
 ## Phase 3: FR-003, the CI split (pull request 3; US3)
 
