@@ -1143,8 +1143,11 @@ a table).
   "At `<station>`, board the `<line>` towards `<end>`. Ride `<n>` stops to
   `<station>` and get off.", then the button **Show the whole network**.
   Press it: listen for focus on **Start**, both fields empty, and the
-  button gone. Choose a station in **Start**, then choose in **End** the
-  station **Start** holds: listen for "Start and end are the same
+  button gone. Choose the same two stations again: listen for "`<n>`
+  stops, `<m>` changes." said again, as many times as you repeat it (issue
+  466); a trip chosen a second time must not be silent because it reads as
+  the sentence before. Choose a station in **Start**, then choose in **End**
+  the station **Start** holds: listen for "Start and end are the same
   station." as an alert beside **End**, with focus not moved and the field
   back as it was. Tab from **Start**: listen for **End**, not
   for anything in the list.
@@ -1398,6 +1401,9 @@ a table).
   read dimmed, with its reason as its description (F5, fixed; confirm it
   is read on focus); a press says "… not bundled in a development run, so
   there is nothing to open here.", and a second press says it again.
+  The line under the buttons is empty until the first press and is a status
+  region all the same (issue 466); listen that the first press is announced
+  and that a second press of the same button is announced again.
 - **Bundled tools rows (A6-02).** Listen for the heading "Bundled tools",
   the status "The bundled LOOM and ffmpeg ran.", and a description list:
   "LOOM tools", "ran (`<n>` ms)."; "ffmpeg and ffprobe", "ran (`<n>` ms)."

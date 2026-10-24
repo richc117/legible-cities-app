@@ -96,19 +96,38 @@ export function describeJob(job: Job): string {
 export function createAnnouncer(
   write: (text: string) => void,
   nextFrame: (then: () => void) => unknown,
-): (sentence: string) => void {
+): Announcer {
   let queued: string[] = []
-  return (sentence) => {
+  // Bumped by `silence`, so a frame already waiting knows it was withdrawn.
+  let withdrawn = 0
+  const announce = (sentence: string): void => {
     queued.push(sentence)
     if (queued.length > 1) return
     write('')
+    const mine = withdrawn
     nextFrame(() => {
+      if (mine !== withdrawn) return
       const text = queued.join(' ')
       queued = []
       write(text)
     })
   }
+  /**
+   * Takes back what is waiting for its frame and empties the region now:
+   * for a region whose sentence is about something that has gone (the
+   * trip's summary, when the trip is), where a refill after it would say
+   * what is no longer true.
+   */
+  announce.silence = (): void => {
+    withdrawn += 1
+    queued = []
+    write('')
+  }
+  return announce
 }
+
+/** What `createAnnouncer` makes: say a sentence, or take back what is waiting to be said. */
+export type Announcer = ((sentence: string) => void) & { silence: () => void }
 
 /**
  * The writer for `createAnnouncer`: the text goes into the live region's
@@ -135,7 +154,7 @@ export const afterTwoFrames = (then: () => void): number =>
  */
 export function useAnnouncer(nextFrame: (then: () => void) => unknown = afterTwoFrames): {
   region: RefObject<HTMLParagraphElement | null>
-  announce: (sentence: string) => void
+  announce: Announcer
 } {
   const region = useRef<HTMLParagraphElement>(null)
   // Kept for the life of the component, by state and not by a memo: a new
