@@ -42,7 +42,11 @@ Two scanners run over every commit and again in CI: `gitleaks` for keys,
 tokens and certificates, and `bin/preflight` for personal paths, addresses,
 private hostnames and tool-session links. `CONTRIBUTING.md` says how to
 install them; `docs/adr/015-hygiene-enforced-by-tools.md` says why there are
-two. Dependabot watches dependencies once there are manifests to watch.
+two. Dependabot watches the npm packages and the workflows' actions here;
+the shipped Python runtime is the engine's lock, so its packages are
+watched in the engine's repository and reach this one as a pin. A
+security update Dependabot opens here against
+`vendor/python-requirements.txt` is closed, and the engine relocked.
 
 The settings that only the host can enforce - secret scanning, push
 protection, private vulnerability reporting, branch protection on `main` -

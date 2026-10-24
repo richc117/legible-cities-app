@@ -1,11 +1,15 @@
 # Dependency updates. Alerts come from the repository's security settings;
 # this file is the other half - pull requests that actually do the upgrade.
 #
-# The npm and pip entries are here before the manifests they watch. Until
-# `package.json` lands with the Electron skeleton and the sidecar brings its
-# Python requirements, Dependabot reports "no manifest found" for those two
-# ecosystems in its job log and opens nothing. That is quieter than
-# remembering to add them later.
+# There is no pip entry. The shipped runtime's packages are the engine's
+# `uv.lock` at the pinned tag, exported into vendor/python-requirements.txt
+# by scripts/lock-python.sh and held by its hash in vendor/pins.json
+# (ADR-057), so a bump of that file alone fails the unit tests and
+# check-vendored and can never land. The engine's own .github/dependabot.yml
+# proposes them, where a package can move; it reaches here as a pin (issue
+# 472). Security updates come from the repository's settings, not from this
+# file, so an advisory can still open one against that file: close it, and
+# relock the engine.
 #
 # The labels below must exist on the repository or Dependabot cannot apply
 # them; see docs/repository-settings.md.
@@ -65,13 +69,3 @@ updates:
       # typescript-eslint accepts <6.1.0.)
       - dependency-name: "typescript"
         versions: [">=6"]
-
-  # The Python sidecar's own requirements, once it has any.
-  - package-ecosystem: pip
-    directory: "/"
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    labels: ["type:chore", "area:sidecar"]
-    commit-message:
-      prefix: "deps"
