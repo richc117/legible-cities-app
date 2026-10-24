@@ -19,16 +19,12 @@
 // `export.presets` and `export.storyboards`; and, since v0.18.0, the result
 // of `graph.build`, `map.build`, `export.encode` and `feeds.add` that a
 // cancel came too late for, which carries `cancel_too_late` (never a
-// `feeds.list` entry). The last four of the fifteen methods were checked by
-// shape from issue 498: `engine.info` (the handshake; `home` and `python`
-// are required, `protocol` is the number 1), `engine.shutdown` (exactly
-// `{ok: true}`), `feeds.service` (four days, the anchor echoed) and
-// `feeds.inspect` (for a preset, a feed with headways and a person's own; its
-// `service` is the same four days or null). Each was shown red by breaking the
-// stand-in's answer in serve.py: `info` without `home`, `engine.shutdown`
-// answering `{"ok": "yes"}`, `service` without `anchor`, and `inspection` with
-// `trips` as a string (LA), without `suggested_mode` (Mexico City) or without
-// `service` (a person's own). The requests the tests send are
+// `feeds.list` entry); `style.presets` (the engine's looks, as the
+// description shapes them); and, since issue 498, `engine.info` (the
+// handshake), `engine.shutdown` (exactly `{ok: true}`), `feeds.service` (four
+// days, the anchor echoed) and `feeds.inspect` (for a preset, a feed with
+// headways and a person's own). Every method of the description is
+// so checked, and a test below says so. The requests the tests send are
 // held to the description's params as well, so a test cannot ask the stand-in
 // for something the engine would refuse for its shape. The refusals it
 // answers are held to the engine's handler as well, over the protocol: the
@@ -295,6 +291,33 @@ describe('the check of an answer against the description', () => {
     expect(answerProblems('feeds.inspect', { ...inspection, service })).toEqual([])
     expect(answerProblems('feeds.inspect', { ...inspection, service: {} })).not.toEqual([])
     expect(answerProblems('feeds.inspect', { ...inspection, trips: '0' })).not.toEqual([])
+  })
+})
+
+/** Every method of the description, each held to its answer by a test below. */
+const CHECKED_AGAINST_THE_STAND_IN = [
+  'engine.info',
+  'engine.shutdown',
+  'graph.build',
+  'map.build',
+  'style.presets',
+  'export.presets',
+  'export.storyboards',
+  'export.plan',
+  'export.encode',
+  'feeds.service',
+  'feeds.list',
+  'feeds.add',
+  'feeds.remove',
+  'feeds.inspect',
+  'render.stage',
+]
+
+describe('the methods checked by shape', () => {
+  it('are the methods of the description, so one added to it turns this red', () => {
+    expect([...CHECKED_AGAINST_THE_STAND_IN].sort()).toEqual(
+      Object.keys(description.methods).sort(),
+    )
   })
 })
 
@@ -739,6 +762,8 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   // ---- the handshake and the two calls about a feed's days (issue 498)
 
   it('answers engine.info as the handshake the description shapes', async () => {
+    // Mutation: `info()` without `home` - the handshake then lacks a required
+    // member.
     const info = await ask('engine.info')
     expect(paramsProblems('engine.info', {})).toEqual([])
     expect(answerProblems('engine.info', info)).toEqual([])
@@ -746,6 +771,8 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   })
 
   it('answers feeds.service with the window and the day, the anchor echoed or the default', async () => {
+    // Mutation: the answer written without `anchor` - the service answer then
+    // lacks one of its four days.
     const params = { key: 'la-metro-rail', anchor: '2026-09-11' }
     expect(paramsProblems('feeds.service', params)).toEqual([])
     const answer = await ask('feeds.service', params)
@@ -763,6 +790,9 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   })
 
   it('answers feeds.inspect in shape for a preset, a feed with headways and a feed of the person’s', async () => {
+    // Mutation: `trips` a string for LA, `suggested_mode` left out for Mexico
+    // City, or `service` left out for a person's own feed - each branch of
+    // `inspection()` then goes red on its own.
     const params = { key: 'la-metro-rail', anchor: '2026-09-11' }
     expect(paramsProblems('feeds.inspect', params)).toEqual([])
     const la = (await ask('feeds.inspect', params)) as { key: string; service: { anchor: string } }
@@ -2793,12 +2823,23 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s shutdown${WHY}`, () =>
     })
   }, READY_MS + 5_000)
 
+  let pid = 0
+
   afterAll(async () => {
     await sidecar?.stop()
     if (home !== '') rmSync(home, { recursive: true, force: true })
+    // The process the answer was about has ended. Checked here, once the
+    // sidecar is stopped, so a slow exit is not a race inside the test.
+    if (pid !== 0) expect(() => process.kill(pid, 0)).toThrow()
   })
 
   it('answers engine.shutdown with exactly ok, as the description shapes it', async () => {
+    // Mutation: `engine.shutdown` answering `{"ok": "yes"}` - the answer is
+    // then not the description's `ok: true`.
+    // The pid is read before the request, because after it the child may
+    // already have gone and `pid` would be undefined.
+    pid = sidecar.pid as number
+    expect(typeof pid).toBe('number')
     expect(paramsProblems('engine.shutdown', {})).toEqual([])
     const answer = await sidecar.request('engine.shutdown', {}, { deadlineMs: READY_MS }).result
     expect(answerProblems('engine.shutdown', answer)).toEqual([])
