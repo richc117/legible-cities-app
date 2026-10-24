@@ -23,11 +23,11 @@
     "zlib": {
       "version": "1.3.2",
       "msys2_package": "mingw-w64-ucrt-x86_64-zlib",
-      "msys2_revision": "1.3.2-2",
+      "msys2_revision": "1.3.2-3",
       "msys2_source": {
-        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-2.src.tar.zst",
-        "sha256": "eef69dea52357e01b272d6fd6dc4d7c0773f71260cb7bcde6047c8c383518db3",
-        "signature": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-2.src.tar.zst.sig",
+        "url": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-3.src.tar.zst",
+        "sha256": "4b7839ab2826d3e3d27fe46150d2180a1f561f4d03c9e82aeb4b056180561f00",
+        "signature": "https://repo.msys2.org/mingw/sources/mingw-w64-zlib-1.3.2-3.src.tar.zst.sig",
         "signing_key": {
           "url": "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x5F944B027F7FE2091985AA2EFA11531AA0AA7F57",
           "fingerprint": "5F944B027F7FE2091985AA2EFA11531AA0AA7F57"
