@@ -85,12 +85,13 @@ writes before the app starts (every key optional):
     forget_stall_ms   wait this long in a build's forgetting of itself, before its entry goes: a
                       build that answers before it forgets itself leaves its stages drawable
                       for a moment, as a starved thread would on a loaded machine (default 0)
-    holds_after_stage {method: {"stage": s, "ms": n}}, for map.build and export.encode: once the
-                      method has reported stage s (export.encode: its first report of it), it
-                      waits up to n ms for a cancel before going on, so a cancel is read while
-                      the method is still running whatever the machine's speed, as octi_child
-                      does for graph.build. A cancel ends it at its next step, as without the
-                      control; none lets it go on after n ms
+    holds_after_stage {method: {"stage": s, "ms": n}}, for graph.build, map.build and
+                      export.encode: once the method has reported stage s (export.encode: its
+                      first report of it), it waits up to n ms for a cancel before going on, so
+                      a cancel is read while the method is still running whatever the machine's
+                      speed, as octi_child does for graph.build. A cancel ends it at its next
+                      step, as without the control, so name a stage that has one after it (not
+                      map.build's last, write); none lets it go on after n ms
     cancel_too_late   {method: ms}, for graph.build, map.build, export.encode and feeds.add: a
                       cancel of that method comes after its point of no return, as engine
                       v0.18.0 answers one (its issue 80). No cancel stops the method's own
@@ -1282,6 +1283,7 @@ class Engine:
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
                               "message": f"{stage}: 3 nodes, 2 edges", "layout": layout}})
+            self.hold_after(msg_id, "graph.build", stage)
         if builds:
             number = entry["build"]
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(number, 60)

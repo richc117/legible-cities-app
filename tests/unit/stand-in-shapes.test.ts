@@ -1734,25 +1734,25 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
 // machine would be, so an answer written first is read by a client that asks at
 // once - on Windows in the CI of 12 Oct 2026 it was, and the test above failed
 // with "the stand-in drew a stage the engine refuses".
-describe.skipIf(PYTHON === null)(
-  `the stand-in engine forgets a build before it answers${WHY}`,
-  () => {
+//
+// A cancel can be read in two places, and a clock must decide neither: inside
+// octi, where the build waits for it (`octi_child`), and at the check between
+// two stages, where `holds_after_stage` holds the build (issue 481). Each has
+// a test of its own, so each `forget_build` has a guard that cannot be missed.
+
+function forgetsABuildBeforeItAnswers(
+  title: string,
+  control: Record<string, unknown>,
+  cancelAfter: string,
+  where: string,
+): void {
+  describe.skipIf(PYTHON === null)(`${title}${WHY}`, () => {
     let home = ''
     let sidecar: Sidecar
 
     beforeAll(async () => {
       home = mkdtempSync(join(tmpdir(), 'lc-forget-'))
-      writeFileSync(
-        join(home, 'fake-engine.json'),
-        // The build is held in octi until it is cancelled, so the cancel is
-        // read while it runs, on any machine: no clock decides it (issue 481).
-        JSON.stringify({
-          progress_delay_ms: 1,
-          forget_stall_ms: 600,
-          octi_child: true,
-          octi_ms: 30_000,
-        }),
-      )
+      writeFileSync(join(home, 'fake-engine.json'), JSON.stringify(control))
       sidecar = new Sidecar({
         command: [PYTHON as string, '-m', 'schematic.serve'],
         env: engineEnvironment({
@@ -1784,12 +1784,14 @@ describe.skipIf(PYTHON === null)(
       if (home !== '') rmSync(home, { recursive: true, force: true })
     })
 
-    it('answers a cancelled build only after its stages are gone, so nothing is drawn at once', async () => {
+    it(`answers a cancelled build only after its stages are gone, so nothing is drawn at once (${where})`, async () => {
       // Mutation: the entry forgotten after the answer is written, as it was -
       // the stage asked for the moment the cancellation is read is drawn.
-      // The build is held in octi (`octi_child`) until this cancel, however
-      // slow the machine; with the hold removed it answers first, in a few
-      // ms, and `ended` is null.
+      // The cancel is read ${where}, whatever the machine's speed: the build
+      // is held there until it comes. With the hold removed the build passes
+      // its last stop check in a few ms and answers about 600 ms later
+      // (`forget_stall_ms` stalls the success path's forgetting too), with a
+      // result where the cancellation should be, and `ended` is null.
       const seen: Record<string, unknown>[] = []
       sidecar.onNotification((n) => {
         if (n.method === 'job/progress' && typeof n.params === 'object' && n.params !== null)
@@ -1801,8 +1803,8 @@ describe.skipIf(PYTHON === null)(
         { deadlineMs: READY_MS },
       )
       const deadline = Date.now() + 10_000
-      while (!seen.some((n) => n.id === build.id && n.stage === 'gtfs2graph')) {
-        if (Date.now() > deadline) throw new Error('the build never reported gtfs2graph')
+      while (!seen.some((n) => n.id === build.id && n.stage === cancelAfter)) {
+        if (Date.now() > deadline) throw new Error(`the build never reported ${cancelAfter}`)
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       const layout = seen.find((n) => n.id === build.id)?.layout as string
@@ -1823,7 +1825,29 @@ describe.skipIf(PYTHON === null)(
       expect(gone?.data).toMatchObject({ kind: 'layout' })
       expect(gone?.data).not.toHaveProperty('building')
     }, 30_000)
+  })
+}
+
+// In octi: the cancel is sent after the loom report, and nothing checks for a
+// cancel between that report and octi's own wait for one.
+forgetsABuildBeforeItAnswers(
+  'the stand-in engine forgets a build cancelled in octi before it answers',
+  { progress_delay_ms: 1, forget_stall_ms: 600, octi_child: true, octi_ms: 30_000 },
+  'loom',
+  'in octi',
+)
+
+// Between two stages: the build is held after the gtfs2graph report, and the
+// cancel is read at the topo stage's check.
+forgetsABuildBeforeItAnswers(
+  'the stand-in engine forgets a build cancelled between stages before it answers',
+  {
+    progress_delay_ms: 1,
+    forget_stall_ms: 600,
+    holds_after_stage: { 'graph.build': { stage: 'gtfs2graph', ms: 30_000 } },
   },
+  'gtfs2graph',
+  'between stages',
 )
 
 // ------------------------------- two builds of one layout (issue 382)
