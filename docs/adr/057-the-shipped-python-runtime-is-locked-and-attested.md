@@ -127,7 +127,13 @@ Dependabot's pip entry looks at the repository root and does not read
 `vendor/python-requirements.txt`, so it proposes no bump of the manifest
 (a bump of the manifest alone would diverge from the engine's lock and
 fail the unit tests); a security alert on a manifest's package is a reason
-to relock the engine.
+to relock the engine. (Amended 2026-10-24, issue 472: it did read the
+file, and on 19 Oct 2026 opened five bumps of it, each failing the unit
+tests and `check-vendored` as this record intended. The pip entry was
+removed, and the engine's own `.github/dependabot.yml` now proposes the
+bumps, against its `uv.lock`, where a package can move. A security update,
+which the repository's settings open and no entry governs, can still
+arrive against the file; it is closed, and the engine relocked.)
 
 **A pin move needs uv at the pinned version** on the machine that moves it,
 and moving uv's own version means rereading its wheels' hashes.
