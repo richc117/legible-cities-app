@@ -39,7 +39,7 @@ import {
   type View,
 } from './engine/stages'
 import Icon from './icons/Icon'
-import { createAnnouncer } from './Jobs'
+import { afterTwoFrames, createAnnouncer, writeToRegion } from './Jobs'
 import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'
 import {
@@ -238,25 +238,29 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     null,
   )
   const [early, setEarly] = useState<{ run: string; stage: StageName } | null>(null)
-  const [announced, setAnnounced] = useState('')
   // The live region is written through the jobs' announcer: emptied, and
   // filled two frames later, so the same sentence twice - a second press on
   // a stage not drawn yet - is said twice, and sentences that arrive in one
   // frame are said together. A sentence whose frame comes after the reveal
   // has ended is dropped, so the next run's region starts empty.
+  //
+  // The region is written to its element, not rendered from state, so the
+  // empty text is in the DOM when the announcer starts its wait: a sentence
+  // emptied and refilled through a state setter can be batched into no
+  // change at all, and these announcements are made from an effect, where
+  // `flushSync` is not allowed (issue 330).
   const liveNow = useRef(false)
   useEffect(() => {
     liveNow.current = live
   }, [live])
+  const announcedRegion = useRef<HTMLParagraphElement>(null)
+  const putAnnounced = useMemo(() => writeToRegion(announcedRegion), [])
   const announce = useMemo(
     () =>
-      createAnnouncer(
-        (text) => {
-          if (text === '' || liveNow.current) setAnnounced(text)
-        },
-        (then) => requestAnimationFrame(() => requestAnimationFrame(then)),
-      ),
-    [],
+      createAnnouncer((text) => {
+        if (text === '' || liveNow.current) putAnnounced(text)
+      }, afterTwoFrames),
+    [putAnnounced],
   )
   // The day the description's minutes are of: the day the map on screen was
   // drawn for, which is the day its sentence says ("On the day drawn"). A
@@ -371,9 +375,9 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     setRevealed(null)
     setPressed(null)
     setEarly(null)
-    setAnnounced('')
+    putAnnounced('')
     if (ended !== null) forgetStagesOf(runSet(ended.run))
-  }, [revealRun])
+  }, [revealRun, putAnnounced])
   // The same when the view goes while a run is revealing: its drawings
   // would otherwise stay in the cache under a set nothing asks for again.
   useEffect(
@@ -628,11 +632,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
       {/* Each stage once, as it is drawn while a run reveals the layout,
           and a press on one not drawn yet: polite, and only while a run
           is revealing, so nothing is said of a stored layout. */}
-      {live && (
-        <p className="visually-hidden" role="status">
-          {announced}
-        </p>
-      )}
+      {live && <p ref={announcedRegion} className="visually-hidden" role="status" />}
     </section>
   )
 }

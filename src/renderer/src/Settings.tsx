@@ -28,7 +28,7 @@ import type { EngineInfo } from '../../shared/protocol'
 import ConfirmDialog from './ConfirmDialog'
 import { useFirstRun } from './FirstRunDialog'
 import { focusLost } from './focusHandback'
-import { createAnnouncer } from './Jobs'
+import { afterTwoFrames, createAnnouncer, writeToRegion } from './Jobs'
 import {
   engineClient,
   forgetAllProjectJobs,
@@ -189,14 +189,14 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
   const firstRun = useFirstRun()
   // Whether the notices and the licence texts are there to open (issue 108).
   const [licences, setLicences] = useState<LicencesView | null>(null)
-  const [licenceMessage, setLicenceMessage] = useState<string | null>(null)
-  const sayLicence = useMemo(
-    () =>
-      licenceAnnouncer(setLicenceMessage, (then) =>
-        requestAnimationFrame(() => requestAnimationFrame(then)),
-      ),
-    [],
-  )
+  // The status line is written to its element, never rendered from state:
+  // a sentence emptied and refilled through a state setter can be batched
+  // into no change at all (issue 330).
+  const licenceLine = useRef<HTMLParagraphElement>(null)
+  const sayLicence = useMemo(() => {
+    const put = writeToRegion(licenceLine)
+    return licenceAnnouncer((message) => put(message ?? ''), afterTwoFrames)
+  }, [])
   useEffect(() => {
     let left = false
     window.api.licences.read().then(
@@ -542,9 +542,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
             )}
           </Fragment>
         ))}
-        <p className="message" role="status" aria-live="polite">
-          {licenceMessage}
-        </p>
+        <p ref={licenceLine} className="message" role="status" aria-live="polite" />
       </section>
 
       <section aria-labelledby="settings-reset">
