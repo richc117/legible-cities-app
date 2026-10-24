@@ -135,8 +135,10 @@ described for macOS 15, works on these versions too.
 
 ### After the first time
 
-You only do this once. From then on the app opens like any other, from
-Applications, Launchpad or the Dock.
+You do this once for each version you install. From then on that version
+opens like any other app, from Applications, Launchpad or the Dock. To
+install a newer version over an old one, quit the app first; on a Mac, choose
+**Replace** when the Finder asks, because **Keep Both** leaves two copies.
 
 If macOS says the app **is damaged and can't be opened**, the download did
 not arrive intact: move the app to the Trash, download the `.dmg` again, and

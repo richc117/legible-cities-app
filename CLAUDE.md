@@ -152,7 +152,7 @@ stale or the wrong architecture (`scripts/check-vendored.mjs`), compiles
 the runtime's bytecode as unchecked hashes so nothing is written inside a
 signed bundle, packages a dmg per Mac and an nsis installer, launches the
 packaged app once and runs every bundled tool from inside it, and checks
-the bundle did not change (ADR-035). They are unsigned. The maintainer decided that the first release ships that way (issue 38, A6-05); ADR-037 records it and stays Proposed until the results of the person's runs are written into it. The ffmpeg they carry is our own build (#95, ADR-040):
+the bundle did not change (ADR-035). They are unsigned. The maintainer decided that the first release ships that way (issue 38, A6-05); ADR-037 recorded it for v0.1.0, and ADR-054 keeps 1.0 unsigned with no automatic update. The ffmpeg they carry is our own build (#95, ADR-040):
 `scripts/vendor-ffmpeg.sh` builds FFmpeg 9.0.1 and x264 at a pinned commit
 natively on each target (MSYS2 UCRT64 on Windows), with
 `--disable-everything` and only what the export and its checks use, x264

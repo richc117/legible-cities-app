@@ -21,7 +21,7 @@
 # missing; without it, a build that carries no component at all is let
 # through and says it is not an installer.
 #
-# Unsigned until the release-readiness gate (issue A6-05). On macOS the app
+# Unsigned (ADR-037, ADR-054). On macOS the app
 # is signed ad hoc, which needs no identity: the packager changes the bundle
 # after Electron's own signature was made, and an Apple-silicon Mac refuses
 # a bundle whose signature is broken where it runs one signed ad hoc once a

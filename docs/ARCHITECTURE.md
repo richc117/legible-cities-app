@@ -1767,7 +1767,7 @@ The Windows installer keeps no copy of itself (issue 128).
 electron-builder's NSIS template copies the running installer, about
 160 MB, to `%LOCALAPPDATA%\<package name>-updater\installer.exe` for
 electron-updater's differential updates, and its uninstaller never removes
-it. This app has no updater until A6-05, and electron-builder has no option
+it. This app has no updater (ADR-037, ADR-054), and electron-builder has no option
 to skip the copy, so `build/installer.nsh` (named by `nsis.include`; the
 only other nsis options set are the three brand icons) removes the folder
 in `customInstall`, which the
@@ -1834,8 +1834,8 @@ reach to the network. Settings shows the result for as long as the app
 runs. Measured on an Apple-silicon Mac with the vendored binaries: under
 10 ms for `gtfs2graph`, about 10 ms each for ffmpeg and ffprobe.
 
-The Mac app is signed ad hoc, and nothing is signed with an identity until
-A6-05; `forceCodeSigning` is set but only takes effect once a real identity
+The Mac app is signed ad hoc, and nothing is signed with an identity
+(ADR-037, ADR-054); `forceCodeSigning` is set but only takes effect once a real identity
 replaces the ad-hoc one, so the `codesign --verify` step is what checks the
 signature. A local `npm run dist` builds an unpacked app with whatever is
 vendored: with nothing, the hook lets it through and says it is not an
@@ -1919,5 +1919,5 @@ Electron than the pins name.
 | The contract tests running in continuous integration; they exist and are gated on an engine checkout. The vendor job's schema check is not them: it proves only that the runtime it builds starts `schematic.serve --schema` and that the output hashes to `engine.schema_sha256` | Open; no issue yet |
 | The left rail, and the project's fields and diagnostics in the inspector; the inspector holds only the jobs, and the fields and the diagnostics stay on the project screen (ADR-036) | Open; no issue yet |
 | Editing the numeric style fields; the record holds the engine's defaults, and the colours, the order and the theme are a person's since A4-01, A4-02 and A4-03 | post-MVP |
-| Installers signed with an identity, and notarised | A6-05 |
-| Signing and auto-update | A6-05 |
+| Installers signed with an identity, and notarised | Not in 1.0; ADR-054 says what would reopen it |
+| Signing and auto-update | Not in 1.0; ADR-054 says what would reopen it |
