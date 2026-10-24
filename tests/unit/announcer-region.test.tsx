@@ -17,8 +17,10 @@
 //
 // Mutation, watched failing: `writeToRegion` in src/renderer/src/Jobs.tsx
 // putting its text in after a microtask (`queueMicrotask(() => ...)`), which
-// is "scheduled, not rendered" - the region is still full when `announce`
-// returns, and the first assertion of each test fails.
+// is "scheduled, not rendered": nothing is in the region when `announce`
+// returns or when the frame has run, and three of the six tests fail with
+// "expected '' to be 'Los Angeles: Layout run, failed.'" and an empty list
+// of writes.
 
 import { act, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
