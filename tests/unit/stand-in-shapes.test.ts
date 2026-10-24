@@ -27,7 +27,8 @@
 // `service` is the same four days or null). Each was shown red by breaking the
 // stand-in's answer in serve.py: `info` without `home`, `engine.shutdown`
 // answering `{"ok": "yes"}`, `service` without `anchor`, and `inspection` with
-// `trips` as a string. The requests the tests send are
+// `trips` as a string (LA), without `suggested_mode` (Mexico City) or without
+// `service` (a person's own). The requests the tests send are
 // held to the description's params as well, so a test cannot ask the stand-in
 // for something the engine would refuse for its shape. The refusals it
 // answers are held to the engine's handler as well, over the protocol: the
