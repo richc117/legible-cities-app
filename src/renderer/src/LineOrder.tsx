@@ -22,6 +22,7 @@ import {
 } from '../../shared/project'
 import { linesOf, REDRAW_DELAY, shownColour, type Line } from './colours'
 import { debounce } from './debounce'
+import { keepDismissed, keyOf, useDismissalWatch } from './dismissal'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
@@ -206,7 +207,9 @@ export default function LineOrder({
   // The arrows' tooltips a person sent away with Escape, each until the
   // pointer and the focus have both left it (WCAG 1.4.13), and the arrow
   // under the pointer now, since a pointer resting on one leaves the focus
-  // wherever it was. The diagnostics' explanations keep the same rule.
+  // wherever it was. A mark follows where the pointer and the focus are, and
+  // not one leave event that may not come (issue 327): see `dismissal.ts`.
+  // The diagnostics' explanations keep the same rule.
   const [dismissed, setDismissed] = useState<readonly string[]>([])
   const hovered = useRef<string | null>(null)
 
@@ -528,9 +531,13 @@ export default function LineOrder({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  /** The pointer or the focus has left an arrow: Escape's dismissal of its tooltip is over. */
-  const leave = (key: string): void =>
-    setDismissed((was) => (was.includes(key) ? was.filter((each) => each !== key) : was))
+  /** Where the pointer and the focus are now: every mark on another arrow is over. */
+  const reapply = (hoveredKey: string | null, focusedKey: string | null): void =>
+    setDismissed((was) => keepDismissed(was, hoveredKey, focusedKey))
+  // Watched while a mark stands, so a leave or a blur that was missed, or
+  // that came while the other half still held the arrow, is made up for by
+  // the next move of the pointer or of the focus.
+  useDismissalWatch('data-arrow', dismissed.length > 0, hovered, reapply)
 
   /** Where a row is drawn while a line is carried: the carried one under the pointer, the rows it has passed a place aside. */
   const carriedStyle = (index: number): CSSProperties | undefined => {
@@ -638,17 +645,23 @@ export default function LineOrder({
                             className="explain line-arrow"
                             data-arrow={key}
                             data-dismissed={dismissed.includes(key) ? 'true' : undefined}
-                            onMouseEnter={() => {
+                            onPointerEnter={() => {
                               hovered.current = key
+                              // Entering one arrow ends the mark on another.
+                              reapply(key, keyOf(document.activeElement, 'data-arrow'))
                             }}
-                            onMouseLeave={(event) => {
+                            onPointerLeave={() => {
                               hovered.current = null
-                              if (!event.currentTarget.contains(document.activeElement)) leave(key)
+                              reapply(null, keyOf(document.activeElement, 'data-arrow'))
                             }}
-                            onBlur={(event) => {
-                              if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-                                leave(key)
-                            }}
+                            onBlur={(event) =>
+                              // The pointer may still be over the arrow, and
+                              // then the mark stays: both must have left.
+                              reapply(
+                                hovered.current,
+                                keyOf(event.relatedTarget as Element | null, 'data-arrow'),
+                              )
+                            }
                           >
                             <Button
                               ref={keep(buttons.current, key)}

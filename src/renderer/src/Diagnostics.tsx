@@ -8,6 +8,7 @@ import {
   type RunSnapshot,
 } from './engine/layoutRun'
 import Button from './kit/Button'
+import { keepDismissed, keyOf, useDismissalWatch } from './dismissal'
 import Icon from './icons/Icon'
 import { useSnapshot } from './useSnapshot'
 
@@ -108,11 +109,18 @@ export function explainedAfterPress(now: Explained, id: string): Explained {
   }
 }
 
-/** The pointer or the focus has left a row: Escape's dismissal of it is over. */
-export function explainedAfterLeaving(now: Explained, id: string): Explained {
-  return now.dismissed.includes(id)
-    ? { asked: now.asked, dismissed: now.dismissed.filter((each) => each !== id) }
-    : now
+/**
+ * Where the pointer and the focus are now: Escape's dismissal of every row
+ * that has neither is over (`keepDismissed`). The same state comes back
+ * when nothing changes.
+ */
+export function explainedAfterMoving(
+  now: Explained,
+  hoveredId: string | null,
+  focusedId: string | null,
+): Explained {
+  const dismissed = keepDismissed(now.dismissed, hoveredId, focusedId)
+  return dismissed === now.dismissed ? now : { asked: now.asked, dismissed }
 }
 
 /**
@@ -161,6 +169,12 @@ export function DiagnosticsReport({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [])
 
+  // Watched while an explanation stands dismissed, so a leave or a blur
+  // that was missed is made up for by the next move (issue 327).
+  useDismissalWatch('data-metric', explained.dismissed.length > 0, hovered, (over, focused) =>
+    setExplained((now) => explainedAfterMoving(now, over, focused)),
+  )
+
   const copy = async (): Promise<void> => setSaid(await copyReport(write, name, report))
 
   return (
@@ -207,17 +221,19 @@ export function DiagnosticsReport({
                     data-metric={metric.id}
                     data-open={asked === metric.id ? 'true' : undefined}
                     data-dismissed={explained.dismissed.includes(metric.id) ? 'true' : undefined}
-                    onMouseEnter={() => {
+                    onPointerEnter={() => {
                       hovered.current = metric.id
+                      const focused = keyOf(document.activeElement, 'data-metric')
+                      setExplained((now) => explainedAfterMoving(now, metric.id, focused))
                     }}
-                    onMouseLeave={(event) => {
+                    onPointerLeave={() => {
                       hovered.current = null
-                      if (!event.currentTarget.contains(document.activeElement))
-                        setExplained((now) => explainedAfterLeaving(now, metric.id))
+                      const focused = keyOf(document.activeElement, 'data-metric')
+                      setExplained((now) => explainedAfterMoving(now, null, focused))
                     }}
                     onBlur={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-                        setExplained((now) => explainedAfterLeaving(now, metric.id))
+                      const to = keyOf(event.relatedTarget as Element | null, 'data-metric')
+                      setExplained((now) => explainedAfterMoving(now, hovered.current, to))
                     }}
                   >
                     {metric.label}{' '}
