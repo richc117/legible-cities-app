@@ -61,6 +61,8 @@ class Server {
   #buffer = Buffer.alloc(0)
   #waiting = new Map<number, (reply: Reply) => void>()
   #next = 1
+  #exited = false
+  #ended: (() => void)[] = []
 
   constructor(command: string, env: Record<string, string>, cwd: string) {
     this.#child = spawn(command, ['-m', 'schematic.serve'], {
@@ -71,6 +73,10 @@ class Server {
     })
     // Drained and dropped: the server logs to its stderr and nothing here reads it.
     this.#child.stderr.resume()
+    this.#child.once('exit', () => {
+      this.#exited = true
+      for (const end of this.#ended) end()
+    })
     this.#child.stdout.on('data', (chunk: Buffer) => {
       this.#buffer = Buffer.concat([this.#buffer, chunk])
       this.#read()
@@ -101,10 +107,16 @@ class Server {
       (paramsText === undefined ? '' : `,"params":${paramsText}`) +
       '}'
     return new Promise<Reply>((resolve, reject) => {
+      // A server that has ended answers nothing, so say so at once and not at the deadline.
+      if (this.#exited) return reject(new Error(`${method}: the server has exited`))
       const timer = setTimeout(() => {
         this.#waiting.delete(id)
         reject(new Error(`${method} was not answered in ${DEADLINE_MS} ms`))
       }, DEADLINE_MS)
+      this.#ended.push(() => {
+        clearTimeout(timer)
+        reject(new Error(`${method}: the server exited unanswered`))
+      })
       this.#waiting.set(id, (reply) => {
         clearTimeout(timer)
         this.#waiting.delete(id)
@@ -115,6 +127,7 @@ class Server {
   }
 
   async stop(): Promise<void> {
+    if (this.#exited) return
     const exited = new Promise<void>((resolve) => this.#child.once('exit', () => resolve()))
     this.#child.stdin.end()
     const killer = setTimeout(() => this.#child.kill(), 10_000)
@@ -167,10 +180,8 @@ const NOT_A_DAY = 'must be a calendar day as YYYY-MM-DD'
 const COLOUR = 'must be a colour written #rrggbb'
 
 // -- the methods that take no parameters (serve._no_params)
-// (engine.shutdown among them: refused before it stops anything)
 for (const method of [
   'engine.info',
-  'engine.shutdown',
   'feeds.list',
   'style.presets',
   'export.presets',
@@ -1112,6 +1123,15 @@ const PLAN = {
     'export.encode does not take bogus',
   )
 }
+
+// -- engine.shutdown, last: refused before it stops anything, and a server it did
+// stop would answer no row after it
+for (const [what, params] of [
+  ['an object with a member', '{"key":"x"}'],
+  ['a list', '[]'],
+  ['a text', '"x"'],
+] as const)
+  refusesRaw('engine.shutdown', what, params, 'engine.shutdown takes no parameters')
 
 // The requests the judgement must let by: the same methods with the field
 // left out, which every refusal above is the null of. The stand-in answers
