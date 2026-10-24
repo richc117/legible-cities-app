@@ -956,7 +956,10 @@ class Engine:
             self.end_children()
             return False
         if method == "graph.build":
-            threading.Thread(target=self.build, args=(msg_id, message.get("params") or {}),
+            # Inside `replying`, as every threaded request is, so a build that
+            # raises is answered and not left running for ever (issue 464).
+            threading.Thread(target=self.replying,
+                             args=(msg_id, self.build, msg_id, message.get("params") or {}),
                              daemon=True).start()
             return True
         if method == "map.build":
@@ -995,7 +998,8 @@ class Engine:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
             return True
         if method == "feeds.service":
-            threading.Thread(target=self.service, args=(msg_id, message.get("params") or {}),
+            threading.Thread(target=self.replying,
+                             args=(msg_id, self.service, msg_id, message.get("params") or {}),
                              daemon=True).start()
             return True
         if method == "feeds.inspect":
@@ -1093,7 +1097,8 @@ class Engine:
                 write({"jsonrpc": "2.0", "id": msg_id, "result": self.plan(params)})
             return True
         if method == "export.encode":
-            threading.Thread(target=self.encode, args=(msg_id, message.get("params") or {}),
+            threading.Thread(target=self.replying,
+                             args=(msg_id, self.encode, msg_id, message.get("params") or {}),
                              daemon=True).start()
             return True
         write({"jsonrpc": "2.0", "id": msg_id,
