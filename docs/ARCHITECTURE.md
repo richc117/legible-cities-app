@@ -1364,10 +1364,14 @@ ADR-028.
 
 ## Checks
 
-`.github/workflows/ci.yml` runs on Ubuntu, macOS and Windows for every pull
-request and every push to `main`: lint, typecheck, unit tests, a build, and the Playwright
-Electron tests over the built app. The smoke test launches it, asserts the
-title, reads the empty Library, probes the origin's refusals from inside
+`.github/workflows/ci.yml` has two layers, both required. `ci (<os>)` is the
+fast one, on Ubuntu, macOS and Windows for every pull request and every push
+to `main`: lint, typecheck, unit tests and a build. `e2e (<os>)` is the
+Playwright Electron suite over the built app, on macOS and Windows only; it
+always reports, and a pull request whose every changed path is documentation
+passes it without running the suite (`scripts/ci-decide.mjs`), while a push
+to `main` always runs it. Of that suite, the smoke test launches the app,
+asserts the title, reads the empty Library, probes the origin's refusals from inside
 the page, and quits; the lifecycle test creates a project from the Library,
 relaunches on the same engine home, opens, renames and deletes it, and
 fetches a file placed in its output folder before and after the delete; the
