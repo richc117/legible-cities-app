@@ -295,7 +295,15 @@ function editor<V>(
   const orphan = (): void => {
     const facts = latest.current
     const { run, own } = facts
-    let seen = { state: run.snapshot.state, own: own(run.snapshot) }
+    // From the run as the panel last drew it: a stop of its own kind in the
+    // beat between that render and the panel going is a stop all the same.
+    let seen = { state: facts.snapshot.state, own: own(facts.snapshot) }
+    const current = { state: run.snapshot.state, own: own(run.snapshot) }
+    if (stoppedNow(seen, current)) {
+      done()
+      return
+    }
+    seen = current
     const unhear = run.subscribe((snapshot) => {
       const now = { state: snapshot.state, own: own(snapshot) }
       const stopped = stoppedNow(seen, now)

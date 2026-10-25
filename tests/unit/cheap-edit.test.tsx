@@ -220,7 +220,12 @@ function container(): StandInNode {
     // What a change drawn after its panel went reads now: the store's
     // record and the engine's state, as main would answer them.
     api: {
-      projects: { get: () => Promise.resolve(bridge.record ?? screen.project) },
+      projects: {
+        get: () => {
+          bridge.reads += 1
+          return Promise.resolve(bridge.record ?? screen.project)
+        },
+      },
       engine: { state: () => Promise.resolve(bridge.engine) },
     },
   }
@@ -358,8 +363,9 @@ const inspected = Promise.resolve(INSPECTION)
 const inspect = (): Promise<Inspection> => inspected
 
 /** What the bridge answers for the store's record (the screen's, unless a test moves it) and the engine. */
-const bridge: { record: ProjectRecord | null; engine: EngineState } = {
+const bridge: { record: ProjectRecord | null; engine: EngineState; reads: number } = {
   record: null,
+  reads: 0,
   engine: { state: 'ready', version: '0.19.0', protocol: 1 },
 }
 
@@ -612,6 +618,7 @@ beforeEach(() => {
   run = new StandInRun()
   exporter.snapshot = { state: 'idle' }
   bridge.record = null
+  bridge.reads = 0
   bridge.engine = { state: 'ready', version: '0.19.0', protocol: 1 }
   for (const map of Object.values(leaves)) map.clear()
 })
@@ -837,7 +844,9 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     exporter.snapshot = { state: 'idle' }
     wait(REDRAW_DELAY)
     await answered()
+    expect(bridge.reads, 'the record was read, so nothing drawn is an answer').toBe(1)
     expect(panel.drawn()).toEqual([])
+    expect(vi.getTimerCount(), 'and nothing is left waiting').toBe(0)
   })
 
   it('drops a change held as the panel went when the panel’s own redraw then stops', async () => {
@@ -850,10 +859,27 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     panel.make(panel.two)
     unmount()
     run.move(snap('cancelled', panel.own))
+    expect(vi.getTimerCount(), 'dropped at the stop, with nothing left waiting').toBe(0)
     wait(REDRAW_DELAY * 5)
     await answered()
     expect(panel.drawn()).toEqual([panel.one])
-    expect(vi.getTimerCount(), 'and nothing is left waiting').toBe(0)
+    expect(bridge.reads, 'and never read for a draw').toBe(0)
+  })
+
+  it('drops it too when its own redraw stopped in the beat before the panel went', async () => {
+    // The stop lands after the last render and before the unmount, so the
+    // panel never drew it. Mutation: `orphan` watching from the run as it is
+    // at the unmount rather than as the panel drew it (second review).
+    await open(panel.cell)
+    panel.make(panel.one)
+    firstTry(panel)
+    panel.make(panel.two)
+    run.moveQuietly(snap('cancelled', panel.own))
+    unmount()
+    expect(vi.getTimerCount(), 'nothing waits').toBe(0)
+    wait(REDRAW_DELAY * 5)
+    await answered()
+    expect(panel.drawn()).toEqual([panel.one])
   })
 
   it('is taken over by a panel of its kind that comes back, so only the later choice is drawn', async () => {
