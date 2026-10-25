@@ -20,6 +20,7 @@ import {
 } from '../../../shared/project'
 import {
   failureOf,
+  failureSentence,
   LogBuffer,
   nextJobId,
   screenPaths,
@@ -426,8 +427,7 @@ const looksLikePath = (message: string): boolean =>
 
 /** The sentence a person reads for a failure: the engine's, never a path. */
 export function sentenceFor(reason: unknown): string {
-  if (isEngineErrorShape(reason)) return reason.data?.hint ?? reason.message
-  return reason instanceof Error ? reason.message : 'The layout run did not finish.'
+  return failureSentence(reason, 'The layout run did not finish.')
 }
 
 const IDLE: RunSnapshot = {
