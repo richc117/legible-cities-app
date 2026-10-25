@@ -5,7 +5,14 @@
 // the page measures what it says is the sweep itself, in the end-to-end suite.
 
 import { describe, expect, it } from 'vitest'
-import { MIN_RING_CONTRAST, MIN_RING_WIDTH, weakRings, type RingReading } from '../support/ring'
+import {
+  MIN_RING_CONTRAST,
+  MIN_RING_WIDTH,
+  judgeStops,
+  weakRings,
+  type RingReading,
+  type StopReading,
+} from '../support/ring'
 
 const ring = (over: Partial<RingReading> = {}): RingReading => ({
   kind: 'outline',
@@ -201,6 +208,87 @@ describe('the ring rule', () => {
       expect(weakRings([{ control: 'a', rings: [outline, { ...band, element: 1 }] }])).toHaveLength(
         1,
       )
+    })
+  })
+})
+
+// Which stops drew a ring, and which could not be judged (issue 436). The
+// colour panel's controls leave the document once focus leaves the panel,
+// and the first version of the probe dropped every stop no longer in the
+// document, so a sweep of the open picker passed having judged none of them.
+describe('a walk’s stops', () => {
+  const OUTLINE = 'solid 2px rgb(111, 155, 255)'
+  const stop = (over: Partial<StopReading> = {}): StopReading => ({
+    control: 'div "Hue"',
+    frame: false,
+    focused: [
+      { outline: OUTLINE, shadow: 'none' },
+      { outline: 'none', shadow: 'none' },
+    ],
+    rest: [
+      { outline: 'none', shadow: 'none' },
+      { outline: 'none', shadow: 'none' },
+    ],
+    measured: [
+      { outline: ring(), shadows: [] },
+      { outline: null, shadows: [] },
+    ],
+    ...over,
+  })
+
+  it('measures the ring a control drew on taking focus', () => {
+    expect(judgeStops([stop()])).toEqual({
+      unringed: [],
+      rings: [{ control: 'div "Hue"', rings: [{ ...ring(), element: 0 }] }],
+      unjudged: [],
+    })
+  })
+
+  it('names a control whose rest could not be read, and does not drop it', () => {
+    const verdict = judgeStops([stop({ rest: null }), stop({ control: 'button "Lay out"' })])
+    expect(verdict.unjudged).toEqual(['div "Hue"'])
+    expect(verdict.rings.map((r) => r.control)).toEqual(['button "Lay out"'])
+    expect(verdict.unringed).toEqual([])
+  })
+
+  it('names a control that drew nothing it did not have at rest', () => {
+    const verdict = judgeStops([
+      stop({
+        rest: [
+          { outline: OUTLINE, shadow: 'none' },
+          { outline: 'none', shadow: 'none' },
+        ],
+      }),
+    ])
+    expect(verdict.unringed).toEqual(['div "Hue"'])
+    expect(verdict.rings).toEqual([])
+  })
+
+  it('counts a shadow only where there was none at rest', () => {
+    const halo = ring({ kind: 'shadow' })
+    const focused = [
+      { outline: 'none', shadow: 'rgb(111, 155, 255) 0px 0px 0px 2px' },
+      { outline: 'none', shadow: 'none' },
+    ]
+    const measured = [
+      { outline: null, shadows: [halo] },
+      { outline: null, shadows: [] },
+    ]
+    expect(judgeStops([stop({ focused, measured })]).rings).toEqual([
+      { control: 'div "Hue"', rings: [{ ...halo, element: 0 }] },
+    ])
+    const edged = [
+      { outline: 'none', shadow: 'rgb(55, 50, 45) 0px 0px 0px 1px inset' },
+      { outline: 'none', shadow: 'none' },
+    ]
+    expect(judgeStops([stop({ focused, measured, rest: edged })]).unringed).toEqual(['div "Hue"'])
+  })
+
+  it('leaves a frame to its page, whatever was read of it', () => {
+    expect(judgeStops([stop({ frame: true, rest: null })])).toEqual({
+      unringed: [],
+      rings: [],
+      unjudged: [],
     })
   })
 })

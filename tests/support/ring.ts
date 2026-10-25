@@ -193,3 +193,75 @@ export function weakRings(controls: RingsOf[]): string[] {
           : withPairs(rings).map(says).join('; ')),
     )
 }
+
+/** An element's ring as computed: its outline (`none`, or style, width and colour) and its box-shadow. */
+export interface RingStyle {
+  outline: string
+  shadow: string
+}
+
+/**
+ * One stop of a Tab walk as the page read it: the control, and for each
+ * element of its chain (the control, its host, its parent) its ring while it
+ * held focus, its ring at rest, and the rings measured while it held focus.
+ */
+export interface StopReading {
+  control: string
+  /** A frame, whose page draws its own focus and is not judged here. */
+  frame: boolean
+  focused: RingStyle[]
+  /**
+   * The chain at rest, or null where it could not be read: an element of it
+   * has left the document and no reading of it from before it took focus
+   * was kept.
+   */
+  rest: RingStyle[] | null
+  measured: { outline: RingReading | null; shadows: RingReading[] }[]
+}
+
+/** What a walk's stops come to: controls that drew nothing, the rings of those that did, and controls that could not be judged. */
+export interface StopVerdict {
+  unringed: string[]
+  rings: RingsOf[]
+  unjudged: string[]
+}
+
+/**
+ * Which stops drew a ring on taking focus, and what it was (issue 436).
+ *
+ * An outline the control did not have at rest, or a shadow where it had
+ * none: a shadow that merely changes does not count, because a kit text
+ * field drops its resting edge on focus and would pass with no ring at all.
+ * The rings counted are the same ones, and are what R10-03 measures.
+ *
+ * **A stop whose rest could not be read is unjudged, and said**, never
+ * dropped. The walk read it as reached, so the sweep would otherwise pass it
+ * having judged nothing: the colour panel's controls are unmounted once
+ * focus leaves the panel, which closes it, and the first version of this
+ * skipped every control no longer in the document, so a sweep of the open
+ * picker judged none of its controls and was green.
+ */
+export function judgeStops(stops: StopReading[]): StopVerdict {
+  const verdict: StopVerdict = { unringed: [], rings: [], unjudged: [] }
+  for (const stop of stops) {
+    if (stop.frame) continue
+    const rest = stop.rest
+    if (rest === null) {
+      verdict.unjudged.push(stop.control)
+      continue
+    }
+    const drawn: RingReading[] = []
+    let shows = false
+    stop.focused.forEach((focused, i) => {
+      const at = stop.measured[i]
+      const outline = focused.outline !== 'none' && focused.outline !== rest[i].outline
+      const shadow = focused.shadow !== 'none' && rest[i].shadow === 'none'
+      if (outline || shadow) shows = true
+      if (outline && at.outline) drawn.push({ ...at.outline, element: i })
+      if (shadow) drawn.push(...at.shadows.map((ring) => ({ ...ring, element: i })))
+    })
+    if (!shows) verdict.unringed.push(stop.control)
+    else verdict.rings.push({ control: stop.control, rings: drawn })
+  }
+  return verdict
+}

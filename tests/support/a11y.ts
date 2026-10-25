@@ -51,9 +51,11 @@ import { describePair, describeReading, duplicatedNames } from './a11y-names'
 import {
   MIN_RING_CONTRAST,
   MIN_RING_WIDTH,
+  judgeStops,
   weakRings,
   type RingReading,
-  type RingsOf,
+  type RingStyle,
+  type StopReading,
 } from './ring'
 import {
   WalkTrace,
@@ -178,9 +180,8 @@ export async function chooserAnswers(app: ElectronApplication, path: string): Pr
 
 interface Finding {
   missed: string[]
-  unringed: string[]
-  /** Every ring each control drew on taking focus, measured (`ring.ts` judges them). */
-  rings: RingsOf[]
+  /** Every stop, its chain's rings focused and at rest, and what was measured (`judgeStops` and `weakRings` judge them). */
+  readings: StopReading[]
   stops: number
 }
 
@@ -721,36 +722,22 @@ export function installProbe(): void {
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
-      const unringed: string[] = []
-      const measured: RingsOf[] = []
-      for (const stop of stops) {
-        // A frame's page is its own; the engine draws its focus.
-        if (stop.control.tagName === 'IFRAME' || !stop.control.isConnected) continue
-        const rest = stop.chain.map(ring)
-        // An outline the control did not have at rest, or a shadow where it
-        // had none: a shadow that merely changes does not count, because a
-        // kit text field drops its resting edge on focus and would pass
-        // with no ring at all. The rings counted are the same ones, and are
-        // what R10-03 measures.
-        const drawn: RingReading[] = []
-        stop.chain.forEach((_, i) => {
-          const focused = stop.focused[i]
-          const at = stop.measured[i]
-          if (focused.outline !== 'none' && focused.outline !== rest[i].outline && at.outline)
-            drawn.push({ ...at.outline, element: i })
-          if (focused.shadow !== 'none' && rest[i].shadow === 'none')
-            drawn.push(...at.shadows.map((shadow) => ({ ...shadow, element: i })))
-        })
-        const shows = stop.focused.some(
-          (focused, i) =>
-            (focused.outline !== 'none' && focused.outline !== rest[i].outline) ||
-            (focused.shadow !== 'none' && rest[i].shadow === 'none'),
-        )
-        if (!shows) unringed.push(describe(stop.control))
-        else measured.push({ control: describe(stop.control), rings: drawn })
-      }
+      // What each stop's chain is at rest, read now for an element still in
+      // the document. One that has left it has no rest to read, and its stop
+      // is reported unjudged by `judgeStops` rather than dropped.
+      const readings: StopReading[] = stops.map((stop) => {
+        const rest = stop.chain.map((el) => (el.isConnected ? ring(el) : null))
+        return {
+          control: describe(stop.control),
+          // A frame's page is its own; the engine draws its focus.
+          frame: stop.control.tagName === 'IFRAME',
+          focused: stop.focused,
+          rest: rest.every((r) => r !== null) ? (rest as RingStyle[]) : null,
+          measured: stop.measured,
+        }
+      })
       const missed = want.filter((el) => el.isConnected && !visited.has(el)).map(describe)
-      return { missed, unringed, rings: measured, stops: stops.length }
+      return { missed, readings, stops: stops.length }
     },
     moving() {
       const out: string[] = []
@@ -1027,17 +1014,25 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   const found = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.finish())
   expect(ended, endMessage(where, ended, trace)).toBe(true)
   expect(found.missed, missMessage(where, found.missed, trace)).toEqual([])
-  expect(found.unringed, `${where}: controls with no visible focus`).toEqual([])
+  const judged = judgeStops(found.readings)
+  // A control the walk reached and then lost - its panel closed and it left
+  // the document - before its ring could be compared with its rest is a
+  // failure of its own, never a pass by omission (issue 436).
+  expect(
+    judged.unjudged,
+    `${where}: controls reached whose ring could not be judged, since they left the document`,
+  ).toEqual([])
+  expect(judged.unringed, `${where}: controls with no visible focus`).toEqual([])
   // And the ring is a ring: at least two CSS pixels thick, and 3:1 against the
   // ground it is drawn on (issue 436, R10-03; `ring.ts` has the rule). A walk
   // that reached controls and found some ring on each is not yet one that
   // found a ring a person can see.
   expect(
-    found.rings.length,
+    judged.rings.length,
     `${where}: the walk measured the ring of every control it reached`,
   ).toBeGreaterThan(0)
   expect(
-    weakRings(found.rings),
+    weakRings(judged.rings),
     `${where}: focus rings under ${MIN_RING_WIDTH}px or under ${MIN_RING_CONTRAST}:1 against their ground`,
   ).toEqual([])
 }
