@@ -46,7 +46,7 @@ The state of the code these decisions rest on is in the spec's "Why" and was re-
 - **Decision:**
   - (a) `protocol-real`, `feeds-real`, `layout-real`, `opening-real` and `sidecar-real` take their interpreter as `determinism-real` does: `LEGIBLE_ENGINE_PYTHON` first, then `LEGIBLE_ENGINE_CHECKOUT`'s `.venv`, by passing `enginePython` from the environment into `resolveInterpreter` instead of `null`.
   - (b) Where a suite needs a stored layout or a feed and today finds them in a developer's engine checkout, it gains a second source: a temporary `SCHEMATIC_HOME` seeded from the committed BART fixture (`tests/fixtures/determinism/bart/data/`). It is used when no checkout supplies one.
-  - (c) `viewer-real` draws its page by a `map.build` from that seeded home, rather than looking for a page in a checkout's `out/`.
+  - (c) `viewer-real` reads a page from a checkout's `out/` where a checkout is named and holds one carrying the seam, and otherwise draws its page by a `map.build` from that seeded home, which is what the runner does.
   - (d) `determinism.yml` runs `npx vitest run tests/unit/*-real.test.ts` in place of the one file, with `LEGIBLE_DETERMINISM_TEST=1` and the `LEGIBLE_ENGINE_PYTHON` it already exports.
   - A suite whose assertions are about LA Metro specifically, such as `layout-real`'s cached LA graph, keeps them for a developer's checkout, and gains BART equivalents for CI. It never skips in CI.
 - **Rationale:**

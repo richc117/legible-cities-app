@@ -2,7 +2,9 @@
 // what `openingBeats` makes from the engine's own storyboard table is what
 // the engine's `export.plan` takes - a card alone, a draw-in alone, and the
 // card then the draw-in - on a storyboard that opens on the map and on one
-// that opens on the rows. Skips, saying so, without an engine checkout.
+// that opens on the rows. Skips, saying so, where no interpreter with the
+// engine is named, unless the determinism workflow opted in, where that fails.
+// A plan needs no feed, layout or page, so a fresh home is all it is given.
 //
 // The storyboard that opens on the rows is written here: none of the
 // engine's eight does. The issue had decided the app would keep the draw-in
@@ -11,14 +13,11 @@
 // 035, as of 10 Oct 2026), and a pin that starts refusing one fails here
 // first.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { resolveConfig } from '../../src/main/config'
-import { engineCommand, engineEnvironment, resolveInterpreter } from '../../src/main/interpreter'
-import { Sidecar } from '../../src/main/sidecar'
-import type { EnginePin } from '../../src/shared/engine'
+import type { Sidecar } from '../../src/main/sidecar'
 import {
   CARD_SECONDS,
   DRAW_IN_SECONDS,
@@ -34,38 +33,19 @@ import type {
   Storyboard,
   StoryboardBeat,
 } from '../../src/shared/protocol'
+import {
+  NO_ENGINE,
+  READY_MS,
+  failIfRequired,
+  realInterpreter,
+  startRealEngine,
+} from '../support/real-engine'
 
-const repo = resolve(__dirname, '../..')
-const pins = JSON.parse(readFileSync(join(repo, 'vendor/pins.json'), 'utf8')) as {
-  engine: EnginePin
-}
+const INTERPRETER = realInterpreter()
 
-function localConfig() {
-  let fileText: string | undefined
-  try {
-    fileText = readFileSync(join(repo, '.env.local'), 'utf8')
-  } catch {
-    fileText = undefined
-  }
-  return resolveConfig({
-    fileText,
-    env: process.env,
-    userData: tmpdir(),
-    desktop: tmpdir(),
-    loomPin: '',
-    baseDir: repo,
-  })
-}
+const WHY = INTERPRETER === null ? NO_ENGINE : ''
 
-const INTERPRETER = resolveInterpreter({
-  config: { enginePython: null, engineCheckout: localConfig().engineCheckout },
-  packaged: false,
-  resourcesPath: '',
-  platform: process.platform,
-  exists: existsSync,
-}).interpreter
-
-const WHY = INTERPRETER === null ? ' (skipped: LEGIBLE_ENGINE_CHECKOUT names no engine)' : ''
+failIfRequired('the opening against the real engine', INTERPRETER === null, 'no engine')
 
 const PAGE = 'app://local/projects/abcdefghijk1/la-metro-rail.html'
 
@@ -104,35 +84,12 @@ describe.skipIf(INTERPRETER === null)(`the opening against the real engine${WHY}
 
   beforeAll(async () => {
     home = mkdtempSync(join(tmpdir(), 'lc-opening-real-'))
-    sidecar = new Sidecar({
-      command: engineCommand(INTERPRETER as string),
-      // Nothing is written into the checkout: a plan reads, and so does this.
-      env: {
-        ...engineEnvironment({
-          config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
-          base: process.env,
-          development: true,
-        }),
-        PYTHONDONTWRITEBYTECODE: '1',
-      },
-      pin: pins.engine,
-      log: (m) => log.push(m),
-      bounds: { handshakeMs: 20_000 },
+    // Nothing is written into the checkout: a plan reads, and so does this.
+    sidecar = await startRealEngine(INTERPRETER as string, home, {
+      env: { PYTHONDONTWRITEBYTECODE: '1' },
+      log,
     })
-    sidecar.start()
-    await new Promise<void>((ready, reject) => {
-      const timer = setTimeout(() => reject(new Error(log.join('\n'))), 25_000)
-      sidecar.onState((s) => {
-        if (s.state === 'ready') {
-          clearTimeout(timer)
-          ready()
-        } else if (s.state !== 'starting') {
-          clearTimeout(timer)
-          reject(new Error(`${s.state}: ${log.join('\n')}`))
-        }
-      })
-    })
-  }, 30_000)
+  }, READY_MS + 10_000)
 
   afterAll(async () => {
     await sidecar?.stop()
