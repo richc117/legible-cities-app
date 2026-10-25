@@ -46,7 +46,7 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import LinesCell from '../../src/renderer/src/notebook/cells/LinesCell'
 import StyleCell from '../../src/renderer/src/notebook/cells/StyleCell'
 import ProjectHeader from '../../src/renderer/src/notebook/ProjectHeader'
-import { useRefusedGone } from '../../src/renderer/src/notebook/useCheapEdit'
+import { READ_RETRY_MAX, useRefusedGone } from '../../src/renderer/src/notebook/useCheapEdit'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 
@@ -967,10 +967,48 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     wait(REDRAW_DELAY)
     await answered()
     expect(panel.drawn(), 'not on the refused read').toEqual([])
-    wait(REDRAW_DELAY)
+    // Asked again after twice the delay (the back-off's first step).
+    wait(REDRAW_DELAY * 2)
     await answered()
     expect(bridge.reads).toBe(2)
     expect(panel.drawn()).toEqual([panel.one])
+  })
+
+  it('asks again after twice the last wait while reads are refused, up to its cap', async () => {
+    // An engine that stays away refuses every read. Mutation: the wait not
+    // doubled (`arm(unbuilt.backoff)` made `arm()`) - asked every delay, for
+    // as long as the engine is away.
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    bridge.fails = Array.from(
+      { length: 9 },
+      () => new Error("Error invoking remote method 'engine:state': Error: unavailable"),
+    )
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(bridge.reads, 'the first try').toBe(1)
+    const waits = [2, 4, 8, 16, 32, 64].map((times) => REDRAW_DELAY * times)
+    for (const each of [...waits, READ_RETRY_MAX, READ_RETRY_MAX]) {
+      const before = bridge.reads
+      wait(each - 1)
+      await answered()
+      expect(bridge.reads, `not before ${each}ms`).toBe(before)
+      wait(1)
+      await answered()
+      expect(bridge.reads, `asked again after ${each}ms`).toBe(before + 1)
+    }
+    expect(READ_RETRY_MAX, 'the cap is reached before the doubling would pass it').toBeLessThan(
+      REDRAW_DELAY * 128,
+    )
+    expect(panel.drawn(), 'never dropped, nor drawn without its record').toEqual([])
+    // The engine answers: drawn, and nothing left waiting.
+    wait(READ_RETRY_MAX)
+    await answered()
+    expect(panel.drawn()).toEqual([panel.one])
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it('ends quietly when the project is gone', async () => {

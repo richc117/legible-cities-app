@@ -121,6 +121,9 @@ export interface CheapEditOptions<V> {
 export const projectMissing = (reason: unknown): boolean =>
   reason instanceof Error && /\bnot found\b/.test(reason.message)
 
+/** In milliseconds: the longest a gone change waits between two refused reads. */
+export const READ_RETRY_MAX = 30_000
+
 /** The record and the engine's state, asked of main now. */
 const readThroughBridge = (id: string): Promise<[ProjectRecord, EngineState | null]> =>
   Promise.all([window.api.projects.get(id), window.api.engine.state()])
@@ -154,6 +157,8 @@ interface Unbuilt<V> {
   gone: boolean
   /** While gone and waiting: stop listening to the run, and leave the orphans. */
   forget: (() => void) | null
+  /** The wait after a refused read while gone, doubled at each; 0 until one is refused. */
+  backoff: number
 }
 
 /** What an editor whose panel has gone offers a panel of its kind that comes back. */
@@ -179,18 +184,25 @@ function editor<V>(
   here: () => void
   leave: () => void
 } {
-  const unbuilt: Unbuilt<V> = { held: null, live: null, timer: null, gone: false, forget: null }
+  const unbuilt: Unbuilt<V> = {
+    held: null,
+    live: null,
+    timer: null,
+    gone: false,
+    forget: null,
+    backoff: 0,
+  }
   const clear = (): void => {
     if (unbuilt.timer !== null) clearTimeout(unbuilt.timer)
     unbuilt.timer = null
   }
-  const arm = (): void => {
+  const arm = (wait: number = latest.current.delay): void => {
     clear()
     unbuilt.timer = setTimeout(() => {
       unbuilt.timer = null
       if (unbuilt.gone) attemptGone()
       else attempt()
-    }, latest.current.delay)
+    }, wait)
   }
   const say = (waiting: boolean): void => {
     if (!unbuilt.gone) saidWaiting(waiting)
@@ -281,6 +293,7 @@ function editor<V>(
       ([record, engine]) => {
         // Taken over by a panel that came back, or dropped by a stop, meanwhile.
         if (unbuilt.held !== next) return
+        unbuilt.backoff = 0
         if (heldNow(latest.current)) {
           arm()
           return
@@ -291,11 +304,17 @@ function editor<V>(
       // The project is gone (deleted since): there is nothing to draw it on,
       // and nothing to say it to. Any other failure - a read refused for a
       // moment, the engine's state not answered - is not the change's to end:
-      // it waits on, and is asked again after the delay.
+      // it waits on. It is asked again after twice the last wait, up to
+      // `READ_RETRY_MAX`, so an engine that stays away is not asked five
+      // times a second for as long as it does.
       (reason: unknown) => {
         if (unbuilt.held !== next) return
-        if (projectMissing(reason)) done()
-        else arm()
+        if (projectMissing(reason)) return done()
+        unbuilt.backoff = Math.min(
+          (unbuilt.backoff === 0 ? latest.current.delay : unbuilt.backoff) * 2,
+          READ_RETRY_MAX,
+        )
+        arm(unbuilt.backoff)
       },
     )
   }
