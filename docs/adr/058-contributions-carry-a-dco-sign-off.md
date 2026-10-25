@@ -147,10 +147,11 @@ maintainer's own commits, made with an assistant's help, are exempt by the
 owner clause and carry none.
 
 **The squash message carries every contributor's `Signed-off-by:` lines.**
-The maintainer writes the squash message by hand, and keeps one line per
-contributor from the commits it replaces, with the no-reply address, so
-that `main` records the certificate each contribution came under although
-the commits are gone.
+The maintainer writes the squash message by hand and keeps each
+contributor's `Signed-off-by:` lines as they were written, so that `main`
+records the certificate each contribution came under although the commits
+are gone. A line whose address is a personal one never gets this far: the
+`preflight` check refuses it in the commit that carries it.
 
 ## Consequences
 
@@ -163,10 +164,15 @@ the commits are gone.
 - The check reads the list from the API, because the API says which account
   authored a commit and whether it is a bot, which a checkout does not. The
   list is public data, so the read-only token a fork's pull request gets
-  reads it as well as the maintainer's does, and the workflow's
-  `contents: read` is all it needs. The API lists at most 250 commits and
-  does not say when it stopped, so a pull request of 250 or more fails the
-  step with that sentence rather than pass on a list that may be short.
+  reads it as well as the maintainer's does. The `preflight` job asks for
+  `pull-requests: read` in its own `permissions:` block, beside
+  `contents: read`, because that is the scope GitHub documents for the
+  endpoint, and a job's block replaces the workflow's. The script is given
+  the head commit the event names and refuses a list that does not end
+  there, so a push between the event and the read cannot give a verdict
+  about other commits. The API lists at most 250 commits and does not say
+  when it stopped, so a pull request of 250 or more fails the step with that
+  sentence rather than pass on a list that may be short.
 - The check tells an honest mistake from none and nothing else. It cannot
   tell that a name on a line is the person's own. If a contribution turns
   out not to have been the contributor's to give, the sign-off is what makes
@@ -180,6 +186,9 @@ the commits are gone.
   stay one wants.
 - A pull request that only changes the guide still carries the sign-off
   check, since it is a step of `preflight`, which has no path filter.
+- The `pull_request` event runs the pull request's own copy of the script
+  and of the workflow, so a change to either is read in review like any
+  other change. It is the same exposure `bin/preflight` has.
 - Changing the rule is a pull request that changes `scripts/dco-check.mjs`
   and its test, with this record amended or superseded if the decision, and
   not just the code, changes.

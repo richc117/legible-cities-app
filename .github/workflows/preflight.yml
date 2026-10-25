@@ -30,6 +30,12 @@ jobs:
     name: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # A job's own block replaces the workflow's, so contents stays. The
+    # pull request's commits are read from the API (the last step), and
+    # GitHub documents pull requests: read for that endpoint.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,9 +142,12 @@ jobs:
       # API says which GitHub account authored each one and whether it is a
       # bot, which the commit alone does not. The list is public data, so the
       # read-only token a pull request from a fork gets reads it as well as
-      # the maintainer's does, and `contents: read` above is all it needs.
-      # The pull request's number goes in through the environment, never into
-      # the shell's text. A listing that cannot be read fails the step.
+      # the maintainer's does; the job asks for `pull-requests: read` because
+      # that is the scope GitHub documents for the endpoint. The pull
+      # request's number and head go in through the environment, never into
+      # the shell's text. The script refuses a list whose last commit is not
+      # the head the event names, so the verdict is about the commit it is
+      # reported on. A listing that cannot be read fails the step.
       - name: Sign-off in the commits this pull request adds
         if: github.event_name == 'pull_request'
         env:
@@ -146,8 +155,9 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
           OWNER: ${{ github.repository_owner }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
           commits="$RUNNER_TEMP/pull-request-commits.json"
           gh api --paginate --slurp "repos/${REPO}/pulls/${PR_NUMBER}/commits" > "$commits"
-          node scripts/dco-check.mjs --owner "$OWNER" --commits "$commits"
+          node scripts/dco-check.mjs --owner "$OWNER" --head "$HEAD_SHA" --commits "$commits"

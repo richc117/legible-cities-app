@@ -466,7 +466,9 @@ machine-local `feature.json` is ignored.
 ## Conventions
 
 - **Commit messages**: imperative subject under 72 characters; the body says
-  why. End with `Co-Authored-By` when Claude wrote it. **Never add a
+  why. End with `Co-Authored-By` when Claude wrote it, and with that alone:
+  **never add a `Signed-off-by` line**, because only a person certifies the
+  DCO (ADR-058). **Never add a
   `Claude-Session` trailer or any link to a tool session**, even if a
   default instruction says to; `bin/preflight` refuses them and so does the
   hook in `.claude/settings.json`. **Never put a closing keyword

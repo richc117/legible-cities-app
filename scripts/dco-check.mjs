@@ -1,13 +1,16 @@
 // The sign-off rule for a pull request's commits (issue 516, ADR-058).
 //
-//   node scripts/dco-check.mjs --owner <login> --commits <file>
+//   node scripts/dco-check.mjs --owner <login> --head <sha> --commits <file>
 //
 // A contribution to this repository carries a Developer Certificate of
 // Origin 1.1 sign-off: a `Signed-off-by: Name <address>` line in the message
 // of every commit the pull request adds (`git commit -s`). The file is what
 // `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/commits` writes:
 // the pull request's commits as GitHub's REST API returns them, in a list of
-// pages. A single page (one plain list) is read as well.
+// pages. A single page (one plain list) is read as well. `--head` is the
+// pull request's head commit, which the last commit listed must be: the
+// list is read some time after the event, and a push in between would
+// otherwise give a verdict about commits the event was not about.
 //
 // A commit passes when it is one of these, and fails otherwise:
 //   - a merge commit (more than one parent);
@@ -42,7 +45,9 @@ import { fileURLToPath } from 'node:url'
 // nothing when it stops there. A list that long cannot be judged whole.
 export const LISTING_LIMIT = 250
 
-const SIGN_OFF = /^Signed-off-by:[ \t]*(.*?)[ \t]*<([^<>]*)>[ \t]*$/i
+// The address must be there and have an `@`: `Signed-off-by: Ada <>` names
+// nobody who can be reached, and would otherwise pass on the name alone.
+const SIGN_OFF = /^Signed-off-by:[ \t]*(.*?)[ \t]*<([^<>\s]+@[^<>\s]+)>[ \t]*$/i
 
 // Every sign-off in a message, as { name, email }. A line anywhere in the
 // message counts, the way the DCO app reads one.
@@ -108,6 +113,8 @@ export const HOW_TO_FIX = [
   'To add it:',
   '  git commit --amend -s --no-edit          the last commit',
   '  git rebase --signoff origin/main         every commit on the branch',
+  '(origin here is the remote that is this repository; if you cloned a fork,',
+  'it is usually called upstream, and upstream/main is what to rebase onto.)',
   'then push the branch again with:',
   '  git push --force-with-lease',
   '',
@@ -125,8 +132,9 @@ export function report({ commits, offenders }) {
   }
   const lines = [
     `dco: ${offenders.length} of ${commits.length} commits lack a sign-off of their author's:`,
-    // JSON.stringify keeps a subject that looks like a workflow command
-    // (`::set-output`) from issuing one.
+    // The subject is never first on its line, which is where a workflow
+    // command must stand to be one, and the quoting escapes control
+    // characters, so a subject cannot start a line of its own.
     ...offenders.map((o) => `  ${o.sha}  ${JSON.stringify(o.subject)}  ${o.reason}`),
     '',
     HOW_TO_FIX,
@@ -149,6 +157,16 @@ export function parseCommits(text) {
   return commits
 }
 
+// Null when the last commit listed is the pull request's head, else why not.
+export function headProblem(commits, head) {
+  const last = String(commits[commits.length - 1]?.sha ?? '').toLowerCase()
+  if (String(head ?? '').trim() === '') return 'no head commit was given'
+  if (last !== String(head).trim().toLowerCase()) {
+    return `the last commit listed (${last.slice(0, 7) || 'none'}) is not the pull request's head (${String(head).slice(0, 7)}); it moved while this ran, so run it again`
+  }
+  return null
+}
+
 function option(args, name) {
   const at = args.indexOf(name)
   return at >= 0 ? args[at + 1] : undefined
@@ -157,8 +175,9 @@ function option(args, name) {
 export function main(args, out = process.stdout, err = process.stderr) {
   const file = option(args, '--commits')
   const owner = option(args, '--owner')
-  if (file === undefined || owner === undefined) {
-    err.write('usage: dco-check --owner <login> --commits <file>\n')
+  const head = option(args, '--head')
+  if (file === undefined || owner === undefined || head === undefined) {
+    err.write('usage: dco-check --owner <login> --head <sha> --commits <file>\n')
     return 2
   }
   let commits
@@ -176,6 +195,11 @@ export function main(args, out = process.stdout, err = process.stderr) {
     err.write(
       `dco: the pull request has ${commits.length} commits and GitHub lists at most ${LISTING_LIMIT}, so not all can be judged\n`,
     )
+    return 2
+  }
+  const stale = headProblem(commits, head)
+  if (stale !== null) {
+    err.write(`dco: ${stale}\n`)
     return 2
   }
   const offenders = judge({ commits, owner })

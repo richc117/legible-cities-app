@@ -118,6 +118,30 @@ describe('the sign-off rule', () => {
       false,
     ],
     [
+      'a Signed-off-by with an empty address, by name',
+      commit({ message: `Add a thing\n\nSigned-off-by: ${NAME} <>\n` }),
+      false,
+    ],
+    [
+      'a Signed-off-by with an address that has no @, by name',
+      commit({ message: `Add a thing\n\nSigned-off-by: ${NAME} <ada>\n` }),
+      false,
+    ],
+    [
+      'a Signed-off-by with a name and an address, by name',
+      commit({ message: `Add a thing\n\nSigned-off-by: ${NAME} <ada@example.org>\n` }),
+      true,
+    ],
+    [
+      'a sign-off by name, when the author name is padded',
+      commit({
+        message: signed(NAME, OTHER_NOREPLY),
+        name: `  ${NAME} `,
+        email: 'ada@example.org',
+      }),
+      true,
+    ],
+    [
       'a sign-off among other trailers',
       commit({
         message: signed(
@@ -249,11 +273,13 @@ describe('the script', () => {
   const dir = mkdtempSync(join(tmpdir(), 'dco-check-'))
   afterAll(() => rmSync(dir, { recursive: true, force: true }))
   let n = 0
-  function run(content: string | null, owner: string | null = OWNER) {
+  // The file's text, and each option as given: null leaves the option out.
+  function runRaw(content: string | null, owner: string | null, head: string | null) {
     const file = join(dir, `commits-${(n += 1)}.json`)
     if (content !== null) writeFileSync(file, content)
     const args = [SCRIPT, '--commits', file]
     if (owner !== null) args.push('--owner', owner)
+    if (head !== null) args.push('--head', head)
     const r = spawnSync(process.execPath, args, {
       encoding: 'utf8',
       windowsHide: true,
@@ -261,38 +287,60 @@ describe('the script', () => {
     })
     return { code: r.status, out: r.stdout, err: r.stderr }
   }
+  // As gh writes it, with the last commit as the pull request's head.
+  function run(commits: Commit[], opts: { owner?: string | null; head?: string | null } = {}) {
+    const head = opts.head === undefined ? (commits[commits.length - 1]?.sha ?? 'none') : opts.head
+    return runRaw(JSON.stringify([commits]), opts.owner === undefined ? OWNER : opts.owner, head)
+  }
 
   it('exits 0 and says so when every commit passes', () => {
-    const r = run(
-      JSON.stringify([[commit({ message: signed(NAME, NOREPLY) }), commit({ login: OWNER })]]),
-    )
+    const r = run([commit({ message: signed(NAME, NOREPLY) }), commit({ login: OWNER })])
     expect(r.code).toBe(0)
     expect(r.out).toContain('2 commits, each signed off or exempt')
   })
 
   it('exits 1 and names the commit when one fails', () => {
     const bad = commit({ message: 'Fix the thing\n' })
-    const r = run(JSON.stringify([[bad]]))
+    const r = run([bad])
     expect(r.code).toBe(1)
     expect(r.err).toContain(bad.sha.slice(0, 7))
     expect(r.err).toContain('git rebase --signoff')
+    expect(r.err).toContain('upstream')
   })
 
   it('exits 2, judging nothing, for input it cannot read', () => {
-    expect(run('not json').code).toBe(2)
-    expect(run(null).code).toBe(2)
-    expect(run('[]').code).toBe(2)
-    expect(run('[[]]').code).toBe(2)
-    expect(run('[]', null).code).toBe(2)
+    const ok = [commit({ login: OWNER })]
+    expect(runRaw('not json', OWNER, 'x').code).toBe(2)
+    expect(runRaw(null, OWNER, 'x').code).toBe(2)
+    expect(runRaw('[]', OWNER, 'x').code).toBe(2)
+    expect(runRaw('[[]]', OWNER, 'x').code).toBe(2)
+    // Each option, left out in turn, with a list that would otherwise pass.
+    expect(run(ok, { owner: null }).code).toBe(2)
+    expect(run(ok, { head: null }).code).toBe(2)
+    expect(run(ok).code).toBe(0)
+  })
+
+  it('exits 2 unless the last commit listed is the pull request head', () => {
+    const first = commit({ login: OWNER })
+    const last = commit({ login: OWNER })
+    // The head matches, in any case.
+    expect(run([first, last], { head: last.sha.toUpperCase() }).code).toBe(0)
+    // A push landed after the event: the list ends at a commit the event was not about.
+    const moved = run([first, last], { head: first.sha })
+    expect(moved.code).toBe(2)
+    expect(moved.err).toContain('not the pull request')
+    expect(run([first, last], { head: 'f'.repeat(40) }).code).toBe(2)
+    expect(run([first, last], { head: '' }).code).toBe(2)
+    expect(run([first, last], { head: '  ' }).code).toBe(2)
   })
 
   it('exits 2 for a list as long as the most GitHub will list', async () => {
     const { LISTING_LIMIT } = await load()
     const many = Array.from({ length: LISTING_LIMIT }, () => commit({ login: OWNER }))
-    const r = run(JSON.stringify([many]))
+    const r = run(many)
     expect(r.code).toBe(2)
     expect(r.err).toContain('not all can be judged')
     const fewer = Array.from({ length: LISTING_LIMIT - 1 }, () => commit({ login: OWNER }))
-    expect(run(JSON.stringify([fewer])).code).toBe(0)
+    expect(run(fewer).code).toBe(0)
   })
 })

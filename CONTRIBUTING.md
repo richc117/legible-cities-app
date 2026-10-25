@@ -238,8 +238,8 @@ changing these in the same pull request.
    and force pushes are blocked. The squash message is written by hand and
    run through `bin/preflight --message-file` first, and any `Co-authored-by:`
    with a personal address is removed or rewritten to a no-reply address
-   before the merge is confirmed. **The squash message keeps every
-   contributor's `Signed-off-by:` lines**, one per person, so that `main`
+   before the merge is confirmed. **The squash message keeps each
+   contributor's `Signed-off-by:` lines as they were written**, so that `main`
    records the certificate each contribution came under although the commits
    that carried it are gone.
 
@@ -289,8 +289,10 @@ changing these in the same pull request.
 - **To fix a branch that lacks it**, with your no-reply address set as above:
   `git commit --amend -s --no-edit` signs the last commit, and
   `git fetch origin && git rebase --signoff origin/main` signs every commit
-  the branch adds on top of `main`. Then push with
-  `git push --force-with-lease`; the check runs again.
+  the branch adds on top of `main`. (`origin` is the remote that is this
+  repository. If you cloned a fork, that is usually a remote called
+  `upstream`: use `git fetch upstream && git rebase --signoff upstream/main`.)
+  Then push with `git push --force-with-lease`; the check runs again.
 - Never put a closing keyword (`Closes #N`) in a commit message; it belongs
   in the pull request body, and `bin/preflight` refuses it.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
