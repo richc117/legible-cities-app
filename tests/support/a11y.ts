@@ -928,6 +928,12 @@ export async function expectTabWalk(
   { judges = [] }: { judges?: RegExp[] } = {},
 ): Promise<void> {
   await page.evaluate(installProbe)
+  // The pointer out of the way first, and kept there: a control can draw its
+  // resting edge only while it is not hovered (the kit's text field does,
+  // `figui-adapter.css`), and the pointer stays wherever a set-up's click left
+  // it while the walk scrolls the column under it, so a control could be
+  // hovered for one of its two readings and not the other.
+  await page.mouse.move(0, 0)
   const wanted = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.begin())
   expect(wanted, `${where}: there are controls to reach`).toBeGreaterThan(0)
   // A deadline, not a count of presses: the walk ends when focus comes back
