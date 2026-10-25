@@ -24,6 +24,7 @@ import {
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
+  cellHandback,
   cellHeading,
   closeCell,
   laidOutProject,
@@ -865,9 +866,15 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     await page.keyboard.press('Escape')
     await expect(flipped).toBeHidden()
 
-    // Reset every line from the keyboard, with a panel open: no pointer
-    // event light-dismisses it, so the panels are closed through the
-    // elements, and no empty box is left in the top layer.
+    // Reset every line pressed with a panel open and focus still on its chip,
+    // as an assistive technology's click presses it: no pointer event
+    // light-dismisses the panel and no key has moved focus off the chip, so
+    // what closes it is the reset handing focus to cell 05's heading (a
+    // panel closes when focus lands outside it and its chip, issue 436), and
+    // no empty box is left in the top layer.
+    //
+    // Mutation: drop `handback.current?.focus()` from `releaseAndKeepFocus`
+    // (LineColours.tsx) and the panel stays open here.
     await chipOf('A').click()
     const one = panel.getByRole('group', { name: 'Colour for line A' })
     await one.getByLabel('Hex value').fill('#ff0000')
@@ -875,10 +882,12 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({ timeout: 30_000 })
     await chipOf('A').click()
     await expect(one).toBeVisible()
+    await chipOf('A').focus()
+    await expect(chipOf('A'), 'focus is on the open panel’s chip').toBeFocused()
     const resetAll = panel.getByRole('button', { name: 'Reset every line' })
-    await resetAll.focus()
-    await page.keyboard.press('Enter')
+    await resetAll.evaluate((el) => (el as HTMLElement).click())
     await expect(one).toBeHidden()
+    await expect(cellHandback(page, 'lines'), 'the reset handed focus back').toBeFocused()
     expect(
       await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
       'no panel left open',
