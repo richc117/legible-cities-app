@@ -48,6 +48,7 @@ import {
 import { isObject, toShape, URLS_ONLY } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
+import { ProjectActivity } from './projectActivity'
 import { contains, inTime, LAPSED, oneAtATime, type FolderResolver } from './settings'
 import type { Notification } from './sidecar'
 
@@ -89,6 +90,13 @@ export interface ExporterOptions {
    * writing its frames into a folder being walked away (A1-04).
    */
   blocked?: () => string | null
+  /**
+   * What is going on for each project (issue 491): an export is refused
+   * while a request writing the project's folder is in flight, and is
+   * marked here for as long as it runs so the project cannot be deleted
+   * under it. Omitted, the exporter keeps its own, which nothing else reads.
+   */
+  activity?: ProjectActivity
   /**
    * Where a copy of each export's captured frames goes before they are
    * removed, as `<keepFrames>/<nnn>-<token>/`, numbered in the order the
@@ -302,6 +310,7 @@ function notesOf(plan: PlannedJob): string[] {
 
 export class Exporter {
   readonly #options: ExporterOptions
+  readonly #activity: ProjectActivity
   readonly #live = new Map<string, Control>()
   readonly #busy = new Set<string>()
   /** The files being written, so two projects that resolve to one file take turns. */
@@ -313,6 +322,7 @@ export class Exporter {
 
   constructor(options: ExporterOptions) {
     this.#options = options
+    this.#activity = options.activity ?? new ProjectActivity()
   }
 
   onProgress(listener: (p: ExportProgress) => void): () => void {
@@ -331,6 +341,10 @@ export class Exporter {
       throw engineError(ERROR_CODES.badCall, 'an export with this id is already running', 'params')
     if (this.#busy.has(projectId))
       throw engineError(ERROR_CODES.badCall, 'This project is already being exported.', 'params')
+    // A map being written into the project's folder is the page the export
+    // would plan against and capture. Nothing has been planned or written.
+    const drawing = this.#activity.exportRefusal(projectId)
+    if (drawing !== null) throw engineError(ERROR_CODES.badCall, drawing, 'params')
     const control: Control = {
       projectId,
       cancelled: false,
@@ -339,6 +353,7 @@ export class Exporter {
     }
     this.#live.set(token, control)
     this.#busy.add(projectId)
+    const release = this.#activity.beginExport(projectId)
     const result = this.#run(token, projectId, choice, control)
       .then(
         (done) => {
@@ -352,6 +367,7 @@ export class Exporter {
       .finally(() => {
         this.#live.delete(token)
         this.#busy.delete(projectId)
+        release()
       })
     return { result }
   }

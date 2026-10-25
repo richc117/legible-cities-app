@@ -69,6 +69,7 @@ import {
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { readStations, type Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
+import { ProjectActivity } from './projectActivity'
 import {
   failedWords,
   folderWords,
@@ -228,6 +229,7 @@ export class ProjectStore {
     home: string,
     private readonly log: (message: string) => void,
     private readonly replace: ReplaceOptions = {},
+    private readonly activity: ProjectActivity = new ProjectActivity(),
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')
@@ -1174,6 +1176,12 @@ export class ProjectStore {
   }
 
   async #deleteTracked(id: string): Promise<DeleteResult> {
+    // Asked here, after the writes queued ahead of the deletion have landed
+    // and before anything is read or removed: a button pressed while an
+    // export or a map write is going is refused, and the record and the
+    // output folder are as they were (issue 491).
+    const going = this.activity.deleteRefusal(id)
+    if (going !== null) throw new Error(going)
     if (!(await this.exists(this.dir(id)))) throw new Error('not found')
     const result: DeleteResult = { removed: [], failed: [] }
     const targets = [

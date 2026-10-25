@@ -59,6 +59,7 @@ import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api
 import type { EngineState, JobLog, JobProgress } from '../shared/engine'
 import type { Method } from '../shared/protocol'
 import { badCall, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
+import { ProjectActivity, projectNamedBy } from './projectActivity'
 import { redactUrls } from './redact'
 import type { Notification } from './sidecar'
 
@@ -124,6 +125,12 @@ export function registerEngineHandlers(
    * Required: a bridge that named none would be a quieter door.
    */
   roots: PathRoots,
+  /**
+   * Which projects have a request in flight that writes their folder, for
+   * the exporter and the store to consult (issue 491). A bridge handed none
+   * keeps its own, which nothing else reads.
+   */
+  activity: ProjectActivity = new ProjectActivity(),
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -156,6 +163,11 @@ export function registerEngineHandlers(
     // the same token during it is refused rather than reaching the engine
     // twice with one map entry between them.
     idOf.set(token, 0)
+    // The project this request writes into, marked from here to the end of
+    // the request however it ends (issue 491): before the guard's await, so
+    // a deletion confirmed while the guard thinks is already refused.
+    const named = projectNamedBy(method, params as Record<string, unknown> | undefined)
+    const release = named === null ? () => {} : activity.beginRequest(named)
     // The gate: what may be asked of the registry on a person's behalf is
     // decided here, with what the main process knows (the paths its own
     // chooser answered, the feeds its projects name), never on the page.
@@ -168,11 +180,13 @@ export function registerEngineHandlers(
       // rejects as it always did.
       idOf.delete(token)
       cancelledEarly.delete(token)
+      release()
       throw error
     }
     if (refused !== null) {
       idOf.delete(token)
       cancelledEarly.delete(token)
+      release()
       return badCall(refused, roots)
     }
     // No request has a deadline of its own: the supervisor's inactivity
@@ -187,6 +201,7 @@ export function registerEngineHandlers(
       // shape, not with a thrown message.
       idOf.delete(token)
       cancelledEarly.delete(token)
+      release()
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)
       return badCall(`the request could not be sent: ${what}`, roots)
@@ -216,6 +231,7 @@ export function registerEngineHandlers(
       .finally(() => {
         idOf.delete(token)
         tokenOf.delete(id)
+        release()
       })
       .catch(() => {})
     return { accepted: true }

@@ -1694,7 +1694,19 @@ a request that would only be refused again. The Outputs list reads only
 sidecars, so neither a `.part` file nor `map.build`'s hidden staging folder
 is ever a row. A layout run and an export of one project cannot overlap,
 because the export reads the page a layout would rewrite: each button is
-disabled while the other runs, and so is delete.
+disabled while the other runs, and so is delete. The disabled buttons are
+the first line; main is the last (issue 491, spec 037). `ProjectActivity`
+(`src/main/projectActivity.ts`) records which projects have a `map.build`
+writing their `out` folder in flight, set by the engine bridge before the
+guard's await and cleared in `finally`, and which have an export running.
+`Exporter.start` refuses an export while the map is being drawn, planning and
+writing nothing, and `ProjectStore.delete` refuses while the project exports
+or a request addresses it, leaving the record and `out/<id>` as they were;
+each says why in a sentence (`src/shared/activity.ts`), and the screen's
+confirm re-reads its runs and says the same. Only `map.build` names a
+project, by its `out`: `graph.build` and `render.stage` carry a feed's key,
+which projects share, so a layout run's long `graph.build` is still held by
+the screen alone.
 
 ### The export's choices
 
