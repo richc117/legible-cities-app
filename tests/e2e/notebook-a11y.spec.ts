@@ -21,6 +21,7 @@ import { expect, test, type Page } from '@playwright/test'
 import {
   PYTHON,
   controlsOf,
+  expectEdgesInForcedColours,
   expectNamed,
   expectNoDuplicatedNames,
   fixture,
@@ -365,6 +366,80 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await inspector.getByRole('button', { name: 'Close the inspector' }).click()
     await expect(inspector).toHaveCount(0)
     await expect.poll(() => controlsOf(page, /^Jobs, /)).toEqual([])
+  })
+})
+
+/**
+ * Layout tuning (cell 02) and one line's options (cell 05), opened: the two
+ * disclosures every other sweep leaves shut. Their fields, selects, switch and
+ * casing chip are in the tree and the Tab walk only while they are open, so a
+ * sweep that does not open them never names, walks, rings or stills any of
+ * them (issue 436, R10-01). Asserts what it opened is there, so that a
+ * disclosure that stayed shut fails here and does not sweep nothing.
+ */
+async function openTheDisclosures(page: Page): Promise<void> {
+  const tuning = page.getByRole('button', { name: /^Layout tuning\b/ })
+  await tuning.click()
+  const tuningGroup = page.getByRole('group', { name: 'Layout tuning', exact: true })
+  await expect(tuningGroup).toBeVisible()
+  await expect(tuningGroup.getByRole('combobox', { name: 'Grid' })).toBeVisible()
+  await expect(tuningGroup.getByLabel('Merge distance', { exact: true })).toBeVisible()
+
+  const colours = page.getByRole('region', { name: 'Line colours' })
+  await colours.getByRole('button', { name: /^Line options for line A,/ }).click()
+  const options = colours.getByRole('group', { name: 'Line options for line A', exact: true })
+  await expect(options).toBeVisible()
+  await expect(options.getByLabel('Name', { exact: true })).toBeVisible()
+  await expect(options.getByRole('switch', { name: 'Shown', exact: true })).toBeVisible()
+  for (const name of ['Width', 'Casing', 'Dash'])
+    await expect(options.getByRole('combobox', { name, exact: true })).toBeVisible()
+
+  // A casing, so that its colour chip is drawn beside the select. The choice
+  // redraws the map after a short delay; the sweep waits for that to finish
+  // rather than walking a screen that is moving.
+  await options.getByRole('combobox', { name: 'Casing', exact: true }).selectOption('0.5')
+  await expect(
+    options.getByRole('button', { name: 'Choose the casing colour of line A' }),
+  ).toBeVisible()
+  await expect(page.getByText(/Drawn with the line options you chose/)).toBeVisible({
+    timeout: 30_000,
+  })
+}
+
+// Mutations the coordinator runs this under, each of which must turn the
+// named test red:
+// - `openTheDisclosures` not clicking the line options' toggle: the first
+//   test (its `options` group is not visible, and the sweep would otherwise
+//   pass having walked nothing new).
+// - a field in either disclosure with its label removed, or the ring dropped
+//   from `.line-options-toggle:focus-visible` (panels.css): the first test.
+// - the `@media (forced-colors: active)` block deleted from app.css: the
+//   second test (every kind of edge reports none).
+test("the project with the layout tuning and one line's options open", async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await expect(page.getByRole('region', { name: 'Line colours' })).toBeVisible()
+    await expect(
+      page
+        .getByRole('region', { name: 'Line colours' })
+        .getByRole('list', { name: 'Lines', exact: true })
+        .getByRole('listitem'),
+    ).not.toHaveCount(0)
+    await openTheDisclosures(page)
+    await sweep(page, "the project, the layout tuning and a line's options open")
+  })
+})
+
+test('forced colours (Windows high contrast): the resting edges of fields, selects, checkboxes and the textarea are real', async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await openTheDisclosures(page)
+    await openCell(page, 'export')
+    await expectEdgesInForcedColours(page, 'the project, forced colours', ['date control'])
   })
 })
 

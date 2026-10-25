@@ -922,6 +922,92 @@ export async function expectButtonsHoldTheirBox(page: Page, where: string): Prom
 }
 
 /**
+ * The resting edges of the controls whose edge is a shadow, with the page in
+ * forced colours (Windows high contrast; issue 436, R10-04). The mode removes
+ * every box-shadow, so a field, a select, a checkbox or a textarea drawn by a
+ * shadow alone is a word on nothing. Each visible one must have a border or an
+ * outline of its own, in a colour other than the ground it sits on.
+ *
+ * Emulated with `page.emulateMedia({ forcedColors: 'active' })`, asserted to
+ * have taken, and put back. The pointer is parked and focus dropped first,
+ * since the kit's text field draws its edge only while it is neither hovered
+ * nor focused. A kind with none visible is a failure and not a pass, except
+ * where `optional` says the screen may not draw it.
+ */
+export async function expectEdgesInForcedColours(
+  page: Page,
+  where: string,
+  optional: string[] = [],
+): Promise<void> {
+  await page.emulateMedia({ forcedColors: 'active' })
+  try {
+    expect(
+      await page.evaluate(() => window.matchMedia('(forced-colors: active)').matches),
+      `${where}: forced colours are emulated in the Electron page`,
+    ).toBe(true)
+    await page.mouse.move(0, 0)
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.())
+    const kinds = await page.evaluate(() => {
+      const KINDS: Record<string, string> = {
+        'text field': 'fig-input-text',
+        select: 'fig-dropdown > select',
+        checkbox: "input[type='checkbox']:not(.switch)",
+        textarea: '.export-choices textarea',
+        'date control': ".field input[type='date']",
+      }
+      const solid = (style: string, width: string, colour: string): boolean =>
+        style !== 'none' && parseFloat(width) > 0 && !/^rgba\(.*, 0\)$/.test(colour)
+      const groundOf = (el: Element): string => {
+        for (let up = el.parentElement; up !== null; up = up.parentElement) {
+          const colour = getComputedStyle(up).backgroundColor
+          if (!/^rgba\(.*, 0\)$/.test(colour)) return colour
+        }
+        return 'rgb(255, 255, 255)'
+      }
+      const name = (el: Element): string =>
+        `${el.tagName.toLowerCase()} "${el.getAttribute('aria-label') || el.id || el.className || el.textContent?.trim().slice(0, 30) || ''}"`
+      return Object.entries(KINDS).map(([kind, selector]) => {
+        const shown = [...document.querySelectorAll(selector)].filter(
+          (el) => el.getClientRects().length > 0,
+        )
+        const bare: string[] = []
+        for (const el of shown) {
+          const style = getComputedStyle(el)
+          const ground = groundOf(el)
+          const edges = [
+            ...(['Top', 'Right', 'Bottom', 'Left'] as const)
+              .filter((side) =>
+                solid(
+                  style[`border${side}Style`],
+                  style[`border${side}Width`],
+                  style[`border${side}Color`],
+                ),
+              )
+              .map((side) => style[`border${side}Color`]),
+            ...(solid(style.outlineStyle, style.outlineWidth, style.outlineColor)
+              ? [style.outlineColor]
+              : []),
+          ]
+          if (!edges.some((colour) => colour !== ground))
+            bare.push(`${name(el)}: edges ${edges.join(' | ') || 'none'} on ${ground}`)
+        }
+        return { kind, count: shown.length, bare }
+      })
+    })
+    for (const { kind, count, bare } of kinds) {
+      if (!optional.includes(kind))
+        expect(
+          count,
+          `${where}: a ${kind} is drawn on this screen, so its edge was checked`,
+        ).toBeGreaterThan(0)
+      expect(bare, `${where}: a ${kind} with no border or outline in forced colours`).toEqual([])
+    }
+  } finally {
+    await page.emulateMedia({ forcedColors: 'none' })
+  }
+}
+
+/**
  * Names, each said once, the Tab walk and motion, in both of the interface's
  * themes (A5.6-09):
  * a focus ring or a control that only one theme draws is a defect the other

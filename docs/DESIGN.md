@@ -612,7 +612,22 @@ next before it says what went wrong.
 
 - Every control reachable by Tab in reading order; every list navigable by
   arrow keys; every dialog trapped, Escape closes, focus returns.
-- Focus is `--focus-ring` on every focusable element, never removed.
+- Focus is `--focus-ring` on every focusable element, never removed. The
+  sweep measures it from computed styles: at least 2 CSS pixels thick and
+  3:1 against the ground it is drawn on (WCAG 2.4.13), the ground composed
+  from the layers behind it (`tests/support/ring.ts`).
+- Forced colours (Windows high contrast; issue 436). The mode replaces every
+  colour with the user's palette and removes every `box-shadow`, so the
+  resting edges drawn as a shadow - the kit's text field, a select, a
+  checkbox, the sidecar's textarea, the carried row of the line order - are
+  given a real border or outline in `CanvasText` in one
+  `@media (forced-colors: active)` block at the end of `styles/app.css`; the
+  checked checkbox's mark and the combobox's highlighted option take
+  `CanvasText` and `Highlight` too. A system colour keyword is the user's
+  palette and not a literal of ours, which the no-literals test does not
+  flag. Not covered by the block: the switch's track, the rail's current
+  step (told by its ground) and `prefers-contrast`; they are a person's step
+  in `docs/accessibility.md`.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is
