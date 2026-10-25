@@ -15,6 +15,7 @@ import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
   DEFAULT_THEME,
+  drawnDate,
   drawnFromSent,
   openedOrder,
   ID_PATTERN,
@@ -54,6 +55,8 @@ import {
   validateMade,
   serviceDayRefusal,
   settledStyle,
+  styleSent,
+  linesSent,
   validateServiceDate,
   validateServiceWindow,
 } from '../shared/project'
@@ -100,6 +103,50 @@ function drew(record: ProjectRecord, before: ProjectRecord, sent: SentSet, stati
  */
 function listed(stations: Station[] | undefined): Station[] | undefined {
   return stations === undefined ? undefined : (readStations(stations) ?? undefined)
+}
+
+/**
+ * A value as JSON with every object's keys in order, so two values that hold
+ * the same fields compare equal whatever order they were built in.
+ */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, field: unknown) =>
+    field !== null && typeof field === 'object' && !Array.isArray(field)
+      ? Object.fromEntries(
+          Object.entries(field as Record<string, unknown>).sort(([a], [b]) =>
+            a < b ? -1 : a > b ? 1 : 0,
+          ),
+        )
+      : field,
+  )
+}
+
+/**
+ * Why a sent set is not a draw of the layout this record holds, or null
+ * (spec 037): the set arrives from the renderer, and `drawn` must not name a
+ * layout, or a time it was made, that the record does not. A layout run
+ * names its own (`completeLayout`); every other draw is of the stored one.
+ */
+function layoutRefusal(record: ProjectRecord, sent: SentSet): string | null {
+  if (sent.layout !== record.layout || sent.made !== record.made)
+    return 'the map was drawn from another layout than the project holds'
+  return null
+}
+
+/**
+ * Why a redraw's sent set is not a redraw of this record's map, or null: the
+ * stored layout, and the day the map already shows (`drawnDate`), which the
+ * redraws draw again. Not the window's rule: a drawn day may lie outside a
+ * window a later layout run replaced (`revertDay` in ServiceDay.tsx), and a
+ * record from before `drawn` was kept, or before the window was, draws its
+ * own day, which `drawnDate` answers for it.
+ */
+function redrawRefusal(record: ProjectRecord, sent: SentSet): string | null {
+  const layout = layoutRefusal(record, sent)
+  if (layout !== null) return layout
+  return sent.date === drawnDate(record)
+    ? null
+    : 'the map was redrawn for another day than it shows'
 }
 
 /**
@@ -722,6 +769,7 @@ export class ProjectStore {
     if (readOnly) throw new Error('read-only')
     check(validateSent(done.sent))
     check(serviceDayRefusal(record, done.sent.date))
+    check(layoutRefusal(record, done.sent))
     const updated: ProjectRecord = drew(
       {
         ...record,
@@ -801,6 +849,12 @@ export class ProjectStore {
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
+    check(redrawRefusal(record, sent))
+    if (
+      canonical(palette.colors) !== canonical(sent.colors) ||
+      palette.defaultColor !== sent.defaultColor
+    )
+      throw new Error('the colours written are not the ones the map was drawn in')
     const updated: ProjectRecord = drew(
       {
         ...record,
@@ -845,6 +899,9 @@ export class ProjectStore {
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
+    check(redrawRefusal(record, sent))
+    if (canonical(order) !== canonical(sent.lineOrder))
+      throw new Error('the order written is not the one the map was drawn in')
     const updated: ProjectRecord = drew(
       {
         ...record,
@@ -895,6 +952,9 @@ export class ProjectStore {
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
+    check(redrawRefusal(record, sent))
+    if (canonical(styleSent(style)) !== canonical(styleSent(sent.style)))
+      throw new Error('the sizes written are not the ones the map was drawn with')
     const updated: ProjectRecord = drew(
       {
         ...record,
@@ -944,6 +1004,9 @@ export class ProjectStore {
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
+    check(redrawRefusal(record, sent))
+    if (canonical(linesSent(lines)) !== canonical(linesSent(sent.lines)))
+      throw new Error('the line options written are not the ones the map was drawn with')
     const updated: ProjectRecord = drew(
       withLines({ ...record, version: RECORD_VERSION, modified: new Date().toISOString() }, lines),
       record,

@@ -1768,15 +1768,20 @@ describe('writes to one project take turns', () => {
 
   it('keeps every field when every writer lands at once, and a failure does not stop the next', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    // Every write sent at once, each with what its draw would have sent: the
+    // layout run's, and the redraws of the map it draws.
+    const drawn = { layout: done.layout, made: done.made, date: done.date }
+    const palette = { colors: { A: '#0072bc' }, defaultColor: '#112233' }
     const results = await Promise.allSettled([
-      drawsOn(store).completeLayout(project.id, done),
+      store.completeLayout(project.id, { ...done, sent: sentOf({}, drawn) }),
       store.setTheme(project.id, 'sepia'),
       store.setExport(project.id, { preset: 'portfolio-svg', options: {} } as never),
-      drawsOn(store).completeColors(project.id, {
-        colors: { A: '#0072bc' },
-        defaultColor: '#112233',
-      }),
-      drawsOn(store).completeOrder(project.id, ['K', 'A']),
+      store.completeColors(project.id, palette, sentOf({}, { ...drawn, ...palette })),
+      store.completeOrder(
+        project.id,
+        ['K', 'A'],
+        sentOf({}, { ...drawn, ...palette, lineOrder: ['K', 'A'] }),
+      ),
       store.setExport(project.id, choice as never),
       store.rename(project.id, 'Los Angeles'),
       store.setInputs(project.id, { mode: 'subway', agency: null }),
@@ -2445,5 +2450,129 @@ describe('the inputs, one of the two at a time', () => {
     await expect(store.setInputs(project.id, { mode: 'Rail!' })).rejects.toThrow()
     await expect(store.setInputs(project.id, { agency: 'x'.repeat(500) })).rejects.toThrow()
     expect(await store.get(project.id)).toMatchObject({ mode: 'all', agency: null })
+  })
+})
+
+// What a rebuild or a redraw sent is held to the record it is written onto
+// (spec 037): the stored layout and when it was made, the day the map
+// already shows, and the redraw's own choice. A renderer, the less trusted
+// process, could otherwise make `drawn` name a layout the record does not
+// hold, a day the map was never drawn for, or a choice the map does not
+// carry - and the export plans from `drawnDate`.
+describe('a sent set that is not a draw of this record', () => {
+  const LAYOUT = 'a'.repeat(64)
+  const OTHER = 'b'.repeat(64)
+  const palette = { colors: { A: '#0072bc' }, defaultColor: '#112233' }
+
+  async function drawnFor15(): Promise<ProjectRecord> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await drawsOn(store).completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    return store.get(project.id)
+  }
+
+  /** The four redraws, each with its own choice, as a run of the record would send it. */
+  const REDRAWS: {
+    name: string
+    write: (id: string, sent: SentSet) => Promise<unknown>
+    own: Partial<SentSet>
+    otherwise: Partial<SentSet>
+    sentence: string
+  }[] = [
+    {
+      name: 'completeColors',
+      write: (id, sent) => store.completeColors(id, palette, sent),
+      own: palette,
+      otherwise: { colors: { A: '#ff0000' } },
+      sentence: 'the colours written are not the ones the map was drawn in',
+    },
+    {
+      name: 'completeOrder',
+      write: (id, sent) => store.completeOrder(id, ['K', 'A'], sent),
+      own: { lineOrder: ['K', 'A'] },
+      otherwise: { lineOrder: ['A', 'K'] },
+      sentence: 'the order written is not the one the map was drawn in',
+    },
+    {
+      name: 'completeStyle',
+      write: (id, sent) => store.completeStyle(id, { lineWidth: 12 }, sent),
+      own: { style: { lineWidth: 12 } },
+      otherwise: { style: { lineWidth: 11 } },
+      sentence: 'the sizes written are not the ones the map was drawn with',
+    },
+    {
+      name: 'completeLines',
+      write: (id, sent) => store.completeLines(id, { A: { hidden: true } }, sent),
+      own: { lines: { A: { hidden: true } } },
+      otherwise: { lines: { B: { hidden: true } } },
+      sentence: 'the line options written are not the ones the map was drawn with',
+    },
+  ]
+
+  for (const redraw of REDRAWS)
+    it(`${redraw.name}: refuses another layout, another made, another day, or a choice it did not draw`, async () => {
+      // Mutation: `check(redrawRefusal(...))` taken out of this writer, or
+      // its choice's check - the row's refusal then writes a `drawn` that
+      // says what the map does not carry.
+      const record = await drawnFor15()
+      const good = { ...sentOf(record, { date: '2026-09-15' }), ...redraw.own }
+      const before = await readRecord(record.id)
+      const rows: [Partial<SentSet>, string][] = [
+        [{ layout: OTHER }, 'the map was drawn from another layout than the project holds'],
+        [{ made: LATER }, 'the map was drawn from another layout than the project holds'],
+        [{ made: null }, 'the map was drawn from another layout than the project holds'],
+        [{ date: '2026-09-16' }, 'the map was redrawn for another day than it shows'],
+        [redraw.otherwise, redraw.sentence],
+      ]
+      for (const [change, sentence] of rows)
+        await expect(
+          redraw.write(record.id, { ...good, ...change }),
+          JSON.stringify(change),
+        ).rejects.toThrow(sentence)
+      expect(await readRecord(record.id), 'nothing written').toEqual(before)
+      // And the set a run of this record would send is taken.
+      await expect(redraw.write(record.id, good)).resolves.toMatchObject({
+        drawn: { layout: LAYOUT, made: MADE, date: '2026-09-15' },
+      })
+    })
+
+  it('a redraw of a record with no drawn block draws the record’s own day, and no other', async () => {
+    // Mutation: the day's check in `redrawRefusal` taken out - a redraw of an
+    // old record writes any day it is sent as the day the map shows.
+    const old: Record<string, unknown> = {
+      ...record(A, { layout: LAYOUT, made: MADE, built: BUILT, date: '2026-09-15' }),
+    }
+    delete old.drawn
+    await seed(A, old)
+    const read = await store.get(A)
+    await expect(
+      store.completeColors(A, palette, { ...sentOf(read, { date: '2026-09-16' }), ...palette }),
+    ).rejects.toThrow('the map was redrawn for another day than it shows')
+    await expect(
+      store.completeColors(A, palette, { ...sentOf(read), ...palette }),
+    ).resolves.toMatchObject({ drawn: { date: '2026-09-15' } })
+  })
+
+  it('completeRebuild: refuses another layout or another made, and takes the day it drew', async () => {
+    // Mutation: `check(layoutRefusal(...))` taken out of `completeRebuild` -
+    // the rebuild's `drawn` names a layout the record does not hold.
+    const record = await drawnFor15()
+    const before = await readRecord(record.id)
+    for (const change of [{ layout: OTHER }, { made: LATER }])
+      await expect(
+        store.completeRebuild(record.id, {
+          sent: { ...sentOf(record, { date: '2026-09-12' }), ...change },
+        }),
+        JSON.stringify(change),
+      ).rejects.toThrow('the map was drawn from another layout than the project holds')
+    expect(await readRecord(record.id)).toEqual(before)
+    await expect(
+      store.completeRebuild(record.id, { sent: sentOf(record, { date: '2026-09-12' }) }),
+    ).resolves.toMatchObject({ date: '2026-09-12', drawn: { date: '2026-09-12' } })
   })
 })
