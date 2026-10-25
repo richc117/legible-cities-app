@@ -951,12 +951,16 @@ what it draws - while every other field is the record's at once, because
 the panel reads it from the record and holds no copy. **The panel going**:
 a change still waiting is flushed, as if its delay had run out; one the way
 is not clear for waits on with no screen behind it and is drawn once the run
-and the export let go of the page, without being compared with the record
-the panel last saw, since the redraw reads its own record from the store and
-sends the change over it; and a start refused then is said on the project's
-status line, after the cell's failure, because the control that would have
-gone back is gone (`sayRefusedGone`, read by `useProjectState` as
-`refused`). The hook neither writes the record nor orders a write, so it
+and the export let go of the page, from the record and the engine's state
+read then through the bridge and compared with that record, never from the
+last render's, which may be behind (a project laid out since, an engine
+started since). A stop of the panel's own kind meanwhile drops it, as with
+the panel there, and a panel of the same kind that comes back for the run
+takes it over, so two editors never hold one panel's whole value - the
+palette, the order, the style, the lines - at once. A start refused then is
+said on the project's status line, after the cell's failure, because the
+control that would have gone back is gone (`sayRefusedGone`, read by
+`useProjectState` as `refused`). The hook neither writes the record nor orders a write, so it
 needs nothing from `beforeStart`: a cheap edit waiting when another run is
 pressed is not part of that run, and is drawn after it. Its rows are
 `tests/unit/cheap-edit.test.tsx`, one table per panel rendered through the
