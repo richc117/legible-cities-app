@@ -2209,6 +2209,18 @@ describe('the record session', () => {
       sees: (r) => r.name,
       is: 'Renamed',
     },
+    {
+      name: 'markOpened',
+      write: (s, r) => s.markOpened(r.id),
+      sees: (r) => r.opened !== null,
+      is: true,
+    },
+    {
+      name: 'setDestination',
+      write: (s, r) => s.setDestination(r.id, '/videos/legible-cities'),
+      sees: (r) => r.destination,
+      is: '/videos/legible-cities',
+    },
   ]
 
   it.each(WRITERS)(

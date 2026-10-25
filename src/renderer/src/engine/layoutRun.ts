@@ -641,14 +641,17 @@ export class LayoutRun {
   }
 
   /**
-   * Hear each press on a layout run, a rebuild or Run all, before the run
-   * reads its record (issue 407). A control that holds a choice back on a
-   * timer - cell 03's day, written a beat after it is picked - sends it
-   * here, so its write is sent before the run's read, and the store answers
-   * the read with it (spec 037): the run draws the day, rather than the day
-   * landing while the run goes. The redraws for colours, the order, the
-   * sizes and the line options draw the day the map already shows, so they
-   * tell nobody.
+   * Hear each press on a run, before the run reads its record (issue 407):
+   * a layout run, a rebuild, Run all, and since spec 037 the four redraws
+   * too. A control that holds a choice back on a timer - cell 03's day,
+   * written a beat after it is picked - sends it here, so its write is sent
+   * before the run's read, and the store answers the read with it: the run
+   * draws the day, rather than the day landing while the run goes. A redraw
+   * draws the day the map already shows, which a day chosen does not move -
+   * except for a record from before `drawn` was kept, whose redraw draws the
+   * record's own day: told, its day lands before the read, so the redraw
+   * draws it and the store takes the completion, rather than refusing a
+   * redraw of a day the record no longer holds after the map is drawn.
    */
   beforeStart(listener: () => void): () => void {
     this.#starting.add(listener)
@@ -657,7 +660,7 @@ export class LayoutRun {
     }
   }
 
-  /** A press on a run that reads the record's day: every `beforeStart` listener, first. */
+  /** A press on any run: every `beforeStart` listener, first. */
   #pressed(): void {
     for (const listener of this.#starting) listener()
   }
@@ -948,7 +951,7 @@ export class LayoutRun {
   }
 
   /**
-   * Run all's run, once it has chosen it after the wait (issue 407): the job
+   * Run all's run, once it has chosen it after its read (issue 407): the job
    * and the flags the press gave it become the chosen run's where they
    * differ, so the cell that reads running and the job the inspector lists
    * are the run that is going. The same job - its id, its start and its log
@@ -1115,6 +1118,7 @@ export class LayoutRun {
     },
   ): void {
     if (this.#snapshot.state === 'running') return
+    this.#pressed()
     this.#open('rebuild', redraw.label, handed.id)
     const date = drawnDate(handed)
     if (handed.layout === null || date === null) {

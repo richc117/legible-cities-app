@@ -2815,23 +2815,23 @@ describe('a press tells what holds a choice back, before it reads the record', (
     }
   })
 
-  it('tells nobody of a redraw, a refused second press, or once the listener has gone', async () => {
+  it('tells a redraw too, but not a refused second press, nor once the listener has gone', async () => {
     // Mutation: the listener left in place by the function `beforeStart`
     // answers - it is told of the press after it was taken away.
     const { run, calls, record } = setup(drawn())
     const heard = vi.fn()
     const off = run.beforeStart(heard)
     run.recolour(record, READY, { colors: { A: '#0072bc' }, defaultColor: '#888888' })
-    expect(heard, 'a redraw draws the day the map shows').not.toHaveBeenCalled()
+    expect(heard, 'a redraw is a press like any other (spec 037)').toHaveBeenCalledTimes(1)
     run.start(record, READY)
-    expect(heard, 'refused: a run is going').not.toHaveBeenCalled()
+    expect(heard, 'refused: a run is going').toHaveBeenCalledTimes(1)
     await tick()
     run.cancel()
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.snapshot.state).toBe('cancelled')
     run.start(record, READY)
-    expect(heard, 'told of a press while it listens').toHaveBeenCalledTimes(1)
+    expect(heard, 'told of a press while it listens').toHaveBeenCalledTimes(2)
     await tick()
     run.cancel()
     calls[1].resolve(BUILT)
@@ -2840,7 +2840,30 @@ describe('a press tells what holds a choice back, before it reads the record', (
     off()
     run.start(record, READY)
     expect(run.snapshot.state, 'started').toBe('running')
-    expect(heard, 'and not once it has gone').toHaveBeenCalledTimes(1)
+    expect(heard, 'and not once it has gone').toHaveBeenCalledTimes(2)
+  })
+
+  it('a day held back when a redraw of a record with no drawn block starts is the day it draws', async () => {
+    // A record from before `drawn` was kept draws its own day on a redraw
+    // (`drawnDate`), and the store takes the completion only for that day.
+    // Mutation: `#redraw` without `this.#pressed()` - the redraw reads the
+    // 15th, draws it, and its completion names a day the record no longer
+    // holds once the 20th lands, which the store refuses after the map is
+    // drawn.
+    const s = setup({ layout: LAYOUT, made: MADE, date: '2026-09-15', service: WINDOW })
+    expect(s.record.drawn).toBeNull()
+    // The day's flush: a write sent at once, which the store then holds.
+    s.run.beforeStart(() => s.store({ ...s.record, date: '2026-09-20' }))
+    const palette = { colors: { A: '#0072bc' }, defaultColor: '#888888' }
+    s.run.recolour(s.record, READY, palette)
+    await tick()
+    expect(s.calls[0]).toMatchObject({ method: 'map.build', params: { date: '2026-09-20' } })
+    s.calls[0].resolve({ files: {} })
+    await tick()
+    expect(s.run.snapshot.state).toBe('done')
+    const sent = (s.completeColors.mock.calls[0] as unknown[])[2] as { date: string }
+    expect(sent.date, 'the day the store will take, as the day drawn').toBe('2026-09-20')
+    expect(drawnDate(s.stored()), 'the record’s own day').toBe(sent.date)
   })
 })
 

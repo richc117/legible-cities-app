@@ -45,7 +45,7 @@
 // - issue 407: Run all's plan made from the record the header held at the
 //   press - `ProjectHeader.tsx` calling `run.rebuild(project, engine,
 //   plan.date)` for its own plan, as before, or `runAll` in
-//   `engine/layoutRun.ts` planning after the wait from the record it was
+//   `engine/layoutRun.ts` planning after the read from the record it was
 //   handed (`planOf(handed, …)`): 'a number committed by the press on Run
 //   all, with only the day behind'.
 
