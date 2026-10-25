@@ -2528,6 +2528,9 @@ describe('a sent set that is not a draw of this record', () => {
         [{ made: null }, 'the map was drawn from another layout than the project holds'],
         [{ date: '2026-09-16' }, 'the map was redrawn for another day than it shows'],
         [redraw.otherwise, redraw.sentence],
+        ...(redraw.name === 'completeColors'
+          ? ([[{ defaultColor: '#000000' }, redraw.sentence]] as [Partial<SentSet>, string][])
+          : []),
       ]
       for (const [change, sentence] of rows)
         await expect(
