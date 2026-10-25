@@ -118,12 +118,11 @@ export interface ProjectState {
     date: string | null,
   ) => Promise<RenderStageResult>
   /**
-   * The mode and the operator, written at once (A2-02). Handed a function,
-   * only the fields it does not take from the record it is handed are sent,
-   * and the store writes them onto the record as the writes before them left
-   * it (issue 407, spec 037).
+   * The mode, the operator or both, written at once (A2-02); the store writes
+   * them onto the record as the writes before them left it (issue 407, spec
+   * 037).
    */
-  setInputs: (inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs)) => Promise<void>
+  setInputs: (inputs: Partial<ProjectInputs>) => Promise<void>
   /** The service day a person chose, written at once and drawing nothing (A5.5-15). */
   setDate: (date: string) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
@@ -169,25 +168,6 @@ export interface ProjectState {
  */
 export const sampleNotKept = (name: string): string =>
   `Opening ${name} was cancelled while its feed downloaded, so the project was not kept.`
-
-/** A mode and an operator no record can hold, to see which of the two a function takes from one. */
-const FROM_RECORD = { mode: '\u0000mode', agency: '\u0000agency' }
-
-/**
- * The fields an inputs function chooses itself, as a patch: the ones it
- * takes from the record it is handed are left out, for the store to keep as
- * the writes before this one left them (spec 037).
- */
-export function namedBy(
-  inputs: (record: ProjectRecord) => ProjectInputs,
-  project: ProjectRecord,
-): Partial<ProjectInputs> {
-  const chosen = inputs({ ...project, ...FROM_RECORD })
-  const patch: Partial<ProjectInputs> = {}
-  if (chosen.mode !== FROM_RECORD.mode) patch.mode = chosen.mode
-  if (chosen.agency !== FROM_RECORD.agency) patch.agency = chosen.agency
-  return patch
-}
 
 export function useProjectState(
   id: string,
@@ -484,18 +464,9 @@ export function useProjectState(
   // The operator alone is sent without the mode (issue 407): the store
   // writes the fields a write names onto the record as the writes before it
   // left it, so a mode chosen a moment before and still on its way is not
-  // put back by the mode this screen held. Handed a function of the record -
-  // the inputs panel's way of saying which of the two it takes from it - the
-  // fields the function takes from the record are the ones left out.
-  const setInputs = async (
-    inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
-  ): Promise<void> => {
-    let patch: Partial<ProjectInputs> = inputs as ProjectInputs
-    if (typeof inputs === 'function') {
-      if (project === null) throw new Error('The project has not been read yet.')
-      patch = namedBy(inputs, project)
-    }
-    const record = await window.api.projects.setInputs(id, patch)
+  // put back by the mode this screen held.
+  const setInputs = async (inputs: Partial<ProjectInputs>): Promise<void> => {
+    const record = await window.api.projects.setInputs(id, inputs)
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: { ...current.project, ...record } }

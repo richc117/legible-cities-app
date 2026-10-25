@@ -1,6 +1,6 @@
 // Cell 01's mode and operator as `Inspect` writes them (issue 407): its own
-// handlers, run for real, through what `useProjectState` makes of what they
-// hand it (`namedBy`, spec 037), against a stand-in store that writes one
+// handlers, run for real, sent at once as `useProjectState` sends them
+// (spec 037), against a stand-in store that writes one
 // write at a time in the order it was sent them, each the fields it names
 // onto the record as it then stands, as the main process's does.
 //
@@ -16,7 +16,6 @@ import { act, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Inspect from '../../src/renderer/src/Inspect'
-import { namedBy } from '../../src/renderer/src/notebook/useProjectState'
 import type { EngineState } from '../../src/shared/engine'
 import type { ProjectInputs, ProjectRecord } from '../../src/shared/project'
 import type { Inspection } from '../../src/shared/protocol'
@@ -142,15 +141,9 @@ let root: Root
 let tree: JSX.Element
 let store: ReturnType<typeof heldStore>
 
-/**
- * What `useProjectState`'s `setInputs` does with what the panel hands it: a
- * value goes at once, and so does a function of the record, as the fields
- * it chooses itself. The panel's own handlers are what is under test.
- */
-const onInputs = async (
-  inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
-): Promise<void> => {
-  await store.send(typeof inputs === 'function' ? namedBy(inputs, RECORD) : inputs)
+/** What `useProjectState`'s `setInputs` does with what the panel hands it: send it at once. */
+const onInputs = async (inputs: Partial<ProjectInputs>): Promise<void> => {
+  await store.send(inputs)
 }
 
 // One of each for the life of the file, as the screen's are for the life of

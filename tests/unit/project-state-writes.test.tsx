@@ -33,11 +33,7 @@ import { act, useRef, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
-import {
-  namedBy,
-  useProjectState,
-  type ProjectState,
-} from '../../src/renderer/src/notebook/useProjectState'
+import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import type { Debounced } from '../../src/renderer/src/debounce'
 import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
@@ -631,13 +627,12 @@ describe('a day picked in cell 03, still waiting to be written at the press', ()
 
 // Issue 407. An operator chosen while a mode was on its way was sent with the
 // mode this screen held, and the store, writing it second, put the old mode
-// back. `Inspect` hands the writer a function of the record for the operator
-// (`chooseAgency`), and the writer sends only the field the function chose
-// (spec 037): the store writes it onto the record the mode left.
+// back. `Inspect` sends the operator alone (`chooseAgency`), and the store
+// writes it onto the record the mode left (spec 037).
 describe('an operator chosen while a mode is on its way', () => {
   it('is sent at once and alone, and does not put the old mode back', async () => {
-    // Mutation: `setInputs` sending a function's inputs made from the record
-    // this screen held (`inputs(project)` in `useProjectState.ts`) - the
+    // Mutation: `setInputs` sending the operator with the mode this screen
+    // held (`{ ...pick(project), ...inputs }` in `useProjectState.ts`) - the
     // operator goes with `all`.
     await opened()
     const mode = deferred<ProjectRecord>()
@@ -649,7 +644,8 @@ describe('an operator chosen while a mode is on its way', () => {
       chosen = shown.setInputs({ mode: 'subway', agency: null })
     })
     act(() => {
-      operator = shown.setInputs((record) => ({ mode: record.mode, agency: 'METRO' }))
+      // As `Inspect`'s `chooseAgency` sends it: the operator alone.
+      operator = shown.setInputs({ agency: 'METRO' })
     })
     await act(tick)
     expect(api.projects.setInputs, 'the mode was sent first').toHaveBeenNthCalledWith(1, 'p1', {
@@ -670,21 +666,6 @@ describe('an operator chosen while a mode is on its way', () => {
       await tick()
     })
     expect(shown.project).toMatchObject({ mode: 'subway', agency: 'METRO' })
-  })
-
-  it('names the fields a function chooses, and leaves out those it takes from the record', () => {
-    // Mutation: `namedBy` keeping a field the function took from the record
-    // - the operator is sent with the mode the screen held.
-    expect(namedBy((record) => ({ mode: record.mode, agency: 'METRO' }), RECORD)).toEqual({
-      agency: 'METRO',
-    })
-    expect(namedBy(() => ({ mode: 'tram', agency: null }), RECORD)).toEqual({
-      mode: 'tram',
-      agency: null,
-    })
-    expect(namedBy((record) => ({ mode: 'tram', agency: record.agency }), RECORD)).toEqual({
-      mode: 'tram',
-    })
   })
 })
 
