@@ -16,7 +16,7 @@ What `ci.yml` and `determinism.yml` promise after Part 1, and what branch protec
 
 ## `determinism.yml`
 
-Unchanged in its triggers, platforms, load option and timeout. Its unit step becomes:
+Unchanged in its platforms, load option and timeout. Its `pull_request` paths name `tests/unit/*-real.test.ts` in place of `tests/unit/determinism-real.test.ts`, so a change to any of the seven runs it; its other triggers are unchanged. Its unit step becomes:
 
 ```
 npx vitest run tests/unit/*-real.test.ts
