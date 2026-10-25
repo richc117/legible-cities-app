@@ -7,7 +7,7 @@ import {
 } from '../../../shared/export'
 import {
   failureOf,
-  failureSentence,
+  runFailureSentence,
   LogBuffer,
   nextJobId,
   screenPaths,
@@ -75,7 +75,7 @@ export function stagesAt(stages: Stage[], running: string): Stage[] {
 
 /** The sentence a person reads for a failure: the engine's, or the app's; never a path. */
 export function sentenceFor(reason: unknown): string {
-  return failureSentence(reason, 'The export did not finish.')
+  return runFailureSentence(reason, 'The export did not finish.')
 }
 
 /**

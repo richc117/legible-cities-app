@@ -3,15 +3,21 @@
 // and cell 03 screened its own copy, but cell 02's status line, cell 06's
 // run, cell 01's download line and the feed's add showed the run's `error`
 // as the sentence was made, with whatever path the engine's I/O hint
-// carried. The sentence is now made once, in `failureSentence`, so the
+// carried. The sentence is now made once, in `runFailureSentence`, so the
 // snapshot's `error` is fit for any panel.
 //
 // What is held here is what a person is shown: each panel is rendered, to
 // static markup as the notebook's other component tests are, from a real run
 // that the stub engine has failed with a hint carrying a path, once for a
 // POSIX path and once for a Windows one, and the markup is searched for the
-// path. The control run in each case is the same markup with the path in
-// the hint's words, so a search that could not find a path cannot pass.
+// path. The control (one per path flavour) renders cell 02 over a snapshot
+// whose `error` is the unscreened sentence and requires the same search to
+// find the path, so a search that could not find one cannot pass.
+//
+// The app's own refusals are the exception: the main process gives them the
+// code `badCall` and takes the known folders out of them, and they can quote
+// a person's project name, which a guess at a path rewrites. They come
+// through byte for byte.
 //
 // The paths are assembled rather than written out: bin/preflight refuses a
 // path literal in a committed file.
@@ -29,13 +35,13 @@ import {
 } from '../../src/renderer/src/engine/layoutRun'
 import { sentenceFor as exportSentence } from '../../src/renderer/src/engine/exportRun'
 import { removalOutcome } from '../../src/renderer/src/Library'
+import { inUseSentence } from '../../src/main/feeds-ipc'
 import ProcessCell from '../../src/renderer/src/notebook/cells/ProcessCell'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
-import { withoutPaths } from '../../src/shared/engine'
-import type { EngineState } from '../../src/shared/engine'
-import { failureSentence, screenPaths } from '../../src/shared/jobs'
+import { ERROR_CODES, withoutPaths, type EngineState } from '../../src/shared/engine'
+import { runFailureSentence, screenPaths } from '../../src/shared/jobs'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
@@ -149,6 +155,19 @@ describe.each(PATHS)('a failed layout run with %s in the engine hint', (_name, p
     expect(leaks(html, path), html).toBe(false)
   })
 
+  it('control: the same cell over the unscreened sentence does show the path', async () => {
+    const run = await failedLayout(io(path))
+    const raw = `Permission denied: ${path}`
+    const unscreened = {
+      job: () => null,
+      subscribe: () => () => undefined,
+      snapshot: { ...run.snapshot, error: raw },
+    } as unknown as LayoutRun
+    const html = cellOver(unscreened)
+    expect(html).toContain('Permission denied')
+    expect(leaks(html, path)).toBe(true)
+  })
+
   it('keeps the path out of the snapshot, whose detail is the log copy’s own', async () => {
     const run = await failedLayout(io(path))
     expect(run.snapshot.error).toBe('Permission denied: a file')
@@ -240,12 +259,54 @@ describe.each(PATHS)('the sentence of every run, for %s', (_name, path) => {
   })
 })
 
+/** The app's own refusal, as the main process shapes one: `badCall`, the sentence in all three fields. */
+const refused = (sentence: string): unknown => ({
+  code: ERROR_CODES.badCall,
+  message: sentence,
+  data: { kind: 'params', detail: sentence, hint: sentence },
+})
+
+describe("the app's own refusals", () => {
+  // A project named for a line and a slash, inside curly quotes: the guess at
+  // a path starts at the slash and takes the rest of the sentence.
+  const NAMED = inUseSentence(['Lines /North'])
+
+  it('are the sentence in use, with the slash in the name', () => {
+    // The control for the tests below: the backstop does rewrite this name.
+    expect(NAMED).toContain('“Lines /North”')
+    expect(withoutPaths(NAMED)).not.toBe(NAMED)
+  })
+
+  it('come through byte for byte in each of the three runs', () => {
+    for (const sentenceFor of [layoutSentence, exportSentence, addSentence]) {
+      expect(sentenceFor(refused(NAMED))).toBe(NAMED)
+      // The hint wins, as for any engine error; the message alone is the same.
+      expect(sentenceFor({ code: ERROR_CODES.badCall, message: NAMED })).toBe(NAMED)
+    }
+  })
+
+  it('come through byte for byte in a failed removal', () => {
+    expect(removalOutcome('Los Angeles', { error: refused(NAMED) })).toEqual({
+      kind: 'failed',
+      sentence: NAMED,
+    })
+  })
+
+  it('are the only engine error left alone: the engine’s own code is screened', () => {
+    expect(layoutSentence({ code: -32602, message: NAMED })).toBe(withoutPaths(NAMED))
+  })
+})
+
 describe('screening a sentence twice', () => {
-  const SENTENCES = [
+  // Sentences with no path in them: screening must hand each back untouched,
+  // whatever it is made from.
+  const NO_PATH = [
     'Permission denied: a file',
     'The layout tool ran out of memory.',
     'matched 114/114 stops',
     'Lines A/C/E could not be placed.',
+  ]
+  const WITH_PATH = [
     `Permission denied: ${POSIX}`,
     `Permission denied: ${WINDOWS}`,
     `Could not open '${POSIX}' for writing.`,
@@ -254,17 +315,26 @@ describe('screening a sentence twice', () => {
     'file:///a/file is not a feed',
   ]
 
-  it.each(SENTENCES)('changes nothing the second time: %s', (sentence) => {
+  it.each(NO_PATH)('hands back a sentence with no path unchanged: %s', (sentence) => {
+    expect(runFailureSentence(new Error(sentence), 'x')).toBe(sentence)
+    const shape = (code: number): unknown => ({
+      code,
+      message: 'm',
+      data: { kind: 'io', detail: 'd', hint: sentence },
+    })
+    expect(runFailureSentence(shape(-32000), 'x')).toBe(sentence)
+    expect(runFailureSentence(shape(ERROR_CODES.exportFailed), 'x')).toBe(sentence)
+    expect(runFailureSentence({ code: -32000, message: sentence }, 'x')).toBe(sentence)
+  })
+
+  it.each([...NO_PATH, ...WITH_PATH])('changes nothing the second time: %s', (sentence) => {
     const once = withoutPaths(sentence)
     expect(withoutPaths(once)).toBe(once)
     expect(screenPaths(once)).toBe(once)
-    expect(failureSentence(new Error(once), 'x')).toBe(once)
+    expect(runFailureSentence(new Error(once), 'x')).toBe(once)
   })
 
-  it('does not take the words out of a sentence that has no path', () => {
-    expect(failureSentence({ code: 1, message: 'm', data: { kind: 'io', hint: 'h' } }, 'x')).toBe(
-      'h',
-    )
-    expect(failureSentence('?', 'The run did not finish.')).toBe('The run did not finish.')
+  it('takes the fallback when the failure is neither an error nor an engine shape', () => {
+    expect(runFailureSentence('?', 'The run did not finish.')).toBe('The run did not finish.')
   })
 })

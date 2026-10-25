@@ -6,7 +6,7 @@ import {
 } from '../../../shared/engine'
 import {
   failureOf,
-  failureSentence,
+  runFailureSentence,
   LogBuffer,
   nextJobId,
   screenPaths,
@@ -78,7 +78,7 @@ export const freshStages = (): Stage[] =>
  * is "reason: path" (the engine's classify), so the path is taken out.
  */
 export function sentenceFor(reason: unknown): string {
-  return failureSentence(reason, 'The feed could not be added.')
+  return runFailureSentence(reason, 'The feed could not be added.')
 }
 
 const IDLE: AddSnapshot = {

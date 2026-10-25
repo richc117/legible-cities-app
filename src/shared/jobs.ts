@@ -5,7 +5,7 @@
 // them, and the main process knows only the bound on the text a job's log
 // is copied as.
 
-import { withoutPaths, isEngineErrorShape } from './engine'
+import { withoutPaths, isEngineErrorShape, ERROR_CODES } from './engine'
 import type { StageState } from './layout'
 
 export type JobKind = 'layout' | 'rebuild' | 'export' | 'feed-add'
@@ -266,8 +266,17 @@ export function screenPaths(sentence: string | null): string | null {
  * and no panel, announcement or cell that shows it can forget. The engine's
  * `detail` is another thing, kept as sent beside it (`failureOf`), and the
  * copied log is redacted in the main process.
+ *
+ * **The app's own refusals are not screened** (`badCall`, the code the main
+ * process gives `refusal` in `src/main/ipc-shape.ts`): the door has taken the
+ * known folders out of them already, and they can quote a person's project
+ * name, which a guess at a path rewrites ("The project “Lines /North” uses
+ * this feed" would read "The project “Lines a file uses this feed").
  */
-export function failureSentence(reason: unknown, fallback: string): string {
-  if (isEngineErrorShape(reason)) return withoutPaths(reason.data?.hint ?? reason.message)
+export function runFailureSentence(reason: unknown, fallback: string): string {
+  if (isEngineErrorShape(reason)) {
+    const sentence = reason.data?.hint ?? reason.message
+    return reason.code === ERROR_CODES.badCall ? sentence : withoutPaths(sentence)
+  }
   return withoutPaths(reason instanceof Error ? reason.message : fallback)
 }
