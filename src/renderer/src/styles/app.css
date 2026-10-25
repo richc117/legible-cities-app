@@ -562,8 +562,25 @@ button:is(.cell-head):not([icon]):has(svg:first-child) {
   color: var(--error);
 }
 
-.message:empty {
+/* An empty message takes no room. A live region is not hidden with
+   `display: none`, which takes it out of the accessibility tree: a region
+   that is absent when its text arrives is "inserted with text", which a
+   screen reader announces unreliably, and the pass through empty that an
+   announcer makes (issues 330 and 466) would be no pass at all. So an empty
+   live region stays in the tree, out of the flow, as `.visually-hidden`
+   keeps it; it is in the flow again the moment it has text. */
+.message:empty:not([role='status'], [aria-live]) {
   display: none;
+}
+
+.message:empty:is([role='status'], [aria-live]) {
+  position: absolute;
+  width: var(--border-width);
+  height: var(--border-width);
+  margin: calc(-1 * var(--border-width));
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .actions {

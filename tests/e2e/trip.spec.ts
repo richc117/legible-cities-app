@@ -383,6 +383,90 @@ test('a trip chosen by keyboard is one setTrip, its steps and one announcement, 
   })
 })
 
+test('a second trip that reads as the first is announced again, after a pass through empty (a regression guard)', async () => {
+  test.setTimeout(TRIP_TIMEOUT)
+  const engineHome = home()
+  await withApp(engineHome, async (page, app) => {
+    await projectWithAPage(page, engineHome)
+    const region = tripRegion(page)
+    // What the summary's live region is given, as a screen reader hears it
+    // (issue 466, after issue 330). This is a regression guard and not a
+    // discriminator: a choice sends the page its question after setting the
+    // view to none (`send` in Trip.tsx), so the region is emptied in a render
+    // of its own whichever way the summary is written, and this test passes
+    // against the old state-setter code as well. The unit test of a starved
+    // window (tests/unit/trip-summary-region.test.tsx) is what fails on it.
+    // A sentence counts when the region becomes
+    // non-empty after having been empty, never for text that replaces text.
+    // Each batch's records are read, not the region's text when the observer
+    // runs, which is the one text a clear and a refill in the same batch
+    // would leave. Every raw record is kept for the message of a failure.
+    await page.evaluate(() => {
+      const summary = document.querySelector('.trip-summary') as HTMLElement
+      const said: string[] = []
+      const log: string[] = []
+      const w = window as unknown as { tripSaid: string[]; tripLog: string[] }
+      w.tripSaid = said
+      w.tripLog = log
+      let empty = summary.textContent === ''
+      new MutationObserver((records) => {
+        for (const record of records) {
+          const text =
+            record.type === 'characterData'
+              ? ((record.target as CharacterData).data ?? '')
+              : Array.from(record.addedNodes)
+                  .map((node) => node.textContent ?? '')
+                  .join('')
+          log.push(
+            `${record.type} +${record.addedNodes.length} -${record.removedNodes.length} ${JSON.stringify(text)}`,
+          )
+          if (text === '') {
+            empty = true
+            continue
+          }
+          if (empty) said.push(text)
+          empty = false
+        }
+      }).observe(summary, { childList: true, characterData: true, subtree: true })
+    })
+    const said = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { tripSaid: string[] }).tripSaid)
+    const everyRecord = (): Promise<string[]> =>
+      page.evaluate(() => (window as unknown as { tripLog: string[] }).tripLog)
+    const SENTENCE = '1 stop, no changes.'
+
+    // Alpha to Bravo, one stop; then Start changed straight to Charlie, which
+    // is Charlie to Bravo, one stop: the same words from a different trip,
+    // with no press of "Show the whole network" between. Typing into Start
+    // empties the picker first, and that is a setTrip(null) of its own (the
+    // emptied picker's), so the page is asked three times and the trip goes
+    // to the view `none` before the new one arrives: the region is emptied
+    // in a render of its own here, as the comment above says.
+    await chooseStation(page, START, 'alp')
+    await chooseStation(page, END, 'bra')
+    await expect(region.locator('.trip-summary')).toHaveText(SENTENCE)
+    await expect.poll(async () => (await said()).length, { timeout: 20_000 }).toBe(1)
+    await chooseStation(page, START, 'char')
+    await expect(picker(page, START)).toHaveValue('Charlie')
+    await expect.poll(() => trips(app), { timeout: 20_000 }).toHaveLength(3)
+    await expect(region.locator('.trip-summary')).toHaveText(SENTENCE)
+    try {
+      await expect.poll(async () => (await said()).length, { timeout: 20_000 }).toBe(2)
+    } catch (error) {
+      throw new Error(
+        `the summary was given ${(await said()).length} sentence(s), not 2. Every mutation of the region, in order: ${JSON.stringify(await everyRecord())}`,
+        { cause: error },
+      )
+    }
+    expect(await said()).toEqual([SENTENCE, SENTENCE])
+    expect(await trips(app)).toEqual([
+      ['setTrip', ALPHA, BRAVO],
+      ['setTrip', null, null],
+      ['setTrip', CHARLIE, BRAVO],
+    ])
+  })
+})
+
 test('"Show the whole network" and an emptied picker each send one setTrip(null)', async () => {
   test.setTimeout(TRIP_TIMEOUT)
   const engineHome = home()

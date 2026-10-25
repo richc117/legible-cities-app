@@ -164,6 +164,23 @@ describe('the Licences buttons', () => {
     expect(written).toEqual([null, notices.unavailable, null, notices.unavailable])
   })
 
+  it('do not say an unavailable sentence after a press that opened a file', () => {
+    // Two presses within two frames: the first finds the file unavailable, the
+    // second opens one. The first's sentence is still waiting for its frame
+    // and must not appear after the line was cleared (issue 466).
+    const written: (string | null)[] = []
+    const frames: (() => void)[] = []
+    const say = licenceAnnouncer(
+      (message) => written.push(message),
+      (then) => frames.push(then),
+    )
+    say('The notices file is not bundled in a development run.')
+    say(null)
+    for (const frame of frames.splice(0)) frame()
+    expect(written.at(-1)).toBeNull()
+    expect(written.filter((message) => message !== null)).toEqual([])
+  })
+
   it('names a missing file in a packaged app differently from a development run', () => {
     expect(describeUnavailable('notices', 'missing')).toBe(
       'The notices file is missing from this installation.',

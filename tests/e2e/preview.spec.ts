@@ -886,7 +886,13 @@ test('the three screens are one column up to the wide measure, and the map fills
         const edges = await page.evaluate(() => {
           const h1 = document.querySelector('.settings h1')?.getBoundingClientRect().left ?? null
           const items = [...document.querySelectorAll('.settings section > *')]
-            .filter((el) => el.getClientRects().length > 0)
+            .filter((el) => {
+              // The empty status lines are one pixel and clipped, out of the
+              // flow (issue 466); they are for a reader and not an eye, and
+              // their margin puts them a pixel off the column.
+              const box = el.getBoundingClientRect()
+              return el.getClientRects().length > 0 && box.width > 1 && box.height > 1
+            })
             .map((el) => ({
               what: `${el.tagName.toLowerCase()}.${el.className}`,
               left: el.getBoundingClientRect().left,

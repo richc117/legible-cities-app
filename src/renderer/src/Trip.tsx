@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import { readTrip, type Station, type TripAnswer } from '../../shared/trip'
 import Button from './kit/Button'
+import { LiveRegion, useAnnouncer } from './Jobs'
 import Combobox from './kit/Combobox'
 import { lacksTheSeam } from './themeWrites'
 import {
@@ -64,6 +65,32 @@ const HOLDS = [
   tripRefusal({ laying: false, exporting: true }),
 ]
 
+/**
+ * The announcement (FR-007): once per trip shown, and nothing while there is
+ * none. The region is emptied and filled a frame or two later so a trip
+ * whose counts repeat the last one's is still said, and both are written to
+ * the region's element and not rendered from state: an empty and a refill
+ * made by a state setter can land in one render, and a refill equal to what
+ * shows writes nothing (issue 466, after issue 330).
+ */
+export function TripSummary({
+  view,
+  nextFrame,
+}: {
+  view: TripAnswer
+  /** The wait between the empty region and the sentence; the page's two frames unless a test hands its own. */
+  nextFrame?: (then: () => void) => unknown
+}): JSX.Element {
+  const { region, announce } = useAnnouncer(nextFrame)
+  useEffect(() => {
+    // What was waiting for its frame is withdrawn: a view that has changed
+    // again must not be followed by the sentence of the one before.
+    announce.silence()
+    if (view.kind === 'trip') announce(tripSummary(view.trip))
+  }, [view, announce])
+  return <LiveRegion region={region} className="prose trip-summary" role="status" />
+}
+
 export default function Trip({
   hasLayout,
   stations,
@@ -87,9 +114,6 @@ export default function Trip({
   // What the section shows of the page's answer: nothing, a trip, the
   // page's reason, or the app's refusal of an answer it would not draw.
   const [view, setView] = useState<TripAnswer>({ kind: 'none' })
-  // The announcement (FR-007), emptied and filled a frame later so a trip
-  // whose counts repeat the last one's is still said.
-  const [summary, setSummary] = useState('')
 
   // The pair as it stands, for the effect that answers a new list of
   // stations; what the page was last asked; which ask an answer belongs to,
@@ -207,21 +231,6 @@ export default function Trip({
       setRefusals((current) => current.filter((refusal) => !HOLDS.includes(refusal.sentence)))
   }, [held])
 
-  // The announcement: once per trip shown, and nothing while there is none.
-  useEffect(() => {
-    setSummary('')
-    if (view.kind !== 'trip') return undefined
-    const said = tripSummary(view.trip)
-    let second = 0
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => setSummary(said))
-    })
-    return () => {
-      cancelAnimationFrame(first)
-      cancelAnimationFrame(second)
-    }
-  }, [view])
-
   const refusalAt = (place: Place): string | null =>
     refusals.find((refusal) => refusal.place === place)?.sentence ?? null
 
@@ -278,9 +287,7 @@ export default function Trip({
           <p className="message error trip-instead" role="alert">
             {instead}
           </p>
-          <p className="prose trip-summary" role="status">
-            {summary}
-          </p>
+          <TripSummary view={view} />
           {trip !== null && (
             <>
               <ol className="trip-steps">
