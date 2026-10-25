@@ -893,6 +893,35 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
       'no panel left open',
     ).toBe(0)
     await expect(chipOf('A')).toHaveAttribute('aria-expanded', 'false')
+
+    // And with focus already on cell 05's heading, where that reset left it:
+    // a panel opened by a press that moves no focus (a screen reader's
+    // activation in browse mode), then Reset every line pressed the same
+    // way. Neither press moves focus and the handback has nowhere to move
+    // it, so no focus closes the panel: the reset closes it itself.
+    //
+    // Mutation: remove the reset's `closePanels()` (LineColours.tsx) and the
+    // panel stays open here.
+    const busy = panel.locator('section.line-colours')
+    await expect(busy, 'the reset’s redraw has finished').toHaveAttribute('aria-busy', 'false', {
+      timeout: 30_000,
+    })
+    await chipOf('A').click()
+    await one.getByLabel('Hex value').fill('#00ff00')
+    await one.getByRole('button', { name: 'Use this colour' }).click()
+    await expect(one).toBeHidden()
+    await expect(busy, 'the colour’s redraw has finished').toHaveAttribute('aria-busy', 'false', {
+      timeout: 30_000,
+    })
+    const heading05 = cellHandback(page, 'lines')
+    await heading05.focus()
+    await expect(heading05).toBeFocused()
+    await chipOf('A').evaluate((el) => (el as HTMLElement).click())
+    await expect(one).toBeVisible()
+    await expect(heading05, 'opening the panel moved no focus').toBeFocused()
+    await resetAll.evaluate((el) => (el as HTMLElement).click())
+    await expect(one, 'the reset closed the panel itself').toBeHidden()
+    await expect(heading05).toBeFocused()
   })
 })
 

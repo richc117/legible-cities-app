@@ -211,6 +211,21 @@ export default function LineColours({
       .forEach((panel) => panel.hidePopover())
   }
 
+  // Closing every open panel under the section, the lines' own and their
+  // casings' under line options, through the elements: the platform owns
+  // whether a panel is open (issue 284). A press with a pointer has
+  // light-dismissed it already, and one from the keyboard moved focus to the
+  // button, which a panel closes on (`ColourChip.tsx`, issue 436); but a
+  // press that moves no focus, a screen reader's activation in browse mode,
+  // can reach the button with a panel open, and the handback to the cell's
+  // heading that follows moves no focus either when the heading already holds
+  // it, as it does after an earlier reset. So the reset closes them itself.
+  const closePanels = (): void => {
+    section.current
+      ?.querySelectorAll<HTMLElement>('.colour-popover:popover-open')
+      .forEach((panel) => panel.hidePopover())
+  }
+
   // A gesture reached a colour: the swatch and the hex field follow it, and
   // nothing is sent.
   const follow = (next: Palette): void => {
