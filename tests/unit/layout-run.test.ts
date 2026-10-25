@@ -35,7 +35,8 @@ import {
 } from '../../src/renderer/src/LayoutRun'
 import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
 import { runAllPlan } from '../../src/renderer/src/runAll'
-import { cellOfRun } from '../../src/renderer/src/runGraph'
+import { redrawPageOnOpen } from '../../src/renderer/src/notebook/olderPage'
+import { cellOfRun, runGraph } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { cameTooLate, ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
@@ -3273,5 +3274,123 @@ describe("a run's kind is one union, and the flags are derived from it (issue 42
       true,
       true,
     ])
+  })
+})
+
+// The redraw a project's opening makes of a page an older engine drew (issue
+// 465), as the run sees it. It goes through Run all, so the day it draws is
+// the record's once the writes on their way have landed (issue 407): cell 03
+// holds a day a person picked for a moment before writing it, and a start
+// flushes that write first.
+describe('the redraw of an older page as its project opens', () => {
+  /** Laid out and drawn for the 15th, the record's day the same: an older page's project. */
+  function drawnFor15(): ProjectRecord {
+    const laid = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+    })
+    return { ...laid, drawn: drawnFrom(laid) }
+  }
+  const OLDER = { older: true, drawnHere: 0 }
+  const screen = (record: ProjectRecord) => ({ ...record, readOnly: false })
+
+  function held() {
+    let answer!: (record: ProjectRecord) => void
+    const promise = new Promise<ProjectRecord>((yes) => {
+      answer = yes
+    })
+    return { promise, answer }
+  }
+
+  it('is cell 03’s rebuild for the day the map shows, its job, its line and its sentence', async () => {
+    const opened = setup(drawnFor15())
+    redrawPageOnOpen(opened.run, screen(opened.record), READY, OLDER)
+    const pressed = setup(drawnFor15())
+    pressed.run.rebuild(pressed.record, READY, '2026-09-15')
+    for (const { run, calls } of [opened, pressed]) {
+      expect(calls.map((c) => c.method)).toEqual(['map.build'])
+      expect(calls[0].params).toMatchObject({ layout: LAYOUT, date: '2026-09-15' })
+      expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-15' })
+      calls[0].resolve({ files: {} })
+    }
+    await tick()
+    // The same job but for its own id and its clock.
+    const timeless = (run: LayoutRun) => ({ ...run.job()!, id: null, started: 0, ended: 0 })
+    expect(timeless(opened.run), 'the same job').toEqual(timeless(pressed.run))
+    expect(opened.run.snapshot, 'the same run, done').toEqual(pressed.run.snapshot)
+    expect(opened.run.snapshot).toMatchObject({ state: 'done', rebuilt: true, day: '2026-09-15' })
+    expect(opened.completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-15' })
+  })
+
+  it('draws nothing, and writes no day back, over a day chosen just before it', async () => {
+    // Mutation: the redraw started as cell 03's rebuild for the day the
+    // screen held (`run.rebuild(project, engine, now.date)`, as it first was)
+    // - it waits for the flushed write and then draws the 15th, and
+    // `completeRebuild` writes the 15th back over the 20th just chosen.
+    const { run, calls, record, completeRebuild } = setup(drawnFor15())
+    const write = held()
+    // Cell 03's held day, flushed by the start as `ServiceDay` flushes it.
+    run.beforeStart(() => {
+      void run.writing(write.promise)
+    })
+    const before = run.snapshot
+    redrawPageOnOpen(run, screen(record), READY, OLDER)
+    write.answer({ ...record, date: '2026-09-20', modified: '2026-09-02T00:00:00.000Z' })
+    await tick()
+    await tick()
+    expect(calls, 'nothing was drawn').toHaveLength(0)
+    expect(completeRebuild, 'and no day was written').not.toHaveBeenCalled()
+    expect(run.snapshot, 'the run is as it was before').toBe(before)
+    expect(run.job(), 'and no job is left').toBeNull()
+  })
+
+  it('draws nothing over a day whose write was already on its way when it was asked for', async () => {
+    // The other order: the day was sent before the redraw was asked for, not
+    // flushed by its start. Mutation: the redraw started as cell 03's rebuild
+    // for the day the screen held - it waits for the write in flight and
+    // then draws the 15th over the 20th.
+    const { run, calls, record, completeRebuild } = setup(drawnFor15())
+    const write = held()
+    void run.writing(write.promise)
+    const before = run.snapshot
+    redrawPageOnOpen(run, screen(record), READY, OLDER)
+    write.answer({ ...record, date: '2026-09-20', modified: '2026-09-02T00:00:00.000Z' })
+    await tick()
+    await tick()
+    expect(calls, 'nothing was drawn').toHaveLength(0)
+    expect(completeRebuild, 'and no day was written').not.toHaveBeenCalled()
+    expect(run.snapshot, 'the run is as it was before').toBe(before)
+    expect(run.job(), 'and no job is left').toBeNull()
+  })
+
+  it('that fails is cell 03’s own failure, the cells under it behind it', async () => {
+    // What a failed redraw on open shows (the maintainer's question on it is
+    // open; this pins the answer as built): a failed rebuild, in cell 03.
+    const { run, calls, record, completeRebuild } = setup(drawnFor15())
+    redrawPageOnOpen(run, screen(record), READY, OLDER)
+    calls[0].reject(new Error('la-metro-rail has no stored layout cccccccc'))
+    await tick()
+    expect(run.snapshot).toMatchObject({
+      state: 'failed',
+      rebuilt: true,
+      day: '2026-09-15',
+      error: 'la-metro-rail has no stored layout cccccccc',
+    })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', state: 'failed' })
+    expect(completeRebuild).not.toHaveBeenCalled()
+    expect(cellOfRun(run.snapshot)).toBe('frame')
+    // The sentence cell 03 says for any rebuild that failed.
+    expect(stoppedSentence(run.snapshot.state, run.snapshot.replaced, run.snapshot.rebuilt)).toBe(
+      'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.',
+    )
+    const cells = runGraph({ record, run: run.snapshot, exportRun: null })
+    expect(cells.frame).toEqual({ state: 'error', because: 'failed' })
+    for (const cell of ['style', 'lines', 'export'] as const)
+      expect(cells[cell], cell).toEqual({ state: 'stale', because: 'upstream' })
+    for (const cell of ['data', 'process'] as const)
+      expect(cells[cell], cell).toEqual({ state: 'ready', because: null })
   })
 })

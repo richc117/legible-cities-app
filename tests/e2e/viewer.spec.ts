@@ -20,6 +20,7 @@ import {
 import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { VIEWER_SANDBOX } from '../../src/shared/viewer'
+import { EVERY_SEAM } from '../support/standInPage'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -116,6 +117,9 @@ test('a hostile page in the viewer cannot reach the app', async () => {
         '<a id="lnk" href="app://local/ui/#taken" target="_top">go</a>',
         '<script>',
         'window.__present = { state: function () { return { viewName: "schematic" } } };',
+        // Drawn by the pinned engine, as far as its seam says, so the project
+        // is not redrawn over it as it opens (issue 465).
+        EVERY_SEAM,
         'var tried = {};',
         'function attempt(n, f) { try { tried[n] = String(f()) } catch (e) { tried[n] = "REFUSED" } }',
         'attempt("readParentApi", function () { return typeof parent.api });',
@@ -261,6 +265,8 @@ test('the app can still drive the page it cannot be reached from', async () => {
         '  state: function () { return { viewName: shown, labels: labels, routes: routes, at: at, speed: speed, playing: playing } },',
         '  bounds: function () { return { t0: 0, t1: 3600 } },',
         '};',
+        // Drawn by the pinned engine, as far as its seam says (issue 465).
+        EVERY_SEAM,
         '</script></body>',
       ].join('\n'),
     )

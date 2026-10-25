@@ -108,6 +108,7 @@ app's own settings under `api.settings`:
 | `viewer.attach(projectId, role)` | holds the project page's frame in a role, `map` or `export`, by identity once it has loaded, and answers whether it did (ADR-028). The role is read from the address once, here: `safe=1` is always the export's, the app's own `controls=1` the map's, and anything else under the project's folder a planned page without safe zones, the export's; the frame the other role holds is never taken (ADR-046) |
 | `viewer.release(role)` | lets that role's frame go, and keeps the other |
 | `viewer.call(role, method, ...args)` | one of the page's `__present` methods by name, run in the frame held for the role from the main process; a name outside the shared list is refused, and the export's frame is asked `state` (whether it loaded) and refused everything else |
+| `viewer.seams()` | the names of the functions on the map's page's `__present`, or null where it did not say, listed by a fixed script that calls none of them and read as data in both processes (`readSeams`); it takes nothing, is asked of the map's frame only, and rejects while no map is held. It is how a page an older engine drew is told (issue 465) |
 
 | `engine.state()` | the engine's state: starting, ready, restarting, unavailable, mismatched or stopped, with a reason where there is one |
 | `engine.request(method, params?)` | a request to the engine, as `{ id, result }`: the id is a token the preload mints, the result settles with the engine's answer or its error (`code`, `message`, `data: { kind, detail, hint }`) unchanged |
@@ -1112,13 +1113,47 @@ last therefore carries the same theme, and a theme written between an
 address being made and its document arriving, or while the restore is being
 sent, is never lost.
 
-The one case that still navigates is a page the engine wrote before
-v0.11.0, which has no `setTheme` and says "this map cannot do that". The
-press then counts a reload, and the frame is sent to the address with the
-project's theme by the path a redraw takes, so the hour, the view, the
-labels, the speed and the pause are given back. "The map is not on the
-screen" and every other failure are swallowed, because the next load carries
-the theme.
+A page an older engine drew is redrawn when its project opens (issue 465).
+Neither the page nor the record says which engine drew it, so the page's
+seam is asked instead: once the first page the map's frame loads has been
+given back its state, the main process lists the functions on its
+`window.__present` by a fixed script that calls none of them
+(`Viewer.seams`, `viewer.seams()` on the bridge). **Older means lacking a
+seam the pinned engine's page has** (`PAGE_SEAMS` in `src/shared/viewer.ts`,
+held to the engine's template by `tests/unit/viewer-real.test.ts`),
+whichever seam it lacks, and nothing else: a page an engine drew after its
+last new seam and before the pin has every seam and counts as current,
+since nothing records which engine drew a page. The screen then asks for the
+rebuild cell 03 makes for a day, for the day the record holds and the map
+already shows: a `map.build` from the stored layout with the record's
+colours, order, style and line options, never a re-layout (ADR-023), shown
+and written as that rebuild always is, and failing as cell 03's own. It is
+started through Run all's machinery rather than as cell 03's press, so the
+day is decided from the record once the writes on their way have landed: a
+start flushes cell 03's held day first, and a rebuild for the day the
+screen held would draw the old day and write it back over the one just
+chosen (the issue 407 fault). Where the record those writes leave asks for
+nothing, Run all withdraws: no job ends, and nothing is drawn or written,
+though for the round trip of the write it waited on its job is listed and
+cell 03 reads running. Since that is when a person has just picked a day,
+focus is first handed to the heading of the cell it is in, as cell 03's own
+rebuild hands it, so a control the run disables does not drop it to the
+body (`keepFocusInCell`). It is asked once per
+opening of the screen, waits while the engine is not ready or a run or an
+export holds the page, and is not asked at all where a draw would show
+something the map did not already show - a day chosen and not drawn, a
+layout the map was not drawn from, a day the store would refuse - or where
+the record has no `drawn` to compare with or is not this build's to write
+(`notebook/olderPage.ts`). A redraw that fails is not asked for again on
+that opening; the next opening asks again.
+
+The one case that still navigates for a theme is such a page where that
+redraw could not run, the engine away for one: it has no `setTheme` and
+says "this map cannot do that". The press then counts a reload, and the
+frame is sent to the address with the project's theme by the path a redraw
+takes, so the hour, the view, the labels, the speed and the pause are given
+back. "The map is not on the screen" and every other failure are swallowed,
+because the next load carries the theme.
 
 Nothing is rebuilt for a theme, and no engine request is made at all: the
 SVG carries its furniture's colours as CSS variables with literal

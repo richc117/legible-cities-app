@@ -247,7 +247,7 @@ function readRole(raw: unknown): ViewerRole {
 }
 
 /**
- * The viewer's three. Separate from the projects' because they need the
+ * The viewer's four. Separate from the projects' because they need the
  * window's own web contents: the frame the app drives is a child of it, and
  * holding it by identity is what keeps a page from being addressed by its
  * URL at the moment of use (ADR-028).
@@ -277,6 +277,9 @@ export function registerViewerHandlers(
     if (typeof method !== 'string') throw new Error('the map needs to be told what to do')
     return viewer.call(contents as WebContents, which, method, Array.isArray(args) ? args : [])
   })
+  // What the map's page has on its seam, which tells a page an older engine
+  // drew (issue 465). Takes nothing from the caller.
+  handle(CHANNELS.viewerSeams, async (contents) => viewer.seams(contents as WebContents))
 }
 
 /**

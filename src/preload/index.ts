@@ -93,6 +93,7 @@ const api: Api = {
     attach: (projectId, role) => invoke(CHANNELS.viewerAttach, projectId, role),
     release: (role) => invoke(CHANNELS.viewerRelease, role),
     call: (role, method, ...args) => invoke(CHANNELS.viewerCall, role, method, args),
+    seams: () => invoke(CHANNELS.viewerSeams),
   },
   engine: {
     state: () => invoke(CHANNELS.engineState),

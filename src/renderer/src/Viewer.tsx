@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type JSX, type SyntheticEvent } from 'react'
 import type { ProjectRecord, Theme } from '../../shared/project'
-import { VIEWER_SANDBOX, type ViewerRole } from '../../shared/viewer'
+import { VIEWER_SANDBOX, readSeams, type ViewerRole } from '../../shared/viewer'
 import { themeAsItStands } from './themeMemory'
 import { transportFor, withRemembered } from './transportState'
 import { wantedAddress } from './viewerAddress'
@@ -35,6 +35,9 @@ import { restoreCalls } from './viewerRestore'
 // that was composed before it. The exception is a page the engine wrote before v0.11.0, which
 // has no `setTheme`: a press on one is a navigation after all, by the path a
 // redraw takes (the `reloads` count), because nothing else would show it.
+// Such a page is redrawn as its project opens (issue 465: the screen judges
+// from what this frame reports of each page's seam, `onSeams`), so the
+// exception is met only where that redraw could not run.
 //
 // **This frame is never sent to the export's planned address.** Until
 // ADR-046 it was: cell 06 took it for its preview and gave it back, which
@@ -113,6 +116,7 @@ export default function Viewer({
   project,
   redraw = 0,
   reloads = 0,
+  onSeams,
 }: {
   project: ProjectRecord
   /**
@@ -130,6 +134,13 @@ export default function Viewer({
    * is never reloaded for a theme.
    */
   reloads?: number
+  /**
+   * Told, once for each document the frame has loaded and been given back,
+   * what that page has on its seam (`readSeams`), or null where it did not
+   * say. The screen judges from it whether an older engine drew the page
+   * (`isOlderPage`, issue 465); nothing here does anything with it.
+   */
+  onSeams?: (seams: string[] | null) => void
 }): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -255,6 +266,15 @@ export default function Viewer({
           theme: themeNow,
           send: (method, args) => window.api.viewer.call(ROLE, method, ...args),
         })
+        // What this document's seam has, for the screen to tell a page an
+        // older engine drew (issue 465): asked once the page has been given
+        // back, so the restore goes as it always went, and held to the same
+        // deadline as the state read, because the page answering is the
+        // page's to refuse. Said only for the document this load was for.
+        if (onSeams === undefined) return
+        const seams = await answerWithin(() => window.api.viewer.seams(), STATE_DEADLINE)
+        if (navigation !== navigations.current || !mounted.current) return
+        onSeams(readSeams(seams))
       },
       () => {
         if (mounted.current) setProblem("This project's map is not there. Lay it out again.")

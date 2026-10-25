@@ -44,7 +44,7 @@ export default function Preview({
   /** Take a person to cell 02, opening it if it is closed. */
   onLayOut: () => void
 }): JSX.Element | null {
-  const { project, drawn, themeReloads, skipPastMap } = useProject()
+  const { project, drawn, themeReloads, pageSeams, skipPastMap } = useProject()
   if (project === null) return null
   const hasMap = project.layout !== null
   return (
@@ -75,8 +75,12 @@ export default function Preview({
           gives the new page back the clock, the view and the labels the
           old one had (A5.5-20, `viewerRestore.ts`). `themeReloads` is the
           same and counts only a theme pressed on a page that cannot be
-          told it (a page from before engine v0.11.0). */}
-      {hasMap && <Viewer project={project} redraw={drawn} reloads={themeReloads} />}
+          told it (a page from before engine v0.11.0). What each page has
+          on its seam goes back to the screen, which redraws the page it
+          opened on where an older engine drew it (issue 465). */}
+      {hasMap && (
+        <Viewer project={project} redraw={drawn} reloads={themeReloads} onSeams={pageSeams} />
+      )}
     </div>
   )
 }

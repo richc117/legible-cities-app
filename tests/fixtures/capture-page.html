@@ -21,6 +21,9 @@
   asked; the reads (`state`, `bounds`, `hasGeo`) and the exporter's own
   (`advance`, `setCapture`, `settle`) are not.
 
+  Since engine v0.11.0 that includes `setTheme(name)`, which answers true for
+  the page's two themes and draws nothing; it is not recorded.
+
   Since engine v0.15.0 (its issue 44) it has `setCard(on)` and
   `setDrawn(fraction)`, and `state()` reports `card` and `drawn`; `settle()`
   answers a promise, as the engine's now does. The card is a band across the
@@ -203,6 +206,13 @@
           return copy(trip)
         },
         setFrame: function () {},
+        // The page's own since engine v0.11.0. It draws nothing here, so it
+        // changes nothing a capture takes and is not recorded; without it the
+        // page would be one an older engine drew, which the app redraws when
+        // its project opens (issue 465).
+        setTheme: function (name) {
+          return name === 'warm-dark' || name === 'sepia'
+        },
         settle: function () {
           said('settle', null)
           draw()

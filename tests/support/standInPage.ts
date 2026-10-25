@@ -11,18 +11,43 @@
 
 import { readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { PAGE_SEAMS } from '../../src/shared/viewer'
+
+/**
+ * The line a stand-in page ends its seam with to be a page the pinned engine
+ * drew: every method of `PAGE_SEAMS` the page has not written itself, as a
+ * function that does nothing, records nothing and answers nothing (issue
+ * 465). Since then a page lacking any of them is one an older engine drew,
+ * and the app redraws it when its project opens, which the stand-in engine
+ * does by writing `{}`; a spec's page that is meant to be the map a person
+ * is looking at carries this, and one meant to be an older engine's does not.
+ * Read from the app's own list, so a pin that adds a seam moves every stand-in
+ * with it.
+ */
+export const EVERY_SEAM = `(function () {
+  var present = window.__present;
+  ${JSON.stringify(PAGE_SEAMS)}.forEach(function (name) {
+    if (typeof present[name] !== "function") present[name] = function () {};
+  });
+})();`
 
 /** What a stand-in page can be asked for beyond what every one has. */
 export interface StandInPageOptions {
   /**
-   * Carry `setTheme`, as a page the engine wrote since v0.11.0 does: true for
-   * the two names it takes, recorded in `__seen`, and false for any other.
-   * Left out, the page is one from before the engine had it, which answers
-   * "this map cannot do that" and is how the app's fallback is reached. It
-   * is off unless asked for, so a spec that counts what the page was asked
-   * is not given a call it did not make.
+   * Record `setTheme` in `__seen`, as a call that changes what the page
+   * shows: true for the two names it takes and false for any other. Left
+   * out, the page still has it, as every page the pinned engine draws does,
+   * and it does nothing and records nothing (`EVERY_SEAM`), so a spec that
+   * counts what the page was asked is not given a call it did not make.
    */
   setTheme?: boolean
+  /**
+   * Be a page an older engine drew: one from before v0.11.0, with neither
+   * `setTheme` nor any seam the engine has added since, which answers "this
+   * map cannot do that" to a theme and is redrawn when its project opens
+   * (issue 465).
+   */
+  older?: boolean
 }
 
 /** A page with the seam on it, recording every call, at the address a run wrote. */
@@ -61,7 +86,7 @@ export function keepStandInPage(engineHome: string, options: StandInPageOptions 
   return () => clearInterval(timer)
 }
 
-function standInPageSource({ setTheme = false }: StandInPageOptions): string {
+function standInPageSource({ setTheme = false, older = false }: StandInPageOptions): string {
   return [
     '<!doctype html><meta charset="utf-8"><title>stand-in map</title><body>',
     '<script>',
@@ -81,7 +106,7 @@ function standInPageSource({ setTheme = false }: StandInPageOptions): string {
     '  seek: function (sec) { at = Math.max(T0, Math.min(T1, sec)); window.__seen.push(["seek", at]) },',
     '  setSpeed: function (x) { speed = x; window.__seen.push(["setSpeed", x]) },',
     '  setPlaying: function (on) { playing = !!on; window.__seen.push(["setPlaying", !!on]) },',
-    ...(setTheme
+    ...(setTheme && !older
       ? [
           '  setTheme: function (name) {',
           '    if (name !== "warm-dark" && name !== "sepia") return false;',
@@ -94,6 +119,7 @@ function standInPageSource({ setTheme = false }: StandInPageOptions): string {
     '  bounds: function () { return { t0: T0, t1: T1 } },',
     '  state: function () { return { now: at, clock: fmt(at), viewName: "schematic", labels: true } },',
     '};',
+    ...(older ? [] : [EVERY_SEAM]),
     '</script></body>',
   ].join('\n')
 }

@@ -30,8 +30,19 @@ interface ViewerApi {
   release(): Promise<void>
   /** One of the page's own methods, with its arguments. */
   call<M extends ViewerMethod>(method: M, ...args: ViewerArgs<M>): Promise<unknown>
+  /** The names of the functions on the map's page's seam, or null (issue 465). */
+  seams(): Promise<string[] | null>
 }
 ```
+
+`seams()` (issue 465) takes nothing and calls nothing on the page: the main
+process lists the functions on the map's `window.__present` by a fixed
+script and reads the answer as data (`readSeams`) - a list of at most 256
+method names, or no answer at all - before the interface reads it again.
+It is asked of the map's frame only, never the export's, and rejects while
+no map is held. A page lacking any method of the pinned engine's page
+(`PAGE_SEAMS`) is one an older engine drew, and the project screen redraws
+it from its stored layout as the project opens.
 
 The methods, which are the page's and not the app's:
 
