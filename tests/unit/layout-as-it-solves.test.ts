@@ -134,6 +134,8 @@ function setup(): { run: LayoutRun; calls: Pending[] } {
   const { client, calls } = stubClient()
   const run = new LayoutRun({
     client,
+    // The store's record, as the run reads it at its start (spec 037).
+    read: async () => record(),
     complete: vi.fn(async () => ({ changed: false, relaid: false })),
     completeRebuild: vi.fn(async () => ({})),
     completeColors: vi.fn(async () => ({})),
@@ -154,6 +156,7 @@ describe('the run’s snapshot names its layout from the first report that does 
   it('carries no layout until a stage reports one, and the reported one after', async () => {
     const { run, calls } = setup()
     run.start(record(), READY)
+    await tick()
     expect(run.snapshot.layout, 'nothing reported yet').toBeNull()
     // A download's reports come before the layout's id is known, and carry none.
     calls[0].report({ stage: 'download', message: 'downloaded 1 of 2 bytes', fraction: 0.5 })
@@ -173,17 +176,19 @@ describe('the run’s snapshot names its layout from the first report that does 
     expect(run.snapshot.layout).toBe(LAYOUT)
   })
 
-  it('keeps the first layout named for the whole run', () => {
+  it('keeps the first layout named for the whole run', async () => {
     const { run, calls } = setup()
     run.start(record(), READY)
+    await tick()
     calls[0].report(stage('gtfs2graph', LAYOUT))
     calls[0].report(stage('topo', OTHER))
     expect(run.snapshot.layout).toBe(LAYOUT)
   })
 
-  it('takes the layout from a report that names a stage the run has already seen', () => {
+  it('takes the layout from a report that names a stage the run has already seen', async () => {
     const { run, calls } = setup()
     run.start(record(), READY)
+    await tick()
     calls[0].report(stage('gtfs2graph'))
     expect(run.snapshot.layout, 'an engine from before v0.14.0 names none').toBeNull()
     calls[0].report(stage('gtfs2graph', LAYOUT))
@@ -193,6 +198,7 @@ describe('the run’s snapshot names its layout from the first report that does 
   it('forgets it at the next start, and a start that is refused carries none', async () => {
     const { run, calls } = setup()
     run.start(record(), READY)
+    await tick()
     calls[0].report(stage('gtfs2graph', LAYOUT))
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
@@ -209,6 +215,7 @@ describe('the run’s snapshot names its layout from the first report that does 
   it('is cleared by a refused redraw too', async () => {
     const { run, calls } = setup()
     run.start(record(), READY)
+    await tick()
     calls[0].report(stage('gtfs2graph', LAYOUT))
     calls[0].reject(new Error('x'))
     await tick()

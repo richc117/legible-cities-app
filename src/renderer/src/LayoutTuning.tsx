@@ -72,11 +72,14 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   // Why the last write was refused, said once in the section; empty after.
   const [unsaved, setUnsaved] = useState<string | null>(null)
 
-  // Writes on their way, and the tuning the last of them asked for. A record
-  // that arrives while one is in flight and is not the one asked for is an
-  // earlier write's answer: showing it would take a later field's number
-  // off the screen until its own answer put it back.
-  const writing = useRef(0)
+  // The tuning the last write asked for, and that write while its answer has
+  // not come. The answers come back in the order the writes were sent (spec
+  // 037, "The record session" in docs/ARCHITECTURE.md), so the last write's
+  // answer is the last to arrive: a record that arrives before it, and is
+  // not the one asked for, is an earlier write's answer, and showing it would
+  // take a later field's number off the screen until its own answer put it
+  // back.
+  const latest = useRef<Promise<void> | null>(null)
   const asked = useRef<ProjectTuning>(view.tuning)
   // The record's tuning at this moment, for a refused write to go back to.
   const stored = useRef<ProjectTuning | undefined>(project.tuning)
@@ -87,16 +90,15 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   // The record is what the section shows: a write that landed has written
   // it and the screen has read it back, so the two agree again.
   useEffect(() => {
-    if (writing.current > 0 && !sameTuning(project.tuning, asked.current)) return
+    if (latest.current !== null && !sameTuning(project.tuning, asked.current)) return
     asked.current = project.tuning ?? {}
     setView((current) => tuningViewOf(project.tuning, current))
   }, [project.id, project.tuning])
 
   const write = (next: ProjectTuning): void => {
     asked.current = next
-    writing.current += 1
     setUnsaved(null)
-    onChange(next)
+    const mine = onChange(next)
       .catch((reason: unknown) => {
         // Nothing was kept, so the fields go back to the record and say why.
         asked.current = stored.current ?? {}
@@ -104,8 +106,9 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
         setUnsaved(notSaved(reason))
       })
       .finally(() => {
-        writing.current -= 1
+        if (latest.current === mine) latest.current = null
       })
+    latest.current = mine
   }
 
   const show = (next: TuningView): void => {

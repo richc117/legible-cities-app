@@ -6,7 +6,8 @@ import {
   runAllPlan,
 } from '../../src/renderer/src/runAll'
 import { runGraph, type RunFacts } from '../../src/renderer/src/runGraph'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 // Run all and the header's sentence (A5.5-22). A table of records, as the
 // run graph's own test is: the plan is the thing being tested, not a screen.
@@ -40,7 +41,7 @@ const base: ProjectRecord = {
   modified: '2026-09-07T20:00:00.000Z',
 }
 /** Drawn from everything it holds. */
-const current: ProjectRecord = { ...base, drawn: drawnFrom(base) }
+const current: ProjectRecord = { ...base, drawn: drawnOf(base) }
 const unlaid: ProjectRecord = { ...base, layout: null, made: null, date: null, built: null }
 
 const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts => ({

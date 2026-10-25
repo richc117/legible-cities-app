@@ -56,6 +56,12 @@ export interface LayoutDone {
    * `laidOutWith`; left out for a run sent none, which is LOOM's defaults.
    */
   tuning?: import('./project').ProjectTuning
+  /**
+   * What the run's `map.build` was sent (spec 037, FR-002), which the record
+   * keeps as `drawn`: the layout just answered, the run's own day, and the
+   * palette, order, style and line options the run read at its start.
+   */
+  sent: import('./project').SentSet
 }
 
 /** What the main process answers with once a run's record is written. */

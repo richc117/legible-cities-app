@@ -1,13 +1,20 @@
 import type { Theme } from '../../shared/project'
-import { nextWrite, writeThrough } from './themeWrites'
 
 // What the theme switch does with a choice, with no React in it (A7-13,
-// issue 285): the in-flight flag, the choice kept while a write is going,
-// what the record will hold once the writes asked for have landed, and
-// which theme the cards should show meanwhile. `ThemeSwitch.tsx` is then
-// only a screen over it, and the sequences that need a write held open are
-// tested in `tests/unit/theme-chooser.test.ts`, which the end-to-end suite
-// cannot make on purpose.
+// issue 285): which theme the record will hold once the writes asked for
+// have landed, and which theme the cards should show meanwhile.
+// `ThemeSwitch.tsx` is then only a screen over it, and the sequences that
+// need a write held open are tested in `tests/unit/theme-chooser.test.ts`,
+// which the end-to-end suite cannot make on purpose.
+//
+// **Each choice is written the moment it is made, and nothing here orders
+// the writes.** The bridge hands main a frame's calls in the order they were
+// sent and the store writes a project's record in that order, answering in
+// it too (spec 037, "The record session" in docs/ARCHITECTURE.md): the
+// record ends at the last choice, and the last answer is the last choice's.
+// What is kept here is only what the cards show while a choice is on its way
+// - the latest asked, until its own answer comes - and the theme a choice is
+// compared with.
 //
 // **The theme to compare a choice with is kept here, and is not read from
 // the screen.** The record's theme reaches the screen a render after its
@@ -16,27 +23,29 @@ import { nextWrite, writeThrough } from './themeWrites'
 // one - would be compared with the theme the screen still had, found to be
 // what the project already is, and dropped, while the radio the browser
 // had checked was put back by React. That was seen on a slow macOS runner
-// (issue 285), as a radio that stayed unchecked for good. So the theme
-// each write lands is remembered here the moment it lands, and the screen's
-// own is taken only when it changes (`sync`), and by then it is the same.
+// (issue 285), as a radio that stayed unchecked for good. So the theme a
+// choice asks for is remembered here the moment it is asked, and the
+// screen's own is taken only when it changes (`sync`).
 
 export interface ThemeChooser {
   /**
-   * A theme was chosen. Writes it, or keeps it until the write in flight has
-   * settled, or does nothing when it is the theme the project is already in.
-   * Resolves when everything chosen meanwhile has been written, or the first
-   * write that failed has said so.
+   * A theme was chosen. Writes it, or does nothing when it is the theme the
+   * project is already in or already asked for. Resolves when its write has
+   * been answered, or has said why it failed.
    */
   choose(theme: Theme): Promise<void>
   /**
    * The project's theme, as the screen has it, each time it changes there:
    * what a write has landed, which is already known here, or a change made
-   * elsewhere. There is no guard on it, and it needs none: a write that
-   * lands is the last word on the record, over a `sync` that arrived while
-   * it was going, so an old copy of the screen's cannot win.
+   * elsewhere.
    */
   sync(theme: Theme): void
-  /** Forget a choice kept for a write that is going: the way closed under it. */
+  /**
+   * The way closed under a choice on its way. Since every choice is written
+   * as it is made (spec 037), there is nothing held back to forget: the
+   * write on its way lands as the last word on the record, and the page is
+   * told it, or given it on the address of the next document.
+   */
   forget(): void
 }
 
@@ -55,52 +64,42 @@ interface Options {
 }
 
 export function createThemeChooser({ initial, write, asked, failed }: Options): ThemeChooser {
-  // What the record holds, or will once the writes in flight have landed.
+  // What the record holds, or will once the writes on their way have landed.
   let recorded = initial
-  // Whether a write is in flight, and the theme chosen while it was.
-  let writing = false
-  let kept: Theme | null = null
+  // The latest choice whose answer has not come; its answer is the last.
+  let latest: { theme: Theme } | null = null
 
   return {
     async choose(theme) {
-      const step = nextWrite(theme, recorded, writing)
-      if (step === 'none') return
+      if (theme === (latest?.theme ?? recorded)) return
+      const mine = { theme }
+      latest = mine
       asked(theme)
-      if (step === 'keep') {
-        kept = theme
-        return
-      }
       failed(null)
-      writing = true
       try {
-        await writeThrough(
-          theme,
-          async (next) => {
-            await write(next)
-            recorded = next
-          },
-          () => {
-            const next = kept
-            kept = null
-            return next
-          },
-        )
+        await write(theme)
+        // Answered in the order they were sent, so the last to land is the
+        // record's; and the latest choice landing is nothing left unsaved.
+        recorded = theme
+        if (latest === mine) failed(null)
       } catch (error) {
-        kept = null
+        // What the record holds is what the writes before this one left,
+        // which the screen's own record says (`sync`).
         failed(error instanceof Error ? error.message : String(error))
       } finally {
-        // Nothing is left to write: the loop took what was kept, or the
-        // failure dropped it. The record is the cards' word again - what
-        // was written, or what it was if the write failed.
-        writing = false
-        asked(null)
+        // The last answer is the latest choice's: the record is the cards'
+        // word again - what was written, or what it was if the write failed.
+        if (latest === mine) {
+          latest = null
+          asked(null)
+        }
       }
     },
     sync(theme) {
       recorded = theme
     },
     forget() {
-      kept = null
+      // Nothing is held back (see above).
     },
   }
 }

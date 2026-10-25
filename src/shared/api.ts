@@ -29,6 +29,7 @@ import type {
   ProjectSummary,
   ProjectTuning,
   RebuildDone,
+  SentSet,
   Theme,
 } from './project'
 
@@ -113,8 +114,10 @@ export interface Api {
      * The mode and agency a person chose with the feed in view (A2-02);
      * validated on the main side with the record's own rules. The next
      * layout passes them to the engine, which names a layout for them.
+     * Either may be sent alone (spec 037): the store writes the fields it is
+     * sent onto the record as the writes before it left it.
      */
-    setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord>
+    setInputs(id: string, inputs: Partial<ProjectInputs>): Promise<ProjectRecord>
     /**
      * The line colours a person chose (A4-01), written once the map has
      * been drawn with them, as a chosen day is: the record and the page on
@@ -124,15 +127,28 @@ export interface Api {
      * and the sizes below, the stations the build answered (issue 272): a
      * redraw from a set another project laid out again since draws that
      * set's stations, so the record's list follows the map, not the record.
+     * And with each, what the redraw's `map.build` was sent (`sent`, spec
+     * 037), which the record keeps as `drawn` and the main process checks
+     * field by field as it checks the choice beside it.
      */
-    completeColors(id: string, palette: Palette, stations?: Station[]): Promise<ProjectRecord>
+    completeColors(
+      id: string,
+      palette: Palette,
+      sent: SentSet,
+      stations?: Station[],
+    ): Promise<ProjectRecord>
     /**
      * The order a person arranged the lines in (A4-02), written once the
      * map has been drawn in it, as the colours are. The main process checks
      * every label before the store sees it
      * (specs/020-line-order/contracts/bridge.md).
      */
-    completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<ProjectRecord>
+    completeOrder(
+      id: string,
+      order: LineOrder,
+      sent: SentSet,
+      stations?: Station[],
+    ): Promise<ProjectRecord>
     /**
      * The sizes a person chose for the map (issue 350, ADR-049), written
      * once the map has been drawn with them, as the colours and the order
@@ -141,7 +157,12 @@ export interface Api {
      * The main process checks every number against the engine's own ranges
      * before the store sees it, and the store checks it again.
      */
-    completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<ProjectRecord>
+    completeStyle(
+      id: string,
+      style: ProjectStyle,
+      sent: SentSet,
+      stations?: Station[],
+    ): Promise<ProjectRecord>
     /**
      * What a person chose for the lines beyond their colours and their order
      * (issue 394, spec 036): a name, hidden, a width, a casing and a dash by
@@ -151,7 +172,12 @@ export interface Api {
      * process checks every label and field against the engine's own rules,
      * in its sentences, and the store checks them again.
      */
-    completeLines(id: string, lines: ProjectLines, stations?: Station[]): Promise<ProjectRecord>
+    completeLines(
+      id: string,
+      lines: ProjectLines,
+      sent: SentSet,
+      stations?: Station[],
+    ): Promise<ProjectRecord>
     /**
      * The service day a person chose (A5.5-15), written the moment it is
      * chosen rather than after the rebuild that draws it, as the inputs and

@@ -2,6 +2,8 @@
 // process, so their shape is checked before the store sees them, and only
 // the interface's top frame may call at all.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import {
@@ -11,6 +13,8 @@ import {
 } from '../../src/main/ipc'
 import type { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
+import { validateMade } from '../../src/shared/project'
+import { sentOf } from '../support/sent'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
@@ -26,6 +30,8 @@ const WINDOW = {
 }
 const MADE = '2026-09-10T12:00:00+00:00'
 const BUILT = { mode: 'all', agency: null }
+/** What a draw sent (spec 037): every completion carries one. */
+const SENT = sentOf({}, { layout: 'a'.repeat(64), made: MADE, date: '2026-09-12' })
 
 function harness(topFrame = true, blocked: string | null = null) {
   const handlers = new Map<string, Handler>()
@@ -156,6 +162,7 @@ describe('registerProjectHandlers', () => {
       service: { ...WINDOW, extra: 1 },
       made: MADE,
       built: { ...BUILT, extra: 1 },
+      sent: { ...SENT, extra: 1 },
     }
     await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done)
     expect(calls).toEqual([
@@ -169,25 +176,95 @@ describe('registerProjectHandlers', () => {
             made: MADE,
             built: BUILT,
             service: WINDOW,
+            sent: SENT,
           },
         ],
       },
     ])
   })
 
-  it("checks a finished rebuild's day for shape, and leaves the window to the store", async () => {
+  it("checks a finished rebuild's sent set, its day among it, and leaves the window to the store", async () => {
     const { call, calls } = harness()
-    for (const done of [undefined, {}, { date: '2026-02-30' }, { date: 20260908 }]) {
+    for (const done of [
+      undefined,
+      {},
+      { date: '2026-09-12' },
+      { sent: { ...SENT, date: '2026-02-30' } },
+      { sent: { ...SENT, date: 20260908 } },
+    ]) {
       await expect(
         call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', done),
         JSON.stringify(done),
       ).rejects.toThrow()
     }
     expect(calls).toEqual([])
-    await call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', { date: '2026-09-12', extra: 1 })
-    expect(calls).toEqual([
-      { method: 'completeRebuild', args: ['abcdefghijk1', { date: '2026-09-12' }] },
-    ])
+    await call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', { sent: SENT, extra: 1 })
+    expect(calls).toEqual([{ method: 'completeRebuild', args: ['abcdefghijk1', { sent: SENT }] }])
+  })
+
+  // What a draw sent arrives from the renderer, the less trusted process, and
+  // the record keeps it as `drawn`: every field is held to the record's own
+  // rule, in that field's sentence, before the store sees any of it (spec
+  // 037), on every channel that carries one.
+  it('refuses a sent set field by field on every completion, and passes a copy of one', async () => {
+    // Mutation: one channel's handler passes `sent` to the store unread - its
+    // rows reach the store.
+    const bad: [Record<string, unknown> | undefined, string][] = [
+      [undefined, 'the run did not say what its map was drawn from'],
+      [{ ...SENT, layout: 'abc' }, 'the layout run did not say which layout it drew from'],
+      [{ ...SENT, made: 'never' }, validateMade('never') as string],
+      [{ ...SENT, date: '2026-02-30' }, 'that is not a day in the calendar'],
+      [{ ...SENT, colors: { A: 'red' } }, 'must be written #rrggbb'],
+      [{ ...SENT, lineOrder: ['A', 'A'] }, 'A is in the order twice'],
+      [{ ...SENT, style: { colour: '#fff' } }, 'the style does not take colour'],
+      [{ ...SENT, lines: { A: { hidden: 'yes' } } }, 'A'],
+    ]
+    /** Each completion: its arguments around a sent set, and where the store is handed it. */
+    const inSecond = (args: unknown[]): unknown => (args[1] as { sent: unknown }).sent
+    const third = (args: unknown[]): unknown => args[2]
+    const channels: [string, (sent: unknown) => unknown[], (args: unknown[]) => unknown][] = [
+      [
+        CHANNELS.projectsCompleteLayout,
+        (sent) => [
+          {
+            date: '2026-09-12',
+            layout: SENT.layout,
+            service: WINDOW,
+            made: MADE,
+            built: BUILT,
+            sent,
+          },
+        ],
+        inSecond,
+      ],
+      [CHANNELS.projectsCompleteRebuild, (sent) => [{ sent }], inSecond],
+      [
+        CHANNELS.projectsCompleteColors,
+        (sent) => [{ colors: {}, defaultColor: '#888888' }, sent],
+        third,
+      ],
+      [CHANNELS.projectsCompleteOrder, (sent) => [['A'], sent], third],
+      [CHANNELS.projectsCompleteStyle, (sent) => [{}, sent], third],
+      [CHANNELS.projectsCompleteLines, (sent) => [{}, sent], third],
+    ]
+    for (const [channel, args, handed] of channels) {
+      const { call, calls } = harness()
+      for (const [sent, sentence] of bad)
+        await expect(
+          call(channel, 'abcdefghijk1', ...args(sent)),
+          `${channel} ${JSON.stringify(sent)}`,
+        ).rejects.toThrow(sentence)
+      expect(calls, `${channel}: nothing reached the store`).toEqual([])
+      const given = { ...SENT, colors: { A: '#0072bc' }, lines: { A: { hidden: true } }, extra: 1 }
+      await call(channel, 'abcdefghijk1', ...args(given))
+      given.colors.A = '#ff0000'
+      given.lines.A.hidden = false
+      expect(handed(calls[0].args), `${channel}: the eight fields, copied`).toEqual({
+        ...SENT,
+        colors: { A: '#0072bc' },
+        lines: { A: { hidden: true } },
+      })
+    }
   })
 
   it('checks the two inputs for shape and passes them to the store', async () => {
@@ -207,9 +284,14 @@ describe('registerProjectHandlers', () => {
     expect(calls).toEqual([])
     await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'tram', agency: null })
     await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'all', agency: 'M', extra: 1 })
+    // Either alone, as a patch of the field it names (spec 037).
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { agency: 'METRO' })
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'subway' })
     expect(calls).toEqual([
       { method: 'setInputs', args: ['abcdefghijk1', { mode: 'tram', agency: null }] },
       { method: 'setInputs', args: ['abcdefghijk1', { mode: 'all', agency: 'M' }] },
+      { method: 'setInputs', args: ['abcdefghijk1', { agency: 'METRO' }] },
+      { method: 'setInputs', args: ['abcdefghijk1', { mode: 'subway' }] },
     ])
   })
 
@@ -246,7 +328,7 @@ describe('registerProjectHandlers', () => {
       { colors: Object.fromEntries(bigPalette()), defaultColor: '#888888' },
     ]) {
       await expect(
-        call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette),
+        call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, SENT),
         JSON.stringify(palette) ?? 'undefined',
       ).rejects.toThrow()
     }
@@ -276,7 +358,7 @@ describe('registerProjectHandlers', () => {
       Array.from({ length: 513 }, (_unused, i) => `line-${i}`),
     ]) {
       await expect(
-        call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', order),
+        call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', order, SENT),
         JSON.stringify(order) ?? 'undefined',
       ).rejects.toThrow()
     }
@@ -287,10 +369,10 @@ describe('registerProjectHandlers', () => {
     const { call, calls } = harness()
     await expect(call(CHANNELS.projectsCompleteOrder, '../x', ['A'])).rejects.toThrow('invalid id')
     const order = ['K', 'A', 'Rapid 720']
-    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', order)
+    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', order, SENT)
     order[0] = 'B'
     expect(calls).toEqual([
-      { method: 'completeOrder', args: ['abcdefghijk1', ['K', 'A', 'Rapid 720']] },
+      { method: 'completeOrder', args: ['abcdefghijk1', ['K', 'A', 'Rapid 720'], SENT, undefined] },
     ])
   })
 
@@ -339,23 +421,30 @@ describe('registerProjectHandlers', () => {
       'invalid id',
     )
     const style = { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 }
-    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', style)
-    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', {})
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', style, SENT)
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', {}, SENT)
     const chosen = { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 1.5 }
-    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', chosen)
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', chosen, SENT)
     style.lineWidth = 13
     chosen.dotRadius = 9
     expect(calls).toEqual([
       {
         method: 'completeStyle',
-        args: ['abcdefghijk1', { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 }],
+        args: [
+          'abcdefghijk1',
+          { lineWidth: 12, stationRadius: 5, interchangeRadius: 6 },
+          SENT,
+          undefined,
+        ],
       },
-      { method: 'completeStyle', args: ['abcdefghijk1', {}] },
+      { method: 'completeStyle', args: ['abcdefghijk1', {}, SENT, undefined] },
       {
         method: 'completeStyle',
         args: [
           'abcdefghijk1',
           { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 1.5 },
+          SENT,
+          undefined,
         ],
       },
     ])
@@ -441,17 +530,24 @@ describe('registerProjectHandlers', () => {
   it('passes a palette the panel would send, and only its two fields', async () => {
     const { call, calls } = harness()
     await expect(call(CHANNELS.projectsCompleteColors, '../x', {})).rejects.toThrow('invalid id')
-    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', {
-      colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' },
-      defaultColor: '#888888',
-      lineOrder: ['A'],
-    })
+    await call(
+      CHANNELS.projectsCompleteColors,
+      'abcdefghijk1',
+      {
+        colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' },
+        defaultColor: '#888888',
+        lineOrder: ['A'],
+      },
+      SENT,
+    )
     expect(calls).toEqual([
       {
         method: 'completeColors',
         args: [
           'abcdefghijk1',
           { colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' }, defaultColor: '#888888' },
+          SENT,
+          undefined,
         ],
       },
     ])
@@ -506,6 +602,150 @@ describe('registerProjectHandlers', () => {
       /too long/,
     )
     expect(calls).toEqual([])
+  })
+})
+
+// The record session rests on one ordering property (spec 037, FR-008):
+// main is handed a frame's invokes in the order they were sent, which
+// `tests/e2e/record-order.spec.ts` holds, and each handler reaches the
+// store's queue in the turn it is handed its message, which is this. An
+// `await` before the store call - a check made asynchronous, a read of
+// something first - would let a call sent later reach the queue earlier, and
+// a run's read of its inputs would miss a write sent before the press.
+describe('registerProjectHandlers reaches the store in the turn it is called', () => {
+  const ID = 'abcdefghijk1'
+  /** One well-formed call per project channel. */
+  const CALLS: [string, ...unknown[]][] = [
+    [CHANNELS.projectsList],
+    [CHANNELS.projectsGet, ID],
+    [CHANNELS.projectsCreate, { name: 'A', feed: 'la-metro-rail' }],
+    [CHANNELS.projectsRename, ID, 'B'],
+    [CHANNELS.projectsDelete, ID],
+    [
+      CHANNELS.projectsCompleteLayout,
+      ID,
+      {
+        date: '2026-09-08',
+        layout: 'a'.repeat(64),
+        service: WINDOW,
+        made: MADE,
+        built: BUILT,
+        sent: SENT,
+      },
+    ],
+    [CHANNELS.projectsCompleteRebuild, ID, { sent: SENT }],
+    [CHANNELS.projectsSetInputs, ID, { mode: 'all', agency: null }],
+    [CHANNELS.projectsCompleteColors, ID, { colors: {}, defaultColor: '#888888' }, SENT],
+    [CHANNELS.projectsCompleteOrder, ID, ['A'], SENT],
+    [CHANNELS.projectsCompleteStyle, ID, { lineWidth: 12 }, SENT],
+    [CHANNELS.projectsCompleteLines, ID, { A: { hidden: true } }, SENT],
+    [CHANNELS.projectsSetDate, ID, '2026-09-15'],
+    [CHANNELS.projectsSetTheme, ID, 'sepia'],
+    [CHANNELS.projectsSetTuning, ID, { grid: 'hexalinear' }],
+    [CHANNELS.projectsMarkOpened, ID],
+    [CHANNELS.projectsSetExport, ID, { preset: 'instagram-reel', options: {} }],
+  ]
+
+  it('has a well-formed call for every project channel', () => {
+    expect(CALLS.map(([channel]) => channel).sort()).toEqual(
+      Object.values(CHANNELS)
+        .filter((c) => c.startsWith('projects:'))
+        .sort(),
+    )
+  })
+
+  it.each(CALLS)('%s calls the store before its handler returns', async (channel, ...args) => {
+    const { call, calls } = harness()
+    const answer = call(channel, ...args)
+    // Nothing has been awaited yet: the store was reached synchronously, or
+    // not at all.
+    expect(calls, `${channel} reached the store in the turn it was called`).toHaveLength(1)
+    await answer
+  })
+
+  it('awaits nothing in the project handlers, so the source cannot drift from the rule', () => {
+    const source = readFileSync(resolve(__dirname, '../../src/main/ipc.ts'), 'utf8')
+    const start = source.indexOf('export function registerProjectHandlers(')
+    expect(start, 'registerProjectHandlers is where this test reads it').toBeGreaterThan(-1)
+    const end = source.indexOf('\n}\n', start)
+    const body = source
+      .slice(start, end)
+      .split('\n')
+      .map((line) => line.replace(/\/\/.*$/, ''))
+      .join('\n')
+    expect(body, 'no await between a project message and the store').not.toMatch(/\bawait\b/)
+    // And the guard reads what it means to: the body holds the handlers.
+    expect(body).toContain('CHANNELS.projectsGet')
+    expect(body).toContain('CHANNELS.projectsSetExport')
+  })
+})
+
+// A completion main refuses is a map drawn and not kept, and until now said
+// nowhere but on the screen. It is said in the log too, in one line: the
+// writer, the project's id at most, and the refusal's own sentence, which
+// names no path; no record contents and no project name.
+describe('a refused completion, in the log', () => {
+  function logged(storeRefuses: string | null = null, blocked: string | null = null) {
+    const handlers = new Map<string, Handler>()
+    const ipc = {
+      handle: (channel: string, h: Handler) => handlers.set(channel, h),
+    } as unknown as IpcMain
+    const lines: string[] = []
+    const store = new Proxy({} as ProjectStore, {
+      get: () => async () => {
+        if (storeRefuses !== null) throw new Error(storeRefuses)
+        return {}
+      },
+    })
+    registerProjectHandlers(
+      ipc,
+      store,
+      () => true,
+      () => blocked,
+      (line) => lines.push(line),
+    )
+    const call = (channel: string, ...args: unknown[]) =>
+      handlers.get(channel)!({} as IpcMainInvokeEvent, ...args)
+    return { call, lines }
+  }
+  const palette = { colors: {}, defaultColor: '#888888' }
+
+  it('says the writer, the id and the sentence when the bridge refuses one', async () => {
+    // Mutation: `refused(...)` taken out of the handlers' wrapper - the
+    // refusal is answered and nothing is logged.
+    const { call, lines } = logged()
+    await expect(
+      call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, { ...SENT, layout: 'abc' }),
+    ).rejects.toThrow('the layout run did not say which layout it drew from')
+    expect(lines).toEqual([
+      'completeColors for abcdefghijk1 refused: the layout run did not say which layout it drew from',
+    ])
+  })
+
+  it('and when the store refuses one, or the reset holds it', async () => {
+    const sentence = 'the order written is not the one the map was drawn in'
+    const store = logged(sentence)
+    await expect(
+      store.call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], SENT),
+    ).rejects.toThrow(sentence)
+    expect(store.lines).toEqual([`completeOrder for abcdefghijk1 refused: ${sentence}`])
+    const reset = logged(null, 'The engine data is being reset; wait for it to finish.')
+    await expect(
+      reset.call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', { sent: SENT }),
+    ).rejects.toThrow('being reset')
+    expect(reset.lines).toEqual([
+      'completeRebuild for abcdefghijk1 refused: The engine data is being reset; wait for it to finish.',
+    ])
+  })
+
+  it('names an id that is not one as such, and logs nothing for a completion taken or another write refused', async () => {
+    const { call, lines } = logged()
+    await expect(call(CHANNELS.projectsCompleteLayout, '../x', {})).rejects.toThrow('invalid id')
+    expect(lines).toEqual(['completeLayout for an invalid id refused: invalid id'])
+    lines.length = 0
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', {}, SENT)
+    await expect(call(CHANNELS.projectsSetTheme, 'abcdefghijk1', 'neon')).rejects.toThrow()
+    expect(lines, 'a draw kept, and a write that is not a draw').toEqual([])
   })
 })
 

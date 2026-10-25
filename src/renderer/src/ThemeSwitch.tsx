@@ -110,8 +110,9 @@ export default function ThemeSwitch({
   // One name for the two radios, so they are one group to the keyboard: Tab
   // enters it once and the arrow keys move the choice.
   const group = useId()
-  // What a choice does - written, kept for the write in flight, or nothing
-  // - is `themeChooser.ts`, made once for the life of the switch. It takes
+  // What a choice does - written at once, or nothing where it is the theme
+  // already asked for - is `themeChooser.ts`, made once for the life of the
+  // switch; the bridge and the store keep the writes' order (spec 037). It takes
   // the latest `onChange`, not the one it was made with, and is told the
   // record's theme each time the screen's copy of it changes, with no guard.
   // That copy arrives a render after a write has landed, and a choice made
@@ -137,8 +138,8 @@ export default function ThemeSwitch({
   // A run can start from a timer rather than a choice: a colour or an order
   // change is debounced, so the way closes with nobody touching anything.
   // Chromium blurs a disabled element, so focus is handed to the cell's heading
-  // before the radios go, and a choice kept from before is forgotten -
-  // applying it after the way closed is what the closing is for.
+  // before the radios go. A choice made just before is already written, and
+  // lands as the last word on the record (`forget` has nothing to drop).
   //
   // A layout effect, so it runs in the commit that disables the radios, as the
   // DOM is written and before any task of the browser's own. The kit's
@@ -176,8 +177,8 @@ export default function ThemeSwitch({
           take focus from the radio holding it before the handback above could
           hand it on. Not disabled while the write is in flight: it takes a
           moment, and a control that disables itself under a person's hands
-          takes the focus with it (A3-04). A choice that arrives then is kept
-          and applied when the write settles. */}
+          takes the focus with it (A3-04). A choice that arrives then is
+          written at once, after the one on its way. */}
       <fieldset className="theme-cards-group">
         <legend className="visually-hidden">The theme this map is drawn in</legend>
         <div className="theme-cards">

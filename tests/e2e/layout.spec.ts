@@ -914,7 +914,11 @@ test('reopening a laid-out project runs nothing and shows the same day and windo
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const stored = JSON.stringify(readRecord(engineHome))
+    // The record's count of its writes (spec 037) is set aside, as `opened`
+    // is: opening the project is a write, which raises it by one.
+    const before = readRecord(engineHome)
+    const revision = before.revision as number
+    const stored = JSON.stringify({ ...before, revision: undefined })
     const asked =
       received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length
 
@@ -924,9 +928,15 @@ test('reopening a laid-out project runs nothing and shows the same day and windo
     await expect(section).toContainText('Drawn for 2026-06-16')
     await expect(section).toContainText('2026-03-01 to 2026-11-30')
     await expect(section.getByLabel('Draw for another day')).toHaveValue('2026-06-16')
-    expect(JSON.stringify(readRecord(engineHome)), 'nothing but the opening was rewritten').toBe(
-      stored,
-    )
+    await expect
+      .poll(() => readRecord(engineHome).revision, {
+        message: 'the opening was written, and it was the one write',
+      })
+      .toBe(revision + 1)
+    expect(
+      JSON.stringify({ ...readRecord(engineHome), revision: undefined }),
+      'nothing but the opening was rewritten',
+    ).toBe(stored)
     expect(
       received(engineHome, 'graph.build').length + received(engineHome, 'map.build').length,
       'nothing ran',

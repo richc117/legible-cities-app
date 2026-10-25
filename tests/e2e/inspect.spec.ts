@@ -565,10 +565,12 @@ test('without the engine the section says so and the rest of the screen works', 
 // The write is held in the main process (`holdWrites`), so the press lands
 // inside it every time rather than some of the time: the run must be going
 // from the press, lay nothing out while the write is held, and ask with the
-// mode once it has landed. Mutations the coordinator runs: `start` reading
-// the record it was handed whatever write is on its way (`const project =
-// handed` in `engine/layoutRun.ts`), and `setInputs` in `useProjectState.ts`
-// calling the bridge without `run.writing` around it - each asks with `all`.
+// mode once it has landed. The mutation the coordinator runs: a run planning
+// from the record it was handed (`#layOut(handed, …)` in `#startLayout`,
+// `engine/layoutRun.ts`) - it asks with `all`. A `get` outside the store's
+// queue is not caught here, since `holdWrites` puts the read behind the held
+// write whatever the store does; the unit tests and `record-order.spec.ts`
+// catch it (spec 037).
 test('a mode chosen just before Lay out is the one the run asks with, however long its write takes', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page, app) => {

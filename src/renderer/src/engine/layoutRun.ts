@@ -14,7 +14,9 @@ import {
   type ProjectLines,
   type ProjectRecord,
   type ProjectStyle,
+  type SentSet,
   type ServiceWindow,
+  sentSet,
 } from '../../../shared/project'
 import {
   failureOf,
@@ -60,6 +62,11 @@ import { askedWith, tuningParams } from '../tuningRules'
 // the order, the style and the line options (issue 394) the project is
 // being drawn with, so the map on screen and the record never disagree.
 //
+// Every run reads its record from the store at its start, after the
+// controls that hold a choice back have flushed it (`beforeStart`), and
+// hands its completion what its map.build was sent, which the store keeps as
+// `drawn` (spec 037; docs/ARCHITECTURE.md, "The record session").
+//
 // A cancel stops the run between its calls, and asks the call in flight to
 // stop. What that call answers decides what happened, not when the cancel
 // was pressed (engine v0.18.0, its issue 80): the cancelled error means it
@@ -75,6 +82,9 @@ import { askedWith, tuningParams } from '../tuningRules'
 
 /** What a run says when its map was drawn before the cancel reached it. */
 export const MAP_KEPT = 'The map was already drawn when you cancelled; it is kept.'
+
+/** Why a rebuild is refused for a project that has drawn nothing to rebuild from. */
+const NO_LAYOUT_FOR_A_DAY = 'Lay the project out before choosing a day.'
 
 /** What a layout run says when its layout was stored before the cancel reached it. */
 export const LAYOUT_KEPT =
@@ -306,6 +316,15 @@ export interface RunClient {
  */
 export interface RunOptions {
   client: RunClient
+  /**
+   * The project's record as the store holds it once every write sent before
+   * this read has landed (spec 037, FR-006/FR-007): `projects.get`, which
+   * main queues behind the project's writes. A run reads its inputs here and
+   * nowhere else, so a choice committed by the very press that starts it -
+   * a field left for "Lay out", a day still in its debounce - is in what it
+   * sends.
+   */
+  read(id: string): Promise<ProjectRecord>
   complete(
     id: string,
     done: {
@@ -318,28 +337,46 @@ export interface RunOptions {
       stations?: Station[]
       /** The tuning graph.build was sent (issue 385); absent for a run sent none. */
       tuning?: import('../../../shared/project').ProjectTuning
+      /** What the run's map.build was sent (spec 037), which the record keeps as `drawn`. */
+      sent: SentSet
     },
   ): Promise<{ changed: boolean; relaid: boolean }>
   /**
    * A rebuild for a chosen day finished: the day is written, inside the
    * window or not at all, with the stations the map was drawn with.
    */
-  completeRebuild(id: string, done: { date: string; stations?: Station[] }): Promise<unknown>
+  completeRebuild(id: string, done: { sent: SentSet; stations?: Station[] }): Promise<unknown>
   /**
    * A redraw for chosen colours finished: the palette is written, never
    * before the map is drawn, with the stations the build answered where it
-   * answered a list (issue 272). So are the two below.
+   * answered a list (issue 272), and what its map.build was sent (spec 037).
+   * So are the three below.
    */
-  completeColors(id: string, palette: Palette, stations?: Station[]): Promise<unknown>
+  completeColors(
+    id: string,
+    palette: Palette,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<unknown>
   /** A redraw for a chosen line order finished: the order is written, never before the map is drawn. */
-  completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<unknown>
+  completeOrder(id: string, order: LineOrder, sent: SentSet, stations?: Station[]): Promise<unknown>
   /** A redraw for chosen sizes finished: the style is written, never before the map is drawn. */
-  completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<unknown>
+  completeStyle(
+    id: string,
+    style: ProjectStyle,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<unknown>
   /**
    * A redraw for chosen line options finished (issue 394): the options are
    * written, never before the map is drawn.
    */
-  completeLines(id: string, lines: ProjectLines, stations?: Station[]): Promise<unknown>
+  completeLines(
+    id: string,
+    lines: ProjectLines,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
   /**
@@ -427,42 +464,8 @@ interface Attempt {
   rawDetail: string | null
 }
 
-/**
- * A write to the project's record on its way from the screen (issue 388),
- * and what the store answered it with once it has.
- */
-interface RecordWrite {
-  /** Settles once the store has answered or refused; never rejects. */
-  settled: Promise<void>
-  /** The record as the store answered: null until then, and for a write it refused. */
-  answer: ProjectRecord | null
-  /**
-   * Its place in the order the store was sent the writes, counted from 1;
-   * 0 until it has been sent (issue 407). A write is sent as it is handed
-   * over, except one made from the record the others leave
-   * (`writingFrom`), which is sent once they have landed and is counted
-   * then. The store writes a project's record one write at a time, in the
-   * order it was sent them, so of writes that have all settled, the answer
-   * with the highest count holds every other.
-   */
-  sent: number
-}
-
-/** Of writes that have all settled, the answer holding every other; null where the store took none. */
-function lastTaken(writes: readonly RecordWrite[]): ProjectRecord | null {
-  let last: RecordWrite | null = null
-  for (const write of writes)
-    if (write.answer !== null && (last === null || write.sent > last.sent)) last = write
-  return last?.answer ?? null
-}
-
-/**
- * Whether one record was written after another, by the time the store
- * stamps on every write it makes (`modified`). A stamp that does not read as
- * a time is never the later, and nor is the same stamp.
- */
-const writtenAfter = (record: ProjectRecord, other: ProjectRecord): boolean =>
-  Date.parse(record.modified) > Date.parse(other.modified)
+/** What one map call is built from: the arguments of the request, and of its sent set. */
+type DrawArgs = Parameters<typeof sentSet>[0]
 
 /** What Run all would start for a record (issue 407): `runAllPlan`'s answer, handed in. */
 type RunAllPlanOf = (record: ProjectRecord, run: RunSnapshot) => RunAllPlan
@@ -562,22 +565,8 @@ export class LayoutRun {
   #drawnDownload = 0
   /** A report the throttle held back, drawn if the run ends before the next one. */
   #heldDownload: RunDownload | null = null
-  /** Writes to the project's record on their way, in the order they were sent (issue 388). */
-  readonly #writes = new Set<RecordWrite>()
-  /** Ends a start's wait for those writes, for a cancel; null while nothing waits. */
+  /** Ends a start's read of the record, for a cancel; null while nothing reads. */
   #wake: (() => void) | null = null
-  /** How many writes have been handed over, which is the order the store was sent them in. */
-  #sent = 0
-  /**
-   * The store's answer to the latest write it was sent and took (issue 407),
-   * and that write's place in the order. A write leaves those on their way
-   * the moment the store answers, and the screen draws the answer a task or
-   * so later, when React renders it; a press in that beat is handed the
-   * record the screen still holds. `#current` reads this instead where it
-   * was written after that record. Forgotten when a run finishes: its own
-   * write, and the record read back after it, supersede it.
-   */
-  #taken: { record: ProjectRecord; sent: number } | null = null
   /** Told of each press on a layout run, a rebuild or Run all, first (issue 407, `beforeStart`). */
   readonly #starting = new Set<() => void>()
   readonly #options: RunOptions
@@ -652,100 +641,17 @@ export class LayoutRun {
   }
 
   /**
-   * A write to the project's record on its way (issue 388). The screen hands
-   * the run every write of a field a layout run reads - the mode and the
-   * operator (cell 01), the tuning (cell 02), the day (cell 03) - as it
-   * sends it, because a field commits when it is left, and when what took
-   * focus away is the press on "Lay out" the write is still on its way as
-   * the run starts. A start waits for the writes on their way and reads the
-   * record they leave (`#afterWrites`). The write is answered as it was:
-   * the writer gets the store's record, or its refusal, exactly as before.
-   */
-  writing<T extends ProjectRecord>(write: Promise<T>): Promise<T> {
-    const entry: RecordWrite = { settled: Promise.resolve(), answer: null, sent: ++this.#sent }
-    this.#writes.add(entry)
-    return this.#held(entry, write)
-  }
-
-  /**
-   * A write made from the record as the writes ahead of it leave it (issue
-   * 407), for a writer that sends one field of two and must send the other
-   * as the record holds it: cell 01's operator, sent with the mode, where a
-   * mode chosen a moment before and still on its way would otherwise be put
-   * back by the mode the screen held. It is on its way from now, so a start
-   * waits for it as for any write, and it is sent once every write handed
-   * over before it, and every write sent while it waits, has landed - at
-   * once where none is on its way. It is made from the record as they leave
-   * it, as a start that waited reads it: the store's answer to the last of
-   * them it took, or, where it took none, the record as it stood when the
-   * write was handed over (`#current`). Sent after them, it is written
-   * after them, and its answer holds them.
-   */
-  writingFrom<T extends ProjectRecord>(
-    handed: ProjectRecord,
-    send: (record: ProjectRecord) => Promise<T>,
-  ): Promise<T> {
-    const entry: RecordWrite = { settled: Promise.resolve(), answer: null, sent: 0 }
-    const now = this.#current(handed)
-    const taken = this.#taken
-    this.#writes.add(entry)
-    const write = (async () => {
-      for (let ahead = this.#ahead(entry); ahead.length > 0; ahead = this.#ahead(entry))
-        await Promise.all(ahead.map((other) => other.settled))
-      // Every write sent before this one has landed or been refused, so the
-      // store's latest answer, where it has taken one since, holds them all.
-      const latest = this.#taken !== taken ? this.#taken : null
-      entry.sent = ++this.#sent
-      return send(latest?.record ?? now)
-    })()
-    return this.#held(entry, write)
-  }
-
-  /**
-   * What a write made from the record waits for: every write handed over
-   * before it, and every write sent since. Not one made from the record
-   * after it, which is waiting for this one.
-   */
-  #ahead(entry: RecordWrite): RecordWrite[] {
-    const ahead: RecordWrite[] = []
-    let before = true
-    for (const other of this.#writes) {
-      if (other === entry) before = false
-      else if (before || other.sent > 0) ahead.push(other)
-    }
-    return ahead
-  }
-
-  /** A write on its way until the store answers it or refuses; answered as it was. */
-  #held<T extends ProjectRecord>(entry: RecordWrite, write: Promise<T>): Promise<T> {
-    // No longer on its way the moment the store answers, before the writer
-    // hears it, so a start the writer's own answer leads to does not wait;
-    // and kept, for a start made before the screen has rendered it.
-    entry.settled = write.then(
-      (record) => {
-        entry.answer = record
-        this.#writes.delete(entry)
-        if (this.#taken === null || entry.sent > this.#taken.sent)
-          this.#taken = { record, sent: entry.sent }
-      },
-      // A refusal is the writer's to show; here it is only a write that has
-      // ended, which must not keep a start waiting.
-      () => {
-        this.#writes.delete(entry)
-      },
-    )
-    return write
-  }
-
-  /**
-   * Hear each press on a layout run, a rebuild or Run all, before the run
-   * looks for the writes on their way (issue 407). A control that holds a
-   * choice back on a timer - cell 03's day, written a beat after it is
-   * picked - sends it here, so it is a write on its way at the press: the
-   * run waits for it and draws the day, rather than the day landing while
-   * the run goes and being recorded as the day it drew. The redraws for
-   * colours, the order, the sizes and the line options draw the day the map
-   * already shows and record that day, so they tell nobody.
+   * Hear each press on a run, before the run reads its record (issue 407):
+   * a layout run, a rebuild, Run all, and since spec 037 the four redraws
+   * too. A control that holds a choice back on a timer - cell 03's day,
+   * written a beat after it is picked - sends it here, so its write is sent
+   * before the run's read, and the store answers the read with it: the run
+   * draws the day, rather than the day landing while the run goes. A redraw
+   * draws the day the map already shows, which a day chosen does not move -
+   * except for a record from before `drawn` was kept, whose redraw draws the
+   * record's own day: told, its day lands before the read, so the redraw
+   * draws it and the store takes the completion, rather than refusing a
+   * redraw of a day the record no longer holds after the map is drawn.
    */
   beforeStart(listener: () => void): () => void {
     this.#starting.add(listener)
@@ -754,21 +660,21 @@ export class LayoutRun {
     }
   }
 
-  /** A press on a run that reads the record's day: every `beforeStart` listener, first. */
+  /** A press on any run: every `beforeStart` listener, first. */
   #pressed(): void {
     for (const listener of this.#starting) listener()
   }
 
   /**
-   * The project and the engine's state as they are at this moment.
-   * `force` is the re-layout: every stage runs again, and the engine keeps
-   * the stored layout until the new set is whole, so a cancel or a failure
-   * leaves the project exactly as it was.
+   * A layout run of the project, with the engine's state as it is at this
+   * moment. `force` is the re-layout: every stage runs again, and the engine
+   * keeps the stored layout until the new set is whole, so a cancel or a
+   * failure leaves the project exactly as it was.
    *
-   * The record is the one handed unless a write to it is on its way (issue
-   * 388, `writing`): the run is then going from the press, and reads the
-   * record once the write has answered. A write the store has answered and
-   * the screen has not yet drawn is read too (issue 407, `#current`).
+   * The run is going from the press - its job, its flags, Cancel on the
+   * screen - and plans from the record the store answers once every write
+   * sent before the press has landed (`#read`, spec 037), never from the
+   * record handed, which may be a render behind.
    */
   start(
     handed: ProjectRecord,
@@ -777,7 +683,7 @@ export class LayoutRun {
   ): void {
     if (this.#snapshot.state === 'running') return
     this.#pressed()
-    this.#startLayout(this.#current(handed), engine, options.force === true)
+    this.#startLayout(handed, engine, options.force === true)
   }
 
   /** `start` once a second run has been refused: the job, the engine's refusal, the record read. */
@@ -789,12 +695,8 @@ export class LayoutRun {
     this.#feedKey = handed.feed
 
     void (async () => {
-      // The record as it is once the writes on their way have landed
-      // (issue 388): a tuning field or a mode left for the button that
-      // started this run is a write still on its way. With none, it is the
-      // record handed, at once, and graph.build goes in this same turn.
-      const project = this.#writes.size === 0 ? handed : await this.#afterWrites(handed)
-      if (this.#cancelled) return this.#stopped()
+      const project = await this.#readFor(handed.id)
+      if (project === null) return
       await this.#layOut(project, force)
     })()
   }
@@ -868,15 +770,15 @@ export class LayoutRun {
       // The map is drawn from the layout just answered, by its id; the
       // engine never lays out on the way to a map. Whatever it answers is a
       // map on disk, a cancel or not (`#draw`), so the record is written.
-      const { report, stations, late } = await this.#draw(
-        project,
-        built.layout,
+      const { report, stations, late, sent } = await this.#draw(project, {
+        layout: built.layout,
+        made: built.meta.made,
         date,
-        paletteOf(project),
-        orderOf(project),
-        project.style,
-        project.lines,
-      )
+        palette: paletteOf(project),
+        order: orderOf(project),
+        style: project.style,
+        lines: project.lines,
+      })
 
       const written = await complete(project.id, {
         date,
@@ -899,6 +801,10 @@ export class LayoutRun {
         // what this layout was asked with (issue 385): this run's, not the
         // record's now, which a tuning committed meanwhile has moved.
         ...asked,
+        // What map.build was sent, which the record keeps as `drawn` (spec
+        // 037): the run's own day and the choices it read at its start, not
+        // the record's now.
+        sent,
       })
       // The store cannot see `force`: a re-layout from this project moves
       // `made` too, and that is not another project's doing.
@@ -913,26 +819,23 @@ export class LayoutRun {
    * layout stages never run; the day is written only when the map has been
    * drawn, and the main process refuses a day outside the stored window.
    *
-   * It reads its record as a layout run does (issue 388): the one handed,
-   * or, with a write to it on its way, the one that write leaves, or the
-   * store's latest answer the screen has not drawn yet (issue 407). No
-   * writer moves the layout, so the one read at the press is the one
-   * checked here.
+   * It reads its record as a layout run does (`#read`): the store's, once
+   * the writes sent before the press have landed. No writer moves the
+   * layout, so the one handed at the press is the one checked here.
    */
   rebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
     if (this.#snapshot.state === 'running') return
     this.#pressed()
-    this.#startRebuild(this.#current(handed), engine, date)
+    this.#startRebuild(handed, engine, date)
   }
 
   /** `rebuild` once a second run has been refused: the job, the refusals, the record read. */
   #startRebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
     this.#open('rebuild', `Rebuild for ${date}`, handed.id)
-    const layout = handed.layout
-    if (layout === null) {
+    if (handed.layout === null) {
       this.#set({
         state: 'failed',
-        error: 'Lay the project out before choosing a day.',
+        error: NO_LAYOUT_FOR_A_DAY,
         ...kindFlags({ kind: 'rebuild', day: date }),
         replaced: false,
         unkept: false,
@@ -945,9 +848,10 @@ export class LayoutRun {
     if (!this.#begin(engine, kindFlags({ kind: 'rebuild', day: date }))) return
 
     void (async () => {
-      const project = this.#writes.size === 0 ? handed : await this.#afterWrites(handed)
-      if (this.#cancelled) return this.#stopped()
-      await this.#drawDay(project, layout, date)
+      const project = await this.#readFor(handed.id)
+      if (project === null) return
+      if (project.layout === null) return this.#failed(new Error(NO_LAYOUT_FOR_A_DAY))
+      await this.#drawDay(project, project.layout, date)
     })()
   }
 
@@ -962,17 +866,17 @@ export class LayoutRun {
     // after it leaves a page the record does not describe (`unkept`).
     let drawn = false
     try {
-      const { report, stations, late } = await this.#draw(
-        project,
+      const { report, stations, late, sent } = await this.#draw(project, {
         layout,
+        made: project.made,
         date,
-        paletteOf(project),
-        orderOf(project),
-        project.style,
-        project.lines,
-      )
+        palette: paletteOf(project),
+        order: orderOf(project),
+        style: project.style,
+        lines: project.lines,
+      })
       drawn = true
-      await completeRebuild(project.id, { date, ...stationsOf(stations) })
+      await completeRebuild(project.id, { sent, ...stationsOf(stations) })
       this.#finish({ changed: false, relaid: false }, report, late)
     } catch (reason) {
       this.#failed(reason, drawn)
@@ -985,17 +889,15 @@ export class LayoutRun {
    * nothing of the run graph's - answers for the record the run reads and
    * the run as the press found it (issue 407).
    *
-   * The plan is made from the record a start reads, not the one the screen
-   * held at the press. With nothing on its way they are one record, and the
-   * run is started, or refused, in the press's own turn, exactly as a press
-   * on cell 02's or cell 03's own button starts or refuses it. With a write
-   * on its way - a tuning left for this press, a day chosen a moment
-   * before - the run is going from the press as the press's plan would go,
-   * with its job and its flags, waits for the writes as a start does, and
-   * then makes the plan again from the record they leave: a tuning that
-   * landed makes it a layout though only the day was behind at the press,
-   * and a day that landed is the day a rebuild draws and writes. Where the
-   * writes leave nothing to run, nothing runs (`#withdraw`).
+   * The plan is made from the record the store answers once the writes sent
+   * before the press have landed (`#read`, spec 037), not the one the screen
+   * held at the press. The run is going from the press as the press's plan
+   * would go, with its job and its flags, and makes the plan again from the
+   * record it reads: a tuning that landed makes it a layout though only the
+   * day was behind at the press, and a day that landed is the day a rebuild
+   * draws and writes. Where the record read leaves nothing to run, nothing
+   * runs (`#withdraw`). An engine that cannot run refuses at once, as a
+   * press on cell 02's or cell 03's own button does.
    */
   runAll(handed: ProjectRecord, engine: EngineState | null, planOf: RunAllPlanOf): void {
     if (this.#snapshot.state === 'running') return
@@ -1004,37 +906,33 @@ export class LayoutRun {
     // and a re-layout stopped half way from it: the one before this press,
     // never the one the press itself starts.
     const before = { snapshot: this.#snapshot, attempt: this.#attempt }
-    const now = this.#current(handed)
-    const pressed = planOf(now, before.snapshot)
-    // With nothing on its way the press's plan is the plan, started in this
-    // turn as a press on cell 02's or cell 03's own button starts it; and an
-    // engine that cannot run refuses at once, whatever is on its way, as
-    // that run refuses.
-    if (this.#writes.size === 0 || engine === null || engine.state !== 'ready') {
-      if (pressed.kind === 'layout') this.#startLayout(now, engine, false)
-      else if (pressed.kind === 'rebuild') this.#startRebuild(now, engine, pressed.date)
+    const pressed = planOf(handed, before.snapshot)
+    if (engine === null || engine.state !== 'ready') {
+      if (pressed.kind === 'layout') this.#startLayout(handed, engine, false)
+      else if (pressed.kind === 'rebuild') this.#startRebuild(handed, engine, pressed.date)
       return
     }
-    // A write on its way: going from the press as the press's plan would go
-    // - its job, its flags, the cell that reads running - until the writes
-    // have landed. The engine is ready, so `#begin` starts it.
+    // Going from the press as the press's plan would go - its job, its
+    // flags, the cell that reads running - until the record is read. The
+    // engine is ready, so `#begin` starts it.
     if (pressed.kind === 'rebuild') {
-      this.#open('rebuild', `Rebuild for ${pressed.date}`, now.id)
+      this.#open('rebuild', `Rebuild for ${pressed.date}`, handed.id)
       this.#begin(engine, kindFlags({ kind: 'rebuild', day: pressed.date }))
     } else {
       // A plan of nothing goes this way too, as a layout, for as long as the
-      // wait: cell 02 reads running and the inspector lists a layout run
+      // read: cell 02 reads running and the inspector lists a layout run
       // until the plan is made again. It is rare - the header offers Run all
       // only for a plan of its own, so this is a record read newer than the
-      // render's - and nothing runs unless the writes leave a run to make.
-      this.#open('layout', 'Layout run', now.id)
+      // render's - and nothing runs unless the record read leaves a run to
+      // make.
+      this.#open('layout', 'Layout run', handed.id)
       this.#begin(engine, kindFlags({ kind: 'layout', forced: false }))
-      this.#feedKey = now.feed
+      this.#feedKey = handed.feed
     }
 
     void (async () => {
-      const project = await this.#afterWrites(now)
-      if (this.#cancelled) return this.#stopped()
+      const project = await this.#readFor(handed.id)
+      if (project === null) return
       const plan = planOf(project, before.snapshot)
       if (plan.kind === 'none') return this.#withdraw(before)
       if (plan.kind === 'layout' || project.layout === null) {
@@ -1053,7 +951,7 @@ export class LayoutRun {
   }
 
   /**
-   * Run all's run, once it has chosen it after the wait (issue 407): the job
+   * Run all's run, once it has chosen it after its read (issue 407): the job
    * and the flags the press gave it become the chosen run's where they
    * differ, so the cell that reads running and the job the inspector lists
    * are the run that is going. The same job - its id, its start and its log
@@ -1071,8 +969,8 @@ export class LayoutRun {
   }
 
   /**
-   * Run all found nothing to run once the writes it waited for had landed
-   * (issue 407): a mode or a day put back as the press took focus from it.
+   * Run all found nothing to run in the record it read (issue 407): a mode
+   * or a day put back as the press took focus from it.
    * The press started no run, so the run is put back as it stood before the
    * press - that snapshot, the very object, and that attempt - rather than
    * ended: no job ends, no cell says it was stopped, and the screen, which
@@ -1106,52 +1004,17 @@ export class LayoutRun {
    * record never claims a colour the page on screen does not show.
    */
   recolour(project: ProjectRecord, engine: EngineState | null, palette: Palette): void {
-    if (this.#snapshot.state === 'running') return
     const { completeColors } = this.#options
-    this.#open('rebuild', 'Redraw in new colours', project.id)
-    const layout = project.layout
-    // The day the map on disk was drawn for, not the record's, which may be
-    // a day chosen and not yet drawn (A5.5-15): a colour is a render, and a
-    // render must not quietly draw a day nobody asked it to.
-    const date = drawnDate(project)
-    if (layout === null || date === null) {
-      this.#set({
-        state: 'failed',
-        error: 'Lay the project out before choosing colours.',
-        ...kindFlags({ kind: 'colours', day: date }),
-        replaced: false,
-        unkept: false,
-        download: null,
-        feedMissing: false,
-        layout: null,
-      })
-      return
-    }
-    if (!this.#begin(engine, kindFlags({ kind: 'colours', day: date }))) return
-
-    void (async () => {
-      // Whether the map was drawn before anything failed: a write refused
-      // after it leaves a page the record does not describe (`unkept`).
-      let drawn = false
-      try {
-        const { report, stations, late } = await this.#draw(
-          project,
-          layout,
-          date,
-          palette,
-          orderOf(project),
-          project.style,
-          project.lines,
-        )
-        drawn = true
-        await (stations === null
-          ? completeColors(project.id, palette)
-          : completeColors(project.id, palette, stations))
-        this.#finish({ changed: false, relaid: false }, report, late)
-      } catch (reason) {
-        this.#failed(reason, drawn)
-      }
-    })()
+    this.#redraw(project, engine, {
+      kind: 'colours',
+      label: 'Redraw in new colours',
+      refusal: 'Lay the project out before choosing colours.',
+      chosen: () => ({ palette }),
+      write: (id, sent, stations) =>
+        stations === null
+          ? completeColors(id, palette, sent)
+          : completeColors(id, palette, sent, stations),
+    })
   }
 
   /**
@@ -1162,50 +1025,17 @@ export class LayoutRun {
    * when the map has been drawn in it.
    */
   reorder(project: ProjectRecord, engine: EngineState | null, order: LineOrder): void {
-    if (this.#snapshot.state === 'running') return
     const { completeOrder } = this.#options
-    this.#open('rebuild', 'Redraw in a new line order', project.id)
-    const layout = project.layout
-    // The drawn day, as a recolour takes it, and for the same reason.
-    const date = drawnDate(project)
-    if (layout === null || date === null) {
-      this.#set({
-        state: 'failed',
-        error: 'Lay the project out before arranging the lines.',
-        ...kindFlags({ kind: 'order', day: date }),
-        replaced: false,
-        unkept: false,
-        download: null,
-        feedMissing: false,
-        layout: null,
-      })
-      return
-    }
-    if (!this.#begin(engine, kindFlags({ kind: 'order', day: date }))) return
-
-    void (async () => {
-      // Whether the map was drawn before anything failed: a write refused
-      // after it leaves a page the record does not describe (`unkept`).
-      let drawn = false
-      try {
-        const { report, stations, late } = await this.#draw(
-          project,
-          layout,
-          date,
-          paletteOf(project),
-          order,
-          project.style,
-          project.lines,
-        )
-        drawn = true
-        await (stations === null
-          ? completeOrder(project.id, order)
-          : completeOrder(project.id, order, stations))
-        this.#finish({ changed: false, relaid: false }, report, late)
-      } catch (reason) {
-        this.#failed(reason, drawn)
-      }
-    })()
+    this.#redraw(project, engine, {
+      kind: 'order',
+      label: 'Redraw in a new line order',
+      refusal: 'Lay the project out before arranging the lines.',
+      chosen: () => ({ order }),
+      write: (id, sent, stations) =>
+        stations === null
+          ? completeOrder(id, order, sent)
+          : completeOrder(id, order, sent, stations),
+    })
   }
 
   /**
@@ -1223,50 +1053,17 @@ export class LayoutRun {
    * for exactly what it asked for before the parameter existed.
    */
   restyle(project: ProjectRecord, engine: EngineState | null, style: ProjectStyle): void {
-    if (this.#snapshot.state === 'running') return
     const { completeStyle } = this.#options
-    this.#open('rebuild', 'Redraw in new sizes', project.id)
-    const layout = project.layout
-    // The drawn day, as a recolour takes it, and for the same reason.
-    const date = drawnDate(project)
-    if (layout === null || date === null) {
-      this.#set({
-        state: 'failed',
-        error: 'Lay the project out before choosing sizes.',
-        ...kindFlags({ kind: 'sizes', day: date }),
-        replaced: false,
-        unkept: false,
-        download: null,
-        feedMissing: false,
-        layout: null,
-      })
-      return
-    }
-    if (!this.#begin(engine, kindFlags({ kind: 'sizes', day: date }))) return
-
-    void (async () => {
-      // Whether the map was drawn before anything failed: a write refused
-      // after it leaves a page the record does not describe (`unkept`).
-      let drawn = false
-      try {
-        const { report, stations, late } = await this.#draw(
-          project,
-          layout,
-          date,
-          paletteOf(project),
-          orderOf(project),
-          style,
-          project.lines,
-        )
-        drawn = true
-        await (stations === null
-          ? completeStyle(project.id, style)
-          : completeStyle(project.id, style, stations))
-        this.#finish({ changed: false, relaid: false }, report, late)
-      } catch (reason) {
-        this.#failed(reason, drawn)
-      }
-    })()
+    this.#redraw(project, engine, {
+      kind: 'sizes',
+      label: 'Redraw in new sizes',
+      refusal: 'Lay the project out before choosing sizes.',
+      chosen: () => ({ style }),
+      write: (id, sent, stations) =>
+        stations === null
+          ? completeStyle(id, style, sent)
+          : completeStyle(id, style, sent, stations),
+    })
   }
 
   /**
@@ -1284,17 +1081,51 @@ export class LayoutRun {
    * what it is.
    */
   redrawLines(project: ProjectRecord, engine: EngineState | null, lines: ProjectLines): void {
-    if (this.#snapshot.state === 'running') return
     const { completeLines } = this.#options
-    this.#open('rebuild', 'Redraw with new line options', project.id)
-    const layout = project.layout
-    // The drawn day, as a recolour takes it, and for the same reason.
-    const date = drawnDate(project)
-    if (layout === null || date === null) {
+    this.#redraw(project, engine, {
+      kind: 'options',
+      label: 'Redraw with new line options',
+      refusal: 'Lay the project out before choosing line options.',
+      chosen: () => ({ lines }),
+      write: (id, sent, stations) =>
+        stations === null
+          ? completeLines(id, lines, sent)
+          : completeLines(id, lines, sent, stations),
+    })
+  }
+
+  /**
+   * One of the four redraws: the map alone, from the stored layout, for the
+   * day the map on disk was drawn for, with the one choice the redraw is for
+   * and everything else as the record holds it. Refused at once for a
+   * project with nothing drawn, as the panels ask (`refusedAtStart`), and
+   * otherwise going from the press; it reads its record as every run does
+   * (`#read`, spec 037), and writes the choice only once the map carries it.
+   *
+   * The day is the drawn one, not the record's, which may be a day chosen
+   * and not yet drawn (A5.5-15): a colour is a render, and a render must
+   * not quietly draw a day nobody asked it to.
+   */
+  #redraw(
+    handed: ProjectRecord,
+    engine: EngineState | null,
+    redraw: {
+      kind: 'colours' | 'order' | 'sizes' | 'options'
+      label: string
+      refusal: string
+      chosen: () => Partial<Pick<DrawArgs, 'palette' | 'order' | 'style' | 'lines'>>
+      write: (id: string, sent: SentSet, stations: Station[] | null) => Promise<unknown>
+    },
+  ): void {
+    if (this.#snapshot.state === 'running') return
+    this.#pressed()
+    this.#open('rebuild', redraw.label, handed.id)
+    const date = drawnDate(handed)
+    if (handed.layout === null || date === null) {
       this.#set({
         state: 'failed',
-        error: 'Lay the project out before choosing line options.',
-        ...kindFlags({ kind: 'options', day: date }),
+        error: redraw.refusal,
+        ...kindFlags({ kind: redraw.kind, day: date }),
         replaced: false,
         unkept: false,
         download: null,
@@ -1303,26 +1134,32 @@ export class LayoutRun {
       })
       return
     }
-    if (!this.#begin(engine, kindFlags({ kind: 'options', day: date }))) return
+    if (!this.#begin(engine, kindFlags({ kind: redraw.kind, day: date }))) return
 
     void (async () => {
+      const project = await this.#readFor(handed.id)
+      if (project === null) return
+      const layout = project.layout
+      const day = drawnDate(project)
+      if (layout === null || day === null) return this.#failed(new Error(redraw.refusal))
+      // The day the record read says the map shows, which the flags say too.
+      if (day !== this.#snapshot.day) this.#set({ day })
       // Whether the map was drawn before anything failed: a write refused
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations, late } = await this.#draw(
-          project,
+        const { report, stations, late, sent } = await this.#draw(project, {
           layout,
-          date,
-          paletteOf(project),
-          orderOf(project),
-          project.style,
-          lines,
-        )
+          made: project.made,
+          date: day,
+          palette: paletteOf(project),
+          order: orderOf(project),
+          style: project.style,
+          lines: project.lines,
+          ...redraw.chosen(),
+        })
         drawn = true
-        await (stations === null
-          ? completeLines(project.id, lines)
-          : completeLines(project.id, lines, stations))
+        await redraw.write(project.id, sent, stations)
         this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
@@ -1331,53 +1168,44 @@ export class LayoutRun {
   }
 
   /**
-   * The record as it stands, as far as the screen's writes tell (issue 407):
-   * the one handed, or the store's answer to the latest write it took where
-   * that was written after the one handed. A press made in the beat between
-   * a write's answer and the screen rendering it is handed the record from
-   * before the write; the store's answer is the whole record as the store
-   * then held it, every write before it in it, so it is read whole, as a
-   * start that waited reads it. A record handed that was written after the
-   * answer - a later edit the screen has drawn, a run's own write read back
-   * - is the newer, and is read.
-   */
-  #current(handed: ProjectRecord): ProjectRecord {
-    const taken = this.#taken?.record
-    return taken !== undefined && writtenAfter(taken, handed) ? taken : handed
-  }
-
-  /**
-   * The record a layout run or a rebuild reads when a write to it was on
-   * its way as it started (issue 388). Once every write on its way then has
-   * been answered or refused, it is the store's answer to the last of them
-   * it took - the record as it then stood, every write sent before that one
-   * in it, since the store writes a project's record one write at a time in
-   * the order they were sent - or, where it took none, the record handed,
-   * which is then the record as it stands (`#current` made it so at the
-   * press). A write sent after the start is not waited for: a run sends
-   * what it was started with (spec 033, FR-007). With one qualification
-   * (issue 407): an operator still waiting at the press is a write on its
-   * way, sent only once every write sent before it has landed, a field
-   * committed after the press among them, and made from the store's answer
-   * to those; its answer, which this reads, then carries that field. The
-   * run sends it, and the record stays whole, since what the layout was
-   * asked with is written beside it (`laidOutWith`).
+   * The record a run plans from: the store's answer to `projects.get`, which
+   * main queues behind the project's writes, so it holds every write sent
+   * before it (spec 037, FR-006/FR-007). The screen's writes, the debounced
+   * day flushed by `beforeStart` among them, were sent before the press
+   * that starts the run, and so before this read: the run sends what was
+   * chosen before the press. A write sent after it is not in it: a run
+   * sends what it was started with (spec 033, FR-007).
    *
-   * It has no deadline: a write the store has not answered has not landed,
-   * and reading the record before it lands is the fault this is here for.
-   * The run is `running` while it waits, so Cancel is on the screen, and a
-   * cancel ends the wait at once; the caller then finds the run cancelled.
+   * The run is `running` while it reads, so Cancel is on the screen, and a
+   * cancel ends the read at once with null.
    */
-  #afterWrites(handed: ProjectRecord): Promise<ProjectRecord> {
-    const writes = [...this.#writes]
-    return new Promise<ProjectRecord>((settle) => {
-      this.#wake = () => settle(handed)
-      void Promise.all(writes.map((write) => write.settled)).then(() => {
-        settle(lastTaken(writes) ?? handed)
-      })
+  #read(id: string): Promise<ProjectRecord | null> {
+    return new Promise<ProjectRecord | null>((settle, fail) => {
+      this.#wake = () => settle(null)
+      this.#options.read(id).then(settle, fail)
     }).finally(() => {
       this.#wake = null
     })
+  }
+
+  /**
+   * `#read` for a run that has just begun: the record, or null when the run
+   * was cancelled while it read or the read failed, either of which has
+   * ended the run already.
+   */
+  async #readFor(id: string): Promise<ProjectRecord | null> {
+    let project: ProjectRecord | null
+    try {
+      project = await this.#read(id)
+    } catch (reason) {
+      this.#failed(reason)
+      return null
+    }
+    if (project === null || this.#cancelled) {
+      this.#stopped()
+      return null
+    }
+    return project
   }
 
   /** The engine ready, the line reset, the snapshot running; false when it cannot start. */
@@ -1456,13 +1284,17 @@ export class LayoutRun {
    */
   async #draw(
     project: ProjectRecord,
-    layout: string,
-    date: string,
-    palette: Palette,
-    order: LineOrder,
-    style: ProjectStyle,
-    lines: ProjectLines | undefined,
-  ): Promise<{ report: RunReport | null; stations: Station[] | null; late: boolean }> {
+    draw: DrawArgs,
+  ): Promise<{
+    report: RunReport | null
+    stations: Station[] | null
+    late: boolean
+    sent: SentSet
+  }> {
+    const { layout, date, palette, order, style, lines } = draw
+    // What the request below is built from, copied once, which every
+    // completion hands the record as what the map was drawn from (spec 037).
+    const sent = sentSet(draw)
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
@@ -1506,6 +1338,7 @@ export class LayoutRun {
       report: reportOf(drawn, date),
       stations: stationsFrom(drawn),
       late: cameTooLate(drawn),
+      sent,
     }
   }
 
@@ -1520,11 +1353,6 @@ export class LayoutRun {
     report: RunReport | null,
     late = false,
   ): void {
-    // The run's own write, and the record the screen reads back after it,
-    // are newer than any answer kept for the beat before a render (issue
-    // 407, `#current`); kept past them, it would rest on the store's clock
-    // never stepping back.
-    this.#taken = null
     this.#set({
       state: 'done',
       stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
@@ -1671,7 +1499,7 @@ export class LayoutRun {
     if (this.#snapshot.state !== 'running') return
     this.#cancelled = true
     this.#inFlight?.cancel()
-    // A start still waiting for a write to the record stops waiting (issue 388).
+    // A start still reading its record stops reading (spec 037).
     this.#wake?.()
   }
 

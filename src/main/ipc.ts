@@ -32,7 +32,9 @@ import {
   type ProjectStyle,
   type ProjectTuning,
   type RebuildDone,
+  type SentSet,
   validateMade,
+  validateSent,
   validateServiceDate,
   validateServiceWindow,
 } from '../shared/project'
@@ -78,10 +80,33 @@ function readDrawnStations(raw: unknown): { stations?: Station[] } {
 }
 
 /**
+ * What a run's `map.build` was sent (spec 037, FR-002), as the page relayed
+ * it: the record keeps it as `drawn`, so every field is held to the rule
+ * the record's own field is, with that field's sentence, as a setter's
+ * argument is (`validateSent`). Only the eight fields are taken, each
+ * copied, and the style and the line options by their readers below, so
+ * nothing else on it reaches the store.
+ */
+function readSent(raw: unknown): SentSet {
+  check(validateSent(raw))
+  const given = raw as SentSet
+  const sent: SentSet = {
+    layout: given.layout,
+    made: given.made,
+    date: given.date,
+    ...readPalette({ colors: given.colors, defaultColor: given.defaultColor }),
+    lineOrder: readLineOrder(given.lineOrder),
+    style: readStyle(given.style),
+  }
+  if (given.lines !== undefined) sent.lines = readLines(given.lines)
+  return sent
+}
+
+/**
  * What a finished run hands back: the day, the engine's layout id and the
- * feed's window, as the page relayed them, and the stations its map was
- * drawn with. All are checked for shape here; none is a path, and nothing
- * is opened.
+ * feed's window, as the page relayed them, the stations its map was drawn
+ * with, and what its `map.build` was sent. All are checked for shape here;
+ * none is a path, and nothing is opened.
  */
 function readLayoutDone(raw: unknown): LayoutDone {
   const input = isObject(raw) ? raw : {}
@@ -106,15 +131,17 @@ function readLayoutDone(raw: unknown): LayoutDone {
     // The tuning the run sent (issue 385), held to the rules the record's
     // own is, or nothing for a run sent none.
     ...(input.tuning === undefined ? {} : { tuning: readTuning(input.tuning) }),
+    sent: readSent(input.sent),
   }
 }
 
-/** What a finished rebuild hands back: the day the map was drawn for, and its stations. */
+/**
+ * What a finished rebuild hands back: what its `map.build` was sent, whose
+ * day is the day written, and its stations.
+ */
 function readRebuildDone(raw: unknown): RebuildDone {
   const input = isObject(raw) ? raw : {}
-  const date = typeof input.date === 'string' ? input.date : ''
-  check(validateServiceDate(date))
-  return { date, ...readDrawnStations(input.stations) }
+  return { sent: readSent(input.sent), ...readDrawnStations(input.stations) }
 }
 
 /**
@@ -127,6 +154,30 @@ function readServiceDay(raw: unknown): string {
   const date = typeof raw === 'string' ? raw : ''
   check(validateServiceDate(date))
   return date
+}
+
+/**
+ * A change to the two inputs a person chose (spec 037, FR-005): the mode,
+ * the operator or both, each held to the rule `readInputs` holds it to, and
+ * at least one of them. The store writes the fields it names and leaves the
+ * other as the writes before it left it.
+ */
+function readInputsPatch(raw: unknown): Partial<ProjectInputs> {
+  const input = isObject(raw) ? raw : {}
+  const patch: Partial<ProjectInputs> = {}
+  if (input.mode !== undefined) {
+    const mode = typeof input.mode === 'string' ? input.mode : ''
+    check(validateMode(mode))
+    patch.mode = mode
+  }
+  if (input.agency !== undefined) {
+    const agency = input.agency === null ? null : input.agency
+    if (typeof agency !== 'string' && agency !== null) throw new Error('agency must be text')
+    check(validateAgency(agency))
+    patch.agency = agency
+  }
+  if (patch.mode === undefined && !('agency' in patch)) check(validateMode(''))
+  return patch
 }
 
 /** The two inputs a person chose: a mode by the engine's rule, an agency id or none. */
@@ -319,28 +370,67 @@ export function registerClipboardHandler(
  */
 export type StoreBlocked = () => string | null
 
+/**
+ * The six writers that end a draw, by channel: a refusal of one is a map
+ * drawn and not kept (`unkept` in the run), worth a line in the log.
+ */
+const COMPLETIONS: Readonly<Record<string, string>> = {
+  [CHANNELS.projectsCompleteLayout]: 'completeLayout',
+  [CHANNELS.projectsCompleteRebuild]: 'completeRebuild',
+  [CHANNELS.projectsCompleteColors]: 'completeColors',
+  [CHANNELS.projectsCompleteOrder]: 'completeOrder',
+  [CHANNELS.projectsCompleteStyle]: 'completeStyle',
+  [CHANNELS.projectsCompleteLines]: 'completeLines',
+}
+
+/**
+ * The line a refused completion leaves in the log: the writer, the project's
+ * id where it is one, and the refusal's own sentence, which is a person's
+ * sentence and never names a path (this module's rule, and the store's). No
+ * record contents and no project name.
+ */
+export function refusedLine(writer: string, id: unknown, error: unknown): string {
+  const project = typeof id === 'string' && validateId(id) === null ? id : 'an invalid id'
+  const sentence = error instanceof Error ? error.message : String(error)
+  return `${writer} for ${project} refused: ${sentence}`
+}
+
 export function registerProjectHandlers(
   ipcMain: IpcMain,
   store: ProjectStore,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
   blocked: StoreBlocked = () => null,
+  refused: (line: string) => void = () => undefined,
 ): void {
   const handle = (
     channel: string,
     handler: (...args: unknown[]) => Promise<unknown>,
     writes = true,
   ): void => {
+    const writer = COMPLETIONS[channel]
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
       // Only the interface's own top frame reaches the store: a project page
       // in an iframe shares the origin but must not have the bridge.
       if (!isTopFrame(event)) throw new Error('forbidden')
-      // Reading during a reset is harmless - it answers what is there, or
-      // that there is nothing - so only the writes are held.
-      if (writes) {
-        const why = blocked()
-        if (why !== null) throw new Error(why)
+      // A completion refused, here or by the store, is a map drawn and not
+      // kept: said in the log, with the writer and the sentence, then
+      // answered as the refusal it is. The store is still reached in this
+      // turn, which the record session rests on (spec 037).
+      const said = (error: unknown): never => {
+        if (writer !== undefined) refused(refusedLine(writer, args[0], error))
+        throw error
       }
-      return handler(...args)
+      try {
+        // Reading during a reset is harmless - it answers what is there, or
+        // that there is nothing - so only the writes are held.
+        if (writes) {
+          const why = blocked()
+          if (why !== null) throw new Error(why)
+        }
+        return writer === undefined ? handler(...args) : handler(...args).catch(said)
+      } catch (error) {
+        return said(error)
+      }
     })
   }
 
@@ -356,34 +446,26 @@ export function registerProjectHandlers(
     store.completeRebuild(readId(id), readRebuildDone(done)),
   )
   handle(CHANNELS.projectsSetInputs, (id, inputs) =>
-    store.setInputs(readId(id), readInputs(inputs)),
+    store.setInputs(readId(id), readInputsPatch(inputs)),
   )
-  // A redraw's stations (issue 272) ride as an optional last argument,
-  // passed on only when the list reads whole, so a call without one reaches
-  // the store exactly as it always did.
-  handle(CHANNELS.projectsCompleteColors, (id, palette, stations) => {
+  // A redraw's sent set (spec 037) follows the choice it drew, and its
+  // stations (issue 272) ride as an optional last argument, passed on only
+  // when the list reads whole.
+  handle(CHANNELS.projectsCompleteColors, (id, palette, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeColors(readId(id), readPalette(palette))
-      : store.completeColors(readId(id), readPalette(palette), drawn)
+    return store.completeColors(readId(id), readPalette(palette), readSent(sent), drawn)
   })
-  handle(CHANNELS.projectsCompleteOrder, (id, order, stations) => {
+  handle(CHANNELS.projectsCompleteOrder, (id, order, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeOrder(readId(id), readLineOrder(order))
-      : store.completeOrder(readId(id), readLineOrder(order), drawn)
+    return store.completeOrder(readId(id), readLineOrder(order), readSent(sent), drawn)
   })
-  handle(CHANNELS.projectsCompleteStyle, (id, style, stations) => {
+  handle(CHANNELS.projectsCompleteStyle, (id, style, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeStyle(readId(id), readStyle(style))
-      : store.completeStyle(readId(id), readStyle(style), drawn)
+    return store.completeStyle(readId(id), readStyle(style), readSent(sent), drawn)
   })
-  handle(CHANNELS.projectsCompleteLines, (id, lines, stations) => {
+  handle(CHANNELS.projectsCompleteLines, (id, lines, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeLines(readId(id), readLines(lines))
-      : store.completeLines(readId(id), readLines(lines), drawn)
+    return store.completeLines(readId(id), readLines(lines), readSent(sent), drawn)
   })
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))

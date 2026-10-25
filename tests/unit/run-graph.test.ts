@@ -11,7 +11,8 @@ import {
   type ExportFacts,
   type RunFacts,
 } from '../../src/renderer/src/runGraph'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 // The run graph (A5.5-04, ADR-045, specs/028-the-notebook/contracts/run-graph.md).
 // A table of records, because the model is the thing being tested and not
@@ -52,7 +53,7 @@ const rc4: ProjectRecord = {
 }
 
 /** The same project after one draw under this issue: its map is current. */
-const current: ProjectRecord = { ...rc4, drawn: drawnFrom(rc4) }
+const current: ProjectRecord = { ...rc4, drawn: drawnOf(rc4) }
 
 const idle: RunFacts = {
   state: 'idle',
@@ -358,7 +359,7 @@ describe('the cheap edits ADR-045 exempts', () => {
     // A map drawn with a size matches the record that holds it, and not one
     // that has since moved.
     const drawnWith: ProjectRecord = { ...current, style: { lineWidth: 12 } }
-    const withSize: ProjectRecord = { ...drawnWith, drawn: drawnFrom(drawnWith) }
+    const withSize: ProjectRecord = { ...drawnWith, drawn: drawnOf(drawnWith) }
     expect(drawnMatchesEdits(withSize)).toBe(true)
     expect(drawnMatchesEdits({ ...withSize, style: { lineWidth: 13 } })).toBe(false)
     expect(drawnMatchesEdits({ ...withSize, style: {} })).toBe(false)

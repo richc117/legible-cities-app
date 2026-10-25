@@ -18,7 +18,8 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { DRAW_AGAIN, NOT_LAID_OUT, TRIP_INTRO } from '../../src/renderer/src/tripWords'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
-import { DEFAULT_STYLE, drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 import type { Station } from '../../src/shared/trip'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'frame') as Cell
@@ -57,7 +58,7 @@ const base: ProjectRecord = {
 /** Laid out, its map drawn with the stand-in engine's three stations. */
 const drawn: ProjectRecord = {
   ...base,
-  drawn: { ...(drawnFrom(base) as NonNullable<ProjectRecord['drawn']>), stations: STATIONS },
+  drawn: { ...(drawnOf(base) as NonNullable<ProjectRecord['drawn']>), stations: STATIONS },
 }
 
 /** Never laid out. */
@@ -154,7 +155,7 @@ describe("cell 03's Trip section", () => {
 
   it('says to draw the map again over a record that kept no stations, and disables nothing', () => {
     for (const project of [
-      { ...base, drawn: drawnFrom(base) },
+      { ...base, drawn: drawnOf(base) },
       { ...base, drawn: null },
     ]) {
       const trip = section(draw(project))

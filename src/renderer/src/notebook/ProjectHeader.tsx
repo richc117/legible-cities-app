@@ -88,9 +88,9 @@ export default function ProjectHeader(): JSX.Element {
     `${runSnapshot.state}/${offered}`,
   )
   // Offered from the plan this render made, but the run makes it again, from
-  // the record it reads: a tuning or a mode the press committed, or a day
-  // chosen a moment before, is a write still on its way, and which run it
-  // takes is the record's once that has landed (issue 407).
+  // the record it reads from the store: a tuning or a mode the press
+  // committed, or a day chosen a moment before, was sent before that read,
+  // and which run it takes is the record's with it (issue 407, spec 037).
   const runAll = (): void => {
     if (project === null || !offered) return
     run.runAll(project, engine, runAllPlan)

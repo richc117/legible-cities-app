@@ -5,6 +5,12 @@
 // at the press - and, since issue 407, as Run all makes one,
 // `run.runAll(project, engine, runAllPlan)`.
 //
+// Since spec 037 the screen sends every write at once and the run reads its
+// record through the bridge's `projects.get`, which main queues behind the
+// project's writes. The bridge here does what main does: one queue, a read
+// answered only once every write sent before it has landed, and the record
+// a landed write answered with is the one a later read answers.
+//
 // A field in cell 02's Layout tuning commits when it is left, and cell 01's
 // mode and operator when they are chosen. When what takes focus away is the
 // press on Lay out, the commit is a write through the bridge - an IPC round
@@ -33,7 +39,8 @@ import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 const runs = vi.hoisted(() => ({
   layout: null as unknown,
@@ -134,6 +141,7 @@ function answeringRun(complete = vi.fn(async () => ({ changed: false, relaid: fa
     reject: (error: unknown) => void
   }[] = []
   const run = new LayoutRun({
+    read: readThroughBridge,
     client: {
       request(method, params) {
         let resolve!: (value: unknown) => void
@@ -177,6 +185,54 @@ interface Bridge {
   engine: { onState: () => () => void; state: () => Promise<EngineState> }
 }
 
+/** A call on the bridge's stand-in, as a function the test's mocks are. */
+type Call = (...args: unknown[]) => Promise<unknown>
+
+/** The run's read of its record, through the bridge the hook sees, as `runs.ts` wires it. */
+const readThroughBridge = (id: string): Promise<ProjectRecord> =>
+  ((globalThis as unknown as { window: { api: Bridge } }).window.api.projects.get as Call)(
+    id,
+  ) as Promise<ProjectRecord>
+
+/** What the store holds; a write that lands moves it, and a read answers it. */
+let stored: ProjectRecord
+/** The project's one queue, as `ProjectStore.#serial` keeps it. */
+let line: Promise<unknown>
+
+function queued<T>(step: () => Promise<T>): Promise<T> {
+  const next = line.then(step)
+  line = next.catch(() => undefined)
+  return next
+}
+
+/**
+ * The bridge the hook and the run see: each call goes into the queue in the
+ * order it was made, as main applies a frame's calls (spec 037), and is
+ * answered there by the test's own mock, which may hold it open. A write's
+ * answer is what the store then holds.
+ */
+function sessionOf(api: Bridge): Bridge {
+  const write =
+    (mock: ReturnType<typeof vi.fn>) =>
+    (...args: unknown[]): Promise<unknown> =>
+      queued(async () => {
+        const answer = (await (mock as Call)(...args)) as ProjectRecord | undefined
+        if (answer !== undefined) stored = answer
+        return answer
+      })
+  return {
+    ...api,
+    projects: {
+      get: ((...args: unknown[]) =>
+        queued(async () => (api.projects.get as Call)(...args))) as never,
+      markOpened: api.projects.markOpened,
+      setTuning: write(api.projects.setTuning) as never,
+      setInputs: write(api.projects.setInputs) as never,
+      setDate: write(api.projects.setDate) as never,
+    },
+  }
+}
+
 /**
  * The least `createRoot` and a commit ask of a container, and a window
  * carrying the bridge the hook reads. The component renders nothing.
@@ -189,7 +245,7 @@ function container(api: Bridge): Element {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }
-  const window = { document, HTMLIFrameElement: class {}, api }
+  const window = { document, HTMLIFrameElement: class {}, api: sessionOf(api) }
   document.defaultView = window
   vi.stubGlobal('window', window)
   return {
@@ -234,8 +290,11 @@ const builds = (): Record<string, unknown>[] =>
 beforeEach(() => {
   const recording = recordingClient()
   sent = recording.sent
+  stored = RECORD
+  line = Promise.resolve()
   runs.layout = new LayoutRun({
     client: recording.client,
+    read: readThroughBridge,
     complete: async () => ({ changed: false, relaid: false }),
     completeRebuild: async () => ({}),
     completeColors: async () => ({}),
@@ -246,7 +305,7 @@ beforeEach(() => {
   })
   api = {
     projects: {
-      get: vi.fn(async () => ({ ...RECORD, readOnly: false })),
+      get: vi.fn(async () => ({ ...stored, readOnly: false })),
       markOpened: vi.fn(async () => RECORD),
       setTuning: vi.fn(),
       setInputs: vi.fn(),
@@ -266,10 +325,8 @@ afterEach(() => {
 
 describe('a value committed by the press on Lay out is the one the run sends', () => {
   it('the tuning a field committed as it was left, its write still on its way at the press', async () => {
-    // Mutation: the start reading the record it was handed whatever is on
-    // its way (`engine/layoutRun.ts`), or `setTuning` not handing its write
-    // to the run (`useProjectState.ts`) - graph.build goes at the press,
-    // without the tuning.
+    // Mutation: the start planning from the record it was handed
+    // (`engine/layoutRun.ts`) - graph.build goes without the tuning.
     await opened()
     const write = deferred<ProjectRecord>()
     api.projects.setTuning.mockReturnValueOnce(write.promise)
@@ -278,6 +335,8 @@ describe('a value committed by the press on Lay out is the one the run sends', (
       committed = shown.setTuning({ gridSize: 50 })
     })
     press()
+    await act(tick)
+    expect(builds(), 'nothing is laid out while the tuning is on its way').toHaveLength(0)
     await act(async () => {
       write.resolve({ ...RECORD, tuning: { gridSize: 50 } })
       await committed
@@ -288,8 +347,8 @@ describe('a value committed by the press on Lay out is the one the run sends', (
   })
 
   it('the mode and the operator cell 01 chose, their write still on its way at the press', async () => {
-    // Mutation: `setInputs` not handing its write to the run
-    // (`useProjectState.ts`) - graph.build goes at the press with `all`.
+    // Mutation: the start planning from the record it was handed
+    // (`engine/layoutRun.ts`) - graph.build goes with `all`.
     await opened()
     const write = deferred<ProjectRecord>()
     api.projects.setInputs.mockReturnValueOnce(write.promise)
@@ -307,10 +366,11 @@ describe('a value committed by the press on Lay out is the one the run sends', (
     expect(builds()[0]).toMatchObject({ mode: 'subway', agency: 'METRO' })
   })
 
-  it('a day chosen in cell 03 is handed over too, so the run waits for it', async () => {
+  it('a day chosen in cell 03 is read with it, so the run draws it', async () => {
     // A day is written a beat after it is picked; a layout run draws the
-    // record's day. Mutation: `setDate` not handing its write to the run
-    // (`useProjectState.ts`) - graph.build goes at the press.
+    // record's day. Mutation: the run's read not queued behind the writes
+    // (`queued` dropped from the bridge's `get` here, as `get` outside the
+    // store's queue in main) - graph.build goes before the day lands.
     await opened()
     const write = deferred<ProjectRecord>()
     api.projects.setDate.mockReturnValueOnce(write.promise)
@@ -319,6 +379,7 @@ describe('a value committed by the press on Lay out is the one the run sends', (
       committed = shown.setDate('2026-09-12')
     })
     press()
+    await act(tick)
     expect(builds(), 'nothing is laid out while the day is on its way').toHaveLength(0)
     await act(async () => {
       write.resolve({ ...RECORD, date: '2026-09-12' })
@@ -331,8 +392,7 @@ describe('a value committed by the press on Lay out is the one the run sends', (
   it('a refused write: the writer hears why, and the run goes from the record as it stands', async () => {
     // The section shows the refusal and goes back to the record (`notSaved`
     // in `LayoutTuning.tsx`); the run must neither wait for ever nor send
-    // what was refused. Mutation: `writing` without its refusal handler
-    // (`engine/layoutRun.ts`) - the wait never ends and nothing is laid out.
+    // what was refused: the store answers its read with what it kept.
     await opened()
     const write = deferred<ProjectRecord>()
     api.projects.setTuning.mockReturnValueOnce(write.promise)
@@ -351,16 +411,16 @@ describe('a value committed by the press on Lay out is the one the run sends', (
     expect(shown.project?.tuning, 'nor does the screen hold one').toBeUndefined()
   })
 
-  it('with nothing on its way, the press lays out in its own turn, from the record the screen holds', async () => {
-    // Mutation: the start awaiting the writes whatever is on its way
-    // (`engine/layoutRun.ts`) - nothing is asked in the press's own turn.
+  it('with nothing on its way, the press lays out once the store has answered its read', async () => {
     await opened()
     api.projects.setTuning.mockResolvedValueOnce({ ...RECORD, tuning: { gridSize: 50 } })
     await act(async () => {
       await shown.setTuning({ gridSize: 50 })
     })
     press()
-    expect(builds(), 'asked in the press’s own turn').toHaveLength(1)
+    expect(builds(), 'nothing before the record is read').toHaveLength(0)
+    await act(tick)
+    expect(builds(), 'a turn later').toHaveLength(1)
     expect(builds()[0].tuning).toEqual({ grid_size: 50 })
   })
 })
@@ -369,12 +429,12 @@ describe('a value committed by the press on Lay out is the one the run sends', (
 // the day, and it chooses from the record the writes on its way leave, as
 // `ProjectHeader.tsx` asks it: `run.runAll(project, engine, runAllPlan)`,
 // handed the record the screen held at the press.
-describe('Run all chooses its run from the record the writes on their way leave', () => {
+describe('Run all chooses its run from the record the store answers', () => {
   /** Laid out and drawn for the 15th, with the 12th chosen since: only the day is behind. */
   const drawnFor15 = { ...RECORD, date: '2026-09-15' } as ProjectRecord
   const DAY_BEHIND = {
     ...drawnFor15,
-    drawn: drawnFrom(drawnFor15),
+    drawn: drawnOf(drawnFor15),
     date: '2026-09-12',
   } as ProjectRecord
 
@@ -384,11 +444,10 @@ describe('Run all chooses its run from the record the writes on their way leave'
   }
 
   it('a tuning committed by its press, with only the day behind: a layout, with the tuning', async () => {
-    // Mutation: `runAll` making the plan after the wait from the record it
-    // was handed (`engine/layoutRun.ts`), or `setTuning` not handing its
-    // write to the run (`useProjectState.ts`) - map.build alone, for the
-    // day, and cell 02 left saying to lay out again.
-    api.projects.get.mockImplementation(async () => ({ ...DAY_BEHIND, readOnly: false }))
+    // Mutation: `runAll` making the plan after the read from the record it
+    // was handed (`engine/layoutRun.ts`) - map.build alone, for the day,
+    // and cell 02 left saying to lay out again.
+    stored = DAY_BEHIND
     await opened()
     expect(runAllPlan(shown.project as ProjectRecord, shown.runSnapshot)).toEqual({
       kind: 'rebuild',
@@ -401,6 +460,7 @@ describe('Run all chooses its run from the record the writes on their way leave'
       committed = shown.setTuning({ gridSize: 50 })
     })
     runAll()
+    await act(tick)
     expect(sent, 'nothing asked while the tuning is on its way').toHaveLength(0)
     await act(async () => {
       write.resolve({ ...DAY_BEHIND, tuning: { gridSize: 50 } })
@@ -420,14 +480,11 @@ describe('Run all chooses its run from the record the writes on their way leave'
     // address moves, reloading a map nobody drew.
     const { run, asked: answering } = answeringRun()
     runs.layout = run
-    api.projects.get.mockImplementation(async () => ({
-      ...RECORD,
-      mode: 'subway',
-      readOnly: false,
-    }))
+    stored = { ...RECORD, mode: 'subway' }
     await opened()
     act(() => shown.run.rebuild(shown.project as ProjectRecord, shown.engine, '2026-09-15'))
     await act(async () => {
+      await tick()
       answering[0].resolve({ files: {} })
       await tick()
       await tick()
@@ -459,21 +516,23 @@ describe('Run all chooses its run from the record the writes on their way leave'
     ).toEqual(['map.build'])
     expect(shown.runSnapshot.state).toBe('done')
     expect(shown.settling).toBe(false)
-    expect(api.projects.get.mock.calls.length, 'nothing read back').toBe(reads)
+    expect(
+      api.projects.get.mock.calls.length,
+      'the run’s own read of its record, and nothing read back',
+    ).toBe(reads + 1)
     expect(shown.drawn, 'the page not loaded again').toBe(1)
   })
 })
 
-// Issue 407. The write has answered, so it is no longer on its way, but the
-// screen has not rendered the record it answered with: the writer's update
-// is queued, and a press in that beat closes over the record the screen
-// held. The run keeps the store's latest answer and reads it where it was
-// written after the record it was handed.
+// Issue 407. The write has answered, but the screen has not rendered the
+// record it answered with: the writer's update is queued, and a press in
+// that beat closes over the record the screen held. The run reads the
+// store's record, which has it.
 describe('a press between a write’s answer and the screen rendering it', () => {
   it('lays out what the store answered, not the record the screen still holds', async () => {
-    // Mutation: `#current` answering the record handed whatever the store
-    // took (`engine/layoutRun.ts`) - graph.build goes without the tuning,
-    // which the screen draws a moment later.
+    // Mutation: the start planning from the record it was handed
+    // (`engine/layoutRun.ts`) - graph.build goes without the tuning, which
+    // the screen draws a moment later.
     await opened()
     const write = deferred<ProjectRecord>()
     api.projects.setTuning.mockReturnValueOnce(write.promise)
@@ -489,6 +548,7 @@ describe('a press between a write’s answer and the screen rendering it', () =>
       // press closes over the record it rendered last.
       expect(shown.project, 'not rendered yet').toBe(held)
       shown.run.start(shown.project as ProjectRecord, shown.engine)
+      await tick()
     })
     expect(builds()).toHaveLength(1)
     expect(builds()[0].tuning, 'the tuning the store answered with').toEqual({ grid_size: 50 })
@@ -516,10 +576,10 @@ describe('a day picked in cell 03, still waiting to be written at the press', ()
     return null
   }
 
-  it('is sent by the press, waited for, drawn, and so is the day the record says was drawn', async () => {
+  it('is sent by the press, before the run reads, and drawn', async () => {
     // Mutation: `useDayChoice` without its `beforeStart` effect
-    // (`ServiceDay.tsx`) - graph.build goes at the press, the map is drawn
-    // for the 15th, and the 20th lands while the run goes.
+    // (`ServiceDay.tsx`) - the run reads the 15th, the map is drawn for it,
+    // and the 20th lands while the run goes.
     const { run, asked, complete } = answeringRun()
     runs.layout = run
     await act(async () => root.render(<DayHarness />))
@@ -530,8 +590,9 @@ describe('a day picked in cell 03, still waiting to be written at the press', ()
     expect(api.projects.setDate, 'still waiting on its delay').not.toHaveBeenCalled()
 
     press()
+    await act(tick)
     expect(api.projects.setDate, 'sent by the press').toHaveBeenCalledWith('p1', '2026-09-20')
-    expect(asked, 'and waited for').toHaveLength(0)
+    expect(asked, 'and the read waits behind it').toHaveLength(0)
     await act(async () => {
       write.resolve({ ...RECORD, date: '2026-09-20' })
       await tick()
@@ -564,16 +625,15 @@ describe('a day picked in cell 03, still waiting to be written at the press', ()
   })
 })
 
-// Issue 407. Cell 01 writes the mode and the operator together, because the
-// bridge takes them together. An operator chosen while a mode was on its way
-// was sent with the mode this screen held, and the store, writing it second,
-// put the old mode back. `Inspect` now hands the writer a function of the
-// record (`chooseAgency`), and the writer sends it once the mode has landed.
+// Issue 407. An operator chosen while a mode was on its way was sent with the
+// mode this screen held, and the store, writing it second, put the old mode
+// back. `Inspect` sends the operator alone (`chooseAgency`), and the store
+// writes it onto the record the mode left (spec 037).
 describe('an operator chosen while a mode is on its way', () => {
-  it('goes with that mode, once it has landed, and does not put the old one back', async () => {
-    // Mutation: `setInputs` making a function's inputs from the record this
-    // screen held and sending them at once (`run.writing(send(inputs(project)))`
-    // in `useProjectState.ts`) - the operator is sent at once with `all`.
+  it('is sent at once and alone, and does not put the old mode back', async () => {
+    // Mutation: `setInputs` sending the operator with the mode this screen
+    // held (`{ ...pick(project), ...inputs }` in `useProjectState.ts`) - the
+    // operator goes with `all`.
     await opened()
     const mode = deferred<ProjectRecord>()
     const both = deferred<ProjectRecord>()
@@ -584,16 +644,20 @@ describe('an operator chosen while a mode is on its way', () => {
       chosen = shown.setInputs({ mode: 'subway', agency: null })
     })
     act(() => {
-      operator = shown.setInputs((record) => ({ mode: record.mode, agency: 'METRO' }))
+      // As `Inspect`'s `chooseAgency` sends it: the operator alone.
+      operator = shown.setInputs({ agency: 'METRO' })
     })
-    expect(api.projects.setInputs, 'the operator waits for the mode').toHaveBeenCalledTimes(1)
+    await act(tick)
+    expect(api.projects.setInputs, 'the mode was sent first').toHaveBeenNthCalledWith(1, 'p1', {
+      mode: 'subway',
+      agency: null,
+    })
     await act(async () => {
       mode.resolve({ ...RECORD, mode: 'subway' })
       await chosen
       await tick()
     })
-    expect(api.projects.setInputs).toHaveBeenLastCalledWith('p1', {
-      mode: 'subway',
+    expect(api.projects.setInputs, 'the operator alone').toHaveBeenLastCalledWith('p1', {
       agency: 'METRO',
     })
     await act(async () => {
@@ -616,7 +680,7 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
   const drawnFor15 = { ...RECORD, date: '2026-09-15' } as ProjectRecord
   const DAY_BEHIND = {
     ...drawnFor15,
-    drawn: drawnFrom(drawnFor15),
+    drawn: drawnOf(drawnFor15),
     date: '2026-09-12',
   } as ProjectRecord
   const putBack = vi.fn()
@@ -635,7 +699,7 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
     putBack.mockClear()
     const { run, asked } = answeringRun()
     runs.layout = run
-    api.projects.get.mockImplementation(async () => ({ ...DAY_BEHIND, readOnly: false }))
+    stored = DAY_BEHIND
     await act(async () => root.render(<ColoursHarness />))
     await act(tick)
 
@@ -646,6 +710,7 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
         defaultColor: '#888888',
       }),
     )
+    await act(tick)
     act(() => shown.run.cancel())
     await act(async () => {
       // Stopped: the engine's cancelled error, the one answer that says the
@@ -667,6 +732,7 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
     expect(shown.runSnapshot.state).toBe('running')
     await act(async () => {
       write.resolve({ ...DAY_BEHIND, date: '2026-09-15' })
+      await tick()
       await committed
       await tick()
     })
@@ -697,8 +763,8 @@ describe('a redraw the cancel reached too late', () => {
     // page from before.
     const { run, asked } = answeringRun()
     runs.layout = run
-    const before = { ...RECORD, drawn: drawnFrom(RECORD) } as ProjectRecord
-    api.projects.get.mockImplementation(async () => ({ ...before, readOnly: false }))
+    const before = { ...RECORD, drawn: drawnOf(RECORD) } as ProjectRecord
+    stored = before
     await act(async () => root.render(<Harness />))
     await act(tick)
     const loads = shown.drawn
@@ -706,17 +772,20 @@ describe('a redraw the cancel reached too late', () => {
 
     const chosen = { colors: { A: '#ff0000' }, defaultColor: '#888888' }
     act(() => shown.run.recolour(shown.project as ProjectRecord, shown.engine, chosen))
+    await act(tick)
+    const readsBefore = api.projects.get.mock.calls.length
     act(() => shown.run.cancel())
     // What the store holds once the run has written the colours it drew.
-    const after = { ...before, colors: chosen.colors, drawn: drawnFrom({ ...before, ...chosen }) }
-    api.projects.get.mockImplementation(async () => ({ ...after, readOnly: false }))
+    const after = { ...before, colors: chosen.colors, drawn: drawnOf({ ...before, ...chosen }) }
+    stored = after
     await act(async () => {
       asked[0].resolve({ files: {}, cancel_too_late: true })
       await tick()
       await tick()
     })
     expect(shown.runSnapshot).toMatchObject({ state: 'done', recoloured: true })
-    expect(api.projects.get.mock.calls.length, 'the record is read back').toBe(reads + 1)
+    expect(readsBefore, 'the run read its record once').toBe(reads + 1)
+    expect(api.projects.get.mock.calls.length, 'the record is read back').toBe(reads + 2)
     expect(shown.project?.colors, 'and is the one the run wrote').toEqual(chosen.colors)
     expect(shown.drawn, 'the frame loads the page the engine wrote').toBe(loads + 1)
   })

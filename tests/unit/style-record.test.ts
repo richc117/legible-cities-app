@@ -14,7 +14,6 @@ import { describe, expect, it } from 'vitest'
 import {
   CHOICE_KEYS,
   DEFAULT_STYLE,
-  drawnFrom,
   inStyleRange,
   INTERCHANGE_SHAPES,
   LABEL_FONTS,
@@ -39,6 +38,7 @@ import {
   type ProjectRecord,
   type ProjectStyle,
 } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 const ID = 'kq7x2mzp4dna'
 
@@ -161,20 +161,20 @@ describe('what a map drawn with a style remembers', () => {
   }
 
   it('is the style as it was sent', () => {
-    expect(drawnFrom(drew)?.style).toEqual({
+    expect(drawnOf(drew)?.style).toEqual({
       lineWidth: 12,
       stationRadius: 7,
       interchangeRadius: 9,
     })
-    expect(drawnFrom({ ...drew, style: { stationRadius: 5 } })?.style).toEqual({
+    expect(drawnOf({ ...drew, style: { stationRadius: 5 } })?.style).toEqual({
       stationRadius: 5,
       interchangeRadius: DEFAULT_STYLE.interchangeRadius,
     })
-    expect(drawnFrom({ ...drew, style: {} })?.style).toEqual({})
+    expect(drawnOf({ ...drew, style: {} })?.style).toEqual({})
   })
 
   it('reads back as written, and a block from before the field drew with none', () => {
-    const drawn = drawnFrom(drew)
+    const drawn = drawnOf(drew)
     expect(read({ ...drew, drawn }).drawn).toEqual(drawn)
     const { style: _style, ...before } = drawn as NonNullable<typeof drawn>
     void _style
@@ -597,7 +597,7 @@ describe('what is kept and sent of the markers, the face and the trains', () => 
       date: '2026-09-12',
       style: { stationShape: 'tick', labelFont: 'inter', dotRadius: 8, trail: 0 },
     }
-    const drawn = drawnFrom(drew)
+    const drawn = drawnOf(drew)
     expect(drawn?.style).toEqual({ stationShape: 'tick', labelFont: 'inter', dotRadius: 8 })
     expect(read({ ...drew, drawn }).drawn).toEqual(drawn)
   })

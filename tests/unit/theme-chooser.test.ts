@@ -9,9 +9,10 @@ import { createThemeChooser } from '../../src/renderer/src/themeChooser'
 // together, and a choice made in the gap between a write landing and the
 // screen having the theme it wrote.
 //
-// `theme-writes.test.ts` holds the pieces this is made of, `nextWrite` and
-// `writeThrough`; this holds what they do together, in the order the switch
-// calls them.
+// Since spec 037 every choice is written the moment it is made: the bridge
+// and the store keep the order of the writes, and answer in it, so nothing
+// here holds one back. The writes below land in the order they started, as
+// the store's answers do.
 
 /** A write the test settles by hand. */
 interface Write {
@@ -52,7 +53,7 @@ describe('one choice', () => {
     started[0].land()
     await done
     expect(asked).toEqual(['sepia', null])
-    expect(failed).toEqual([null])
+    expect(failed, 'cleared as it starts, and again as it lands').toEqual([null, null])
   })
 
   it('writes nothing for the theme the project is already in', async () => {
@@ -64,7 +65,10 @@ describe('one choice', () => {
 })
 
 describe('a second choice before the first write has landed', () => {
-  it('is kept, shown throughout, and written after the first, in order', async () => {
+  it('is written at once, shown throughout, and the cards let go only at its own answer', async () => {
+    // Mutation: the chooser holding a choice back while a write is on its
+    // way (the keep-latest serialiser it had) - only the first is written
+    // until the first has landed.
     const { chooser, started, asked } = harness()
     const first = chooser.choose('sepia')
     await settle()
@@ -72,23 +76,19 @@ describe('a second choice before the first write has landed', () => {
     await settle()
     expect(
       started.map((w) => w.theme),
-      'only the first is being written',
-    ).toEqual(['sepia'])
+      'both are on their way, in order',
+    ).toEqual(['sepia', 'warm-dark'])
     expect(asked, 'the cards follow the last choice').toEqual(['sepia', 'warm-dark'])
 
     started[0].land()
-    await settle()
-    expect(
-      started.map((w) => w.theme),
-      'the kept choice follows the first',
-    ).toEqual(['sepia', 'warm-dark'])
-    expect(asked, 'and nothing was handed back to the record in between').toEqual([
+    await first
+    expect(asked, 'nothing was handed back to the record at the first answer').toEqual([
       'sepia',
       'warm-dark',
     ])
 
     started[1].land()
-    await Promise.all([first, second])
+    await second
     expect(asked, 'the record carries the last choice when the cards let go of it').toEqual([
       'sepia',
       'warm-dark',
@@ -96,17 +96,15 @@ describe('a second choice before the first write has landed', () => {
     ])
   })
 
-  it('keeps only the last of several', async () => {
+  it('writes nothing for the theme the last choice already asked for', async () => {
     const { chooser, started } = harness()
     const first = chooser.choose('sepia')
     await settle()
-    void chooser.choose('warm-dark')
     void chooser.choose('sepia')
     await settle()
+    expect(started.map((w) => w.theme)).toEqual(['sepia'])
     started[0].land()
     await first
-    // The last asked is what the first write already wrote: nothing more to say.
-    expect(started.map((w) => w.theme)).toEqual(['sepia'])
   })
 })
 
@@ -196,18 +194,12 @@ describe('a write landing and a sync that arrived while it was going', () => {
 })
 
 describe('a write that fails', () => {
-  it('says so, lets the cards go back to the record, and drops what was kept behind it', async () => {
+  it('says so, lets the cards go back to the record, and leaves the theme it had to compare with', async () => {
     const { chooser, started, asked, failed } = harness()
     const first = chooser.choose('sepia')
     await settle()
-    void chooser.choose('warm-dark')
     started[0].fail(new Error('the record could not be written'))
     await first
-    await settle()
-    expect(
-      started.map((w) => w.theme),
-      'nothing more is written after a failure',
-    ).toEqual(['sepia'])
     expect(failed).toEqual([null, 'the record could not be written'])
     expect(asked.at(-1), 'the cards show the record again').toBeNull()
     // Nothing landed, so the theme the project had is still what it is, and
@@ -222,18 +214,43 @@ describe('a write that fails', () => {
     started[1].land()
     await again
   })
+
+  it('an earlier one that fails under a later one that lands: the later is the record, and nothing is unsaved', async () => {
+    // Mutation: the cards let go at the earlier failure - the later choice is
+    // taken off the cards while it is still on its way; or the later landing
+    // leaves the earlier failure said - the switch says a theme was not saved
+    // over a record that holds the last choice.
+    const { chooser, started, asked, failed } = harness()
+    const first = chooser.choose('sepia')
+    await settle()
+    const second = chooser.choose('warm-dark')
+    await settle()
+    started[0].fail(new Error('the record could not be written'))
+    await first
+    expect(asked.at(-1), 'still the later choice').toBe('warm-dark')
+    started[1].land()
+    await second
+    expect(asked.at(-1)).toBeNull()
+    expect(failed, 'said, and taken back once the last choice landed').toEqual([
+      null,
+      null,
+      'the record could not be written',
+      null,
+    ])
+  })
 })
 
-describe('the way closing under a kept choice', () => {
-  it('forgets it, so it is not applied after the way has closed', async () => {
+describe('the way closing under a choice on its way', () => {
+  it('leaves it to land: it was written when it was made', async () => {
     const { chooser, started } = harness()
     const first = chooser.choose('sepia')
     await settle()
-    void chooser.choose('warm-dark')
+    const second = chooser.choose('warm-dark')
     chooser.forget()
     started[0].land()
     await settle()
-    expect(started.map((w) => w.theme)).toEqual(['sepia'])
-    await first
+    expect(started.map((w) => w.theme)).toEqual(['sepia', 'warm-dark'])
+    started[1].land()
+    await Promise.all([first, second])
   })
 })

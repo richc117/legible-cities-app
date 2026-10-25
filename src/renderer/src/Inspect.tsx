@@ -102,11 +102,11 @@ interface Props {
   engine: EngineState | null
   inspect: (key: string) => Promise<Inspection>
   /**
-   * Stores the two inputs; a rejection's message is shown beside the
-   * controls. Handed a function, it makes the two from the record as the
-   * writes on their way leave it (issue 407).
+   * Stores the inputs it is handed, the mode, the operator or both; the
+   * store writes them onto the record as the writes before them left it
+   * (spec 037). A rejection's message is shown beside the controls.
    */
-  onInputs: (inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs)) => Promise<void>
+  onInputs: (inputs: Partial<ProjectInputs>) => Promise<void>
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry?: { mode: string; agency: string | null } | null
   /**
@@ -232,10 +232,7 @@ export default function Inspect({
   )
 
   /** Write the inputs, or say why not: the problem found before, or the store's refusal. */
-  const write = async (
-    problem: string | null,
-    inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
-  ): Promise<void> => {
+  const write = async (problem: string | null, inputs: Partial<ProjectInputs>): Promise<void> => {
     if (problem !== null) {
       setMessage(problem)
       return
@@ -260,15 +257,14 @@ export default function Inspect({
     setMode(value)
     void store({ mode: value, agency })
   }
-  // The operator goes with the mode the record holds once a mode chosen a
-  // moment before has landed, not this render's: that choice is a write
-  // still on its way, and the mode this render holds would put it back
-  // (issue 407). The record's, and not the one this panel shows, so a typed
-  // mode that was refused is not sent again with it.
+  // The operator alone: the store writes it onto the mode the record holds
+  // when it lands, so a mode chosen a moment before and still on its way is
+  // not put back by the one this render holds (issue 407, spec 037), and a
+  // typed mode that was refused is not sent again with it.
   const chooseAgency = (value: string): void => {
     const next = value === '' ? null : value
     setAgency(next)
-    void write(validateAgency(next), (record) => ({ mode: record.mode, agency: next }))
+    void write(validateAgency(next), { agency: next })
   }
   const useEntry = (): void => {
     if (registry === null) return
@@ -280,15 +276,14 @@ export default function Inspect({
     setCustom(false)
     setMode(registry.mode)
     setAgency(registry.agency)
-    // The entry whole, but queued as the operator is (issue 407): an
-    // operator chosen a moment before waits for the writes ahead of it, and
-    // an entry sent at once would go ahead of it and be written over by it,
-    // though the entry is the later press.
+    // The entry whole, sent at once: it is the later press, so the store
+    // writes it after an operator chosen a moment before, and the record
+    // ends on it (issue 407, spec 037).
     const { mode: entryMode, agency: entryAgency } = registry
-    void write(validateMode(entryMode) ?? validateAgency(entryAgency), () => ({
+    void write(validateMode(entryMode) ?? validateAgency(entryAgency), {
       mode: entryMode,
       agency: entryAgency,
-    }))
+    })
   }
   // A stored agency the feed does not list is shown so it can be cleared.
   const agencyOptions = [...(inspection?.agencies ?? [])]

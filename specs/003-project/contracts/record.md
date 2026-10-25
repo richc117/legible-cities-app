@@ -73,20 +73,35 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   a value that does not parse as a time reads as `null`.
 - `drawn` (added by A5.5-04, still version 1) is what the map now in the
   project's output folder was drawn from:
-  `{ layout, made, date, colors, defaultColor, lineOrder, theme, style }`,
-  the record's own values as they were at the end of the draw that produced
-  it (`style` is what `map.build` was sent, in the app's names, the train
-  numbers included, empty for a map drawn without one, and a block from
-  before the field reads as empty),
-  or `null`. It is written by the five handlers that write the record at
-  the end of a draw - `completeLayout`, `completeRebuild`, `completeColors`,
-  `completeOrder` and, since issue 350, `completeStyle` - and by nothing
-  else, so an edit that draws nothing
-  leaves it behind, which is how the notebook knows a cell is stale
-  (ADR-045). A block that is not whole reads as `null`, as the window does.
-  `null` means only that the map cannot be proved current, never that it is
-  stale. The rule that let it be added without moving the version is in
-  `specs/028-the-notebook/contracts/run-graph.md`.
+  `{ layout, made, date, colors, defaultColor, lineOrder, theme, style, lines? }`.
+  Since spec 037 it is made from what the draw's `map.build` was sent - the
+  run's sent set (`SentSet`), which every completion carries - and never
+  from the record at the write: a choice written while the run went is the
+  record's and not the map's (`style` and `lines` are what the request was
+  sent, in the app's names, the train numbers included; `style` is empty
+  and `lines` absent for a map drawn without them, and a block from before
+  either field reads as drawn without it). The theme is the record's at the
+  write, since no draw sends one. It is `null` for a record drawn before it
+  was kept. It is written by the six handlers that write the record at the
+  end of a draw - `completeLayout`, `completeRebuild`, `completeColors`,
+  `completeOrder`, `completeStyle` (issue 350) and `completeLines` (issue
+  394) - and by nothing else, so an edit that draws nothing leaves it
+  behind, which is how the notebook knows a cell is stale (ADR-045). The
+  main process holds the sent set to the record before it writes it: every
+  field to the record's own rule for it; a layout run's to the layout, the
+  time and the day it says it drew; a rebuild's and a redraw's to the stored
+  layout and its `made`; a redraw's to the day the map already shows and
+  to the choice it writes. `completeRebuild` still writes the record's own
+  `date`, the day it drew. A block that is not whole reads as `null`, as the
+  window does. `null` means only that the map cannot be proved current,
+  never that it is stale. The rule that let it be added without moving the
+  version is in `specs/028-the-notebook/contracts/run-graph.md`.
+- `revision` (added by spec 037, still version 2) is how many times the
+  store has written the record: a whole number it raises by one on every
+  write, `markOpened` included, and never the renderer. Absent, or anything
+  but a whole number of 0 or more, reads as 0, and the first write makes it
+  1. It is one of the record's facts (`RECORD_FACTS`) and moves no version,
+  under ADR-056's additive rule.
 - `drawn.stations` (added by issue 272, still version 2) is the list of
   stations the map now on disk draws, `[{ id, name }]`, as `map.build`
   answered it (engine v0.13.0): the node id the page's `setTrip` takes and
@@ -95,8 +110,9 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   derives, and it is in the record because a project opened again shows its
   map from the stored files without a build. Every draw writes the list
   its build answered - `completeLayout` and `completeRebuild` in their
-  `done`, `completeColors`, `completeOrder` and `completeStyle` as an
-  optional last argument - because a redraw draws the stored set as it is
+  `done`, and `completeColors`, `completeOrder`, `completeStyle` and
+  `completeLines` as an optional last argument, after the sent set - because
+  a redraw draws the stored set as it is
   now, which another project may have laid out again (A3-06). A draw whose
   build answered no list the bridge would take keeps the one the record had
   while the layout and its `made` are unchanged, and nothing from another

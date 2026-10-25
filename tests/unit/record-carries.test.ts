@@ -24,6 +24,7 @@ import {
   RECORD_VERSION,
   type RecordFact,
 } from '../../src/shared/project'
+import { drawsOn, sentOf } from '../support/sent'
 
 let home: string
 let store: ProjectStore
@@ -192,7 +193,7 @@ const WRITERS: {
   {
     name: 'completeLayout',
     write: (s) =>
-      s.completeLayout(A, {
+      drawsOn(s).completeLayout(A, {
         date: '2026-09-15',
         layout: RELAID,
         made: '2026-10-01T00:00:00+00:00',
@@ -204,21 +205,30 @@ const WRITERS: {
   },
   {
     name: 'completeRebuild',
-    write: (s) => s.completeRebuild(A, { date: '2026-09-16' }),
+    write: (s) => drawsOn(s).completeRebuild(A, { date: '2026-09-16' }),
     renews: ['drawn'],
   },
   { name: 'setDate', write: (s) => s.setDate(A, '2026-09-16'), renews: [] },
   {
     name: 'completeColors',
-    write: (s) => s.completeColors(A, { colors: { A: '#ff0000' }, defaultColor: '#888888' }),
+    write: (s) =>
+      drawsOn(s).completeColors(A, { colors: { A: '#ff0000' }, defaultColor: '#888888' }),
     renews: ['drawn'],
   },
-  { name: 'completeOrder', write: (s) => s.completeOrder(A, ['K', 'A']), renews: ['drawn'] },
-  { name: 'completeStyle', write: (s) => s.completeStyle(A, { lineWidth: 10 }), renews: ['drawn'] },
+  {
+    name: 'completeOrder',
+    write: (s) => drawsOn(s).completeOrder(A, ['K', 'A']),
+    renews: ['drawn'],
+  },
+  {
+    name: 'completeStyle',
+    write: (s) => drawsOn(s).completeStyle(A, { lineWidth: 10 }),
+    renews: ['drawn'],
+  },
   {
     name: 'completeLines',
     write: (s) =>
-      s.completeLines(A, {
+      drawsOn(s).completeLines(A, {
         A: { name: 'Airport', casing: { width: 0.5, color: '#112233' }, dash: 'dashed' },
       }),
     renews: ['drawn'],
@@ -459,7 +469,7 @@ describe('every writer carries what it does not know', () => {
     // build's tuning and line options go with the reset.
     await seed()
     await store.setTuning(A, {})
-    await store.completeLines(A, {})
+    await drawsOn(store).completeLines(A, {})
     const written = await onDisk()
     expect(written.tuning).toEqual({ smoothing: 0.4 })
     expect(written.lines).toEqual({ A: { casing: { pattern: 'double' }, opacity: 0.5 } })
@@ -477,11 +487,22 @@ describe('every writer carries what it does not know', () => {
       ...later(),
       lines: { toString: { opacity: 0.5 }, constructor: { opacity: 0.25 } },
     })
-    await store.completeLines(A, {})
+    await drawsOn(store).completeLines(A, {})
     expect((await onDisk()).lines).toEqual({
       toString: { opacity: 0.5 },
       constructor: { opacity: 0.25 },
     })
+  })
+
+  it('raises a later build’s revision rather than carrying it beside its own', async () => {
+    // `revision` is a field this build knows (spec 037, FR-001): read, raised
+    // by one at the write, and never carried as a later build's key.
+    // Mutation: `revision: true` taken out of the record's shape - the
+    // parser then carries the stored 7 and writes it back over this build's 8.
+    await seed({ ...later(), revision: 7 })
+    const renamed = await store.rename(A, 'Renamed')
+    expect(renamed.revision).toBe(8)
+    expect((await onDisk()).revision).toBe(8)
   })
 
   it('carries them through every writer in turn', async () => {
@@ -519,6 +540,8 @@ describe('the bridge', () => {
     // Mutation: `get` answers the record as written, `{ ...carried.onto(record),
     // readOnly }` - every unknown name is then in its answer.
     const call = bridge()
+    // What each draw sent (spec 037): the record's own, for the day it shows.
+    const SENT = sentOf({}, { layout: LAYOUT, made: MADE, date: '2026-09-15' })
     const calls: [string, ...unknown[]][] = [
       [CHANNELS.projectsList],
       [CHANNELS.projectsGet, A],
@@ -533,14 +556,25 @@ describe('the bridge', () => {
           made: '2026-10-01T00:00:00+00:00',
           built: { mode: 'all', agency: null },
           service: WINDOW,
+          sent: { ...SENT, layout: RELAID, made: '2026-10-01T00:00:00+00:00' },
         },
       ],
-      [CHANNELS.projectsCompleteRebuild, A, { date: '2026-09-16' }],
+      [CHANNELS.projectsCompleteRebuild, A, { sent: { ...SENT, date: '2026-09-16' } }],
       [CHANNELS.projectsSetDate, A, '2026-09-16'],
-      [CHANNELS.projectsCompleteColors, A, { colors: {}, defaultColor: '#112233' }],
-      [CHANNELS.projectsCompleteOrder, A, ['K']],
-      [CHANNELS.projectsCompleteStyle, A, { lineWidth: 10 }],
-      [CHANNELS.projectsCompleteLines, A, { A: { dash: 'dotted' } }],
+      [
+        CHANNELS.projectsCompleteColors,
+        A,
+        { colors: {}, defaultColor: '#112233' },
+        { ...SENT, colors: {}, defaultColor: '#112233' },
+      ],
+      [CHANNELS.projectsCompleteOrder, A, ['K'], { ...SENT, lineOrder: ['K'] }],
+      [CHANNELS.projectsCompleteStyle, A, { lineWidth: 10 }, { ...SENT, style: { lineWidth: 10 } }],
+      [
+        CHANNELS.projectsCompleteLines,
+        A,
+        { A: { dash: 'dotted' } },
+        { ...SENT, lines: { A: { dash: 'dotted' } } },
+      ],
       [CHANNELS.projectsSetTheme, A, 'sepia'],
       [CHANNELS.projectsSetTuning, A, { gridSize: 150 }],
       [CHANNELS.projectsMarkOpened, A],
