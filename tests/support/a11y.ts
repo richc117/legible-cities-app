@@ -49,6 +49,13 @@ import {
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { describePair, describeReading, duplicatedNames } from './a11y-names'
 import {
+  MIN_RING_CONTRAST,
+  MIN_RING_WIDTH,
+  weakRings,
+  type RingReading,
+  type RingsOf,
+} from './ring'
+import {
   WalkTrace,
   endMessage,
   handOver,
@@ -172,6 +179,8 @@ export async function chooserAnswers(app: ElectronApplication, path: string): Pr
 interface Finding {
   missed: string[]
   unringed: string[]
+  /** Every ring each control drew on taking focus, measured (`ring.ts` judges them). */
+  rings: RingsOf[]
   stops: number
 }
 
@@ -279,6 +288,120 @@ export function installProbe(): void {
         : `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`
     return { outline, shadow: style.boxShadow }
   }
+  // --- Measuring a ring (issue 436, R10-03). Everything here runs in the
+  // page, from computed styles, because the colour a ring is drawn against
+  // is a fact about the layers behind it and not about a token. The verdict
+  // is `ring.ts`.
+  type Colour = [number, number, number, number]
+  const parseColour = (text: string): Colour | null => {
+    const m = /^rgba?\(([^)]+)\)$/.exec(text.trim())
+    if (!m) return null
+    const parts = m[1]
+      .split(/[\s,/]+/)
+      .filter(Boolean)
+      .map(Number)
+    if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null
+    return [parts[0], parts[1], parts[2], parts[3] ?? 1]
+  }
+  const parentOf = (el: Element): Element | null => {
+    if (el.parentElement) return el.parentElement
+    const root = el.getRootNode()
+    return root instanceof ShadowRoot ? root.host : null
+  }
+  /** The colour behind `start`: its background and its ancestors', composed, across shadow roots. */
+  const groundBehind = (start: Element | null): [number, number, number] | null => {
+    const layers: Colour[] = []
+    for (let el = start; el !== null; el = parentOf(el)) {
+      const colour = parseColour(getComputedStyle(el).backgroundColor)
+      if (colour === null) return null
+      if (colour[3] === 0) continue
+      layers.push(colour)
+      if (colour[3] === 1) break
+    }
+    // Back to front. The app paints --surface on the body, so a document
+    // that reaches here without an opaque layer is a white canvas.
+    let under: [number, number, number] = [255, 255, 255]
+    for (const [r, g, b, a] of layers.reverse())
+      under = [r * a + under[0] * (1 - a), g * a + under[1] * (1 - a), b * a + under[2] * (1 - a)]
+    return under
+  }
+  const channel = (v: number): number => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const luminance = (c: [number, number, number]): number =>
+    0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
+  const ratioOf = (a: [number, number, number], b: [number, number, number]): number => {
+    const la = luminance(a)
+    const lb = luminance(b)
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  }
+  const hex = (c: [number, number, number]): string => `rgb(${c.map(Math.round).join(', ')})`
+  const reading = (
+    kind: 'outline' | 'shadow',
+    width: number,
+    colourText: string,
+    behind: Element | null,
+  ): RingReading => {
+    const colour = parseColour(colourText)
+    const ground = groundBehind(behind)
+    if (colour === null || ground === null)
+      return { kind, width, colour: colourText, ground: ground && hex(ground), ratio: null }
+    const a = colour[3]
+    const drawn: [number, number, number] = [
+      colour[0] * a + ground[0] * (1 - a),
+      colour[1] * a + ground[1] * (1 - a),
+      colour[2] * a + ground[2] * (1 - a),
+    ]
+    return { kind, width, colour: colourText, ground: hex(ground), ratio: ratioOf(drawn, ground) }
+  }
+  /** Split at the commas outside brackets: the layers of a box-shadow. */
+  const layersOf = (list: string): string[] => {
+    const out: string[] = []
+    let depth = 0
+    let from = 0
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] === '(') depth++
+      else if (list[i] === ')') depth--
+      else if (list[i] === ',' && depth === 0) {
+        out.push(list.slice(from, i))
+        from = i + 1
+      }
+    }
+    out.push(list.slice(from))
+    return out.map((layer) => layer.trim()).filter(Boolean)
+  }
+  /**
+   * The rings an element draws right now: its outline, and each hard-edged
+   * shadow's spread. An outline with a gap lies over the ground behind the
+   * element and an inset shadow over its own; an outline with a negative
+   * offset lies over the element too.
+   */
+  const rings = (el: Element): { outline: RingReading | null; shadows: RingReading[] } => {
+    const style = getComputedStyle(el)
+    const outline =
+      style.outlineStyle === 'none' || parseFloat(style.outlineWidth) === 0
+        ? null
+        : reading(
+            'outline',
+            parseFloat(style.outlineWidth),
+            style.outlineColor,
+            (parseFloat(style.outlineOffset) || 0) >= 0 ? parentOf(el) : el,
+          )
+    const shadows: RingReading[] = []
+    if (style.boxShadow !== 'none')
+      for (const layer of layersOf(style.boxShadow)) {
+        const colourText = /rgba?\([^)]*\)/.exec(layer)?.[0]
+        if (colourText === undefined) continue
+        const lengths = (layer.replace(colourText, '').match(/-?[\d.]+px/g) ?? []).map(parseFloat)
+        // x, y, blur, spread: a ring has no offset and no blur.
+        if (lengths.length < 4 || lengths[0] !== 0 || lengths[1] !== 0 || lengths[2] !== 0) continue
+        shadows.push(
+          reading('shadow', lengths[3], colourText, layer.includes('inset') ? el : parentOf(el)),
+        )
+      }
+    return { outline, shadows }
+  }
   const chainOf = (deep: Element): Element[] => {
     const chain = [deep]
     const host = controlOf(deep)
@@ -299,6 +422,7 @@ export function installProbe(): void {
     control: Element
     chain: Element[]
     focused: { outline: string; shadow: string }[]
+    measured: ReturnType<typeof rings>[]
   }[] = []
 
   w.__a11y = {
@@ -345,7 +469,7 @@ export function installProbe(): void {
       last = control
       visited.add(control)
       const chain = chainOf(deep)
-      stops.push({ control, chain, focused: chain.map(ring) })
+      stops.push({ control, chain, focused: chain.map(ring), measured: chain.map(rings) })
       return { state: 'stop', complete: complete(), at: where(), onAimed }
     },
     past(again = false, explicit) {
@@ -428,6 +552,7 @@ export function installProbe(): void {
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
       const unringed: string[] = []
+      const measured: RingsOf[] = []
       for (const stop of stops) {
         // A frame's page is its own; the engine draws its focus.
         if (stop.control.tagName === 'IFRAME' || !stop.control.isConnected) continue
@@ -435,16 +560,26 @@ export function installProbe(): void {
         // An outline the control did not have at rest, or a shadow where it
         // had none: a shadow that merely changes does not count, because a
         // kit text field drops its resting edge on focus and would pass
-        // with no ring at all.
+        // with no ring at all. The rings counted are the same ones, and are
+        // what R10-03 measures.
+        const drawn: RingReading[] = []
+        stop.chain.forEach((_, i) => {
+          const focused = stop.focused[i]
+          const at = stop.measured[i]
+          if (focused.outline !== 'none' && focused.outline !== rest[i].outline && at.outline)
+            drawn.push(at.outline)
+          if (focused.shadow !== 'none' && rest[i].shadow === 'none') drawn.push(...at.shadows)
+        })
         const shows = stop.focused.some(
           (focused, i) =>
             (focused.outline !== 'none' && focused.outline !== rest[i].outline) ||
             (focused.shadow !== 'none' && rest[i].shadow === 'none'),
         )
         if (!shows) unringed.push(describe(stop.control))
+        else measured.push({ control: describe(stop.control), rings: drawn })
       }
       const missed = want.filter((el) => el.isConnected && !visited.has(el)).map(describe)
-      return { missed, unringed, stops: stops.length }
+      return { missed, unringed, rings: measured, stops: stops.length }
     },
     moving() {
       const out: string[] = []
@@ -722,6 +857,18 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   expect(ended, endMessage(where, ended, trace)).toBe(true)
   expect(found.missed, missMessage(where, found.missed, trace)).toEqual([])
   expect(found.unringed, `${where}: controls with no visible focus`).toEqual([])
+  // And the ring is a ring: at least two CSS pixels thick, and 3:1 against the
+  // ground it is drawn on (issue 436, R10-03; `ring.ts` has the rule). A walk
+  // that reached controls and found some ring on each is not yet one that
+  // found a ring a person can see.
+  expect(
+    found.rings.length,
+    `${where}: the walk measured the ring of every control it reached`,
+  ).toBeGreaterThan(0)
+  expect(
+    weakRings(found.rings),
+    `${where}: focus rings under ${MIN_RING_WIDTH}px or under ${MIN_RING_CONTRAST}:1 against their ground`,
+  ).toEqual([])
 }
 
 /** With reduced motion, nothing animates and no transition lasts. */
