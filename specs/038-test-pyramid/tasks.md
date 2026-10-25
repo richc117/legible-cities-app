@@ -38,7 +38,7 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
   - Timeouts are 20 and 60 minutes; the per-ref concurrency is kept.
 - [x] T009 [US3] Test the decision step's rule as a script under `scripts/` with a unit test, or inline with a table in the workflow's comment. Cover: all docs; one `src/` file among docs; an empty diff (runs); a new top-level file (runs); `.claude/**` only. Show the denylist's widest entry removed turns a docs-only row to "runs".
 - [x] T010 [US3] `docs/repository-settings.md`: list the seven required checks. `docs/ARCHITECTURE.md:1269`: correct "The smoke test". `CONTRIBUTING.md`: say what runs on a contributor's pull request (left to issue 488, which rewrites that file; the sentence is in lane 500's report).
-- [ ] T011 [US3] The coordinator changes branch protection to contracts/ci-layers.md's seven checks in the same hour as the merge, and proves quickstart.md's FR-003 steps 1-5 on the pull request itself.
+- [x] T011 [US3] The coordinator changes branch protection to contracts/ci-layers.md's seven checks in the same hour as the merge, and proves quickstart.md's FR-003 steps 1-5: steps 1 and 2 on the pull request itself (#506); step 3 and SC-001 on #488, the first documentation-only pull request after it (both `e2e` jobs under 30 seconds, every required check green 6½ minutes after the push); step 4 on the pushes to `main` that followed; step 5 the same hour.
 
 ## Phase 4: Part 2, the DOM layer (outline; may follow 1.0; US1)
 
