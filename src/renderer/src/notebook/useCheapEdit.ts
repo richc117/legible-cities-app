@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
+import type { EngineState } from '../../../shared/engine'
 import type { ProjectRecord } from '../../../shared/project'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
-import { mustWait, refusedAtStart } from '../panelRelease'
+import { mustWait, refusedAtStart, stoppedNow } from '../panelRelease'
 import { usePutBack } from '../usePutBack'
 import { useSnapshot } from '../useSnapshot'
 
@@ -44,12 +45,16 @@ import { useSnapshot } from '../useSnapshot'
 //   2026). A change still waiting when its panel goes is flushed: tried at
 //   once, as if its delay had run out. If the way is not clear it waits on,
 //   with nobody's screen behind it, and is drawn once the run and the export
-//   have let go of the page. It is then drawn without being compared with
-//   the record, because the record the panel last saw may be behind the
-//   store, and since spec 037 part 1 every draw reads its own record from
-//   the store and sends this change over it. A start refused then is said
-//   on the project's status line (`sayRefusedGone`), since the control
-//   that would have gone back is not there.
+//   have let go of the page - from the record and the engine's state read
+//   then through the bridge, never from the last render's, which may be
+//   behind (a project laid out since, an engine started since). A stop of
+//   the panel's own kind while it waits drops it, as a stop does with the
+//   panel there. A panel that comes back for the same run and kind - the
+//   project opened again - takes the change over, shows it and holds it as
+//   its own, so two editors never hold one panel's whole value at once. A
+//   start refused after the panel went is said on the project's status line
+//   (`sayRefusedGone`), since the control that would have gone back is not
+//   there.
 //
 // Nothing here writes the record, and nothing orders writes: the redraw
 // reads the record from the store at its start, and its completion writes
@@ -70,8 +75,10 @@ export interface CheapEditOptions<V> {
   fields: readonly unknown[]
   /** Is `next` what the record already holds? Then there is nothing to draw. */
   same: (next: V, stored: V) => boolean
-  /** Start the panel's own redraw, drawing `next` over the record. */
-  draw: (project: ProjectRecord, next: V) => void
+  /** The engine's state as the screen last drew it. */
+  engine: EngineState | null
+  /** Start the panel's own redraw of `next`, which is the panel's whole value. */
+  draw: (project: ProjectRecord, engine: EngineState | null, next: V) => void
   /**
    * In milliseconds: how long a change waits before it is first tried, and
    * how long a held change waits before it is asked again.
@@ -99,7 +106,16 @@ export interface CheapEditOptions<V> {
    * many lines a record may hold.
    */
   refuse?: (next: V, project: ProjectRecord) => boolean
+  /**
+   * The record and the engine's state as they are now, for a change drawn
+   * after its panel has gone: through the bridge unless a test hands its own.
+   */
+  readNow?: (id: string) => Promise<[ProjectRecord, EngineState | null]>
 }
+
+/** The record and the engine's state, asked of main now. */
+const readThroughBridge = (id: string): Promise<[ProjectRecord, EngineState | null]> =>
+  Promise.all([window.api.projects.get(id), window.api.engine.state()])
 
 export interface CheapEdit<V> {
   /** The run as this render saw it. */
@@ -128,7 +144,19 @@ interface Unbuilt<V> {
   timer: ReturnType<typeof setTimeout> | null
   /** The panel has gone: nothing is shown, put back or adopted any more. */
   gone: boolean
+  /** While gone and waiting: stop listening to the run, and leave the orphans. */
+  forget: (() => void) | null
 }
+
+/** What an editor whose panel has gone offers a panel of its kind that comes back. */
+interface Orphan {
+  /** The change it holds, which it gives up; null if it has none. */
+  take: () => unknown
+}
+
+// Editors whose panel went while they held a change, by the run they draw on
+// and their panel's kind of run (`own`, one function per panel).
+const orphans = new WeakMap<LayoutRun, Map<unknown, Orphan>>()
 
 /** The editor itself, with no React in it: the hook keeps one for the panel's life and after. */
 function editor<V>(
@@ -143,7 +171,7 @@ function editor<V>(
   here: () => void
   leave: () => void
 } {
-  const unbuilt: Unbuilt<V> = { held: null, live: null, timer: null, gone: false }
+  const unbuilt: Unbuilt<V> = { held: null, live: null, timer: null, gone: false, forget: null }
   const clear = (): void => {
     if (unbuilt.timer !== null) clearTimeout(unbuilt.timer)
     unbuilt.timer = null
@@ -166,20 +194,6 @@ function editor<V>(
     unbuilt.live = null
     say(false)
     if (!unbuilt.gone) latest.current.putBack(latest.current.project)
-  }
-
-  /**
-   * The panel's own redraw started with `next`, once nobody is there to go
-   * back: any stop of its own at the start is a refusal, since there is no
-   * next render to see it, and is said on the project's status line.
-   */
-  const drawGone = (next: V): void => {
-    const facts = latest.current
-    const before = facts.run.snapshot
-    facts.draw(facts.project, next)
-    const after = facts.run.snapshot
-    if (after !== before && after.state === 'failed' && facts.own(after) && after.error !== null)
-      sayRefusedGone(facts.run, after, after.error)
   }
 
   /** The delay ran out, or a held change is asked again, with the panel there. */
@@ -208,25 +222,101 @@ function editor<V>(
     unbuilt.held = null
     say(false)
     if (facts.same(next, facts.stored(facts.project))) return
-    if (refusedAtStart(facts.run, facts.own, () => facts.draw(facts.project, next))) putBack()
+    if (refusedAtStart(facts.run, facts.own, () => facts.draw(facts.project, facts.engine, next)))
+      putBack()
+  }
+
+  /** The gone panel's wait is over, or given to a panel that came back: nothing more of it. */
+  const done = (): void => {
+    clear()
+    unbuilt.held = null
+    unbuilt.forget?.()
+    unbuilt.forget = null
   }
 
   /**
-   * A held change asked again after its panel went. Only the run and the
-   * export, read as they are now, can hold it: the screen's own holds went
-   * with the screen, and so did the record it would be compared with.
+   * The panel's own redraw started with `next` over `record`, once nobody is
+   * there to go back: any stop of its own at the start is a refusal, since
+   * there is no next render to see it, and is said on the project's status
+   * line.
+   */
+  const drawGone = (record: ProjectRecord, engine: EngineState | null, next: V): void => {
+    const facts = latest.current
+    if (facts.refuse?.(next, record) === true) return
+    if (facts.same(next, facts.stored(record))) return
+    const before = facts.run.snapshot
+    facts.draw(record, engine, next)
+    const after = facts.run.snapshot
+    if (after !== before && after.state === 'failed' && facts.own(after) && after.error !== null)
+      sayRefusedGone(facts.run, after, after.error)
+  }
+
+  /** Is the page held, read now? Once the panel has gone only the run and the export can hold it. */
+  const heldNow = (facts: Facts<V>): boolean =>
+    facts.run.snapshot.state === 'running' || facts.busyNow?.() === true
+
+  /**
+   * A held change asked again after its panel went: once the way is clear,
+   * drawn from the record and the engine's state read now, and compared
+   * with that record, not the one the panel last saw.
    */
   const attemptGone = (): void => {
     const next = unbuilt.held
     if (next === null) return
     const facts = latest.current
-    if (facts.run.snapshot.state === 'running' || facts.busyNow?.() === true) {
+    if (heldNow(facts)) {
       arm()
       return
     }
-    unbuilt.held = null
-    if (facts.refuse?.(next, facts.project) === true) return
-    drawGone(next)
+    const read = facts.readNow ?? readThroughBridge
+    read(facts.project.id).then(
+      ([record, engine]) => {
+        // Taken over by a panel that came back, or dropped by a stop, meanwhile.
+        if (unbuilt.held !== next) return
+        if (heldNow(latest.current)) {
+          arm()
+          return
+        }
+        done()
+        drawGone(record, engine, next)
+      },
+      // The record cannot be read (the project is gone): there is nothing to draw it on.
+      () => {
+        if (unbuilt.held === next) done()
+      },
+    )
+  }
+
+  /**
+   * Waits on, with the panel gone: listening to the run for a stop of the
+   * panel's own kind, which drops the change as it does with the panel
+   * there, and offered to a panel of the same kind that comes back.
+   */
+  const orphan = (): void => {
+    const facts = latest.current
+    const { run, own } = facts
+    let seen = { state: run.snapshot.state, own: own(run.snapshot) }
+    const unhear = run.subscribe((snapshot) => {
+      const now = { state: snapshot.state, own: own(snapshot) }
+      const stopped = stoppedNow(seen, now)
+      seen = now
+      if (stopped) done()
+    })
+    const kinds = orphans.get(run) ?? new Map<unknown, Orphan>()
+    orphans.set(run, kinds)
+    const self: Orphan = {
+      take: () => {
+        const held = unbuilt.held
+        done()
+        return held
+      },
+    }
+    kinds.set(own, self)
+    unbuilt.forget = () => {
+      unhear()
+      if (kinds.get(own) === self) kinds.delete(own)
+    }
+    arm()
   }
 
   return {
@@ -253,8 +343,19 @@ function editor<V>(
       } else arm()
     },
     putBack,
+    // The panel is here: if one of its kind went for this run while it held
+    // a change, that change is this panel's now - shown, held, and tried
+    // after the delay as any change is.
     here: () => {
       unbuilt.gone = false
+      const facts = latest.current
+      const left = orphans.get(facts.run)?.get(facts.own)
+      if (left === undefined) return
+      const held = left.take() as V | null
+      if (held === null) return
+      unbuilt.held = held
+      facts.adopt(held, facts.project)
+      arm()
     },
     // The panel goes: what is waiting is tried now, as if its delay had run
     // out, with what the last render saw. A gesture still under a hand was
@@ -273,13 +374,11 @@ function editor<V>(
         busyNow: facts.busyNow,
       })
       if (wait) {
-        arm()
+        orphan()
         return
       }
       unbuilt.held = null
-      if (facts.refuse?.(next, facts.project) === true) return
-      if (facts.same(next, facts.stored(facts.project))) return
-      drawGone(next)
+      drawGone(facts.project, facts.engine, next)
     },
   }
 }
@@ -298,9 +397,10 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
   const [waiting, setWaiting] = useState(false)
   const latest = useRef<Facts<V>>({ ...options, snapshot })
   // The latest render's options, for a timer, an event or the panel's going
-  // to read at the moment it acts, never those of three renders ago. First,
-  // so every effect below reads this render's.
-  useEffect(() => {
+  // to read at the moment it acts, never those of three renders ago. In a
+  // layout effect, so it is current before anything can act on the commit
+  // that made it, and first, so every effect below reads this render's.
+  useLayoutEffect(() => {
     latest.current = { ...options, snapshot }
   })
   const [edit] = useState(() => editor(latest, setWaiting))

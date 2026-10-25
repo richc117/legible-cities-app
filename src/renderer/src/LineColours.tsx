@@ -144,7 +144,8 @@ export default function LineColours({
     stored: paletteOf,
     fields: [project.colors, project.defaultColor],
     same: samePalette,
-    draw: (record, next) => run.recolour(record, engine, next),
+    engine,
+    draw: (record, now, next) => run.recolour(record, now, next),
     delay: REDRAW_DELAY,
     atOnce: true,
     // While an export reads the page, or the record a finished run wrote is

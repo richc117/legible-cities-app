@@ -43,7 +43,15 @@ function container(): Element {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }
-  const window = { document, HTMLIFrameElement: class {} }
+  const window = {
+    document,
+    HTMLIFrameElement: class {},
+    // What a choice drawn after the screen went reads now (`useCheapEdit`).
+    api: {
+      projects: { get: () => Promise.resolve(props.project) },
+      engine: { state: () => Promise.resolve(READY) },
+    },
+  }
   document.defaultView = window
   vi.stubGlobal('window', window)
   return {
@@ -254,7 +262,7 @@ describe('the guards that act late', () => {
 })
 
 describe('the screen going', () => {
-  it('draws a choice held as the screen goes once the way clears, and arms nothing after', () => {
+  it('draws a choice held as the screen goes once the way clears, and arms nothing after', async () => {
     // An export started since the last render holds the page; the screen
     // goes, and then the export ends. The choice is flushed (spec 037, User
     // Story 3 scenario 5): it waits on with nobody's screen behind it and is
@@ -272,6 +280,9 @@ describe('the screen going', () => {
     expect(run.redrawLines, 'not while the export holds the page').not.toHaveBeenCalled()
     exporting = false
     wait(REDRAW_DELAY)
+    await act(async () => {
+      await Promise.resolve()
+    })
     expect(run.drawn()).toEqual([{ A: { hidden: true } }])
     expect(vi.getTimerCount(), 'and nothing is left waiting').toBe(0)
   })

@@ -130,7 +130,8 @@ export default function StyleFields({
     stored: (record) => record.style,
     fields: [project.style],
     same: sameStyle,
-    draw: (record, next) => run.restyle(record, engine, next),
+    engine,
+    draw: (record, now, next) => run.restyle(record, now, next),
     delay: REDRAW_DELAY,
     // While an export reads the page, or the record a finished run wrote
     // is read back: every draw carries the line options, and one drawn from

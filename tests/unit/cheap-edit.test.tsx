@@ -217,6 +217,12 @@ function container(): StandInNode {
     HTMLIFrameElement: class {},
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
+    // What a change drawn after its panel went reads now: the store's
+    // record and the engine's state, as main would answer them.
+    api: {
+      projects: { get: () => Promise.resolve(bridge.record ?? screen.project) },
+      engine: { state: () => Promise.resolve(bridge.engine) },
+    },
   }
   document.defaultView = window
   vi.stubGlobal('window', window)
@@ -351,6 +357,19 @@ const INSPECTION = {
 const inspected = Promise.resolve(INSPECTION)
 const inspect = (): Promise<Inspection> => inspected
 
+/** What the bridge answers for the store's record (the screen's, unless a test moves it) and the engine. */
+const bridge: { record: ProjectRecord | null; engine: EngineState } = {
+  record: null,
+  engine: { state: 'ready', version: '0.19.0', protocol: 1 },
+}
+
+/** The bridge's answers arrive, and whatever they start is drawn. */
+async function answered(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve()
+  })
+}
+
 /** What the screen draws the cells from. */
 interface Screen {
   cell: 'lines' | 'style'
@@ -463,8 +482,13 @@ interface Panel {
   make: (value: unknown) => void
   shown: () => unknown
   drawn: () => unknown[]
+  /** The record and the engine's state each redraw was started with. */
+  drawnOn: () => [ProjectRecord, unknown][]
   record: (value: unknown) => Partial<ProjectRecord>
 }
+
+const on = (calls: unknown[][]): [ProjectRecord, unknown][] =>
+  calls.map(([record, engine]) => [record as ProjectRecord, engine])
 
 const A = 'Choose the colour of line A'
 
@@ -486,6 +510,7 @@ const COLOURS: Panel = {
         : prop<(hex: string) => void>(leaves.chips, A, 'onPickEnd')(hex as string),
     ),
   shown: () => prop<string>(leaves.chips, A, 'colour'),
+  drawnOn: () => on(run.recolour.mock.calls),
   drawn: () => run.recolour.mock.calls.map(([, , palette]) => palette.colors.A ?? '#0072bc'),
   record: (hex): Partial<ProjectRecord> => ({
     colors: hex === '#0072bc' ? {} : { A: hex as string },
@@ -520,6 +545,7 @@ const ORDER: Panel = {
     }
   },
   shown: orderShown,
+  drawnOn: () => on(run.reorder.mock.calls),
   drawn: () => run.reorder.mock.calls.map(([, , order]) => order),
   record: (order) => ({ lineOrder: order as string[] }),
 }
@@ -544,6 +570,7 @@ const SIZES: Panel = {
       )('stationShape', shape as string),
     ),
   shown: () => prop<ProjectStyle>(leaves.choices, 'stationShape', 'style').stationShape ?? 'circle',
+  drawnOn: () => on(run.restyle.mock.calls),
   drawn: () => run.restyle.mock.calls.map(([, , style]) => style.stationShape ?? 'circle'),
   record: (shape) => ({ style: shape === 'circle' ? {} : { stationShape: shape as 'tick' } }),
 }
@@ -563,6 +590,7 @@ const OPTIONS: Panel = {
       prop<(next: LineChoice) => void>(leaves.options, 'A', 'onChoose')(choice as LineChoice),
     ),
   shown: () => prop<LineChoice>(leaves.options, 'A', 'choice'),
+  drawnOn: () => on(run.redrawLines.mock.calls),
   drawn: () => run.redrawLines.mock.calls.map(([, , lines]) => lines.A ?? {}),
   record: (choice) => ({
     lines: Object.keys(choice as object).length === 0 ? undefined : { A: choice as LineChoice },
@@ -583,6 +611,8 @@ beforeEach(() => {
   mounted = true
   run = new StandInRun()
   exporter.snapshot = { state: 'idle' }
+  bridge.record = null
+  bridge.engine = { state: 'ready', version: '0.19.0', protocol: 1 }
   for (const map of Object.values(leaves)) map.clear()
 })
 
@@ -747,9 +777,10 @@ describe.each(PANELS)('$name: the record is taken when the panel’s own redraw 
 })
 
 // Mutations: the hook's `leave` cancelling (clearing its timer and
-// returning) - the first two rows draw nothing; `leave` not arming when the
-// way is held - the second row's change is dropped; `drawGone` not saying
-// what it was refused with - the third row's line stays empty.
+// returning) - the rows draw nothing; `leave` not waiting on when the way is
+// held - the held rows' change is dropped; `drawGone` not saying what it was
+// refused with - the refusal's line stays empty; and the ones named beside
+// the rows the review of issue 490 asked for.
 describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (panel) => {
   it.runIf(!panel.atOnce)(
     'draws a change still in its delay at once as the panel goes',
@@ -771,8 +802,80 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     expect(panel.drawn(), 'not while the export reads the page').toEqual([])
     exporter.snapshot = { state: 'idle' }
     wait(REDRAW_DELAY)
+    await answered()
     expect(panel.drawn()).toEqual([panel.one])
     expect(vi.getTimerCount(), 'and nothing is left waiting').toBe(0)
+  })
+
+  it('draws it from the record and the engine’s state read when it is drawn, not the last render’s', async () => {
+    // Mutation: `attemptGone` drawing with `facts.project` and `facts.engine`
+    // - a project laid out since the panel went would be refused as one with
+    // nothing drawn, and an engine started since as not ready (review of
+    // issue 490).
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    bridge.record = { ...screen.project, name: 'Read now' }
+    bridge.engine = { state: 'ready', version: '0.19.1', protocol: 1 }
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    const [[record, engine]] = panel.drawnOn()
+    expect(record.name).toBe('Read now')
+    expect(engine).toBe(bridge.engine)
+  })
+
+  it('draws nothing for a change the record read then already holds', async () => {
+    // Mutation: `drawGone` not comparing with the record it was handed.
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    bridge.record = { ...screen.project, ...panel.record(panel.one) }
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(panel.drawn()).toEqual([])
+  })
+
+  it('drops a change held as the panel went when the panel’s own redraw then stops', async () => {
+    // A stop stops everything, with the panel there or not. Mutation: the
+    // gone editor not listening to the run (`orphan`'s `stoppedNow`).
+    await open(panel.cell)
+    panel.make(panel.one)
+    firstTry(panel)
+    expect(run.snapshot.state).toBe('running')
+    panel.make(panel.two)
+    unmount()
+    run.move(snap('cancelled', panel.own))
+    wait(REDRAW_DELAY * 5)
+    await answered()
+    expect(panel.drawn()).toEqual([panel.one])
+    expect(vi.getTimerCount(), 'and nothing is left waiting').toBe(0)
+  })
+
+  it('is taken over by a panel of its kind that comes back, so only the later choice is drawn', async () => {
+    // The project left while an export holds a change, and opened again
+    // before it ends. Mutation: `here` not taking the orphan over - the
+    // panel shows the record, and the change left behind is drawn after the
+    // one made since, over it (review of issue 490).
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    for (const map of Object.values(leaves)) map.clear()
+    host = container()
+    root = createRoot(host as unknown as Element)
+    mounted = true
+    await open(panel.cell)
+    exporting(true)
+    expect(panel.shown(), 'the change left behind is on screen again').toEqual(panel.one)
+    panel.make(panel.two)
+    exporting(false)
+    wait(REDRAW_DELAY * 5)
+    await answered()
+    expect(panel.drawn(), 'one draw, of the later choice').toEqual([panel.two])
   })
 
   it('says a flush refused at its start on the project’s status line', async () => {
@@ -783,6 +886,7 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     run.starts = 'refuse'
     exporter.snapshot = { state: 'idle' }
     wait(REDRAW_DELAY)
+    await answered()
     expect(panel.drawn()).toEqual([panel.one])
     expect(heard(), 'the engine’s sentence, for the status line').toBe(REFUSAL)
     // The next start moves the run on, and the sentence goes with it.

@@ -237,7 +237,8 @@ export default function LineOrder({
     stored: orderOf,
     fields: [project.lineOrder],
     same: sameOrder,
-    draw: (record, next) => run.reorder(record, engine, next),
+    engine,
+    draw: (record, now, next) => run.reorder(record, now, next),
     delay: REDRAW_DELAY,
     // While an export reads the page, or the record a finished run wrote is
     // read back: every draw carries the line options, and one drawn from the
