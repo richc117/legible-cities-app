@@ -17,8 +17,8 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
 
 ## Phase 1: FR-001, the four shapes (pull request 1; US2)
 
-- [ ] T001 [US2] In `tests/unit/stand-in-shapes.test.ts`, add `answerProblems` checks of the stand-in's answers to `engine.info`, `engine.shutdown`, `feeds.inspect` and `feeds.service` against `vendor/protocol.schema.json`'s result types, using the harness the other eleven methods use.
-- [ ] T002 [US2] Show each of T001's four checks red under a mutation of the stand-in's answer in `tests/fake-engine/schematic/serve.py` (one field removed or mistyped), and record the mutations in the test's header in the file's existing form.
+- [x] T001 [US2] In `tests/unit/stand-in-shapes.test.ts`, add `answerProblems` checks of the stand-in's answers to `engine.info`, `engine.shutdown`, `feeds.inspect` and `feeds.service` against `vendor/protocol.schema.json`'s result types, using the harness the other eleven methods use.
+- [x] T002 [US2] Show each of T001's four checks red under a mutation of the stand-in's answer in `tests/fake-engine/schematic/serve.py` (one field removed or mistyped), and record the mutations in the test's header in the file's existing form.
 
 ## Phase 2: FR-002, the real suites in `determinism.yml` (pull request 2; US2)
 
