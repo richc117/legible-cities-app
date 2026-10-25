@@ -576,6 +576,10 @@ export function installProbe(): void {
   // Where `begin()` put focus: the screen's heading, or an open popover's
   // invoker; null in a dialog.
   let start: Element | null = null
+  // Every element a stop's chain can hold, as `begin()` found it at rest: the
+  // ring a control left the document with is still the ring it had before
+  // it took focus.
+  let atRest = new Map<Element, { outline: string; shadow: string }>()
   let stops: {
     control: Element
     chain: Element[]
@@ -603,6 +607,20 @@ export function installProbe(): void {
       // round the end of the document (`lapsed()`, the wrap) and ends back at
       // the chip, with the panel shut by then.
       ;(document.activeElement as HTMLElement | null)?.blur?.()
+      // The rest of every wanted control's chain, read while nothing is
+      // focused (issue 436): the control, its parent, and what its shadow
+      // root holds, which is where a kit button's inner button and that
+      // button's parent are. `finish()` reads the rest of an element still
+      // in the document then, as it always did, and takes this reading only
+      // for one that has left it: the colour panel's controls, unmounted
+      // once the walk has gone through the panel and on, which closes it.
+      // Read here and not when focus moves on from a control, because the
+      // panel closes in the very focus event that moves it on and its
+      // controls go a render later, so a reading then could find them or not.
+      atRest = new Map()
+      for (const el of want)
+        for (const part of [el, el.parentElement, ...(el.shadowRoot?.querySelectorAll('*') ?? [])])
+          if (part !== null && !atRest.has(part)) atRest.set(part, ring(part))
       const dialog = document.querySelector('dialog[open]')
       const popover = dialog === null ? document.querySelector('[popover]:popover-open') : null
       const invoker =
@@ -723,10 +741,11 @@ export function installProbe(): void {
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
       // What each stop's chain is at rest, read now for an element still in
-      // the document. One that has left it has no rest to read, and its stop
-      // is reported unjudged by `judgeStops` rather than dropped.
+      // the document, and as `begin()` read it for one that has left it. One
+      // that has left it and was not read then has no rest to compare with,
+      // and its stop is reported unjudged by `judgeStops` rather than dropped.
       const readings: StopReading[] = stops.map((stop) => {
-        const rest = stop.chain.map((el) => (el.isConnected ? ring(el) : null))
+        const rest = stop.chain.map((el) => (el.isConnected ? ring(el) : (atRest.get(el) ?? null)))
         return {
           control: describe(stop.control),
           // A frame's page is its own; the engine draws its focus.
@@ -890,8 +909,18 @@ export async function controlsOf(page: Page, name: string | RegExp): Promise<str
   }
 }
 
-/** A Tab walk from the top reaches every enabled control, and each shows its focus. */
-export async function expectTabWalk(page: Page, where: string): Promise<void> {
+/**
+ * A Tab walk from the top reaches every enabled control, and each shows its
+ * focus. `judges` names controls whose rings must be among those judged: a
+ * control that leaves the document before the walk reaches it, as a panel's
+ * do when the panel closes, is neither missed nor judged, so a sweep that
+ * exists for such controls says which they are.
+ */
+export async function expectTabWalk(
+  page: Page,
+  where: string,
+  { judges = [] }: { judges?: RegExp[] } = {},
+): Promise<void> {
   await page.evaluate(installProbe)
   const wanted = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.begin())
   expect(wanted, `${where}: there are controls to reach`).toBeGreaterThan(0)
@@ -1023,6 +1052,11 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
     `${where}: controls reached whose ring could not be judged, since they left the document`,
   ).toEqual([])
   expect(judged.unringed, `${where}: controls with no visible focus`).toEqual([])
+  const ringed = judged.rings.map((r) => r.control)
+  expect(
+    judges.filter((pattern) => !ringed.some((control) => pattern.test(control))).map(String),
+    `${where}: controls this sweep is for whose rings were not judged (judged: ${ringed.join(', ')})`,
+  ).toEqual([])
   // And the ring is a ring: at least two CSS pixels thick, and 3:1 against the
   // ground it is drawn on (issue 436, R10-03; `ring.ts` has the rule). A walk
   // that reached controls and found some ring on each is not yet one that
@@ -1221,6 +1255,8 @@ export async function expectEdgesInForcedColours(
  * a focus ring or a control that only one theme draws is a defect the other
  * would hide. The session is left in the default theme, Night, as it began.
  *
+ * `judges` is `expectTabWalk`'s, for each theme.
+ *
  * `before` puts the screen back in the state being swept, before each theme:
  * a walk can change it, as a colour panel the walk went through is closed
  * when focus leaves it (issue 436), and the second theme would otherwise
@@ -1230,7 +1266,7 @@ export async function sweep(
   page: Page,
   where: string,
   scope?: Locator,
-  { before }: { before?: () => Promise<void> } = {},
+  { before, judges }: { before?: () => Promise<void>; judges?: RegExp[] } = {},
 ): Promise<void> {
   let failure: unknown = null
   try {
@@ -1245,7 +1281,7 @@ export async function sweep(
       await expectNamed(snapshot, here)
       await expectNoDuplicatedNames(snapshot, here)
       await expectButtonsHoldTheirBox(page, here)
-      await expectTabWalk(page, here)
+      await expectTabWalk(page, here, { judges })
       await expectStill(page, here)
     }
   } catch (error) {

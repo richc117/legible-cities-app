@@ -259,7 +259,13 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // The walk begins at the open panel's chip, since focus anywhere else
     // closes it (issue 436), and the panel is opened again for the second
     // theme: the first walk went through it and on, which closed it.
-    await sweep(page, 'the project, a colour picker open', undefined, { before: openPicker })
+    // And its controls' rings are judged, by name: they leave the document
+    // once the walk has gone through the panel and on, and a control that
+    // has left it is neither missed nor judged unless the sweep says so.
+    await sweep(page, 'the project, a colour picker open', undefined, {
+      before: openPicker,
+      judges: [/^div "Color"$/, /^div "Hue"$/, /^fig-button "Use this colour"$/],
+    })
     // The sweep's Tab walk went on past the picker, and an auto popover that
     // focus leaves for another control is closed (issue 436: left open it
     // covered the rows below it). So the picker's own focus order is checked
