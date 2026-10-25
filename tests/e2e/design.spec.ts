@@ -196,6 +196,16 @@ test('a Library card holds what it has, at the narrowest column and at the fluid
           busiest: '2026-09-15',
           anchor: '2026-09-08',
         },
+        // What the run's map.build was sent (spec 037), as a layout run hands it.
+        sent: {
+          layout: 'a'.repeat(64),
+          made: '2026-09-10T12:00:00+00:00',
+          date: '2026-09-02',
+          colors: {},
+          defaultColor: '#888888',
+          lineOrder: [],
+          style: {},
+        },
       })
       return made.id
     })

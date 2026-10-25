@@ -227,13 +227,15 @@ export interface ServiceWindow {
 /**
  * What the page on screen was drawn from (ADR-045, A5.5-04): the layout and
  * when the engine made it, the day, the colours, the default colour, the
- * order and the theme, as they were at the end of the draw that produced
- * the map now in the project's output folder.
+ * order, the style and the line options the draw that produced the map now
+ * in the project's output folder sent `map.build` (its `SentSet`, spec 037),
+ * and the theme the page was last told.
  *
- * It is the record's copy of itself at that moment, which is what makes
- * staleness a comparison of the record against itself, with no events and
- * no dirty flags: a field that has moved since is a field the map on screen
- * does not show.
+ * It is set from what the run sent, never from the record at the write, and
+ * that is what makes staleness a comparison of the record against it, with
+ * no events and no dirty flags: a field of the record that differs from it
+ * is a field the map on screen does not show, a choice made while the run
+ * went included.
  *
  * It carries `made` and not only `layout` because two projects can draw
  * from one layout set and either can re-lay it out under the other, the
@@ -279,7 +281,7 @@ export interface DrawnFrom {
    * list its build answered, since a redraw draws the stored set as it is
    * now and another project may have laid it out again (A3-06); a draw whose
    * build answered none the app would take keeps the list it had while the
-   * layout is the one it was listed for (`drawnFrom`). Absent for a record
+   * layout is the one it was listed for (`drawnFromSent`). Absent for a record
    * drawn before it was kept, for a block
    * whose list does not read whole, and for a map drawn from another layout
    * than the list was - which reads as "draw the map again to pick a trip",
@@ -395,8 +397,9 @@ export interface ProjectRecord {
    */
   made: string | null
   /**
-   * What the map now on disk was drawn from (A5.5-04), written by the four
-   * handlers that write the record at the end of a draw; null for a record
+   * What the map now on disk was drawn from (A5.5-04), written by the six
+   * handlers that write the record at the end of a draw, from what the
+   * draw sent (`drawnFromSent`, spec 037); null for a record
    * from before this was kept, which means only that we cannot prove its
    * map is current - never that it is stale.
    */
@@ -462,9 +465,12 @@ export interface CreateProjectInput {
   agency?: string | null
 }
 
-/** What a rebuild for a chosen day hands back once the map is drawn. */
+/**
+ * What a rebuild for a chosen day hands back once the map is drawn: what
+ * its `map.build` was sent (spec 037), whose day is the day written.
+ */
 export interface RebuildDone {
-  date: string
+  sent: SentSet
   /**
    * The stations `map.build` answered for the map just drawn (issue 272),
    * written into `drawn`; left out, the list the record had is kept when
@@ -1520,61 +1526,127 @@ export function withLines(record: ProjectRecord, lines: ProjectLines): ProjectRe
 }
 
 /**
- * What a record that has just been drawn was drawn from: the eight fields
- * of the record itself, copied (the style as `styleSent` makes it). It is
- * called on the record a handler is about to write, never on the one it
- * read, because the values the draw used are the ones that write stores -
- * the run is handed the record and draws from it, and no cheap edit can
- * land between the draw and the write (the panels that make one are shut
- * while a run holds the page).
+ * What one `map.build` was built from (spec 037, FR-002): the layout and
+ * when the engine made it, the day, the palette, the order, the style and
+ * the line options, exactly as the run sent them. The run that built the
+ * request is the one place that knows what was sent, so every completion
+ * carries this and `drawn` is made from it (`drawnFromSent`), never from the
+ * record at the moment of the write, which a choice made while the run went
+ * has moved since.
  *
- * A record with no layout has drawn nothing, and gets null.
+ * The style is in the app's names as `styleSent` makes it, and the line
+ * options as `linesSent` makes them, absent for none: what the request
+ * carried, and what `drawn` has always held for them. The theme is not here,
+ * because no `map.build` carries one: the page restyles in place (issue 349).
  */
-export function drawnFrom(record: ProjectRecord): DrawnFrom | null {
-  if (record.layout === null) return null
-  const drawn: DrawnFrom = {
-    layout: record.layout,
-    made: record.made,
-    date: record.date,
-    colors: { ...record.colors },
-    defaultColor: record.defaultColor,
-    lineOrder: [...record.lineOrder],
-    theme: record.theme,
-    style: styleSent(record.style),
-  }
-  // The line options as they were sent (issue 394), and no key for none, so
-  // a block drawn without any is the block it always was.
-  const lines = linesSent(record.lines)
-  if (Object.keys(lines).length > 0) drawn.lines = lines
-  // The stations are the layout's (issue 272). A draw writes the list its
-  // build answered (`withStations`); this is the fallback for one that
-  // answered none: the list the last draw kept, while the layout and its
-  // `made` are the record's. From another layout, or the same id laid out
-  // again since, it is left out rather than claimed.
-  const before = record.drawn
-  if (
-    before !== null &&
-    before.stations !== undefined &&
-    before.layout === record.layout &&
-    before.made === record.made
-  )
-    drawn.stations = before.stations.map((station) => ({ ...station }))
-  return drawn
+export interface SentSet {
+  layout: string
+  made: string | null
+  date: string
+  colors: Record<string, string>
+  defaultColor: string
+  lineOrder: string[]
+  style: ProjectStyle
+  lines?: ProjectLines
 }
 
 /**
- * A draw's block with the stations its build answered (issue 272), or the
- * block as it is when the build answered none the bridge would take. The
- * list replaces whatever `drawnFrom` carried, because it is the map just
- * drawn.
+ * The sent set of a draw, from the arguments a run builds its `map.build`
+ * from, copied: the run hands this on with its completion.
  */
-export function withStations(
-  drawn: DrawnFrom | null,
-  stations: Station[] | undefined,
-): DrawnFrom | null {
-  if (drawn === null || stations === undefined) return drawn
-  // The two fields and nothing else, whatever the caller's objects carried.
-  return { ...drawn, stations: stations.map(({ id, name }) => ({ id, name })) }
+export function sentSet(draw: {
+  layout: string
+  made: string | null
+  date: string
+  palette: Palette
+  order: LineOrder
+  style: ProjectStyle
+  lines: ProjectLines | undefined
+}): SentSet {
+  const sent: SentSet = {
+    layout: draw.layout,
+    made: draw.made,
+    date: draw.date,
+    colors: { ...draw.palette.colors },
+    defaultColor: draw.palette.defaultColor,
+    lineOrder: [...draw.order],
+    style: styleSent(draw.style),
+  }
+  const lines = linesSent(draw.lines)
+  if (Object.keys(lines).length > 0) sent.lines = lines
+  return sent
+}
+
+/**
+ * Why a sent set is not one this record could hold, or null. It arrives from
+ * the renderer, the less trusted process, so every field is held to the rule
+ * the record's own field is, with that field's sentence, as a setter's
+ * argument is: the layout's id and its time, the day, the palette, the
+ * order, the style and the line options.
+ */
+export function validateSent(sent: unknown): string | null {
+  if (typeof sent !== 'object' || sent === null || Array.isArray(sent))
+    return 'the run did not say what its map was drawn from'
+  const given = sent as Record<string, unknown>
+  if (!isLayoutId(given.layout)) return 'the layout run did not say which layout it drew from'
+  if (given.made !== null) {
+    const problem = validateMade(given.made)
+    if (problem !== null) return problem
+  }
+  const day = validateServiceDate(typeof given.date === 'string' ? given.date : '')
+  if (day !== null) return day
+  return (
+    validatePalette({ colors: given.colors, defaultColor: given.defaultColor }) ??
+    validateLineOrder(given.lineOrder) ??
+    validateStyle(given.style) ??
+    (given.lines === undefined ? null : validateLines(given.lines))
+  )
+}
+
+/**
+ * What the map a run has just drawn was drawn from (spec 037, FR-003):
+ * every field of what the run sent, copied, and nothing read from the
+ * record's own choices. The theme is the record's at the write, since no
+ * draw sends one and the page is told it in place (`setTheme`).
+ *
+ * `stations` is what the build answered (issue 272). Where it answered none
+ * the app would take, the list the last draw kept is carried while the
+ * layout and its `made` are the ones it was listed for; from another
+ * layout, or the same id laid out again since, it is left out rather than
+ * claimed.
+ */
+export function drawnFromSent(
+  sent: SentSet,
+  theme: Theme,
+  before: DrawnFrom | null,
+  stations?: Station[],
+): DrawnFrom {
+  const drawn: DrawnFrom = {
+    layout: sent.layout,
+    made: sent.made,
+    date: sent.date,
+    colors: { ...sent.colors },
+    defaultColor: sent.defaultColor,
+    lineOrder: [...sent.lineOrder],
+    theme,
+    style: { ...sent.style },
+  }
+  // The line options as they were sent (issue 394), and no key for none, so
+  // a block drawn without any is the block it always was.
+  const lines = linesSent(sent.lines)
+  if (Object.keys(lines).length > 0) drawn.lines = lines
+  if (stations !== undefined) {
+    // The two fields and nothing else, whatever the caller's objects carried.
+    drawn.stations = stations.map(({ id, name }) => ({ id, name }))
+  } else if (
+    before !== null &&
+    before.stations !== undefined &&
+    before.layout === sent.layout &&
+    before.made === sent.made
+  ) {
+    drawn.stations = before.stations.map((station) => ({ ...station }))
+  }
+  return drawn
 }
 
 /**

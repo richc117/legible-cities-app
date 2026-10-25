@@ -17,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
 import ServiceDay from '../../src/renderer/src/ServiceDay'
 import type { EngineState } from '../../src/shared/engine'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 import { find } from '../support/element-tree'
 
 // React's client reads this to know it is driven by `act`.
@@ -47,7 +48,7 @@ const LAID = {
   modified: '2026-09-01T00:00:00.000Z',
 } as unknown as ProjectRecord
 /** Laid out and drawn for the 15th: nothing behind. */
-const DRAWN: ProjectRecord = { ...LAID, drawn: drawnFrom(LAID) }
+const DRAWN: ProjectRecord = { ...LAID, drawn: drawnOf(LAID) }
 
 const tick = (): Promise<void> => new Promise((settle) => setTimeout(settle, 0))
 

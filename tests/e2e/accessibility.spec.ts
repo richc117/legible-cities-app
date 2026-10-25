@@ -408,19 +408,37 @@ test('a drawn project’s card shows the engine’s thumbnail in the interface�
           busiest: '2026-09-15',
           anchor: '2026-09-08',
         },
+        // What the run's map.build was sent (spec 037), as a layout run hands it.
+        sent: {
+          layout: 'b'.repeat(64),
+          made: '2026-09-10T12:00:00+00:00',
+          date: '2026-09-02',
+          colors: {},
+          defaultColor: '#888888',
+          lineOrder: [],
+          style: {},
+        },
       })
     })
 
     // A redraw with the layout unchanged: the colours go in once the map is
     // drawn with them, and the address is a new one when the Library is seen
     // again, so the picture is fetched again.
+    // What the redraw sent (spec 037): the record's own, for the day it shows,
+    // with the colours it drew.
+    const palette = { colors: { A: '#112233' }, defaultColor: '#888888' }
+    const sent = {
+      layout: record.layout as string,
+      made: record.made,
+      date: (record.drawn?.date ?? record.date) as string,
+      ...palette,
+      lineOrder: record.lineOrder,
+      style: record.drawn?.style ?? {},
+    }
     await page.evaluate(
-      (id) =>
-        (globalThis as unknown as { api: Api }).api.projects.completeColors(id, {
-          colors: { A: '#112233' },
-          defaultColor: '#888888',
-        }),
-      record.id,
+      ([id, chosen, drawn]) =>
+        (globalThis as unknown as { api: Api }).api.projects.completeColors(id, chosen, drawn),
+      [record.id, palette, sent] as const,
     )
     await page.getByRole('button', { name: 'Settings' }).click()
     await page.getByRole('button', { name: 'Back to Library' }).click()

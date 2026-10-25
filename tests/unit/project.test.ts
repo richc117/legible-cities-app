@@ -4,8 +4,9 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
+  DEFAULT_STYLE,
   DEFAULT_THEME,
-  drawnFrom,
+  drawnFromSent,
   ID_PATTERN,
   RECORD_VERSION,
   parseRecord,
@@ -24,7 +25,15 @@ import {
   AGENCY_MAX,
   MODE_PATTERN,
   uniqueName,
+  sentSet,
+  styleSent,
+  validateLines,
+  validateMade,
+  validatePalette,
+  validateSent,
+  validateStyle,
 } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 const WINDOW = {
   start: '2026-01-01',
@@ -500,8 +509,20 @@ describe('drawn', () => {
     theme: 'sepia',
   }
 
-  it('is the record’s own eight fields, copied', () => {
-    expect(drawnFrom(drew)).toEqual({
+  it('is what the draw sent, copied, with the theme it is handed', () => {
+    // Mutation: `drawnFromSent` reads the colours from `before` - the old
+    // block's palette comes back in place of the one sent.
+    const sent = sentSet({
+      layout: LAYOUT,
+      made: MADE,
+      date: '2026-09-12',
+      palette: { colors: { A: '#0072bc' }, defaultColor: drew.defaultColor },
+      order: ['A', 'K'],
+      style: {},
+      lines: undefined,
+    })
+    const before = drawnOf({ ...drew, colors: { A: '#ff0000' }, date: '2026-09-01' })
+    expect(drawnFromSent(sent, 'sepia', before)).toEqual({
       layout: LAYOUT,
       made: MADE,
       date: '2026-09-12',
@@ -511,26 +532,44 @@ describe('drawn', () => {
       theme: 'sepia',
       style: {},
     })
-    // Copied, not shared: a later edit to the record must not rewrite what
-    // the map was drawn from under it.
-    const edited: ProjectRecord = {
-      ...drew,
-      colors: { ...drew.colors },
-      lineOrder: [...drew.lineOrder],
-    }
-    const drawn = drawnFrom(edited)
-    edited.colors.B = '#ff0000'
-    edited.lineOrder.push('B')
-    expect(drawn?.colors).toEqual({ A: '#0072bc' })
-    expect(drawn?.lineOrder).toEqual(['A', 'K'])
+    // Copied, not shared: a later edit to what was sent must not rewrite
+    // what the map was drawn from under it.
+    const drawn = drawnFromSent(sent, 'sepia', null)
+    sent.colors.B = '#ff0000'
+    sent.lineOrder.push('B')
+    expect(drawn.colors).toEqual({ A: '#0072bc' })
+    expect(drawn.lineOrder).toEqual(['A', 'K'])
   })
 
-  it('is null for a project that has drawn nothing', () => {
-    expect(drawnFrom(full)).toBeNull()
+  it('sends a copy of what the draw was built from, as the request carries it', () => {
+    const palette = { colors: { A: '#0072bc' }, defaultColor: '#888888' }
+    const order = ['A']
+    const sent = sentSet({
+      layout: LAYOUT,
+      made: null,
+      date: '2026-09-12',
+      palette,
+      order,
+      // A size at the engine's own number is no size, as `styleSent` sends it.
+      style: { lineWidth: 12, stationRadius: DEFAULT_STYLE.stationRadius },
+      lines: { A: { hidden: false } },
+    })
+    palette.colors.A = '#ff0000'
+    order.push('K')
+    expect(sent).toEqual({
+      layout: LAYOUT,
+      made: null,
+      date: '2026-09-12',
+      colors: { A: '#0072bc' },
+      defaultColor: '#888888',
+      lineOrder: ['A'],
+      style: styleSent({ lineWidth: 12 }),
+    })
+    expect(sent, 'no line options for none').not.toHaveProperty('lines')
   })
 
   it('reads back as written', () => {
-    const drawn = drawnFrom(drew)
+    const drawn = drawnOf(drew)
     const parsed = parseRecord({ ...drew, drawn })
     if (!('record' in parsed)) throw new Error(parsed.error)
     expect(parsed.record.drawn).toEqual(drawn)
@@ -543,7 +582,7 @@ describe('drawn', () => {
   })
 
   it('is whole or nothing: a half-valid block is not half-trusted', () => {
-    const drawn = drawnFrom(drew)
+    const drawn = drawnOf(drew)
     if (drawn === null) throw new Error('the fixture has a layout')
     for (const half of [
       { ...drawn, layout: 'abc' },
@@ -565,10 +604,63 @@ describe('drawn', () => {
   })
 
   it('holds a day and a made of none, which a record can honestly have', () => {
-    const drawn = { ...drawnFrom(drew), made: null, date: null }
+    const drawn = { ...drawnOf(drew), made: null, date: null }
     const parsed = parseRecord({ ...drew, drawn })
     if (!('record' in parsed)) throw new Error(parsed.error)
     expect(parsed.record.drawn).toEqual(drawn)
+  })
+})
+
+// What a run's map.build was sent arrives from the renderer, the less
+// trusted process, so the main process holds every field of it to the
+// record's own rule for that field, in that field's sentence (spec 037).
+describe('validateSent', () => {
+  const LAYOUT = 'a'.repeat(64)
+  const SENT = {
+    layout: LAYOUT,
+    made: '2026-09-10T12:00:00+00:00',
+    date: '2026-09-12',
+    colors: { A: '#0072bc' },
+    defaultColor: '#888888',
+    lineOrder: ['A', 'K'],
+    style: { lineWidth: 12 },
+    lines: { A: { hidden: true } },
+  }
+
+  it('takes a set a run would send, a layout made at no known time and no line options among them', () => {
+    expect(validateSent(SENT)).toBeNull()
+    expect(validateSent({ ...SENT, made: null })).toBeNull()
+    const without: Record<string, unknown> = { ...SENT }
+    delete without.lines
+    expect(validateSent(without)).toBeNull()
+  })
+
+  it('refuses each field with the sentence its own rule says', () => {
+    // Mutation: one check taken out of `validateSent` - its row passes.
+    const rows: [Record<string, unknown> | unknown, string][] = [
+      ['sent', 'the run did not say what its map was drawn from'],
+      [[SENT], 'the run did not say what its map was drawn from'],
+      [{ ...SENT, layout: 'abc' }, 'the layout run did not say which layout it drew from'],
+      [{ ...SENT, made: 'last Tuesday' }, validateMade('last Tuesday') as string],
+      [{ ...SENT, date: '2026-02-30' }, 'that is not a day in the calendar'],
+      [{ ...SENT, date: undefined }, 'the service day must be written YYYY-MM-DD'],
+      [
+        { ...SENT, colors: { A: 'red' } },
+        validatePalette({ colors: { A: 'red' }, defaultColor: '#888888' }) as string,
+      ],
+      [
+        { ...SENT, defaultColor: 'grey' },
+        'the default colour must be written #rrggbb, six hexadecimal digits',
+      ],
+      [{ ...SENT, lineOrder: ['A', 'A'] }, 'A is in the order twice'],
+      [{ ...SENT, style: { lineWidth: 9999 } }, validateStyle({ lineWidth: 9999 }) as string],
+      [{ ...SENT, style: { colour: '#fff' } }, 'the style does not take colour'],
+      [{ ...SENT, lines: { A: { width: -1 } } }, validateLines({ A: { width: -1 } }) as string],
+    ]
+    for (const [sent, sentence] of rows) {
+      expect(sentence, 'the row names a sentence').toBeTruthy()
+      expect(validateSent(sent), JSON.stringify(sent)).toBe(sentence)
+    }
   })
 })
 

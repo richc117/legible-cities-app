@@ -32,7 +32,9 @@ import {
   type ProjectStyle,
   type ProjectTuning,
   type RebuildDone,
+  type SentSet,
   validateMade,
+  validateSent,
   validateServiceDate,
   validateServiceWindow,
 } from '../shared/project'
@@ -78,10 +80,33 @@ function readDrawnStations(raw: unknown): { stations?: Station[] } {
 }
 
 /**
+ * What a run's `map.build` was sent (spec 037, FR-002), as the page relayed
+ * it: the record keeps it as `drawn`, so every field is held to the rule
+ * the record's own field is, with that field's sentence, as a setter's
+ * argument is (`validateSent`). Only the eight fields are taken, each
+ * copied, and the style and the line options by their readers below, so
+ * nothing else on it reaches the store.
+ */
+function readSent(raw: unknown): SentSet {
+  check(validateSent(raw))
+  const given = raw as SentSet
+  const sent: SentSet = {
+    layout: given.layout,
+    made: given.made,
+    date: given.date,
+    ...readPalette({ colors: given.colors, defaultColor: given.defaultColor }),
+    lineOrder: readLineOrder(given.lineOrder),
+    style: readStyle(given.style),
+  }
+  if (given.lines !== undefined) sent.lines = readLines(given.lines)
+  return sent
+}
+
+/**
  * What a finished run hands back: the day, the engine's layout id and the
- * feed's window, as the page relayed them, and the stations its map was
- * drawn with. All are checked for shape here; none is a path, and nothing
- * is opened.
+ * feed's window, as the page relayed them, the stations its map was drawn
+ * with, and what its `map.build` was sent. All are checked for shape here;
+ * none is a path, and nothing is opened.
  */
 function readLayoutDone(raw: unknown): LayoutDone {
   const input = isObject(raw) ? raw : {}
@@ -106,15 +131,17 @@ function readLayoutDone(raw: unknown): LayoutDone {
     // The tuning the run sent (issue 385), held to the rules the record's
     // own is, or nothing for a run sent none.
     ...(input.tuning === undefined ? {} : { tuning: readTuning(input.tuning) }),
+    sent: readSent(input.sent),
   }
 }
 
-/** What a finished rebuild hands back: the day the map was drawn for, and its stations. */
+/**
+ * What a finished rebuild hands back: what its `map.build` was sent, whose
+ * day is the day written, and its stations.
+ */
 function readRebuildDone(raw: unknown): RebuildDone {
   const input = isObject(raw) ? raw : {}
-  const date = typeof input.date === 'string' ? input.date : ''
-  check(validateServiceDate(date))
-  return { date, ...readDrawnStations(input.stations) }
+  return { sent: readSent(input.sent), ...readDrawnStations(input.stations) }
 }
 
 /**
@@ -358,32 +385,24 @@ export function registerProjectHandlers(
   handle(CHANNELS.projectsSetInputs, (id, inputs) =>
     store.setInputs(readId(id), readInputs(inputs)),
   )
-  // A redraw's stations (issue 272) ride as an optional last argument,
-  // passed on only when the list reads whole, so a call without one reaches
-  // the store exactly as it always did.
-  handle(CHANNELS.projectsCompleteColors, (id, palette, stations) => {
+  // A redraw's sent set (spec 037) follows the choice it drew, and its
+  // stations (issue 272) ride as an optional last argument, passed on only
+  // when the list reads whole.
+  handle(CHANNELS.projectsCompleteColors, (id, palette, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeColors(readId(id), readPalette(palette))
-      : store.completeColors(readId(id), readPalette(palette), drawn)
+    return store.completeColors(readId(id), readPalette(palette), readSent(sent), drawn)
   })
-  handle(CHANNELS.projectsCompleteOrder, (id, order, stations) => {
+  handle(CHANNELS.projectsCompleteOrder, (id, order, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeOrder(readId(id), readLineOrder(order))
-      : store.completeOrder(readId(id), readLineOrder(order), drawn)
+    return store.completeOrder(readId(id), readLineOrder(order), readSent(sent), drawn)
   })
-  handle(CHANNELS.projectsCompleteStyle, (id, style, stations) => {
+  handle(CHANNELS.projectsCompleteStyle, (id, style, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeStyle(readId(id), readStyle(style))
-      : store.completeStyle(readId(id), readStyle(style), drawn)
+    return store.completeStyle(readId(id), readStyle(style), readSent(sent), drawn)
   })
-  handle(CHANNELS.projectsCompleteLines, (id, lines, stations) => {
+  handle(CHANNELS.projectsCompleteLines, (id, lines, sent, stations) => {
     const { stations: drawn } = readDrawnStations(stations)
-    return drawn === undefined
-      ? store.completeLines(readId(id), readLines(lines))
-      : store.completeLines(readId(id), readLines(lines), drawn)
+    return store.completeLines(readId(id), readLines(lines), readSent(sent), drawn)
   })
   handle(CHANNELS.projectsSetDate, (id, date) => store.setDate(readId(id), readServiceDay(date)))
   handle(CHANNELS.projectsSetTheme, (id, theme) => store.setTheme(readId(id), readTheme(theme)))

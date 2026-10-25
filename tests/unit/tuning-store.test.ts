@@ -17,6 +17,7 @@ import { registerProjectHandlers } from '../../src/main/ipc'
 import { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
 import type { LayoutDone } from '../../src/shared/layout'
+import { drawsOn, sentOf } from '../support/sent'
 import { GRID_SENTENCE, tuningRangeSentence } from '../../src/shared/project'
 
 let home: string
@@ -40,7 +41,7 @@ const WINDOW = {
   anchor: '2026-09-08',
 }
 const MADE = '2026-09-10T12:00:00+00:00'
-const done = (over: Partial<LayoutDone> = {}): LayoutDone => ({
+const done = (over: Partial<LayoutDone> = {}): Omit<LayoutDone, 'sent'> => ({
   date: '2026-09-15',
   layout: LAYOUT,
   made: MADE,
@@ -118,7 +119,7 @@ describe('setTuning', () => {
 
   it('keeps every other field, and the layout’s own record of what it was asked with', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, done({ tuning: { gridSize: 50 } }))
+    await drawsOn(store).completeLayout(project.id, done({ tuning: { gridSize: 50 } }))
     const after = await store.setTuning(project.id, { grid: 'ortholinear' })
     expect(after.laidOutWith, 'only a layout run moves it').toEqual({ gridSize: 50 })
     expect(after.layout).toBe(LAYOUT)
@@ -132,7 +133,7 @@ describe('completeLayout and what the layout was asked with', () => {
     // of `done.tuning` - the record's ortholinear is then written here.
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     await store.setTuning(project.id, { grid: 'ortholinear' })
-    const { record } = await store.completeLayout(
+    const { record } = await drawsOn(store).completeLayout(
       project.id,
       done({ layout: TUNED, tuning: { grid: 'hexalinear', deg45: 2 } }),
     )
@@ -145,14 +146,17 @@ describe('completeLayout and what the layout was asked with', () => {
 
   it('removes it for a run sent none, which was LOOM’s defaults', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, done({ layout: TUNED, tuning: { gridSize: 50 } }))
-    await store.completeLayout(project.id, done())
+    await drawsOn(store).completeLayout(
+      project.id,
+      done({ layout: TUNED, tuning: { gridSize: 50 } }),
+    )
+    await drawsOn(store).completeLayout(project.id, done())
     expect(await onDisk(project.id)).not.toHaveProperty('laidOutWith')
   })
 
   it('leaves a project that never tuned without either key', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, done())
+    await drawsOn(store).completeLayout(project.id, done())
     const file = await onDisk(project.id)
     expect(file).not.toHaveProperty('tuning')
     expect(file).not.toHaveProperty('laidOutWith')
@@ -160,9 +164,9 @@ describe('completeLayout and what the layout was asked with', () => {
 
   it('refuses a run that says it sent what the engine would have refused', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await expect(store.completeLayout(project.id, done({ tuning: { deg90: 11 } }))).rejects.toThrow(
-      tuningRangeSentence('deg90'),
-    )
+    await expect(
+      drawsOn(store).completeLayout(project.id, done({ tuning: { deg90: 11 } })),
+    ).rejects.toThrow(tuningRangeSentence('deg90'))
     expect((await onDisk(project.id)).layout).toBeNull()
   })
 })
@@ -223,7 +227,10 @@ describe('the tuning on the bridge', () => {
 
   it('passes a finished run’s tuning on, held to the same rules, and none where it sent none', async () => {
     const { call, calls } = harness()
-    const finished = done()
+    const finished = {
+      ...done(),
+      sent: sentOf({}, { layout: LAYOUT, made: MADE, date: '2026-09-15' }),
+    }
     await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', {
       ...finished,
       tuning: { grid: 'hexalinear' },

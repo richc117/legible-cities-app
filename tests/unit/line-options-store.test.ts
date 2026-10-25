@@ -17,6 +17,7 @@ import { registerProjectHandlers } from '../../src/main/ipc'
 import { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
 import type { LayoutDone } from '../../src/shared/layout'
+import { drawsOn, sentOf } from '../support/sent'
 
 let home: string
 let store: ProjectStore
@@ -31,7 +32,7 @@ afterEach(async () => {
 })
 
 const LAYOUT = 'a'.repeat(64)
-const done: LayoutDone = {
+const done: Omit<LayoutDone, 'sent'> = {
   date: '2026-09-15',
   layout: LAYOUT,
   made: '2026-09-10T12:00:00+00:00',
@@ -45,14 +46,14 @@ const onDisk = async (id: string): Promise<Record<string, unknown>> =>
 
 async function laidOut(): Promise<string> {
   const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-  await store.completeLayout(project.id, done)
+  await drawsOn(store).completeLayout(project.id, done)
   return project.id
 }
 
 describe('completeLines', () => {
   it('writes the options the map was drawn with, keeping only what is away from the engine’s own', async () => {
     const id = await laidOut()
-    const after = await store.completeLines(id, {
+    const after = await drawsOn(store).completeLines(id, {
       A: { name: 'Airport Express', hidden: false, width: 1 },
       B: { hidden: true },
       C: { dash: 'solid' },
@@ -73,7 +74,7 @@ describe('completeLines', () => {
   it('puts the same into what the map was drawn from, and keeps the day the map showed', async () => {
     const id = await laidOut()
     await store.setDate(id, '2026-09-20')
-    const after = await store.completeLines(id, { B: { width: 1.5, dash: 'dotted' } })
+    const after = await drawsOn(store).completeLines(id, { B: { width: 1.5, dash: 'dotted' } })
     // Mutation: `completeLines` goes through `drew` - the chosen day, never
     // drawn, would then be stamped on the map.
     expect(after.drawn?.lines).toEqual({ B: { width: 1.5, dash: 'dotted' } })
@@ -86,8 +87,8 @@ describe('completeLines', () => {
     // Mutation: `withLines` writes `{}` - a file that never chose anything
     // would then carry the key.
     const id = await laidOut()
-    await store.completeLines(id, { A: { hidden: true } })
-    await store.completeLines(id, { A: {} })
+    await drawsOn(store).completeLines(id, { A: { hidden: true } })
+    await drawsOn(store).completeLines(id, { A: {} })
     const record = await onDisk(id)
     expect(record).not.toHaveProperty('lines')
     expect(record.drawn).not.toHaveProperty('lines')
@@ -98,19 +99,19 @@ describe('completeLines', () => {
     // other than the bridge would then be written.
     const id = await laidOut()
     const before = await onDisk(id)
-    await expect(store.completeLines(id, { A: { width: 2 } })).rejects.toThrow(
+    await expect(drawsOn(store).completeLines(id, { A: { width: 2 } })).rejects.toThrow(
       "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width",
     )
-    await expect(store.completeLines(id, { A: { colour: '#ff0000' } } as never)).rejects.toThrow(
-      "lines['A'] does not take colour",
-    )
+    await expect(
+      drawsOn(store).completeLines(id, { A: { colour: '#ff0000' } } as never),
+    ).rejects.toThrow("lines['A'] does not take colour")
     expect(await onDisk(id)).toEqual(before)
   })
 
   it('refuses before a layout, which has no map to draw them on', async () => {
     // Mutation: the layout check removed.
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await expect(store.completeLines(project.id, { A: { hidden: true } })).rejects.toThrow(
+    await expect(drawsOn(store).completeLines(project.id, { A: { hidden: true } })).rejects.toThrow(
       'lay the project out first',
     )
   })
@@ -171,8 +172,13 @@ describe('the bridge’s handler for the line options', () => {
       A: { name: 'Airport Express', casing: { width: 0.5, color: '#112233' } },
       B: { hidden: true, width: 1.25, dash: 'dashed' },
     }
-    await call('abcdefghijk1', lines)
-    await call('abcdefghijk1', {}, [{ id: '0x1', name: 'Alpha' }])
+    // What the redraw sent rides beside the options (spec 037).
+    const sent = sentOf(
+      {},
+      { layout: LAYOUT, made: done.made, date: done.date, lines: { B: { hidden: true } } },
+    )
+    await call('abcdefghijk1', lines, sent)
+    await call('abcdefghijk1', {}, sent, [{ id: '0x1', name: 'Alpha' }])
     lines.A.casing.width = 1
     lines.B.width = 1.5
     expect(calls).toEqual([
@@ -184,9 +190,14 @@ describe('the bridge’s handler for the line options', () => {
             A: { name: 'Airport Express', casing: { width: 0.5, color: '#112233' } },
             B: { hidden: true, width: 1.25, dash: 'dashed' },
           },
+          sent,
+          undefined,
         ],
       },
-      { method: 'completeLines', args: ['abcdefghijk1', {}, [{ id: '0x1', name: 'Alpha' }]] },
+      {
+        method: 'completeLines',
+        args: ['abcdefghijk1', {}, sent, [{ id: '0x1', name: 'Alpha' }]],
+      },
     ])
   })
 })

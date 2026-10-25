@@ -24,6 +24,7 @@ import {
   RECORD_VERSION,
   type RecordFact,
 } from '../../src/shared/project'
+import { drawsOn, sentOf } from '../support/sent'
 
 let home: string
 let store: ProjectStore
@@ -192,7 +193,7 @@ const WRITERS: {
   {
     name: 'completeLayout',
     write: (s) =>
-      s.completeLayout(A, {
+      drawsOn(s).completeLayout(A, {
         date: '2026-09-15',
         layout: RELAID,
         made: '2026-10-01T00:00:00+00:00',
@@ -204,21 +205,30 @@ const WRITERS: {
   },
   {
     name: 'completeRebuild',
-    write: (s) => s.completeRebuild(A, { date: '2026-09-16' }),
+    write: (s) => drawsOn(s).completeRebuild(A, { date: '2026-09-16' }),
     renews: ['drawn'],
   },
   { name: 'setDate', write: (s) => s.setDate(A, '2026-09-16'), renews: [] },
   {
     name: 'completeColors',
-    write: (s) => s.completeColors(A, { colors: { A: '#ff0000' }, defaultColor: '#888888' }),
+    write: (s) =>
+      drawsOn(s).completeColors(A, { colors: { A: '#ff0000' }, defaultColor: '#888888' }),
     renews: ['drawn'],
   },
-  { name: 'completeOrder', write: (s) => s.completeOrder(A, ['K', 'A']), renews: ['drawn'] },
-  { name: 'completeStyle', write: (s) => s.completeStyle(A, { lineWidth: 10 }), renews: ['drawn'] },
+  {
+    name: 'completeOrder',
+    write: (s) => drawsOn(s).completeOrder(A, ['K', 'A']),
+    renews: ['drawn'],
+  },
+  {
+    name: 'completeStyle',
+    write: (s) => drawsOn(s).completeStyle(A, { lineWidth: 10 }),
+    renews: ['drawn'],
+  },
   {
     name: 'completeLines',
     write: (s) =>
-      s.completeLines(A, {
+      drawsOn(s).completeLines(A, {
         A: { name: 'Airport', casing: { width: 0.5, color: '#112233' }, dash: 'dashed' },
       }),
     renews: ['drawn'],
@@ -459,7 +469,7 @@ describe('every writer carries what it does not know', () => {
     // build's tuning and line options go with the reset.
     await seed()
     await store.setTuning(A, {})
-    await store.completeLines(A, {})
+    await drawsOn(store).completeLines(A, {})
     const written = await onDisk()
     expect(written.tuning).toEqual({ smoothing: 0.4 })
     expect(written.lines).toEqual({ A: { casing: { pattern: 'double' }, opacity: 0.5 } })
@@ -477,7 +487,7 @@ describe('every writer carries what it does not know', () => {
       ...later(),
       lines: { toString: { opacity: 0.5 }, constructor: { opacity: 0.25 } },
     })
-    await store.completeLines(A, {})
+    await drawsOn(store).completeLines(A, {})
     expect((await onDisk()).lines).toEqual({
       toString: { opacity: 0.5 },
       constructor: { opacity: 0.25 },
@@ -530,6 +540,8 @@ describe('the bridge', () => {
     // Mutation: `get` answers the record as written, `{ ...carried.onto(record),
     // readOnly }` - every unknown name is then in its answer.
     const call = bridge()
+    // What each draw sent (spec 037): the record's own, for the day it shows.
+    const SENT = sentOf({}, { layout: LAYOUT, made: MADE, date: '2026-09-15' })
     const calls: [string, ...unknown[]][] = [
       [CHANNELS.projectsList],
       [CHANNELS.projectsGet, A],
@@ -544,14 +556,15 @@ describe('the bridge', () => {
           made: '2026-10-01T00:00:00+00:00',
           built: { mode: 'all', agency: null },
           service: WINDOW,
+          sent: { ...SENT, layout: RELAID, made: '2026-10-01T00:00:00+00:00' },
         },
       ],
-      [CHANNELS.projectsCompleteRebuild, A, { date: '2026-09-16' }],
+      [CHANNELS.projectsCompleteRebuild, A, { sent: { ...SENT, date: '2026-09-16' } }],
       [CHANNELS.projectsSetDate, A, '2026-09-16'],
-      [CHANNELS.projectsCompleteColors, A, { colors: {}, defaultColor: '#112233' }],
-      [CHANNELS.projectsCompleteOrder, A, ['K']],
-      [CHANNELS.projectsCompleteStyle, A, { lineWidth: 10 }],
-      [CHANNELS.projectsCompleteLines, A, { A: { dash: 'dotted' } }],
+      [CHANNELS.projectsCompleteColors, A, { colors: {}, defaultColor: '#112233' }, SENT],
+      [CHANNELS.projectsCompleteOrder, A, ['K'], SENT],
+      [CHANNELS.projectsCompleteStyle, A, { lineWidth: 10 }, SENT],
+      [CHANNELS.projectsCompleteLines, A, { A: { dash: 'dotted' } }, SENT],
       [CHANNELS.projectsSetTheme, A, 'sepia'],
       [CHANNELS.projectsSetTuning, A, { gridSize: 150 }],
       [CHANNELS.projectsMarkOpened, A],

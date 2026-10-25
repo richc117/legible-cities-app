@@ -12,7 +12,6 @@ import { describe, expect, it } from 'vitest'
 import { progressWords } from '../../src/renderer/src/projectProgress'
 import {
   DEFAULT_TUNING,
-  drawnFrom,
   GRID_SENTENCE,
   GRIDS,
   inTuningRange,
@@ -30,6 +29,7 @@ import {
   withTuning,
   type ProjectRecord,
 } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 const ID = 'kq7x2mzp4dna'
 
@@ -275,7 +275,7 @@ describe('reading a record’s tuning', () => {
     const record = read({
       layout: 'a'.repeat(64),
       date: '2026-09-12',
-      drawn: drawnFrom(drawn),
+      drawn: drawnOf(drawn),
       tuning: { grid: 'hexalinear' },
     })
     expect(progressWords(summarise(record, false), null)).toBe('finished up to 02 Process')

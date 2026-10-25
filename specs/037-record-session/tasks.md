@@ -24,10 +24,10 @@ Stories: US1 (`drawn` is true), US2 (a choice is never lost), US3 (the cheap edi
 
 ## Phase 3: Part 1, the sent set and `drawn` (US1)
 
-- [ ] T005 [US1] `SentSet` and `drawnFromSent` in `src/shared/project.ts`, replacing `drawnFrom` and its comment. Add `sent` to `LayoutDone` (`src/shared/layout.ts`), `RebuildDone`, and the four redraw payloads.
-- [ ] T006 [US1] `src/main/ipc.ts` payload readers validate `sent` field by field, with the record's validators. Unit tests in `ipc.test.ts` for each field refused.
-- [ ] T007 [US1] `src/main/projects.ts`: `completeLayout`, `completeRebuild` and the four redraw writers build `drawn` with `drawnFromSent`. `completeLayout` no longer writes `record.date ?? done.date` over the record's date.
-- [ ] T008 [US1] `src/renderer/src/engine/layoutRun.ts`: `#draw` returns the sent set it built its `map.build` from, and every completion carries it.
+- [x] T005 [US1] `SentSet` and `drawnFromSent` in `src/shared/project.ts`, replacing `drawnFrom` and its comment. Add `sent` to `LayoutDone` (`src/shared/layout.ts`), `RebuildDone`, and the four redraw payloads.
+- [x] T006 [US1] `src/main/ipc.ts` payload readers validate `sent` field by field, with the record's validators. Unit tests in `ipc.test.ts` for each field refused.
+- [x] T007 [US1] `src/main/projects.ts`: `completeLayout`, `completeRebuild` and the four redraw writers build `drawn` with `drawnFromSent`. `completeLayout` no longer writes `record.date ?? done.date` over the record's date.
+- [x] T008 [US1] `src/renderer/src/engine/layoutRun.ts`: `#draw` returns the sent set it built its `map.build` from, and every completion carries it.
 - [ ] T009 [US1] User Story 1's matrix in `tests/unit/layout-run.test.ts` and `projects-store.test.ts`: seven run kinds, each against each field written mid-run, with `drawn` equal to what was sent. Plus R3-02's probe. Mutation: `drawn` from the record again.
 
 ## Phase 4: Part 1, the inputs and the mechanisms removed (US2)

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { progressWords } from '../../src/renderer/src/projectProgress'
 import type { RunFacts } from '../../src/renderer/src/runGraph'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 // A project's row on the front door says how far it has got (A5.6-04), from
 // the notebook's own run graph over the fields the list's summary carries.
@@ -32,7 +33,7 @@ const base: ProjectRecord = {
   created: '2026-09-07T20:00:00.000Z',
   modified: '2026-09-07T20:00:00.000Z',
 }
-const current: ProjectRecord = { ...base, drawn: drawnFrom(base) }
+const current: ProjectRecord = { ...base, drawn: drawnOf(base) }
 const run = (state: RunFacts['state'], patch: Partial<RunFacts> = {}): RunFacts => ({
   state,
   download: null,

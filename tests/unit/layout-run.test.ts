@@ -39,7 +39,8 @@ import { redrawPageOnOpen } from '../../src/renderer/src/notebook/olderPage'
 import { cellOfRun, runGraph } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { cameTooLate, ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { drawnDate, type ProjectRecord } from '../../src/shared/project'
+import { drawnOf, sentOf } from '../support/sent'
 
 interface Pending {
   method: string
@@ -190,6 +191,13 @@ const project = (over: Partial<ProjectRecord> = {}): ProjectRecord =>
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
+/** What a layout run of this record sends map.build (spec 037): the layout just answered, for a day. */
+const sentLaidOut = (record: ProjectRecord, date: string) =>
+  sentOf(record, { layout: LAYOUT, made: MADE, date })
+/** What a redraw of this record sends: the record's own, for the day its map shows, with its choice. */
+const sentFor = (record: ProjectRecord, over: Parameters<typeof sentOf>[1] = {}) =>
+  sentOf(record, { date: drawnDate(record) ?? undefined, ...over })
+
 function setup(
   over: Partial<ProjectRecord> = {},
   engine: EngineState | null = READY,
@@ -331,6 +339,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       made: MADE,
       built: { mode: 'all', agency: null },
       service: WINDOW,
+      sent: sentLaidOut(record, '2026-09-15'),
     })
     expect(run.snapshot).toMatchObject({ state: 'done', forced: true, changed: false })
   })
@@ -400,7 +409,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   })
 
   it("uses the day the project already has rather than the engine's, and still asks for the window", async () => {
-    const { calls, complete, begin } = setup({ date: '2026-05-04' })
+    const { calls, complete, begin, record } = setup({ date: '2026-05-04' })
     begin()
     await laidOut(calls)
     expect(calls[1].method).toBe('feeds.service')
@@ -413,6 +422,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       made: MADE,
       built: { mode: 'all', agency: null },
       service: WINDOW,
+      sent: sentLaidOut(record, '2026-05-04'),
     })
   })
 
@@ -439,7 +449,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   })
 
   it("writes the record once, with the engine's layout id and its window", async () => {
-    const { run, calls, complete, begin } = setup()
+    const { run, calls, complete, begin, record } = setup()
     begin()
     await laidOut(calls)
     calls[2].resolve({ files: {} })
@@ -451,6 +461,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       made: MADE,
       built: { mode: 'all', agency: null },
       service: WINDOW,
+      sent: sentLaidOut(record, '2026-09-15'),
     })
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
@@ -529,7 +540,9 @@ describe('a rebuild for a chosen day', () => {
     for (const stage of LAYOUT_STAGES) calls[0].report(stage, `${stage} finished`)
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-12' })
+    expect(completeRebuild).toHaveBeenCalledWith('p1', {
+      sent: sentOf(record, { date: '2026-09-12' }),
+    })
     expect(complete, 'the layout record is not rewritten').not.toHaveBeenCalled()
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, changed: false })
     expect(drawnSentence('2026-09-12')).toMatch(/Drawn for 2026-09-12 from the stored layout/)
@@ -1040,7 +1053,11 @@ describe('recolour', () => {
 
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeColors).toHaveBeenCalledWith('p1', chosen)
+    expect(completeColors).toHaveBeenCalledWith(
+      'p1',
+      chosen,
+      sentFor(record, { colors: chosen.colors, defaultColor: chosen.defaultColor }),
+    )
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.recoloured).toBe(true)
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
@@ -1155,7 +1172,7 @@ describe('reorder', () => {
 
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeOrder).toHaveBeenCalledWith('p1', chosen)
+    expect(completeOrder).toHaveBeenCalledWith('p1', chosen, sentFor(record, { lineOrder: chosen }))
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.reordered).toBe(true)
   })
@@ -1454,7 +1471,11 @@ describe('restyle', () => {
 
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeStyle).toHaveBeenCalledWith('p1', { lineWidth: 12 })
+    expect(completeStyle).toHaveBeenCalledWith(
+      'p1',
+      { lineWidth: 12 },
+      sentFor(record, { style: { lineWidth: 12 } }),
+    )
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.restyled).toBe(true)
     expect(run.snapshot.stages.every((s) => s.state === 'done')).toBe(true)
@@ -1486,7 +1507,7 @@ describe('restyle', () => {
     expect(params).not.toHaveProperty('preset')
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeStyle).toHaveBeenCalledWith('p1', chosen)
+    expect(completeStyle).toHaveBeenCalledWith('p1', chosen, sentFor(record, { style: chosen }))
   })
 
   it('sends the trains on every draw of a project that set them, and nothing of them for one that did not', async () => {
@@ -1681,7 +1702,7 @@ describe('redrawLines', () => {
 
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeLines).toHaveBeenCalledWith('p1', lines)
+    expect(completeLines).toHaveBeenCalledWith('p1', lines, sentFor(record, { lines }))
     expect(completeColors).not.toHaveBeenCalled()
     expect(run.snapshot.state).toBe('done')
   })
@@ -1694,7 +1715,9 @@ describe('redrawLines', () => {
     await tick()
     calls[0].resolve({ files: {}, stations: [{ id: '0x1', name: 'Alpha' }] })
     await tick()
-    expect(completeLines).toHaveBeenCalledWith('p1', lines, [{ id: '0x1', name: 'Alpha' }])
+    expect(completeLines).toHaveBeenCalledWith('p1', lines, sentFor(record, { lines }), [
+      { id: '0x1', name: 'Alpha' },
+    ])
   })
 
   it('is the colours’ kind of run, so cell 05 is the one running and a stop puts both back', async () => {
@@ -2505,7 +2528,7 @@ describe('Run all with a write to the record on its way', () => {
       service: WINDOW,
       date: '2026-09-15',
     })
-    return { ...drawn, drawn: drawnFrom(drawn), date: '2026-09-12', ...over }
+    return { ...drawn, drawn: drawnOf(drawn), date: '2026-09-12', ...over }
   }
 
   it('a tuning that lands while it waits makes it a layout, though only the day was behind at the press', async () => {
@@ -2569,7 +2592,9 @@ describe('Run all with a write to the record on its way', () => {
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-20' })
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-20' })
+    expect(completeRebuild).toHaveBeenCalledWith('p1', {
+      sent: sentOf(record, { date: '2026-09-20' }),
+    })
   })
 
   it('a refused write: the plan is the one the record as it stands makes, and the writer hears why', async () => {
@@ -2780,7 +2805,7 @@ describe('a press after a write has answered and before the screen has drawn it'
       date: '2026-09-15',
       modified: EARLIER,
     })
-    const behind = { ...shown, drawn: drawnFrom(shown), date: '2026-09-12' }
+    const behind = { ...shown, drawn: drawnOf(shown), date: '2026-09-12' }
     const all = setup(behind)
     await all.run.writing(Promise.resolve({ ...behind, tuning: { gridSize: 50 }, modified: LATER }))
     all.run.runAll(all.record, READY, runAllPlan)
@@ -2855,7 +2880,7 @@ describe('a press tells what holds a choice back, before it reads the record', (
       service: WINDOW,
       date: '2026-09-15',
     })
-    return { ...record, drawn: drawnFrom(record) }
+    return { ...record, drawn: drawnOf(record) }
   }
 
   it('a write sent as the press is heard is waited for, by a layout run, a rebuild and Run all', async () => {
@@ -3077,7 +3102,9 @@ describe('a cancel that came too late', () => {
     run.cancel()
     calls[0].resolve(late(MAP))
     await tick()
-    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-12' })
+    expect(completeRebuild).toHaveBeenCalledWith('p1', {
+      sent: sentOf(record, { date: '2026-09-12' }),
+    })
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, message: MAP_KEPT })
   })
 
@@ -3092,7 +3119,7 @@ describe('a cancel that came too late', () => {
     })
     const { run, calls, completeRebuild, record } = setup({
       ...drawn,
-      drawn: drawnFrom(drawn),
+      drawn: drawnOf(drawn),
       date: '2026-09-12',
     })
     expect(runAllPlan(record, run.snapshot)).toEqual({ kind: 'rebuild', date: '2026-09-12' })
@@ -3100,7 +3127,9 @@ describe('a cancel that came too late', () => {
     run.cancel()
     calls[0].resolve(late(MAP))
     await tick()
-    expect(completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-12' })
+    expect(completeRebuild).toHaveBeenCalledWith('p1', {
+      sent: sentOf(record, { date: '2026-09-12' }),
+    })
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, message: MAP_KEPT })
   })
 
@@ -3150,7 +3179,11 @@ describe('a cancel that came too late', () => {
       expect(s.calls[0].cancelled, `${redraw.name}: the map call was asked to stop`).toBe(true)
       s.calls[0].resolve(late({ files: {} }))
       await tick()
-      expect(redraw.written(s), redraw.name).toHaveBeenCalledWith('p1', redraw.value)
+      expect(redraw.written(s), redraw.name).toHaveBeenCalledWith(
+        'p1',
+        redraw.value,
+        expect.objectContaining({ layout: LAYOUT }),
+      )
       expect(s.run.snapshot, redraw.name).toMatchObject({
         state: 'done',
         message: MAP_KEPT,
@@ -3171,7 +3204,7 @@ describe('a cancel that came too late', () => {
     run.cancel()
     calls[0].resolve({ files: {} })
     await tick()
-    expect(completeColors).toHaveBeenCalledWith('p1', palette)
+    expect(completeColors).toHaveBeenCalledWith('p1', palette, expect.objectContaining(palette))
     expect(run.snapshot.state).toBe('done')
     expect(run.snapshot.message, 'no cancel came too late as far as the engine knows').not.toBe(
       MAP_KEPT,

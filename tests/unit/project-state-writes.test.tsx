@@ -33,7 +33,8 @@ import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import { drawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 const runs = vi.hoisted(() => ({
   layout: null as unknown,
@@ -374,7 +375,7 @@ describe('Run all chooses its run from the record the writes on their way leave'
   const drawnFor15 = { ...RECORD, date: '2026-09-15' } as ProjectRecord
   const DAY_BEHIND = {
     ...drawnFor15,
-    drawn: drawnFrom(drawnFor15),
+    drawn: drawnOf(drawnFor15),
     date: '2026-09-12',
   } as ProjectRecord
 
@@ -616,7 +617,7 @@ describe('Run all with nothing to run, after a redraw for colours was stopped', 
   const drawnFor15 = { ...RECORD, date: '2026-09-15' } as ProjectRecord
   const DAY_BEHIND = {
     ...drawnFor15,
-    drawn: drawnFrom(drawnFor15),
+    drawn: drawnOf(drawnFor15),
     date: '2026-09-12',
   } as ProjectRecord
   const putBack = vi.fn()
@@ -697,7 +698,7 @@ describe('a redraw the cancel reached too late', () => {
     // page from before.
     const { run, asked } = answeringRun()
     runs.layout = run
-    const before = { ...RECORD, drawn: drawnFrom(RECORD) } as ProjectRecord
+    const before = { ...RECORD, drawn: drawnOf(RECORD) } as ProjectRecord
     api.projects.get.mockImplementation(async () => ({ ...before, readOnly: false }))
     await act(async () => root.render(<Harness />))
     await act(tick)
@@ -708,7 +709,7 @@ describe('a redraw the cancel reached too late', () => {
     act(() => shown.run.recolour(shown.project as ProjectRecord, shown.engine, chosen))
     act(() => shown.run.cancel())
     // What the store holds once the run has written the colours it drew.
-    const after = { ...before, colors: chosen.colors, drawn: drawnFrom({ ...before, ...chosen }) }
+    const after = { ...before, colors: chosen.colors, drawn: drawnOf({ ...before, ...chosen }) }
     api.projects.get.mockImplementation(async () => ({ ...after, readOnly: false }))
     await act(async () => {
       asked[0].resolve({ files: {}, cancel_too_late: true })

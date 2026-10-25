@@ -14,7 +14,6 @@ import {
   CASING_WIDTH_RANGE,
   DEFAULT_CASING_COLOR,
   DEFAULT_LINE,
-  drawnFrom,
   isLineName,
   LINE_DASHES,
   LINE_NAME_MAX,
@@ -32,6 +31,7 @@ import {
   validateLines,
   type ProjectRecord,
 } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 
 const ID = 'kq7x2mzp4dna'
 const LAYOUT = 'a'.repeat(64)
@@ -387,17 +387,17 @@ describe('what a map drawn with line options remembers', () => {
   }
 
   it('is the options as they were sent, and no key for none', () => {
-    // Mutation: `drawnFrom` leaves the lines out - the map's own options would
+    // Mutation: `drawnFromSent` leaves the lines out - the map's own options would
     // then never be in what it was drawn from.
-    expect(drawnFrom(drew)?.lines).toEqual({ B: { hidden: true }, A: { dash: 'dashed' } })
-    expect(drawnFrom({ ...drew, lines: undefined })).not.toHaveProperty('lines')
-    expect(drawnFrom({ ...drew, lines: { A: { hidden: false } } })).not.toHaveProperty('lines')
+    expect(drawnOf(drew)?.lines).toEqual({ B: { hidden: true }, A: { dash: 'dashed' } })
+    expect(drawnOf({ ...drew, lines: undefined })).not.toHaveProperty('lines')
+    expect(drawnOf({ ...drew, lines: { A: { hidden: false } } })).not.toHaveProperty('lines')
   })
 
   it('reads back as written, and a block from before the field was drawn with none', () => {
     // Mutation: `readDrawn` leaves the lines out - the block would then not read
     // back as it was written.
-    const drawn = drawnFrom(drew)
+    const drawn = drawnOf(drew)
     expect(read({ ...drew, drawn }).drawn).toEqual(drawn)
     const { lines: _lines, ...before } = drawn as NonNullable<typeof drawn>
     void _lines

@@ -15,8 +15,7 @@ import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
   DEFAULT_THEME,
-  drawnFrom,
-  withStations,
+  drawnFromSent,
   openedOrder,
   ID_PATTERN,
   RECORD_VERSION,
@@ -34,6 +33,7 @@ import {
   validateTheme,
   validateTuning,
   validateDestination,
+  validateSent,
   sameTuning,
   withLines,
   withTuning,
@@ -49,6 +49,7 @@ import {
   type ProjectTuning,
   type RebuildDone,
   type RecordFact,
+  type SentSet,
   type Theme,
   validateMade,
   serviceDayRefusal,
@@ -74,61 +75,36 @@ import {
 } from './replace-file'
 
 /**
- * The record a draw has just produced, with `drawn` set from its own
- * values (A5.5-04, ADR-045). The four handlers that write at the end of a
- * draw pass through here and nobody else does: an edit that draws nothing -
- * a rename, the inputs, the theme, the export choice - leaves `drawn`
- * exactly as it was, which is what lets the notebook say the map on screen
- * is behind the record.
+ * The record a draw has just produced, with `drawn` made from what the draw
+ * sent (spec 037, FR-003), never from the record about to be written: a day,
+ * a colour or a size chosen while the run went is the record's, and the map
+ * on disk does not carry it, which is what lets the notebook say so. The six
+ * handlers that write at the end of a draw pass through here and nobody else
+ * does: an edit that draws nothing - a rename, the inputs, the day, the
+ * theme, the export choice - leaves `drawn` exactly as it was.
  *
- * `stations` is what the build answered for the map it drew (issue 272),
- * from a layout run or a rebuild; without it, the list the record had stays
- * where the layout is the one it was listed for (`drawnFrom`).
+ * The theme is the record's at the write, because no draw sends one: the
+ * page is told it in place (issue 349). `stations` is what the build answered
+ * for the map it drew (issue 272); without it, the list the record had stays
+ * where the layout is the one it was listed for (`drawnFromSent`).
  */
-function drew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
-  return { ...record, drawn: withStations(drawnFrom(record), listed(stations)) }
+function drew(record: ProjectRecord, before: ProjectRecord, sent: SentSet, stations?: Station[]) {
+  return { ...record, drawn: drawnFromSent(sent, record.theme, before.drawn, listed(stations)) }
 }
 
 /**
  * A draw's stations as the store will keep them: read again here, as every
  * other field is checked in the handler and again in the store, which is the
  * trusted layer and has callers of its own. A list that does not read whole
- * is no list, and the record keeps what `drawnFrom` carries.
+ * is no list, and the record keeps what `drawnFromSent` carries.
  */
 function listed(stations: Station[] | undefined): Station[] | undefined {
   return stations === undefined ? undefined : (readStations(stations) ?? undefined)
 }
 
 /**
- * The record a redraw of the *same day* has produced: a recolour or a
- * reorder (A4-01, A4-02). Everything moves except the day, which stays the
- * one the map already showed.
- *
- * It is not `drew` because `drew` copies the record's `date`, and since
- * A5.5-15 that may be a day a person has chosen and not drawn. A recolour
- * draws `drawnDate(record)` - the day the page in the output folder was
- * made for - so writing `record.date` into `drawn` would have dragging a
- * colour close cell 03's gap with nobody pressing "Draw for this day", and
- * would claim the map shows a day it was never drawn for. That is also the
- * one way the race loses: a `setDate` landing between the debounce firing
- * and this write would otherwise stamp the new day on the old picture.
- *
- * A record whose `drawn` is null has nothing to keep, and the redraw did
- * draw `record.date`, which is what `drawnDate` answered for it.
- */
-function redrew(record: ProjectRecord, stations?: Station[]): ProjectRecord {
-  const before = record.drawn
-  // The stations the build answered, where it answered a list (issue 272):
-  // a redraw from a set another project laid out again since draws that
-  // set's stations, which the record's own `made` cannot see.
-  const drawn = withStations(drawnFrom(record), listed(stations))
-  if (drawn === null || before === null) return { ...record, drawn }
-  return { ...record, drawn: { ...drawn, date: before.date } }
-}
-
-/**
  * The facts a draw renews: what the map was drawn from. Every writer that
- * goes through `drew` or `redrew` names it when it writes, so the keys a
+ * goes through `drew` names it when it writes, so the keys a
  * later build kept inside the old block are not stamped on a map this build
  * drew without them (ADR-056).
  */
@@ -662,6 +638,7 @@ export class ProjectStore {
     check(validateMode(done.built?.mode ?? ''))
     check(validateAgency(done.built?.agency ?? null))
     check(validateTuning(done.tuning ?? {}))
+    check(validateSent(done.sent))
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))
@@ -680,6 +657,10 @@ export class ProjectStore {
           layout,
           made: done.made,
           built: { mode: done.built.mode, agency: done.built.agency?.trim() || null },
+          // The record's own day is a person's choice, kept; the run's day
+          // is what the map was drawn for, which `drawn` says (from `sent`).
+          // A first layout has no day of its own, and the run's becomes it
+          // (ADR-031).
           date: record.date ?? done.date,
           service: { start, end, busiest, anchor },
           modified: new Date().toISOString(),
@@ -687,6 +668,8 @@ export class ProjectStore {
         'laidOutWith',
         done.tuning ?? {},
       ),
+      record,
+      done.sent,
       done.stations,
     )
     const written = await this.#save(id, updated, carried, A_LAYOUT)
@@ -714,14 +697,17 @@ export class ProjectStore {
     this.checkId(id)
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
-    check(serviceDayRefusal(record, done.date))
+    check(validateSent(done.sent))
+    check(serviceDayRefusal(record, done.sent.date))
     const updated: ProjectRecord = drew(
       {
         ...record,
         version: RECORD_VERSION,
-        date: done.date,
+        date: done.sent.date,
         modified: new Date().toISOString(),
       },
+      record,
+      done.sent,
       done.stations,
     )
     return this.#save(id, updated, carried, A_DRAW)
@@ -769,23 +755,30 @@ export class ProjectStore {
    * feed's own colour over the default, so only the two fields are kept
    * here; the app resolves nothing and stores no feed colour.
    */
-  async completeColors(id: string, palette: Palette, stations?: Station[]): Promise<ProjectRecord> {
+  async completeColors(
+    id: string,
+    palette: Palette,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
     return this.#track(() =>
-      this.#serial(id, () => this.#completeColorsTracked(id, palette, stations)),
+      this.#serial(id, () => this.#completeColorsTracked(id, palette, sent, stations)),
     )
   }
 
   async #completeColorsTracked(
     id: string,
     palette: Palette,
+    sent: SentSet,
     stations?: Station[],
   ): Promise<ProjectRecord> {
     this.checkId(id)
+    check(validateSent(sent))
     check(validatePalette(palette))
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew(
+    const updated: ProjectRecord = drew(
       {
         ...record,
         version: RECORD_VERSION,
@@ -793,6 +786,8 @@ export class ProjectStore {
         defaultColor: palette.defaultColor,
         modified: new Date().toISOString(),
       },
+      record,
+      sent,
       stations,
     )
     return this.#save(id, updated, carried, A_DRAW)
@@ -804,29 +799,38 @@ export class ProjectStore {
    * arrangement the panel showed, not a change to the one stored, so what
    * is written is what was seen.
    */
-  async completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<ProjectRecord> {
+  async completeOrder(
+    id: string,
+    order: LineOrder,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<ProjectRecord> {
     return this.#track(() =>
-      this.#serial(id, () => this.#completeOrderTracked(id, order, stations)),
+      this.#serial(id, () => this.#completeOrderTracked(id, order, sent, stations)),
     )
   }
 
   async #completeOrderTracked(
     id: string,
     order: LineOrder,
+    sent: SentSet,
     stations?: Station[],
   ): Promise<ProjectRecord> {
     this.checkId(id)
+    check(validateSent(sent))
     check(validateLineOrder(order))
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew(
+    const updated: ProjectRecord = drew(
       {
         ...record,
         version: RECORD_VERSION,
         lineOrder: [...order],
         modified: new Date().toISOString(),
       },
+      record,
+      sent,
       stations,
     )
     return this.#save(id, updated, carried, A_DRAW)
@@ -842,36 +846,41 @@ export class ProjectStore {
    * issue 391 the style carries the markers, the label face and the two
    * train numbers too, under the same rules and the same validator.
    *
-   * A redraw of the *same day*, so it goes through `redrew` as a recolour
-   * does: the day the map already showed stays the one it showed.
+   * A redraw of the *same day*: the run sends the day the map already
+   * showed, and `drawn` keeps what it sent.
    */
   async completeStyle(
     id: string,
     style: ProjectStyle,
+    sent: SentSet,
     stations?: Station[],
   ): Promise<ProjectRecord> {
     return this.#track(() =>
-      this.#serial(id, () => this.#completeStyleTracked(id, style, stations)),
+      this.#serial(id, () => this.#completeStyleTracked(id, style, sent, stations)),
     )
   }
 
   async #completeStyleTracked(
     id: string,
     style: ProjectStyle,
+    sent: SentSet,
     stations?: Station[],
   ): Promise<ProjectRecord> {
     this.checkId(id)
+    check(validateSent(sent))
     check(validateStyle(style))
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew(
+    const updated: ProjectRecord = drew(
       {
         ...record,
         version: RECORD_VERSION,
         style: settledStyle(style),
         modified: new Date().toISOString(),
       },
+      record,
+      sent,
       stations,
     )
     return this.#save(id, updated, carried, A_DRAW)
@@ -886,31 +895,36 @@ export class ProjectStore {
    * and only the fields away from the engine's own are kept (`withLines`), so
    * a set of nothing removes the key.
    *
-   * A redraw of the *same day*, so it goes through `redrew` as a recolour
-   * does: the day the map already showed stays the one it showed.
+   * A redraw of the *same day*: the run sends the day the map already
+   * showed, and `drawn` keeps what it sent.
    */
   async completeLines(
     id: string,
     lines: ProjectLines,
+    sent: SentSet,
     stations?: Station[],
   ): Promise<ProjectRecord> {
     return this.#track(() =>
-      this.#serial(id, () => this.#completeLinesTracked(id, lines, stations)),
+      this.#serial(id, () => this.#completeLinesTracked(id, lines, sent, stations)),
     )
   }
 
   async #completeLinesTracked(
     id: string,
     lines: ProjectLines,
+    sent: SentSet,
     stations?: Station[],
   ): Promise<ProjectRecord> {
     this.checkId(id)
+    check(validateSent(sent))
     check(validateLines(lines))
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (record.layout === null) throw new Error('lay the project out first')
-    const updated: ProjectRecord = redrew(
+    const updated: ProjectRecord = drew(
       withLines({ ...record, version: RECORD_VERSION, modified: new Date().toISOString() }, lines),
+      record,
+      sent,
       stations,
     )
     return this.#save(id, updated, carried, A_DRAW)

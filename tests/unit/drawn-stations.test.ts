@@ -26,13 +26,14 @@ import type { EngineState } from '../../src/shared/engine'
 import { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
 import {
-  drawnFrom,
+  drawnFromSent,
   parseRecord,
   summarise,
-  withStations,
   type ProjectRecord,
+  type SentSet,
 } from '../../src/shared/project'
 import { readStations, type Station } from '../../src/shared/trip'
+import { drawnOf, drawsOn, sentOf } from '../support/sent'
 
 const WINDOW = {
   start: '2026-01-01',
@@ -79,7 +80,7 @@ const done = (overrides: Record<string, unknown> = {}) => ({
 /** A project laid out once, its map drawn with the three stations. */
 async function laidOut(): Promise<string> {
   const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-  await store.completeLayout(project.id, done({ stations: STATIONS }))
+  await drawsOn(store).completeLayout(project.id, done({ stations: STATIONS }))
   return project.id
 }
 
@@ -98,11 +99,11 @@ describe('the record keeps the stations its map was drawn with', () => {
 
   it('keeps the list through a recolour, a reorder and a resize, which draw the same stations', async () => {
     const id = await laidOut()
-    await store.completeColors(id, { colors: { A: '#0072bc' }, defaultColor: '#888888' })
+    await drawsOn(store).completeColors(id, { colors: { A: '#0072bc' }, defaultColor: '#888888' })
     expect((await store.get(id)).drawn?.stations, 'after a recolour').toEqual(STATIONS)
-    await store.completeOrder(id, ['A'])
+    await drawsOn(store).completeOrder(id, ['A'])
     expect((await store.get(id)).drawn?.stations, 'after a reorder').toEqual(STATIONS)
-    await store.completeStyle(id, { lineWidth: 9 })
+    await drawsOn(store).completeStyle(id, { lineWidth: 9 })
     expect((await store.get(id)).drawn?.stations, 'after a resize').toEqual(STATIONS)
   })
 
@@ -111,41 +112,41 @@ describe('the record keeps the stations its map was drawn with', () => {
     // one drew from it (A3-06): the record's `made` cannot see that, and a
     // redraw draws the set as it is now, with that set's stations.
     const id = await laidOut()
-    await store.completeColors(id, { colors: {}, defaultColor: '#888888' }, WITHOUT_BRAVO)
+    await drawsOn(store).completeColors(id, { colors: {}, defaultColor: '#888888' }, WITHOUT_BRAVO)
     expect((await store.get(id)).drawn?.stations, 'after a recolour').toEqual(WITHOUT_BRAVO)
-    await store.completeOrder(id, ['A'], STATIONS)
+    await drawsOn(store).completeOrder(id, ['A'], STATIONS)
     expect((await store.get(id)).drawn?.stations, 'after a reorder').toEqual(STATIONS)
-    await store.completeStyle(id, { lineWidth: 9 }, WITHOUT_BRAVO)
+    await drawsOn(store).completeStyle(id, { lineWidth: 9 }, WITHOUT_BRAVO)
     expect((await store.get(id)).drawn?.stations, 'after a resize').toEqual(WITHOUT_BRAVO)
   })
 
   it('writes the list a rebuild answered, and keeps the one it had when it answered none', async () => {
     const id = await laidOut()
-    await store.completeRebuild(id, { date: '2026-09-12' })
+    await drawsOn(store).completeRebuild(id, { date: '2026-09-12' })
     expect((await store.get(id)).drawn?.stations, 'none answered').toEqual(STATIONS)
-    await store.completeRebuild(id, { date: '2026-09-13', stations: WITHOUT_BRAVO })
+    await drawsOn(store).completeRebuild(id, { date: '2026-09-13', stations: WITHOUT_BRAVO })
     expect((await store.get(id)).drawn?.stations, 'the build’s own').toEqual(WITHOUT_BRAVO)
   })
 
   it('replaces the list when a layout run draws a new one, and drops one that is not its own', async () => {
     const id = await laidOut()
     // A run that replaced the layout writes the list its build answered.
-    const replaced = await store.completeLayout(
+    const replaced = await drawsOn(store).completeLayout(
       id,
       done({ layout: OTHER, stations: WITHOUT_BRAVO }),
     )
     expect(replaced.record.drawn?.stations).toEqual(WITHOUT_BRAVO)
     // One whose build answered none the bridge would take keeps nothing from
     // another layout: the map it drew may not draw those stations.
-    const unread = await store.completeLayout(id, done({ layout: LAYOUT }))
+    const unread = await drawsOn(store).completeLayout(id, done({ layout: LAYOUT }))
     expect(unread.record.drawn?.stations).toBeUndefined()
     // Nor from the same id laid out again since.
-    await store.completeLayout(id, done({ stations: STATIONS }))
-    const relaid = await store.completeLayout(id, done({ made: LATER }))
+    await drawsOn(store).completeLayout(id, done({ stations: STATIONS }))
+    const relaid = await drawsOn(store).completeLayout(id, done({ made: LATER }))
     expect(relaid.record.drawn?.stations).toBeUndefined()
     // The same set drawn again, and answered nothing, keeps its own list.
-    await store.completeLayout(id, done({ made: LATER, stations: STATIONS }))
-    const again = await store.completeLayout(id, done({ made: LATER }))
+    await drawsOn(store).completeLayout(id, done({ made: LATER, stations: STATIONS }))
+    const again = await drawsOn(store).completeLayout(id, done({ made: LATER }))
     expect(again.record.drawn?.stations).toEqual(STATIONS)
   })
 
@@ -184,15 +185,15 @@ describe('the record keeps the stations its map was drawn with', () => {
     // handler read is read again here, as every other field is.
     const id = await laidOut()
     const extra = STATIONS.map((station) => ({ ...station, colour: '#ff0000', note: 'x' }))
-    await store.completeColors(id, { colors: {}, defaultColor: '#888888' }, extra)
+    await drawsOn(store).completeColors(id, { colors: {}, defaultColor: '#888888' }, extra)
     const raw = await onDisk(id)
     expect((raw.drawn as { stations: unknown }).stations, 'id and name only').toEqual(STATIONS)
     // A list a caller passed round the handler that does not read whole is
     // no list: the record keeps the one it had.
     const twice = [STATIONS[0], STATIONS[0]]
-    await store.completeOrder(id, ['A'], twice)
+    await drawsOn(store).completeOrder(id, ['A'], twice)
     expect((await store.get(id)).drawn?.stations).toEqual(STATIONS)
-    await store.completeLayout(id, done({ stations: [{ id: '', name: 'Nowhere' }] }))
+    await drawsOn(store).completeLayout(id, done({ stations: [{ id: '', name: 'Nowhere' }] }))
     expect((await store.get(id)).drawn?.stations).toEqual(STATIONS)
   })
 
@@ -213,39 +214,38 @@ describe('the record keeps the stations its map was drawn with', () => {
     const record = await store.get(id)
     expect(summarise(record, false).drawn).not.toHaveProperty('stations')
     // And a block that has none is handed on as it is.
-    const bare = { ...record, drawn: drawnFrom({ ...record, drawn: null }) }
+    const bare = { ...record, drawn: drawnOf({ ...record, drawn: null }) }
     expect(summarise(bare, false).drawn).toEqual(bare.drawn)
   })
 })
 
-describe('drawnFrom and withStations, the two halves of a draw’s block', () => {
-  const base = (drawn: ProjectRecord['drawn'], overrides: Partial<ProjectRecord> = {}) =>
-    ({
-      layout: LAYOUT,
-      made: MADE,
-      date: '2026-09-02',
-      colors: {},
-      defaultColor: '#888888',
-      lineOrder: [],
-      theme: 'warm-dark',
-      style: {},
-      drawn,
-      ...overrides,
-    }) as unknown as ProjectRecord
-
-  it('carries the last list only for the layout it was listed for', () => {
-    const before = withStations(drawnFrom(base(null)), STATIONS)
-    expect(drawnFrom(base(before))?.stations).toEqual(STATIONS)
-    expect(drawnFrom(base(before, { layout: OTHER }))?.stations).toBeUndefined()
-    expect(drawnFrom(base(before, { made: LATER }))?.stations).toBeUndefined()
-    expect(drawnFrom(base(null))).not.toHaveProperty('stations')
+describe('drawnFromSent and the stations, a draw’s block', () => {
+  const sent = (over: Partial<SentSet> = {}): SentSet => ({
+    layout: LAYOUT,
+    made: MADE,
+    date: '2026-09-02',
+    colors: {},
+    defaultColor: '#888888',
+    lineOrder: [],
+    style: {},
+    ...over,
   })
 
-  it('puts a build’s list in, over whatever was carried, and leaves no block alone', () => {
-    const carried = withStations(drawnFrom(base(null)), STATIONS)
-    expect(withStations(carried, WITHOUT_BRAVO)?.stations).toEqual(WITHOUT_BRAVO)
-    expect(withStations(carried, undefined)).toBe(carried)
-    expect(withStations(null, STATIONS)).toBeNull()
+  it('carries the last list only for the layout it was listed for', () => {
+    const before = drawnFromSent(sent(), 'warm-dark', null, STATIONS)
+    expect(drawnFromSent(sent(), 'warm-dark', before).stations).toEqual(STATIONS)
+    expect(drawnFromSent(sent({ layout: OTHER }), 'warm-dark', before).stations).toBeUndefined()
+    expect(drawnFromSent(sent({ made: LATER }), 'warm-dark', before).stations).toBeUndefined()
+    expect(drawnFromSent(sent(), 'warm-dark', null)).not.toHaveProperty('stations')
+  })
+
+  it('puts a build’s list in, over whatever was carried, its two fields only', () => {
+    const before = drawnFromSent(sent(), 'warm-dark', null, STATIONS)
+    expect(drawnFromSent(sent(), 'warm-dark', before, WITHOUT_BRAVO).stations).toEqual(
+      WITHOUT_BRAVO,
+    )
+    const extra = STATIONS.map((station) => ({ ...station, note: 'x' }))
+    expect(drawnFromSent(sent(), 'warm-dark', null, extra).stations).toEqual(STATIONS)
   })
 })
 
@@ -276,31 +276,41 @@ describe('the bridge', () => {
       handlers.get(channel)!({} as IpcMainInvokeEvent, ...args)
     return { call, calls }
   }
+  /** What the redraws below sent, which rides before their stations (spec 037). */
+  const SENT = sentOf({}, { layout: LAYOUT, made: MADE, date: '2026-09-12' })
 
   it('passes a whole list on with a finished run and a finished rebuild', async () => {
     const { call, calls } = harness()
-    await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done({ stations: STATIONS }))
+    await call(
+      CHANNELS.projectsCompleteLayout,
+      'abcdefghijk1',
+      done({ stations: STATIONS, sent: SENT }),
+    )
     await call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', {
-      date: '2026-09-12',
+      sent: SENT,
       stations: STATIONS,
     })
     expect((calls[0].args[1] as { stations: unknown }).stations).toEqual(STATIONS)
-    expect(calls[1].args[1]).toEqual({ date: '2026-09-12', stations: STATIONS })
+    expect(calls[1].args[1]).toEqual({ sent: SENT, stations: STATIONS })
   })
 
-  it('passes a redraw’s list as the last argument, and no argument where there is none', async () => {
+  it('passes a redraw’s list as the last argument, and nothing for it where there is none', async () => {
     const { call, calls } = harness()
     const palette = { colors: {}, defaultColor: '#888888' }
-    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, STATIONS)
-    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], STATIONS)
-    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', { lineWidth: 9 }, STATIONS)
-    expect(calls.map((c) => c.args[2])).toEqual([STATIONS, STATIONS, STATIONS])
-    // None given, or one that does not read whole: the call is the one it
-    // always was, two arguments and no third.
-    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette)
-    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], 'Alpha')
-    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', { lineWidth: 9 }, [{ id: 7 }])
-    expect(calls.slice(3).map((c) => c.args.length)).toEqual([2, 2, 2])
+    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, SENT, STATIONS)
+    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], SENT, STATIONS)
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', { lineWidth: 9 }, SENT, STATIONS)
+    expect(calls.map((c) => c.args[3])).toEqual([STATIONS, STATIONS, STATIONS])
+    expect(
+      calls.map((c) => c.args[2]),
+      'the sent set before it',
+    ).toEqual([SENT, SENT, SENT])
+    // None given, or one that does not read whole: the store is handed no
+    // list, and keeps the one it had.
+    await call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, SENT)
+    await call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], SENT, 'Alpha')
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', { lineWidth: 9 }, SENT, [{ id: 7 }])
+    expect(calls.slice(3).map((c) => c.args[3])).toEqual([undefined, undefined, undefined])
   })
 
   it('drops a list it cannot read, and still writes the run', async () => {
@@ -310,7 +320,7 @@ describe('the bridge', () => {
       [{ id: 7, name: 'Seven' }],
       [{ id: 'a', name: 'A', extra: 1 }],
     ]) {
-      await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done({ stations }))
+      await call(CHANNELS.projectsCompleteLayout, 'abcdefghijk1', done({ stations, sent: SENT }))
     }
     // The last is whole once its extra field is left behind: an entry is
     // read as its id and its name, as a palette is read as its two fields.
@@ -398,7 +408,7 @@ describe('the layout run hands the record its build’s stations', () => {
         return { changed: false, relaid: false }
       },
       completeRebuild: async (_id, done) => written.push({ method: 'completeRebuild', done }),
-      completeColors: async (_id, _palette, stations) =>
+      completeColors: async (_id, _palette, _sent, stations) =>
         written.push({ method: 'completeColors', done: stations ?? null }),
       completeOrder: async () => undefined,
       completeStyle: async () => undefined,
@@ -425,7 +435,10 @@ describe('the layout run hands the record its build’s stations', () => {
     run.rebuild(project, READY, '2026-09-16')
     expect(await end).toBe('done')
     expect(written).toEqual([
-      { method: 'completeRebuild', done: { date: '2026-09-16', stations: STATIONS } },
+      {
+        method: 'completeRebuild',
+        done: { sent: expect.objectContaining({ date: '2026-09-16' }), stations: STATIONS },
+      },
     ])
   })
 

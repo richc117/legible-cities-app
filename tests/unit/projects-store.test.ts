@@ -30,8 +30,11 @@ import {
   DEFAULT_THEME,
   ID_PATTERN,
   RECORD_VERSION,
+  drawnDate,
   type ProjectRecord,
+  type SentSet,
 } from '../../src/shared/project'
+import { drawsOn, sentOf } from '../support/sent'
 
 let home: string
 let root: string
@@ -613,7 +616,7 @@ describe('completeLayout', () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     expect(project.layout).toBeNull()
     expect(project.date).toBeNull()
-    const { record, changed } = await store.completeLayout(project.id, {
+    const { record, changed } = await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
@@ -634,14 +637,14 @@ describe('completeLayout', () => {
 
   it('keeps a service day the project already has', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
       made: MADE,
       built: BUILT,
     })
-    const second = await store.completeLayout(project.id, {
+    const second = await drawsOn(store).completeLayout(project.id, {
       date: '2026-12-25',
       layout: LAYOUT,
       service: WINDOW,
@@ -653,7 +656,7 @@ describe('completeLayout', () => {
 
   it('stores an empty built agency as none, as the record does its own', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    const { record } = await store.completeLayout(project.id, {
+    const { record } = await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
@@ -672,21 +675,21 @@ describe('completeLayout', () => {
       made,
       built: BUILT,
     })
-    const first = await store.completeLayout(project.id, done(MADE))
+    const first = await drawsOn(store).completeLayout(project.id, done(MADE))
     expect(first.relaid, 'nothing to differ from').toBe(false)
-    const same = await store.completeLayout(project.id, done(MADE))
+    const same = await drawsOn(store).completeLayout(project.id, done(MADE))
     expect(same.relaid, 'the same set').toBe(false)
-    const later = await store.completeLayout(project.id, done(LATER))
+    const later = await drawsOn(store).completeLayout(project.id, done(LATER))
     expect(later).toMatchObject({ changed: false, relaid: true })
     expect(later.record.made).toBe(LATER)
     // A different id says more than a different time.
-    const other = await store.completeLayout(project.id, { ...done(MADE), layout: OTHER })
+    const other = await drawsOn(store).completeLayout(project.id, { ...done(MADE), layout: OTHER })
     expect(other).toMatchObject({ changed: true, relaid: false })
   })
 
   it('treats a record from before, without made, as unchanged on its first run', async () => {
     await seed(A, record(A, { layout: LAYOUT, date: '2026-09-02' }))
-    const run = await store.completeLayout(A, {
+    const run = await drawsOn(store).completeLayout(A, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
@@ -699,7 +702,7 @@ describe('completeLayout', () => {
 
   it('reports a layout that differs from the one the project was drawn from', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    const first = await store.completeLayout(project.id, {
+    const first = await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
@@ -707,7 +710,7 @@ describe('completeLayout', () => {
       built: BUILT,
     })
     expect(first.changed).toBe(false)
-    const same = await store.completeLayout(project.id, {
+    const same = await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
@@ -715,7 +718,7 @@ describe('completeLayout', () => {
       built: BUILT,
     })
     expect(same.changed, 'the same id is the same layout').toBe(false)
-    const second = await store.completeLayout(project.id, {
+    const second = await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: OTHER,
       service: WINDOW,
@@ -728,7 +731,7 @@ describe('completeLayout', () => {
 
   it('replaces the window on a later run, keeping the day', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-02',
       layout: LAYOUT,
       service: WINDOW,
@@ -736,7 +739,7 @@ describe('completeLayout', () => {
       built: BUILT,
     })
     const fresh = { ...WINDOW, end: '2027-06-30', busiest: '2026-09-22', anchor: '2026-09-20' }
-    const second = await store.completeLayout(project.id, {
+    const second = await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-22',
       layout: LAYOUT,
       service: fresh,
@@ -774,7 +777,7 @@ describe('completeLayout', () => {
       },
     ]) {
       await expect(
-        store.completeLayout(project.id, done as never),
+        drawsOn(store).completeLayout(project.id, done as never),
         JSON.stringify(done),
       ).rejects.toThrow()
     }
@@ -786,7 +789,7 @@ describe('completeLayout', () => {
     const file = join(home, 'projects', project.id, 'project.json')
     await writeFile(file, JSON.stringify({ ...project, version: 99 }), 'utf8')
     await expect(
-      store.completeLayout(project.id, {
+      drawsOn(store).completeLayout(project.id, {
         date: '2026-09-02',
         layout: LAYOUT,
         service: WINDOW,
@@ -804,7 +807,7 @@ describe('completeRebuild', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -817,7 +820,7 @@ describe('completeRebuild', () => {
   it('writes the day and the time, and nothing else', async () => {
     const project = await laidOut()
     const before = await store.get(project.id)
-    const after = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    const after = await drawsOn(store).completeRebuild(project.id, { date: '2026-09-12' })
     expect(after.date).toBe('2026-09-12')
     expect(after.layout).toBe(LAYOUT)
     expect(after.service).toEqual(WINDOW)
@@ -827,10 +830,10 @@ describe('completeRebuild', () => {
 
   it("accepts the window's first and last day", async () => {
     const project = await laidOut()
-    expect((await store.completeRebuild(project.id, { date: '2026-01-01' })).date).toBe(
+    expect((await drawsOn(store).completeRebuild(project.id, { date: '2026-01-01' })).date).toBe(
       '2026-01-01',
     )
-    expect((await store.completeRebuild(project.id, { date: '2026-12-31' })).date).toBe(
+    expect((await drawsOn(store).completeRebuild(project.id, { date: '2026-12-31' })).date).toBe(
       '2026-12-31',
     )
   })
@@ -838,7 +841,7 @@ describe('completeRebuild', () => {
   it('refuses a day outside the window, naming the window, and writes nothing', async () => {
     const project = await laidOut()
     for (const date of ['2025-12-31', '2027-01-01']) {
-      await expect(store.completeRebuild(project.id, { date })).rejects.toThrow(
+      await expect(drawsOn(store).completeRebuild(project.id, { date })).rejects.toThrow(
         'the feed covers 2026-01-01 to 2026-12-31',
       )
     }
@@ -848,18 +851,18 @@ describe('completeRebuild', () => {
   it('refuses a malformed day', async () => {
     const project = await laidOut()
     for (const date of ['2026-02-30', 'Saturday', '']) {
-      await expect(store.completeRebuild(project.id, { date })).rejects.toThrow()
+      await expect(drawsOn(store).completeRebuild(project.id, { date })).rejects.toThrow()
     }
   })
 
   it('refuses a project without a layout, or without a window', async () => {
     const fresh = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await expect(store.completeRebuild(fresh.id, { date: '2026-09-12' })).rejects.toThrow(
+    await expect(drawsOn(store).completeRebuild(fresh.id, { date: '2026-09-12' })).rejects.toThrow(
       'lay the project out first',
     )
     // A record from before the window was stored: a layout and a day, no window.
     await seed(A, record(A, { layout: LAYOUT, date: '2026-09-02' }))
-    await expect(store.completeRebuild(A, { date: '2026-09-12' })).rejects.toThrow(
+    await expect(drawsOn(store).completeRebuild(A, { date: '2026-09-12' })).rejects.toThrow(
       /lay the project out again/,
     )
   })
@@ -869,9 +872,9 @@ describe('completeRebuild', () => {
     const file = join(home, 'projects', project.id, 'project.json')
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
-    await expect(store.completeRebuild(project.id, { date: '2026-09-12' })).rejects.toThrow(
-      'read-only',
-    )
+    await expect(
+      drawsOn(store).completeRebuild(project.id, { date: '2026-09-12' }),
+    ).rejects.toThrow('read-only')
   })
 })
 
@@ -885,7 +888,7 @@ describe('setDate', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -947,7 +950,7 @@ describe('setDate', () => {
   it('and the rebuild that follows closes the gap', async () => {
     const project = await laidOut()
     await store.setDate(project.id, '2026-09-12')
-    const after = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    const after = await drawsOn(store).completeRebuild(project.id, { date: '2026-09-12' })
     expect(after.drawn?.date).toBe('2026-09-12')
     expect(after.date).toBe('2026-09-12')
   })
@@ -1063,7 +1066,7 @@ describe('completeColors', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -1076,7 +1079,7 @@ describe('completeColors', () => {
   it('writes the palette and the time, and nothing else', async () => {
     const project = await laidOut()
     const before = await store.get(project.id)
-    const after = await store.completeColors(project.id, {
+    const after = await drawsOn(store).completeColors(project.id, {
       colors: { A: '#0072bc', 'Rapid 720': '#FFFFFF' },
       defaultColor: '#112233',
     })
@@ -1091,7 +1094,10 @@ describe('completeColors', () => {
 
   it('reads the same palette back on the next open, which is the whole point', async () => {
     const project = await laidOut()
-    await store.completeColors(project.id, { colors: { A: '#0072bc' }, defaultColor: '#112233' })
+    await drawsOn(store).completeColors(project.id, {
+      colors: { A: '#0072bc' },
+      defaultColor: '#112233',
+    })
     const fresh = new ProjectStore(home, (message) => lines.push(message))
     const reopened = await fresh.get(project.id)
     expect(reopened.colors).toEqual({ A: '#0072bc' })
@@ -1100,11 +1106,11 @@ describe('completeColors', () => {
 
   it('replaces the palette rather than merging it, so a reset really resets', async () => {
     const project = await laidOut()
-    await store.completeColors(project.id, {
+    await drawsOn(store).completeColors(project.id, {
       colors: { A: '#0072bc', B: '#e3131b' },
       defaultColor: '#112233',
     })
-    const reset = await store.completeColors(project.id, {
+    const reset = await drawsOn(store).completeColors(project.id, {
       colors: {},
       defaultColor: DEFAULT_COLOR,
     })
@@ -1115,7 +1121,7 @@ describe('completeColors', () => {
   it('keeps no reference to the palette it was handed', async () => {
     const project = await laidOut()
     const palette = { colors: { A: '#0072bc' }, defaultColor: DEFAULT_COLOR }
-    const after = await store.completeColors(project.id, palette)
+    const after = await drawsOn(store).completeColors(project.id, palette)
     palette.colors.A = '#ffffff'
     expect(after.colors.A).toBe('#0072bc')
     expect((await store.get(project.id)).colors.A).toBe('#0072bc')
@@ -1130,7 +1136,7 @@ describe('completeColors', () => {
       { colors: { ['a'.repeat(65)]: '#0072bc' }, defaultColor: DEFAULT_COLOR },
     ]) {
       await expect(
-        store.completeColors(project.id, palette as never),
+        drawsOn(store).completeColors(project.id, palette as never),
         JSON.stringify(palette),
       ).rejects.toThrow()
     }
@@ -1140,7 +1146,7 @@ describe('completeColors', () => {
   it('refuses a project with no layout: there is nothing to draw the colours on', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     await expect(
-      store.completeColors(project.id, { colors: {}, defaultColor: '#112233' }),
+      drawsOn(store).completeColors(project.id, { colors: {}, defaultColor: '#112233' }),
     ).rejects.toThrow('lay the project out first')
   })
 
@@ -1150,7 +1156,7 @@ describe('completeColors', () => {
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
     await expect(
-      store.completeColors(project.id, { colors: {}, defaultColor: '#112233' }),
+      drawsOn(store).completeColors(project.id, { colors: {}, defaultColor: '#112233' }),
     ).rejects.toThrow('read-only')
   })
 })
@@ -1162,7 +1168,7 @@ describe('completeOrder', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -1175,7 +1181,7 @@ describe('completeOrder', () => {
   it('writes the order and the time, and nothing else', async () => {
     const project = await laidOut()
     const before = await store.get(project.id)
-    const after = await store.completeOrder(project.id, ['K', 'A'])
+    const after = await drawsOn(store).completeOrder(project.id, ['K', 'A'])
     expect(after.lineOrder).toEqual(['K', 'A'])
     expect(after.layout, 'an order is a render, never a layout').toBe(LAYOUT)
     expect(after.date).toBe(before.date)
@@ -1186,21 +1192,21 @@ describe('completeOrder', () => {
 
   it('reads the same order back on the next open, which is the whole point', async () => {
     const project = await laidOut()
-    await store.completeOrder(project.id, ['K', 'A'])
+    await drawsOn(store).completeOrder(project.id, ['K', 'A'])
     const fresh = new ProjectStore(home, (message) => lines.push(message))
     expect((await fresh.get(project.id)).lineOrder).toEqual(['K', 'A'])
   })
 
   it('replaces the order rather than merging it, so the way back really goes back', async () => {
     const project = await laidOut()
-    await store.completeOrder(project.id, ['K', 'A'])
-    expect((await store.completeOrder(project.id, [])).lineOrder).toEqual([])
+    await drawsOn(store).completeOrder(project.id, ['K', 'A'])
+    expect((await drawsOn(store).completeOrder(project.id, [])).lineOrder).toEqual([])
   })
 
   it('keeps no reference to the order it was handed', async () => {
     const project = await laidOut()
     const order = ['K', 'A']
-    const after = await store.completeOrder(project.id, order)
+    const after = await drawsOn(store).completeOrder(project.id, order)
     order[0] = 'B'
     expect(after.lineOrder[0]).toBe('K')
     expect((await store.get(project.id)).lineOrder[0]).toBe('K')
@@ -1218,7 +1224,7 @@ describe('completeOrder', () => {
       ['A\u0007'],
     ]) {
       await expect(
-        store.completeOrder(project.id, order as never),
+        drawsOn(store).completeOrder(project.id, order as never),
         JSON.stringify(order),
       ).rejects.toThrow()
     }
@@ -1227,7 +1233,7 @@ describe('completeOrder', () => {
 
   it('refuses a project with no layout: there is nothing to draw in that order', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await expect(store.completeOrder(project.id, ['A'])).rejects.toThrow(
+    await expect(drawsOn(store).completeOrder(project.id, ['A'])).rejects.toThrow(
       'lay the project out first',
     )
   })
@@ -1237,7 +1243,7 @@ describe('completeOrder', () => {
     const file = join(home, 'projects', project.id, 'project.json')
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
-    await expect(store.completeOrder(project.id, ['A'])).rejects.toThrow('read-only')
+    await expect(drawsOn(store).completeOrder(project.id, ['A'])).rejects.toThrow('read-only')
   })
 })
 
@@ -1248,7 +1254,7 @@ describe('completeStyle', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -1262,7 +1268,7 @@ describe('completeStyle', () => {
     const project = await laidOut()
     const before = await store.get(project.id)
     expect(before.style, 'a new project has chosen nothing').toEqual({})
-    const after = await store.completeStyle(project.id, { lineWidth: 12, labelSize: 20 })
+    const after = await drawsOn(store).completeStyle(project.id, { lineWidth: 12, labelSize: 20 })
     expect(after.style).toEqual({ lineWidth: 12, labelSize: 20 })
     expect(after.layout, 'a size is a render, never a layout').toBe(LAYOUT)
     expect(after.date).toBe(before.date)
@@ -1275,7 +1281,7 @@ describe('completeStyle', () => {
   it('records what the map was drawn with, and keeps the day the map showed', async () => {
     const project = await laidOut()
     await store.setDate(project.id, '2026-09-12')
-    const after = await store.completeStyle(project.id, { stationRadius: 5 })
+    const after = await drawsOn(store).completeStyle(project.id, { stationRadius: 5 })
     expect(after.drawn?.style, 'both radii go together').toEqual({
       stationRadius: 5,
       interchangeRadius: 6,
@@ -1286,21 +1292,21 @@ describe('completeStyle', () => {
 
   it('replaces the style rather than merging it, so a reset really resets', async () => {
     const project = await laidOut()
-    await store.completeStyle(project.id, { lineWidth: 12 })
-    const after = await store.completeStyle(project.id, {})
+    await drawsOn(store).completeStyle(project.id, { lineWidth: 12 })
+    const after = await drawsOn(store).completeStyle(project.id, {})
     expect(after.style).toEqual({})
     expect(after.drawn?.style).toEqual({})
   })
 
   it('keeps nothing at the engine’s own number, which is no choice', async () => {
     const project = await laidOut()
-    const after = await store.completeStyle(project.id, { lineWidth: 7, padding: 40 })
+    const after = await drawsOn(store).completeStyle(project.id, { lineWidth: 7, padding: 40 })
     expect(after.style).toEqual({ padding: 40 })
   })
 
   it('reads the same style back on the next open, which is the whole point', async () => {
     const project = await laidOut()
-    await store.completeStyle(project.id, { lineWidth: 12, padding: 0 })
+    await drawsOn(store).completeStyle(project.id, { lineWidth: 12, padding: 0 })
     const fresh = new ProjectStore(home, (message) => lines.push(message))
     expect((await fresh.get(project.id)).style).toEqual({ lineWidth: 12, padding: 0 })
   })
@@ -1322,7 +1328,7 @@ describe('completeStyle', () => {
       null,
     ]) {
       await expect(
-        store.completeStyle(project.id, style as never),
+        drawsOn(store).completeStyle(project.id, style as never),
         JSON.stringify(style),
       ).rejects.toThrow()
     }
@@ -1331,7 +1337,7 @@ describe('completeStyle', () => {
 
   it('says the engine’s sentence for a number out of range', async () => {
     const project = await laidOut()
-    await expect(store.completeStyle(project.id, { lineWidth: 30 })).rejects.toThrow(
+    await expect(drawsOn(store).completeStyle(project.id, { lineWidth: 30 })).rejects.toThrow(
       "style.line_width must be from 1 to 24, in SVG user units at the map's width",
     )
   })
@@ -1340,7 +1346,7 @@ describe('completeStyle', () => {
   // in the style, under the same writer, the same rules and the same checks.
   it('writes the markers, the face and the trains, and keeps none at the engine’s own', async () => {
     const project = await laidOut()
-    const after = await store.completeStyle(project.id, {
+    const after = await drawsOn(store).completeStyle(project.id, {
       stationShape: 'tick',
       interchangeShape: 'circle',
       labelFont: 'inter',
@@ -1357,29 +1363,29 @@ describe('completeStyle', () => {
   it('refuses a marker, a face or a train number the engine would, in its sentence', async () => {
     const project = await laidOut()
     await expect(
-      store.completeStyle(project.id, { stationShape: 'triangle' } as never),
+      drawsOn(store).completeStyle(project.id, { stationShape: 'triangle' } as never),
     ).rejects.toThrow('style.station_shape must be circle, tick or square')
     await expect(
-      store.completeStyle(project.id, { interchangeShape: 'tick' } as never),
+      drawsOn(store).completeStyle(project.id, { interchangeShape: 'tick' } as never),
     ).rejects.toThrow('style.interchange_shape must be circle or square')
     await expect(
-      store.completeStyle(project.id, { labelFont: 'comic-sans' } as never),
+      drawsOn(store).completeStyle(project.id, { labelFont: 'comic-sans' } as never),
     ).rejects.toThrow('style.label_font must be system, inter or atkinson-hyperlegible-next')
-    await expect(store.completeStyle(project.id, { dotRadius: 1 })).rejects.toThrow(
+    await expect(drawsOn(store).completeStyle(project.id, { dotRadius: 1 })).rejects.toThrow(
       "dot_radius must be from 2 to 12, in SVG user units at the map's width",
     )
-    await expect(store.completeStyle(project.id, { trail: 4 })).rejects.toThrow(
+    await expect(drawsOn(store).completeStyle(project.id, { trail: 4 })).rejects.toThrow(
       'trail must be from 0 to 3, in seconds of playback',
     )
-    await expect(store.completeStyle(project.id, { preset: 'beck' } as never)).rejects.toThrow(
-      'the style does not take preset',
-    )
+    await expect(
+      drawsOn(store).completeStyle(project.id, { preset: 'beck' } as never),
+    ).rejects.toThrow('the style does not take preset')
     expect((await store.get(project.id)).style, 'nothing was written').toEqual({})
   })
 
   it('refuses a project with no layout: there is nothing to draw in those sizes', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await expect(store.completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow(
+    await expect(drawsOn(store).completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow(
       'lay the project out first',
     )
   })
@@ -1389,7 +1395,9 @@ describe('completeStyle', () => {
     const file = join(home, 'projects', project.id, 'project.json')
     const current = await store.get(project.id)
     await writeFile(file, JSON.stringify({ ...current, version: 99 }), 'utf8')
-    await expect(store.completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow('read-only')
+    await expect(drawsOn(store).completeStyle(project.id, { lineWidth: 12 })).rejects.toThrow(
+      'read-only',
+    )
   })
 })
 
@@ -1564,7 +1572,7 @@ describe('drawn', () => {
 
   async function laidOut(): Promise<ProjectRecord> {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
-    await store.completeLayout(project.id, {
+    await drawsOn(store).completeLayout(project.id, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -1597,18 +1605,18 @@ describe('drawn', () => {
 
   it('takes the new day from a rebuild, and nothing else', async () => {
     const project = await laidOut()
-    const after = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    const after = await drawsOn(store).completeRebuild(project.id, { date: '2026-09-12' })
     expect(after.drawn).toMatchObject({ date: '2026-09-12', layout: LAYOUT, made: MADE })
   })
 
   it('takes the palette from a recolour and the order from a reorder', async () => {
     const project = await laidOut()
-    const colours = await store.completeColors(project.id, {
+    const colours = await drawsOn(store).completeColors(project.id, {
       colors: { A: '#0072bc' },
       defaultColor: '#112233',
     })
     expect(colours.drawn).toMatchObject({ colors: { A: '#0072bc' }, defaultColor: '#112233' })
-    const order = await store.completeOrder(project.id, ['K', 'A'])
+    const order = await drawsOn(store).completeOrder(project.id, ['K', 'A'])
     expect(order.drawn).toMatchObject({ lineOrder: ['K', 'A'], colors: { A: '#0072bc' } })
   })
 
@@ -1620,18 +1628,18 @@ describe('drawn', () => {
     // otherwise do.
     const project = await laidOut()
     await store.setDate(project.id, '2026-09-12')
-    const colours = await store.completeColors(project.id, {
+    const colours = await drawsOn(store).completeColors(project.id, {
       colors: { A: '#0072bc' },
       defaultColor: '#112233',
     })
     expect(colours.date, 'the choice stands').toBe('2026-09-12')
     expect(colours.drawn?.date, 'and the map is still the day it was drawn for').toBe('2026-09-15')
     expect(colours.drawn?.colors, 'while the colours did move').toEqual({ A: '#0072bc' })
-    const order = await store.completeOrder(project.id, ['K', 'A'])
+    const order = await drawsOn(store).completeOrder(project.id, ['K', 'A'])
     expect(order.drawn?.date).toBe('2026-09-15')
     expect(order.drawn?.lineOrder).toEqual(['K', 'A'])
     // And the rebuild is still the only thing that closes it.
-    const rebuilt = await store.completeRebuild(project.id, { date: '2026-09-12' })
+    const rebuilt = await drawsOn(store).completeRebuild(project.id, { date: '2026-09-12' })
     expect(rebuilt.drawn).toMatchObject({
       date: '2026-09-12',
       colors: { A: '#0072bc' },
@@ -1647,7 +1655,7 @@ describe('drawn', () => {
     }
     delete old.drawn
     await seed(A, old)
-    const after = await store.completeColors(A, { colors: {}, defaultColor: '#112233' })
+    const after = await drawsOn(store).completeColors(A, { colors: {}, defaultColor: '#112233' })
     expect(after.drawn).toMatchObject({ date: '2026-09-15', defaultColor: '#112233' })
   })
 
@@ -1673,7 +1681,7 @@ describe('drawn', () => {
 
   it('is on disk, so what the map was drawn from survives a relaunch', async () => {
     const project = await laidOut()
-    await store.completeRebuild(project.id, { date: '2026-09-12' })
+    await drawsOn(store).completeRebuild(project.id, { date: '2026-09-12' })
     const fresh = new ProjectStore(home, (message) => lines.push(message))
     expect((await fresh.get(project.id)).drawn).toMatchObject({ date: '2026-09-12' })
   })
@@ -1688,7 +1696,7 @@ describe('drawn', () => {
     const opened = await store.get(A)
     expect(opened.drawn, 'unknown, which is not the same as stale').toBeNull()
     expect(opened.layout, 'and the layout is kept').toBe(OTHER)
-    const after = await store.completeLayout(A, {
+    const after = await drawsOn(store).completeLayout(A, {
       date: '2026-09-15',
       layout: LAYOUT,
       service: WINDOW,
@@ -1722,8 +1730,14 @@ describe('writes to one project take turns', () => {
       const project = await store.create({ name: `LA ${round}`, feed: 'la-metro-rail' })
       const writes =
         round % 2 === 0
-          ? [store.setExport(project.id, choice as never), store.completeLayout(project.id, done)]
-          : [store.completeLayout(project.id, done), store.setExport(project.id, choice as never)]
+          ? [
+              store.setExport(project.id, choice as never),
+              drawsOn(store).completeLayout(project.id, done),
+            ]
+          : [
+              drawsOn(store).completeLayout(project.id, done),
+              store.setExport(project.id, choice as never),
+            ]
       await Promise.all(writes)
       const after = await store.get(project.id)
       expect(after.export, `round ${round}`).toEqual(choice)
@@ -1755,11 +1769,14 @@ describe('writes to one project take turns', () => {
   it('keeps every field when every writer lands at once, and a failure does not stop the next', async () => {
     const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
     const results = await Promise.allSettled([
-      store.completeLayout(project.id, done),
+      drawsOn(store).completeLayout(project.id, done),
       store.setTheme(project.id, 'sepia'),
       store.setExport(project.id, { preset: 'portfolio-svg', options: {} } as never),
-      store.completeColors(project.id, { colors: { A: '#0072bc' }, defaultColor: '#112233' }),
-      store.completeOrder(project.id, ['K', 'A']),
+      drawsOn(store).completeColors(project.id, {
+        colors: { A: '#0072bc' },
+        defaultColor: '#112233',
+      }),
+      drawsOn(store).completeOrder(project.id, ['K', 'A']),
       store.setExport(project.id, choice as never),
       store.rename(project.id, 'Los Angeles'),
       store.setInputs(project.id, { mode: 'subway', agency: null }),
@@ -2150,5 +2167,231 @@ describe('the record session', () => {
     }
     await seed(A, { ...record(A), revision: 41 })
     expect((await store.rename(A, 'Later')).revision, 'raised from what was stored').toBe(42)
+  })
+})
+
+// User Story 1's matrix (spec 037, SC-001): every kind of run, with every
+// field a run sends - and the others a person can write - written while it
+// goes, between the run's read of the record and its completion. `drawn` is
+// what the run sent, field by field, in every case, and the record keeps the
+// write. Run all is a layout or a rebuild at the store, so it is those two.
+describe('what a map was drawn from, with a write landing while it was drawn', () => {
+  const LAYOUT = 'a'.repeat(64)
+  const RELAID = 'b'.repeat(64)
+  const RELAID_AT = '2026-10-01T00:00:00+00:00'
+  const STARTED = { ...BUILT }
+  /** A project laid out once, its map drawn for the 15th from the record as it stood. */
+  async function laidOut(): Promise<string> {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await drawsOn(store).completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: LAYOUT,
+      service: WINDOW,
+      made: MADE,
+      built: STARTED,
+    })
+    return project.id
+  }
+
+  /** Each kind of run: what it sends from the record it read, and its completion. */
+  const RUNS: {
+    kind: string
+    sends: (read: ProjectRecord) => SentSet
+    complete: (id: string, sent: SentSet) => Promise<unknown>
+  }[] = [
+    {
+      kind: 'layout',
+      sends: (read) => sentOf(read, { layout: RELAID, made: RELAID_AT, date: read.date ?? '' }),
+      complete: (id, sent) =>
+        store.completeLayout(id, {
+          date: sent.date,
+          layout: sent.layout,
+          made: sent.made as string,
+          built: STARTED,
+          service: WINDOW,
+          sent,
+        }),
+    },
+    {
+      kind: 'rebuild',
+      sends: (read) => sentOf(read, { date: '2026-09-12' }),
+      complete: (id, sent) => store.completeRebuild(id, { sent }),
+    },
+    {
+      kind: 'colours',
+      sends: (read) =>
+        sentOf(read, {
+          date: drawnDate(read) ?? '',
+          colors: { A: '#0072bc' },
+          defaultColor: '#123456',
+        }),
+      complete: (id, sent) =>
+        store.completeColors(id, { colors: sent.colors, defaultColor: sent.defaultColor }, sent),
+    },
+    {
+      kind: 'order',
+      sends: (read) => sentOf(read, { date: drawnDate(read) ?? '', lineOrder: ['K', 'A'] }),
+      complete: (id, sent) => store.completeOrder(id, sent.lineOrder, sent),
+    },
+    {
+      kind: 'sizes',
+      sends: (read) => sentOf(read, { date: drawnDate(read) ?? '', style: { lineWidth: 12 } }),
+      complete: (id, sent) => store.completeStyle(id, sent.style, sent),
+    },
+    {
+      kind: 'options',
+      sends: (read) =>
+        sentOf(read, { date: drawnDate(read) ?? '', lines: { A: { name: 'Airport' } } }),
+      complete: (id, sent) => store.completeLines(id, sent.lines ?? {}, sent),
+    },
+  ]
+
+  /** Each write that can land while a run goes, and what the record then holds of it. */
+  const WRITES: {
+    field: string
+    write: (id: string) => Promise<unknown>
+    holds: (record: ProjectRecord) => unknown
+    /** What the field holds after a run of this kind completes, where its completion writes it too. */
+    after?: Record<string, (sent: SentSet) => unknown>
+  }[] = [
+    {
+      field: 'the day',
+      write: (id) => store.setDate(id, '2026-09-20'),
+      holds: (r) => r.date,
+      // A rebuild writes the day it drew, as it always has.
+      after: { rebuild: (sent) => sent.date },
+    },
+    {
+      field: 'the colours',
+      write: (id) =>
+        drawsOn(store).completeColors(id, { colors: { K: '#ff0000' }, defaultColor: '#654321' }),
+      holds: (r) => r.colors,
+      after: { colours: (sent) => sent.colors },
+    },
+    {
+      field: 'the order',
+      write: (id) => drawsOn(store).completeOrder(id, ['B']),
+      holds: (r) => r.lineOrder,
+      after: { order: (sent) => sent.lineOrder },
+    },
+    {
+      field: 'the sizes',
+      write: (id) => drawsOn(store).completeStyle(id, { lineWidth: 9 }),
+      holds: (r) => r.style,
+      after: { sizes: (sent) => sent.style },
+    },
+    {
+      field: 'the line options',
+      write: (id) => drawsOn(store).completeLines(id, { B: { hidden: true } }),
+      holds: (r) => r.lines,
+      after: { options: (sent) => sent.lines },
+    },
+    { field: 'the theme', write: (id) => store.setTheme(id, 'sepia'), holds: (r) => r.theme },
+    {
+      field: 'the tuning',
+      write: (id) => store.setTuning(id, { gridSize: 150 }),
+      holds: (r) => r.tuning,
+    },
+    {
+      field: 'the inputs',
+      write: (id) => store.setInputs(id, { mode: 'subway', agency: null }),
+      holds: (r) => r.mode,
+    },
+    { field: 'the name', write: (id) => store.rename(id, 'Renamed'), holds: (r) => r.name },
+    {
+      field: 'the export',
+      write: (id) => store.setExport(id, { preset: 'bluesky', options: {} } as never),
+      holds: (r) => r.export.preset,
+    },
+  ]
+
+  const SENT_FIELDS = [
+    'layout',
+    'made',
+    'date',
+    'colors',
+    'defaultColor',
+    'lineOrder',
+    'style',
+    'lines',
+  ] as const
+
+  for (const run of RUNS)
+    for (const landed of WRITES)
+      it(`${run.kind}, with ${landed.field} written while it drew`, async () => {
+        // Mutation: `drew` makes `drawn` from the record about to be written
+        // (`drawnOf(record)`, the old `drawnFrom`) - the day, the colours, the
+        // order, the sizes and the options written meanwhile then show up in
+        // `drawn` as if the map carried them.
+        const id = await laidOut()
+        const read = await store.get(id)
+        const sent = run.sends(read)
+        await landed.write(id)
+        const between = landed.holds(await store.get(id))
+        await run.complete(id, sent)
+        const after = await store.get(id)
+        const drawn = after.drawn
+        expect(drawn, 'the map was drawn').not.toBeNull()
+        for (const field of SENT_FIELDS)
+          expect(drawn?.[field], `drawn.${field} is what the run sent`).toEqual(sent[field])
+        expect(drawn?.theme, 'the theme the page was told').toBe(after.theme)
+        const own = landed.after?.[run.kind]
+        expect(landed.holds(after), `the record keeps ${landed.field}`).toEqual(
+          own === undefined ? between : own(sent),
+        )
+      })
+
+  it('R3-02: a day chosen while a layout runs is the record’s, and the map says it was not drawn for it', async () => {
+    // The review's probe. Mutation: `completeLayout` writes `drawn.date` from
+    // the record's day again (`record.date ?? done.date`) - the 20th is then
+    // recorded as drawn, and cell 03 has nothing to say.
+    const id = await laidOut()
+    const read = await store.get(id)
+    const sent = RUNS[0].sends(read)
+    expect(sent.date, 'the run draws the day the record had').toBe('2026-09-15')
+    await store.setDate(id, '2026-09-20')
+    await RUNS[0].complete(id, sent)
+    const after = await store.get(id)
+    expect(after.date, 'the chosen day').toBe('2026-09-20')
+    expect(after.drawn?.date, 'the day the map was drawn for').toBe('2026-09-15')
+  })
+})
+
+// The store is the trusted layer and has callers of its own: what the bridge
+// read of a sent set is read again here, as every other field is.
+describe('a sent set the store refuses', () => {
+  it('refuses each completion handed one it could not keep, and writes nothing', async () => {
+    // Mutation: `check(validateSent(...))` taken out of one completion - its
+    // row writes a `drawn` with a colour the record could never hold.
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await drawsOn(store).completeLayout(project.id, {
+      date: '2026-09-15',
+      layout: 'a'.repeat(64),
+      service: WINDOW,
+      made: MADE,
+      built: BUILT,
+    })
+    const before = await readFile(join(root, project.id, 'project.json'), 'utf8')
+    const good = sentOf(await store.get(project.id))
+    const bad = { ...good, colors: { A: 'red' } }
+    const palette = { colors: {}, defaultColor: '#888888' }
+    const refusals = [
+      store.completeLayout(project.id, {
+        date: '2026-09-15',
+        layout: 'a'.repeat(64),
+        service: WINDOW,
+        made: MADE,
+        built: BUILT,
+        sent: bad,
+      }),
+      store.completeRebuild(project.id, { sent: bad }),
+      store.completeColors(project.id, palette, bad),
+      store.completeOrder(project.id, [], bad),
+      store.completeStyle(project.id, {}, bad),
+      store.completeLines(project.id, {}, bad),
+    ]
+    for (const [i, refusal] of refusals.entries())
+      await expect(refusal, String(i)).rejects.toThrow('must be written #rrggbb')
+    expect(await readFile(join(root, project.id, 'project.json'), 'utf8')).toBe(before)
   })
 })

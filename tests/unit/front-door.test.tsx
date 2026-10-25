@@ -27,7 +27,8 @@ import SampleCities, {
   sampleStatus,
 } from '../../src/renderer/src/SampleCities'
 import { samplePicture } from '../../src/renderer/src/samplePictures'
-import { drawnFrom, summarise, type ProjectRecord } from '../../src/shared/project'
+import { summarise, type ProjectRecord } from '../../src/shared/project'
+import { drawnOf } from '../support/sent'
 import type { FeedRecord } from '../../src/shared/protocol'
 
 // The screen's run helpers reach for the bridge when they are made. A
@@ -90,7 +91,7 @@ const project = (
   readOnly = false,
 ): ReturnType<typeof summarise> => {
   const record = { ...RECORD, ...patch }
-  return summarise({ ...record, drawn: drawnFrom(record) }, readOnly)
+  return summarise({ ...record, drawn: drawnOf(record) }, readOnly)
 }
 
 const projects = (

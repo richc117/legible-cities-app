@@ -14,7 +14,9 @@ import {
   type ProjectLines,
   type ProjectRecord,
   type ProjectStyle,
+  type SentSet,
   type ServiceWindow,
+  sentSet,
 } from '../../../shared/project'
 import {
   failureOf,
@@ -318,28 +320,46 @@ export interface RunOptions {
       stations?: Station[]
       /** The tuning graph.build was sent (issue 385); absent for a run sent none. */
       tuning?: import('../../../shared/project').ProjectTuning
+      /** What the run's map.build was sent (spec 037), which the record keeps as `drawn`. */
+      sent: SentSet
     },
   ): Promise<{ changed: boolean; relaid: boolean }>
   /**
    * A rebuild for a chosen day finished: the day is written, inside the
    * window or not at all, with the stations the map was drawn with.
    */
-  completeRebuild(id: string, done: { date: string; stations?: Station[] }): Promise<unknown>
+  completeRebuild(id: string, done: { sent: SentSet; stations?: Station[] }): Promise<unknown>
   /**
    * A redraw for chosen colours finished: the palette is written, never
    * before the map is drawn, with the stations the build answered where it
-   * answered a list (issue 272). So are the two below.
+   * answered a list (issue 272), and what its map.build was sent (spec 037).
+   * So are the three below.
    */
-  completeColors(id: string, palette: Palette, stations?: Station[]): Promise<unknown>
+  completeColors(
+    id: string,
+    palette: Palette,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<unknown>
   /** A redraw for a chosen line order finished: the order is written, never before the map is drawn. */
-  completeOrder(id: string, order: LineOrder, stations?: Station[]): Promise<unknown>
+  completeOrder(id: string, order: LineOrder, sent: SentSet, stations?: Station[]): Promise<unknown>
   /** A redraw for chosen sizes finished: the style is written, never before the map is drawn. */
-  completeStyle(id: string, style: ProjectStyle, stations?: Station[]): Promise<unknown>
+  completeStyle(
+    id: string,
+    style: ProjectStyle,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<unknown>
   /**
    * A redraw for chosen line options finished (issue 394): the options are
    * written, never before the map is drawn.
    */
-  completeLines(id: string, lines: ProjectLines, stations?: Station[]): Promise<unknown>
+  completeLines(
+    id: string,
+    lines: ProjectLines,
+    sent: SentSet,
+    stations?: Station[],
+  ): Promise<unknown>
   /** The anchor the engine's choice is made from: the machine's date, injected so a test can fix it. */
   today(): string
   /**
@@ -868,15 +888,15 @@ export class LayoutRun {
       // The map is drawn from the layout just answered, by its id; the
       // engine never lays out on the way to a map. Whatever it answers is a
       // map on disk, a cancel or not (`#draw`), so the record is written.
-      const { report, stations, late } = await this.#draw(
-        project,
-        built.layout,
+      const { report, stations, late, sent } = await this.#draw(project, {
+        layout: built.layout,
+        made: built.meta.made,
         date,
-        paletteOf(project),
-        orderOf(project),
-        project.style,
-        project.lines,
-      )
+        palette: paletteOf(project),
+        order: orderOf(project),
+        style: project.style,
+        lines: project.lines,
+      })
 
       const written = await complete(project.id, {
         date,
@@ -899,6 +919,10 @@ export class LayoutRun {
         // what this layout was asked with (issue 385): this run's, not the
         // record's now, which a tuning committed meanwhile has moved.
         ...asked,
+        // What map.build was sent, which the record keeps as `drawn` (spec
+        // 037): the run's own day and the choices it read at its start, not
+        // the record's now.
+        sent,
       })
       // The store cannot see `force`: a re-layout from this project moves
       // `made` too, and that is not another project's doing.
@@ -962,17 +986,17 @@ export class LayoutRun {
     // after it leaves a page the record does not describe (`unkept`).
     let drawn = false
     try {
-      const { report, stations, late } = await this.#draw(
-        project,
+      const { report, stations, late, sent } = await this.#draw(project, {
         layout,
+        made: project.made,
         date,
-        paletteOf(project),
-        orderOf(project),
-        project.style,
-        project.lines,
-      )
+        palette: paletteOf(project),
+        order: orderOf(project),
+        style: project.style,
+        lines: project.lines,
+      })
       drawn = true
-      await completeRebuild(project.id, { date, ...stationsOf(stations) })
+      await completeRebuild(project.id, { sent, ...stationsOf(stations) })
       this.#finish({ changed: false, relaid: false }, report, late)
     } catch (reason) {
       this.#failed(reason, drawn)
@@ -1134,19 +1158,19 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations, late } = await this.#draw(
-          project,
+        const { report, stations, late, sent } = await this.#draw(project, {
           layout,
+          made: project.made,
           date,
-          palette,
-          orderOf(project),
-          project.style,
-          project.lines,
-        )
+          palette: palette,
+          order: orderOf(project),
+          style: project.style,
+          lines: project.lines,
+        })
         drawn = true
         await (stations === null
-          ? completeColors(project.id, palette)
-          : completeColors(project.id, palette, stations))
+          ? completeColors(project.id, palette, sent)
+          : completeColors(project.id, palette, sent, stations))
         this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
@@ -1188,19 +1212,19 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations, late } = await this.#draw(
-          project,
+        const { report, stations, late, sent } = await this.#draw(project, {
           layout,
+          made: project.made,
           date,
-          paletteOf(project),
-          order,
-          project.style,
-          project.lines,
-        )
+          palette: paletteOf(project),
+          order: order,
+          style: project.style,
+          lines: project.lines,
+        })
         drawn = true
         await (stations === null
-          ? completeOrder(project.id, order)
-          : completeOrder(project.id, order, stations))
+          ? completeOrder(project.id, order, sent)
+          : completeOrder(project.id, order, sent, stations))
         this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
@@ -1249,19 +1273,19 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations, late } = await this.#draw(
-          project,
+        const { report, stations, late, sent } = await this.#draw(project, {
           layout,
+          made: project.made,
           date,
-          paletteOf(project),
-          orderOf(project),
-          style,
-          project.lines,
-        )
+          palette: paletteOf(project),
+          order: orderOf(project),
+          style: style,
+          lines: project.lines,
+        })
         drawn = true
         await (stations === null
-          ? completeStyle(project.id, style)
-          : completeStyle(project.id, style, stations))
+          ? completeStyle(project.id, style, sent)
+          : completeStyle(project.id, style, sent, stations))
         this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
@@ -1310,19 +1334,19 @@ export class LayoutRun {
       // after it leaves a page the record does not describe (`unkept`).
       let drawn = false
       try {
-        const { report, stations, late } = await this.#draw(
-          project,
+        const { report, stations, late, sent } = await this.#draw(project, {
           layout,
+          made: project.made,
           date,
-          paletteOf(project),
-          orderOf(project),
-          project.style,
-          lines,
-        )
+          palette: paletteOf(project),
+          order: orderOf(project),
+          style: project.style,
+          lines: lines,
+        })
         drawn = true
         await (stations === null
-          ? completeLines(project.id, lines)
-          : completeLines(project.id, lines, stations))
+          ? completeLines(project.id, lines, sent)
+          : completeLines(project.id, lines, sent, stations))
         this.#finish({ changed: false, relaid: false }, report, late)
       } catch (reason) {
         this.#failed(reason, drawn)
@@ -1456,13 +1480,17 @@ export class LayoutRun {
    */
   async #draw(
     project: ProjectRecord,
-    layout: string,
-    date: string,
-    palette: Palette,
-    order: LineOrder,
-    style: ProjectStyle,
-    lines: ProjectLines | undefined,
-  ): Promise<{ report: RunReport | null; stations: Station[] | null; late: boolean }> {
+    draw: Parameters<typeof sentSet>[0],
+  ): Promise<{
+    report: RunReport | null
+    stations: Station[] | null
+    late: boolean
+    sent: SentSet
+  }> {
+    const { layout, date, palette, order, style, lines } = draw
+    // What the request below is built from, copied once, which every
+    // completion hands the record as what the map was drawn from (spec 037).
+    const sent = sentSet(draw)
     const map = this.#options.client.request('map.build', {
       key: project.feed,
       layout,
@@ -1506,6 +1534,7 @@ export class LayoutRun {
       report: reportOf(drawn, date),
       stations: stationsFrom(drawn),
       late: cameTooLate(drawn),
+      sent,
     }
   }
 
