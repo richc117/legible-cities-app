@@ -4,7 +4,6 @@ import { drawnDate, serviceDayRefusal, type ProjectRecord } from '../../../share
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import type { RunAllPlan } from '../runAll'
 import { cellOfRun, type RunFacts } from '../runGraph'
-import { reasonSentence } from '../tripWords'
 
 // A project whose stored page an older engine drew is redrawn when it opens
 // (issue 465, decided 24 Oct 2026): a `map.build` from the stored layout,
@@ -216,20 +215,23 @@ export interface FrameFailureFacts {
  * layout of a press, under the same job, where the record it read has no
  * layout, and that failure is cell 02's).
  *
+ * Nothing, too, where the map was drawn and the record then refused to keep
+ * it (`unkept`, issue 399): that map *was* drawn, so neither "could not be
+ * redrawn" nor "did not finish" is true, and cell 02's own sentence for it
+ * is the one that is.
+ *
  * It is the opening's only while the run's latest attempt is the job the
- * opening started, and the map was not drawn and then refused (`unkept`,
- * issue 399): that map *was* redrawn, so "could not be redrawn" would be
- * false, and it takes the plain words. Derived each time, never stored as a
- * flag, so a later Run all, a person's own rebuild and the same failure met
- * again after the screen was left all take the plain words.
+ * opening started. Derived each time, never stored as a flag, so a later Run
+ * all, a person's own rebuild and the same failure met again after the
+ * screen was left all take the plain words.
  */
 export function frameFailure(facts: FrameFailureFacts): FrameFailure | null {
   const { asked, job, run, seams } = facts
   if (run.state !== 'failed') return null
   if (cellOfRun(run) !== 'frame') return null
+  if (run.unkept) return null
   const reason = screenPaths(run.error)
-  if (asked !== null && job === asked && !run.unkept)
-    return { kind: 'opening', reason, lacks: pageLacks(seams) }
+  if (asked !== null && job === asked) return { kind: 'opening', reason, lacks: pageLacks(seams) }
   return { kind: 'rebuild', reason, day: run.day }
 }
 
@@ -251,8 +253,13 @@ export const ON_SCREEN_AS_IT_WAS = 'The map on screen stays as it was.'
 export const THEME_BY_RELOAD =
   'It cannot change its theme where it stands, so choosing a theme loads the map again in that theme.'
 
-/** Said after it for a page with no `setTrip`, in the voice of the trip's own `OLD_PAGE`. */
-export const NO_TRIP_ON_IT = 'It cannot show a trip. Draw the map again to pick a trip.'
+/**
+ * Said after it for a page with no `setTrip`: the condition, not a remedy.
+ * What would draw the map again depends on the engine's reason - after "no
+ * stored layout" only a layout does, and Run all would fail the same way - so
+ * the reason before it is what a person acts on.
+ */
+export const NO_TRIP_ON_IT = 'It cannot show a trip until the map is drawn again.'
 
 /** What still holds of the map on screen, for the seams the page lacks and no others. */
 export function openingFallback(lacks: PageLacks): string {
@@ -267,17 +274,26 @@ export function openingFallback(lacks: PageLacks): string {
 export const rebuildFailed = (day: string | null): string =>
   day === null ? 'The rebuild did not finish.' : `The rebuild for ${day} did not finish.`
 
+/**
+ * The engine's hint as cell 03 says it: its words exactly as the jobs
+ * inspector shows them, first character included - a hint that starts with a
+ * feed's key starts with it as the engine spells it - and only a closing full
+ * stop the app's, where the hint has none, so it ends as the sentences around
+ * it do.
+ */
+export function engineReason(reason: string | null): string {
+  const said = (reason ?? '').trim()
+  if (said === '') return ''
+  return /[.!?]$/.test(said) ? said : `${said}.`
+}
+
 /** The words cell 03 draws for a failure: the error, and what still holds where there is that to say. */
 export function frameFailureWords(failure: FrameFailure): {
   error: string
   reason: string
   fallback: string | null
 } {
-  // The engine's hint, as a sentence: its words as they come, and only the
-  // first letter and the full stop the app's, as the trip's page reasons are
-  // said, so a hint that starts with a feed's key and ends with no stop reads
-  // as the sentences around it.
-  const reason = reasonSentence(failure.reason ?? '')
+  const reason = engineReason(failure.reason)
   return failure.kind === 'opening'
     ? { error: OPENING_REDRAW_FAILED, reason, fallback: openingFallback(failure.lacks) }
     : { error: rebuildFailed(failure.day), reason, fallback: null }

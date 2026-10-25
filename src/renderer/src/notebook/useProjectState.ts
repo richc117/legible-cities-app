@@ -114,7 +114,7 @@ export interface ProjectState {
    * The job the redraw on open started on this screen, or null where it
    * started none (issue 517): cell 03 compares it with the run's latest job
    * to tell the opening's failure from a rebuild a person asked for
-   * (`openingRedrawFailure`).
+   * (`frameFailure`).
    */
   redrawAsked: string | null
   /**

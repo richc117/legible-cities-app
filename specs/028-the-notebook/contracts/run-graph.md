@@ -420,27 +420,29 @@ above, is the fallback, and so is the trip's old-page sentence.
 *As of 25 Oct 2026* (issue 517): **where that redraw fails, cell 03 says so
 in words of its own**, since the person pressed nothing: first in the cell,
 as an error, "This map was drawn by an older version of the engine and could
-not be redrawn as the project opened." with the engine's reason after it as
-a sentence, then "The map on screen stays as it was." and, for what the page
-lacks and nothing else, "It cannot change its theme where it stands, so
-choosing a theme loads the map again in that theme." (no `setTheme`) and "It
-cannot show a trip. Draw the map again to pick a trip." (no `setTrip`). A
-page lacking only the opening's two seams takes a theme and a trip like any
-other, and is told neither. Cell 02's run panel says "The map was not
-redrawn as the project opened; cell 03 says why." in place of the rebuild's
-stopped sentence. Every other failed rebuild of cell 03's own - a Run all
-after it, "Draw for this day", the same failure met again once the screen
-was left - is said in cell 03 too, plainly: "The rebuild for `<day>` did not
-finish." and the reason. The state is unchanged - `error` in cell 03,
-`upstream` below it, the job listed as failed, and the header's alert "03
-Frame and service day failed." the one announcement, so the cell's words are
-not a live region. Which failure is the opening's is derived, not stored:
-the screen keeps the id of the job its redraw started, and the opening's
-words are said only while the run's latest attempt is that job, failed, as
-cell 03's run, and its map was not drawn and then refused (`unkept`, whose
-map was redrawn and takes the plain words) (`frameFailure` in
-`notebook/olderPage.ts`). The fallback after a failure is the fallback
-above, unchanged.
+not be redrawn as the project opened." with the engine's reason after it, as
+the jobs inspector spells it and closed with a full stop, then "The map on
+screen stays as it was." and, for what the page lacks and nothing else, "It
+cannot change its theme where it stands, so choosing a theme loads the map
+again in that theme." (no `setTheme`) and "It cannot show a trip until the
+map is drawn again." (no `setTrip`) - the condition and not a remedy, since
+what would draw it again is the reason's to say. A page lacking only the
+opening's two seams takes a theme and a trip like any other, and is told
+neither. Cell 02's run panel says "The map was not redrawn as the project
+opened; cell 03 says why." in place of the rebuild's stopped sentence. Every
+other failed rebuild of cell 03's own - a Run all after it, "Draw for this
+day", the same failure met again once the screen was left - is said in cell
+03 too, plainly: "The rebuild for `<day>` did not finish." and the reason. A
+rebuild whose map was drawn and whose record then would not keep it
+(`unkept`) says nothing in cell 03: neither sentence is true of a map that
+was drawn, and cell 02's own sentence for it is. The state is unchanged -
+`error` in cell 03, `upstream` below it, the job listed as failed, and the
+header's alert "03 Frame and service day failed." the one announcement, so
+the cell's words are not a live region. Which failure is the opening's is
+derived, not stored: the screen keeps the id of the job its redraw started,
+and the opening's words are said only while the run's latest attempt is that
+job, failed, as cell 03's run (`frameFailure` in `notebook/olderPage.ts`).
+The fallback after a failure is the fallback above, unchanged.
 
 **Neither `made` nor `layout` has a live path to divergence yet, and
 `replaced` does not survive.** All three are worth stating together,

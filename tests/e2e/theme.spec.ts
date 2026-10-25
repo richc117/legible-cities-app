@@ -900,7 +900,7 @@ test('a page the pinned engine drew is not redrawn as its project opens', async 
 
 /** What the stand-in answers a map.build for a layout it does not hold, as cell 03 says it. */
 const noLayoutReason = (layout: unknown): string =>
-  `La-metro-rail has no stored layout ${String(layout).slice(0, 8)}; lay the feed out first (graph.build).`
+  `la-metro-rail has no stored layout ${String(layout).slice(0, 8)}; lay the feed out first (graph.build).`
 
 /**
  * Lay a project out with the map drawn, write `source` over the page, and

@@ -21,7 +21,6 @@ import {
   type FrameFailureFacts,
   type OnOpenFacts,
 } from '../../src/renderer/src/notebook/olderPage'
-import { OLD_PAGE } from '../../src/renderer/src/tripWords'
 import type { DrawnFrom, ServiceWindow } from '../../src/shared/project'
 import {
   PAGE_SEAMS,
@@ -261,10 +260,12 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
     expect(failure({}, { feedMissing: true }), 'at the feed').toBeNull()
   })
 
-  it('is plain where the map was redrawn and the record then would not keep it', () => {
+  it('is nothing where the map was drawn and the record then would not keep it', () => {
     // Mutation: the `unkept` clause removed - cell 03 says the map could not
-    // be redrawn of a map that was (issue 399).
-    expect(failure({}, { unkept: true })).toEqual(PLAIN)
+    // be redrawn, or that the rebuild did not finish, of a map that was drawn
+    // (issue 399); cell 02's own sentence for it is the true one.
+    expect(failure({}, { unkept: true }), 'the opening’s job').toBeNull()
+    expect(failure({ job: 'job-2' }, { unkept: true }), 'any other').toBeNull()
   })
 
   it('gives the reason as the jobs inspector does, with no path in it', () => {
@@ -296,19 +297,21 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
     expect(openingFallback({ theme: true, trip: true })).toBe(
       `${ON_SCREEN_AS_IT_WAS} ${THEME_BY_RELOAD} ${NO_TRIP_ON_IT}`,
     )
-    // In the trip's own words, so the two sentences a person meets agree.
-    expect(NO_TRIP_ON_IT).toContain('Draw the map again to pick a trip.')
-    expect(OLD_PAGE).toContain('Draw the map again to pick a trip.')
+    // The condition, not a remedy: the engine's reason before it says what
+    // would draw the map again.
+    expect(NO_TRIP_ON_IT).toBe('It cannot show a trip until the map is drawn again.')
     expect(ON_SCREEN_AS_IT_WAS).toBe('The map on screen stays as it was.')
   })
 
   it('says the opening’s words, the reason as a sentence, then what still holds', () => {
-    // Mutation: the reason handed on as it came, lowercase and with no stop.
+    // Mutation: the reason handed on with no closing stop, or with its first
+    // letter raised - the feed's key then spelled as neither the engine nor the
+    // jobs inspector spells it.
     const opening = failure()
     expect(opening).not.toBeNull()
     expect(frameFailureWords(opening!)).toEqual({
       error: OPENING_REDRAW_FAILED,
-      reason: 'La-metro-rail has no stored layout cccccccc.',
+      reason: 'la-metro-rail has no stored layout cccccccc.',
       fallback: `${ON_SCREEN_AS_IT_WAS} ${THEME_BY_RELOAD} ${NO_TRIP_ON_IT}`,
     })
     expect(OPENING_REDRAW_FAILED).toMatch(/older version of the engine/)
@@ -324,7 +327,7 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
     // Mutation: the plain kind given the opening's words.
     expect(frameFailureWords(failure({ job: 'job-2' })!)).toEqual({
       error: 'The rebuild for 2026-06-16 did not finish.',
-      reason: 'La-metro-rail has no stored layout cccccccc.',
+      reason: 'la-metro-rail has no stored layout cccccccc.',
       fallback: null,
     })
     expect(frameFailureWords(failure({ job: 'job-2' }, { day: null })!).error).toBe(

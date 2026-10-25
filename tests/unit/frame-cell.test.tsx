@@ -253,7 +253,7 @@ describe('cell 03, open, for a read-only project with a day and no strip', () =>
 // region: the header's alert is the one announcement (FR-017).
 describe('cell 03, open, after a rebuild of its own failed', () => {
   const HINT = 'la-metro-rail has no stored layout cccccccc'
-  const REASON = 'La-metro-rail has no stored layout cccccccc.'
+  const REASON = 'la-metro-rail has no stored layout cccccccc.'
   /** A page from before engine v0.11.0: none of the seams added since. */
   const OLDEST = PAGE_SEAMS.filter(
     (name) => !['setTheme', 'setTrip', 'setCard', 'setDrawn'].includes(name),
