@@ -92,7 +92,9 @@ describe('the marks', () => {
     abandoned = 0
     expect(activity.exportRefusal('p')).toBeNull()
     expect(activity.deleteRefusal('p')).toBeNull()
-    // Emptied when the count read 0: a later count does not bring it back.
+    // Once the count has been read at 0 the set is empty, so a count that
+    // rises afterwards does not bring this project back. (A hold nobody read
+    // at 0 would come back: the known limit in the header.)
     abandoned = 1
     expect(activity.exportRefusal('p')).toBeNull()
   })

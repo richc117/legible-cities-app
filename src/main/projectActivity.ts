@@ -31,6 +31,11 @@
 //   - The count is engine-wide, so a stuck request of any kind keeps an
 //     abandoned project held until the count reaches 0, though its own
 //     write may have ended.
+//   - The set is emptied only when the count is read at 0, so a hold can
+//     outlast its own request's answer until then; a later abandonment of
+//     any request revives it, with a "being drawn" sentence that is false
+//     for that project. It fails safe, and the per-request promise named
+//     above removes it.
 //   - A stop fails its requests too, and they are not counted as abandoned;
 //     for at most `shutdownMs` the engine may still be at the work with no
 //     mark held.
