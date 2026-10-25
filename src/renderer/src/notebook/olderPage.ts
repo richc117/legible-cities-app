@@ -20,14 +20,15 @@ import type { RunAllPlan } from '../runAll'
 //
 // It is started through Run all's machinery and not by a press on cell 03's
 // rebuild (`redrawPageOnOpen`), because the day it draws has to be decided
-// from the record as the writes on their way leave it (issue 407). A start
-// flushes cell 03's held day first; a rebuild started for the day the screen
-// held would wait for that write and then draw the old day and write it back
-// over the one just chosen. Run all waits, makes the plan again from the
-// record the writes left (`openPlanOf`), and where that plan is nothing - the
-// day is now one a person chose and has not drawn - withdraws: no job ends,
-// and nothing is drawn or written. It is not unseen, though. For the round
-// trip of the write it waited on, the run reads running as cell 03's rebuild,
+// from the record the store holds after the press (issue 407, spec 037). A
+// start flushes cell 03's held day first, so its write is sent before the
+// run's read; a rebuild started for the day the screen held would read the
+// record with the new day and then draw the old one and write it back over
+// the one just chosen. Run all reads the store, makes the plan again from the
+// record it read (`openPlanOf`), and where that plan is nothing - the day is
+// now one a person chose and has not drawn - withdraws: no job ends, and
+// nothing is drawn or written. It is not unseen, though. For the round trip
+// of its read, the run reads running as cell 03's rebuild,
 // its job is listed and cell 03's controls are out of reach; and the person
 // has just picked a day, so focus is in one of them. Focus is therefore handed
 // to the cell's heading before the redraw is asked for (`keepFocusInCell`),
@@ -101,7 +102,7 @@ export function redrawOnOpen(facts: OnOpenFacts): OnOpen {
 /**
  * The plan Run all's machinery is handed for the redraw (`LayoutRun.runAll`):
  * made from whichever record it reads - the screen's at the start, and the
- * one the writes on their way leave once they have landed - so the day is
+ * one the store answers its read with after the press - so the day is
  * the record's as it then stands. A rebuild for that day where the rule
  * still answers a redraw, and nothing otherwise, which Run all withdraws: no
  * job ends, and nothing is drawn or written. The engine and the page
@@ -127,9 +128,10 @@ export function openPlanOf(
 /**
  * Start the redraw of the page a project opened on, once `redrawOnOpen` has
  * answered a redraw for the screen's record: through Run all, so the day is
- * decided after the writes on their way have landed (see the top of this
- * file). With nothing on its way it is cell 03's rebuild for that day, started
- * in this turn, with its job, its progress line and its sentences.
+ * decided from the record the store holds after the press (see the top of
+ * this file). Where that record still answers a redraw it is cell 03's
+ * rebuild for that day, going from this turn, with its job, its progress line
+ * and its sentences.
  */
 export function redrawPageOnOpen(
   run: Pick<LayoutRun, 'runAll'>,
