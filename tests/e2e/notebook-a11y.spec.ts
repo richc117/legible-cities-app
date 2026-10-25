@@ -253,6 +253,13 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
       "the project, line A's colour picker",
     )
     await sweep(page, 'the project, a colour picker open')
+    // The sweep's Tab walk went on past the picker, and an auto popover that
+    // focus leaves for another control is closed (issue 436: left open it
+    // covered the rows below it). So the picker's own focus order is checked
+    // on a picker opened again.
+    await expect(picker).toBeHidden()
+    await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
     await picker.getByRole('slider', { name: 'Hue' }).focus()
     await page.keyboard.press('Shift+Tab')
     await page.keyboard.press('Tab')
