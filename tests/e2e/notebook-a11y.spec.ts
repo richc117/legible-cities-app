@@ -21,6 +21,8 @@ import { expect, test, type Page } from '@playwright/test'
 import {
   PYTHON,
   controlsOf,
+  expectEdgesInForcedColours,
+  expectPopoverClear,
   expectNamed,
   expectNoDuplicatedNames,
   fixture,
@@ -235,15 +237,47 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
 
     // A colour picker open: its two sliders, the hex field, and the ring.
     const colours = page.getByRole('region', { name: 'Line colours' })
-    await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
     const picker = colours.getByRole('group', { name: 'Colour for line A' })
-    await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
+    const openPicker = async (): Promise<void> => {
+      if (!(await picker.isVisible()))
+        await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
+      await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
+    }
+    await openPicker()
     // Its chip controls the picker it opened, as a native button's
     // aria-controls says (issue 121, F6; a native button since issue 284).
     await expect
       .poll(() => controlsOf(page, 'Choose the colour of line A'))
       .toEqual(['Colour for line A'])
-    await sweep(page, 'the project, a colour picker open')
+    // Wholly in the window, and clear of its own chip (issue 436).
+    await expectPopoverClear(
+      page,
+      colours.getByRole('button', { name: 'Choose the colour of line A' }),
+      picker,
+      "the project, line A's colour picker",
+    )
+    // The walk begins at the open panel's chip, since focus anywhere else
+    // closes it (issue 436), and the panel is opened again for the second
+    // theme: the first walk went through it and on, which closed it.
+    // And its controls' rings are judged, by name: they leave the document
+    // once the walk has gone through the panel and on, and a control that
+    // has left it is neither missed nor judged unless the sweep says so.
+    await sweep(page, 'the project, a colour picker open', undefined, {
+      before: openPicker,
+      judges: [
+        /^div "Color"$/,
+        /^div "Hue"$/,
+        /^input "Hex value"$/,
+        /^fig-button "Use this colour"$/,
+      ],
+    })
+    // The sweep's Tab walk went on past the picker, and an auto popover that
+    // focus leaves for another control is closed (issue 436: left open it
+    // covered the rows below it). So the picker's own focus order is checked
+    // on a picker opened again.
+    await expect(picker).toBeHidden()
+    await colours.getByRole('button', { name: 'Choose the colour of line A' }).click()
+    await expect(picker.getByRole('slider', { name: 'Hue' })).toBeVisible()
     await picker.getByRole('slider', { name: 'Hue' }).focus()
     await page.keyboard.press('Shift+Tab')
     await page.keyboard.press('Tab')
@@ -365,6 +399,187 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await inspector.getByRole('button', { name: 'Close the inspector' }).click()
     await expect(inspector).toHaveCount(0)
     await expect.poll(() => controlsOf(page, /^Jobs, /)).toEqual([])
+  })
+})
+
+/**
+ * Layout tuning (cell 02) and one line's options (cell 05), opened: the two
+ * disclosures every other sweep leaves shut. Their fields, selects, switch and
+ * casing chip are in the tree and the Tab walk only while they are open, so a
+ * sweep that does not open them never names, walks, rings or stills any of
+ * them (issue 436, R10-01). Asserts what it opened is there, so that a
+ * disclosure that stayed shut fails here and does not sweep nothing.
+ */
+async function openTheDisclosures(page: Page): Promise<void> {
+  const tuning = page.getByRole('button', { name: /^Layout tuning\b/ })
+  await tuning.click()
+  const tuningGroup = page.getByRole('group', { name: 'Layout tuning', exact: true })
+  await expect(tuningGroup).toBeVisible()
+  await expect(tuningGroup.getByRole('combobox', { name: 'Grid' })).toBeVisible()
+  await expect(tuningGroup.getByLabel('Merge distance', { exact: true })).toBeVisible()
+
+  const colours = page.getByRole('region', { name: 'Line colours' })
+  await colours.getByRole('button', { name: /^Line options for line A,/ }).click()
+  const options = colours.getByRole('group', { name: 'Line options for line A', exact: true })
+  await expect(options).toBeVisible()
+  await expect(options.getByLabel('Name', { exact: true })).toBeVisible()
+  await expect(options.getByRole('switch', { name: 'Shown', exact: true })).toBeVisible()
+  for (const name of ['Width', 'Casing', 'Dash'])
+    await expect(options.getByRole('combobox', { name, exact: true })).toBeVisible()
+
+  // A casing, so that its colour chip is drawn beside the select. The choice
+  // redraws the map after a short delay; the sweep waits for that to finish
+  // rather than walking a screen that is moving.
+  await options.getByRole('combobox', { name: 'Casing', exact: true }).selectOption('0.5')
+  await expect(
+    options.getByRole('button', { name: 'Choose the casing colour of line A' }),
+  ).toBeVisible()
+  await expect(page.getByText(/Drawn with the line options you chose/)).toBeVisible({
+    timeout: 30_000,
+  })
+}
+
+// Mutations the coordinator runs this under, each of which must turn the
+// named test red:
+// - `openTheDisclosures` not clicking the line options' toggle: the first
+//   test (its `options` group is not visible, and the sweep would otherwise
+//   pass having walked nothing new).
+// - a field in either disclosure with its label removed, or the ring dropped
+//   from `.line-options-toggle:focus-visible` (panels.css): the first test.
+// - the `@media (forced-colors: active)` block deleted from app.css: the
+//   second test (every kind of edge reports none).
+test("the project with the layout tuning and one line's options open", async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await expect(page.getByRole('region', { name: 'Line colours' })).toBeVisible()
+    await expect(
+      page
+        .getByRole('region', { name: 'Line colours' })
+        .getByRole('list', { name: 'Lines', exact: true })
+        .getByRole('listitem'),
+    ).not.toHaveCount(0)
+    await openTheDisclosures(page)
+    await sweep(page, "the project, the layout tuning and a line's options open")
+  })
+})
+
+test('forced colours (Windows high contrast): the resting edges of fields, selects, checkboxes and the textarea are real', async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    await openTheDisclosures(page)
+    await openCell(page, 'export')
+    await expectEdgesInForcedColours(page, 'the project, forced colours', ['date control'])
+  })
+})
+
+// Mutations the coordinator runs this under, each of which must turn it red:
+// - `keepInWindow` not called (ColourChip.tsx): the popover of the last line
+//   runs past the window's foot in a short window.
+// - the `focusin` effect that closes the panel removed (ColourChip.tsx): the
+//   panel stays open over the rows below it after a Tab out of it.
+// - the popover's margin set back to 0 (panels.css): the popover touches the
+//   chip's ring, which the first part of the test does not see; the
+//   intersection check here sees it only if the popover overlaps the chip's
+//   box itself.
+test("the last line's colour popover is opened and left from the keyboard, in the window and clear of its chip", async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    const colours = page.getByRole('region', { name: 'Line colours' })
+    const chip = colours.getByRole('button', { name: 'Choose the colour of line K' })
+    await chip.focus()
+    await page.keyboard.press('Enter')
+    const popover = colours.getByRole('group', { name: 'Colour for line K' })
+    await expect(popover).toBeVisible()
+    await expectPopoverClear(page, chip, popover, "line K's colour popover")
+
+    // Walking on with Tab leaves it, and closes it, so it never lies over the
+    // controls after it: a press of Tab is a way out, not a dismissal by a
+    // pointer, and an auto popover is only light-dismissed by the pointer.
+    for (let i = 0; i < 10 && (await popover.isVisible()); i++) await page.keyboard.press('Tab')
+    await expect(popover).toBeHidden()
+    expect(
+      await page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing'),
+      'focus went on to a control and was not dropped',
+    ).not.toBe('body')
+  })
+})
+
+// The sweep of 'the project, a colour picker open' failed on the macOS
+// runner, whose window is narrower than a large display's: its walk reached
+// the default colour's chip with line A's panel, placed above line A's chip
+// for want of room below it, lying over that chip, and the ring's right side
+// read the panel's hue slider. A person reached the same place with
+// Shift+Tab from line A's chip. Here line A's chip is put at the window's
+// foot, which gives that placement on any display, and the panel is asserted
+// to lie over the default colour's chip before anything else is asked, so
+// the test cannot pass for want of the geometry.
+//
+// Mutations the coordinator runs this under, each of which must turn it red:
+// - the `focusin` effect in ColourChip.tsx removed, or put back as the
+//   panel's own `onBlur`: the Shift+Tab leaves the panel open over the chip
+//   focus is then on (`toBeHidden` fails, and the page paints the panel at
+//   the chip's middle).
+// - its `to === chipRef.current` exception removed: the panel closes when
+//   focus comes back to its chip from inside it.
+test('a colour panel closes when focus lands anywhere but its chip or itself, so it never lies over the focused control', async () => {
+  test.setTimeout(180_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    const colours = page.getByRole('region', { name: 'Line colours' })
+    const chip = colours.getByRole('button', { name: 'Choose the colour of line A' })
+    const above = colours.getByRole('button', {
+      name: 'Choose the colour of lines the feed leaves uncoloured',
+    })
+    const panel = colours.getByRole('group', { name: 'Colour for line A' })
+    // What the page paints at the middle of the default colour's chip.
+    const overAbove = (): Promise<string> =>
+      above.evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+        if (hit === el) return 'the chip'
+        if (hit?.closest('[popover]')) return 'a popover'
+        return `something else: ${hit === null ? 'nothing' : hit.tagName.toLowerCase()}`
+      })
+    const openAtFoot = async (): Promise<void> => {
+      await chip.evaluate((el) => el.scrollIntoView({ block: 'end', behavior: 'instant' }))
+      await chip.focus()
+      await page.keyboard.press('Enter')
+      await expect(panel).toBeVisible()
+      await expect
+        .poll(overAbove, {
+          message: "line A's panel, placed above its chip, lies over the default colour's chip",
+        })
+        .toBe('a popover')
+    }
+
+    // Shift+Tab from the chip: focus goes to the control the panel covered,
+    // and the panel goes from over it.
+    await openAtFoot()
+    await page.keyboard.press('Shift+Tab')
+    await expect(above).toBeFocused()
+    await expect(panel, 'focus left the chip for another control').toBeHidden()
+    expect(await overAbove(), 'nothing lies over the chip focus is on').toBe('the chip')
+
+    // Into the panel and back to its chip: both are the panel's, and it stays.
+    await openAtFoot()
+    await page.keyboard.press('Tab')
+    await expect(panel.getByRole('slider').first()).toBeFocused()
+    await page.keyboard.press('Shift+Tab')
+    await expect(chip).toBeFocused()
+    await expect(panel, 'focus back on its own chip').toBeVisible()
+
+    // Focus moved by the page and not by a key, as the app's own handbacks
+    // move it and the sweep's walk begins: it closes too.
+    await heading(page).focus()
+    await expect(heading(page)).toBeFocused()
+    await expect(panel, 'focus moved to the screen’s heading').toBeHidden()
   })
 })
 

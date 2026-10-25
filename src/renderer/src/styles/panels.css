@@ -180,7 +180,11 @@
    a dialog (a minimum width, no edge, its own shadow and ground); the app's
    own surface, edge and padding go back on. */
 .colour-popover {
-  margin: 0;
+  /* A gap from the chip at least as wide as its focus ring (the offset and
+     the width), on whichever side it falls, so the ring is never under the
+     panel (issue 436). The margin is the platform's gap between the panel
+     and the area it is placed in, and flips with the panel. */
+  margin: calc(var(--focus-ring-offset) + var(--focus-ring-width)) 0;
   min-width: 0;
   padding: var(--space-4-3);
   border: var(--border-width) solid var(--border);
@@ -787,6 +791,11 @@ th .sort:focus-visible {
 .export-choices textarea:disabled {
   color: var(--text-faint);
   background-color: var(--surface-sunken);
+  /* --border-strong is held on --surface and --surface-raised only (it is
+     2.99 on --surface-sunken in Parchment), and the disabled fill is sunken,
+     so the edge steps down to --border, as the kit gives its disabled
+     inputs a quieter one. */
+  box-shadow: inset 0 0 0 var(--border-width) var(--border);
 }
 
 .export-choices fieldset {

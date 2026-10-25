@@ -49,6 +49,15 @@ import {
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { describePair, describeReading, duplicatedNames } from './a11y-names'
 import {
+  MIN_RING_CONTRAST,
+  MIN_RING_WIDTH,
+  judgeStops,
+  weakRings,
+  type RingReading,
+  type RingStyle,
+  type StopReading,
+} from './ring'
+import {
   WalkTrace,
   endMessage,
   handOver,
@@ -171,7 +180,8 @@ export async function chooserAnswers(app: ElectronApplication, path: string): Pr
 
 interface Finding {
   missed: string[]
-  unringed: string[]
+  /** Every stop, its chain's rings focused and at rest, and what was measured (`judgeStops` and `weakRings` judge them). */
+  readings: StopReading[]
   stops: number
 }
 
@@ -214,9 +224,15 @@ export function installProbe(): void {
     return root instanceof ShadowRoot ? root.host : el
   }
   const describe = (el: Element): string => {
+    // An input by the words of its label before its id: the kit's text
+    // field takes a generated id (`useId`), which names nothing a reader of
+    // a failure, or a sweep's `judges`, can recognise.
+    const labelled =
+      el instanceof HTMLInputElement ? (el.labels?.[0]?.textContent ?? '').trim() : ''
     const label =
       el.getAttribute('aria-label') ||
       el.getAttribute('label') ||
+      labelled ||
       el.id ||
       (el.textContent ?? '').trim().slice(0, 40) ||
       el.getAttribute('title') ||
@@ -279,6 +295,274 @@ export function installProbe(): void {
         : `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`
     return { outline, shadow: style.boxShadow }
   }
+  // --- Measuring a ring (issue 436, R10-03). Everything here runs in the
+  // page, from computed styles, because the colour a ring is drawn against
+  // is a fact about the layers behind it and not about a token. The verdict
+  // is `ring.ts`.
+  type Colour = [number, number, number, number]
+  const parseColour = (text: string): Colour | null => {
+    // `rgb()` and `rgba()`, and `color(srgb r g b / a)` with the channels from
+    // 0 to 1, which is how Chromium reports a colour a `color-mix()` made.
+    const m = /^(rgba?|color)\(([^)]+)\)$/.exec(text.trim())
+    if (!m) return null
+    const srgb = m[1] === 'color'
+    const body = srgb ? m[2].replace(/^\s*srgb\s+/, '') : m[2]
+    if (srgb && body === m[2]) return null
+    const parts = body
+      .split(/[\s,/]+/)
+      .filter(Boolean)
+      .map(Number)
+    if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null
+    const scale = srgb ? 255 : 1
+    return [parts[0] * scale, parts[1] * scale, parts[2] * scale, parts[3] ?? 1]
+  }
+  // The composed tree: a slotted element's parent is the slot it is shown
+  // in, and the top of a shadow root's is its host.
+  const parentOf = (el: Element): Element | null => {
+    if (el.assignedSlot) return el.assignedSlot
+    if (el.parentElement) return el.parentElement
+    const root = el.getRootNode()
+    return root instanceof ShadowRoot ? root.host : null
+  }
+  type Rgb = [number, number, number]
+  /** What an element's own opacity and its ancestors' leave of a layer it draws. */
+  const opacityOf = (el: Element): number => {
+    let opacity = 1
+    for (let up: Element | null = el; up !== null; up = parentOf(up))
+      opacity *= parseFloat(getComputedStyle(up).opacity)
+    return opacity
+  }
+  /**
+   * The border colour at a point inside an element's border box but outside its
+   * padding box; null where the point is not in a border, false where there is
+   * one whose colour cannot be read.
+   */
+  const borderAt = (
+    el: Element,
+    style: CSSStyleDeclaration,
+    [x, y]: [number, number],
+  ): Colour | null | false => {
+    const box = el.getBoundingClientRect()
+    const sides: [boolean, 'Top' | 'Right' | 'Bottom' | 'Left'][] = [
+      [y >= box.top && y < box.top + parseFloat(style.borderTopWidth), 'Top'],
+      [x < box.right && x >= box.right - parseFloat(style.borderRightWidth), 'Right'],
+      [y < box.bottom && y >= box.bottom - parseFloat(style.borderBottomWidth), 'Bottom'],
+      [x >= box.left && x < box.left + parseFloat(style.borderLeftWidth), 'Left'],
+    ]
+    for (const [inside, side] of sides) {
+      if (!inside || style[`border${side}Style`] === 'none') continue
+      const colour = parseColour(style[`border${side}Color`])
+      return colour === null ? false : colour
+    }
+    return null
+  }
+  /**
+   * What is painted by the elements of `stack`, topmost first, over a white
+   * canvas: their background colours, down to the first opaque one. A string,
+   * naming the element and why, where the ground cannot be read, which is not
+   * a guess: a background image showing, a colour this does not parse, and
+   * elements whose content is not a colour (a frame, a picture, a video, a
+   * canvas). A border that is opaque at the point hides the element's
+   * background there, image or not.
+   */
+  const named = (el: Element): string =>
+    `${describe(el)}${el.className && typeof el.className === 'string' ? ` .${el.className.trim().split(/\s+/).join('.')}` : ''}`
+  const composeStack = (stack: Element[], at: [number, number] | null = null): Rgb | string => {
+    const layers: Colour[] = []
+    for (const el of stack) {
+      if (/^(IFRAME|IMG|VIDEO|CANVAS|OBJECT|EMBED)$/.test(el.tagName))
+        return `${named(el)} is not a colour`
+      const style = getComputedStyle(el)
+      const opacity = opacityOf(el)
+      // A point that falls in an element's border is painted in the border's
+      // colour, over its background: react-colorful's colour area has a 12px
+      // black one under it, and a gradient behind it.
+      const border = at === null ? null : borderAt(el, style, at)
+      if (border === false) return `${named(el)} has a border colour that cannot be read`
+      if (border !== null) {
+        const alpha = border[3] * opacity
+        if (alpha > 0) layers.push([border[0], border[1], border[2], alpha])
+        if (alpha >= 1) break
+      }
+      if (style.backgroundImage !== 'none') return `${named(el)} has a background image`
+      const colour = parseColour(style.backgroundColor)
+      if (colour === null)
+        return `${named(el)} has a background it cannot read: ${style.backgroundColor}`
+      const alpha = colour[3] * opacity
+      if (alpha === 0) continue
+      layers.push([colour[0], colour[1], colour[2], alpha])
+      if (alpha >= 1) break
+    }
+    // Back to front. The app paints --surface on the body, so a document
+    // that reaches here without an opaque layer is a white canvas.
+    let under: Rgb = [255, 255, 255]
+    for (const [r, g, b, a] of layers.reverse())
+      under = [r * a + under[0] * (1 - a), g * a + under[1] * (1 - a), b * a + under[2] * (1 - a)]
+    return under
+  }
+  /** The ground under `start` itself: its own background and its ancestors', for a ring drawn inside it. */
+  const groundBehind = (start: Element): Rgb | string => {
+    const stack: Element[] = []
+    for (let up: Element | null = start; up !== null; up = parentOf(up)) stack.push(up)
+    return composeStack(stack)
+  }
+  /**
+   * The ground under a ring drawn outside `el`, judged where it is drawn: at
+   * the middle of the ring's band, `distance` beyond each of the four sides'
+   * midpoints, from what the page paints there (`elementsFromPoint`, which
+   * has the stacking, the clipping and the siblings that an ancestor chain
+   * does not). The ancestor chain was the first version, and it took the
+   * parent's background for the ground of a ring drawn outside a child that
+   * fills its parent exactly. A side off the screen is not read; a side whose
+   * ground cannot be read makes the ring unreadable.
+   */
+  const groundsOutside = (el: Element, distance: number): [string, Rgb | string][] => {
+    const box = el.getBoundingClientRect()
+    const root = el.getRootNode()
+    const scope: Document | ShadowRoot = root instanceof ShadowRoot ? root : document
+    const sides: [string, number, number][] = [
+      ['top', box.left + box.width / 2, box.top - distance],
+      ['right', box.right + distance, box.top + box.height / 2],
+      ['bottom', box.left + box.width / 2, box.bottom + distance],
+      ['left', box.left - distance, box.top + box.height / 2],
+    ]
+    const out: [string, Rgb | string][] = []
+    for (const [side, x, y] of sides) {
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue
+      const hits = scope.elementsFromPoint(x, y).filter((hit) => hit !== el && !el.contains(hit))
+      if (hits.length > 0) out.push([side, composeStack(hits, [x, y])])
+    }
+    return out
+  }
+  const channel = (v: number): number => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }
+  const luminance = (c: [number, number, number]): number =>
+    0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
+  const ratioOf = (a: [number, number, number], b: [number, number, number]): number => {
+    const la = luminance(a)
+    const lb = luminance(b)
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+  }
+  const hex = (c: [number, number, number]): string => `rgb(${c.map(Math.round).join(', ')})`
+  const reading = (
+    kind: 'outline' | 'shadow',
+    width: number,
+    colourText: string,
+    grounds: [string, Rgb | string][],
+    extra: { offset?: number; inset?: boolean; opaque?: boolean } = {},
+    where = '',
+  ): RingReading => {
+    const colour = parseColour(colourText)
+    // The worst side decides. A side that could not be read makes the ring
+    // unreadable, and the reading names every side: its ground, or why not.
+    if (colour === null || grounds.length === 0 || grounds.some(([, g]) => typeof g === 'string')) {
+      const sides =
+        grounds.length === 0
+          ? `not on the screen (${where})`
+          : grounds
+              .map(([side, g]) => (typeof g === 'string' ? `${side}: ${g}` : `${side} ${hex(g)}`))
+              .join('; ')
+      return {
+        kind,
+        width,
+        colour: colourText,
+        ground: colour === null ? `the ring’s colour cannot be read (${sides})` : sides,
+        ratio: null,
+        ...extra,
+      }
+    }
+    let worst: { ground: Rgb; ratio: number } | null = null
+    for (const [, ground] of grounds as [string, Rgb][]) {
+      const a = colour[3]
+      const drawn: Rgb = [
+        colour[0] * a + ground[0] * (1 - a),
+        colour[1] * a + ground[1] * (1 - a),
+        colour[2] * a + ground[2] * (1 - a),
+      ]
+      const ratio = ratioOf(drawn, ground)
+      if (worst === null || ratio < worst.ratio) worst = { ground, ratio }
+    }
+    return {
+      kind,
+      width,
+      colour: colourText,
+      ground: worst && hex(worst.ground),
+      ratio: worst && worst.ratio,
+      ...extra,
+    }
+  }
+  /** Split at the commas outside brackets: the layers of a box-shadow. */
+  const layersOf = (list: string): string[] => {
+    const out: string[] = []
+    let depth = 0
+    let from = 0
+    for (let i = 0; i < list.length; i++) {
+      if (list[i] === '(') depth++
+      else if (list[i] === ')') depth--
+      else if (list[i] === ',' && depth === 0) {
+        out.push(list.slice(from, i))
+        from = i + 1
+      }
+    }
+    out.push(list.slice(from))
+    return out.map((layer) => layer.trim()).filter(Boolean)
+  }
+  /**
+   * The rings an element draws right now: its outline, and each hard-edged
+   * shadow's spread. An outline with a gap lies over the ground behind the
+   * element and an inset shadow over its own; an outline with a negative
+   * offset lies over the element too.
+   */
+  const rings = (el: Element): { outline: RingReading | null; shadows: RingReading[] } => {
+    const style = getComputedStyle(el)
+    const offset = parseFloat(style.outlineOffset) || 0
+    const outlineWidth = parseFloat(style.outlineWidth)
+    const own = (): [string, Rgb | string][] => [['inside', groundBehind(el)]]
+    // Where the control is, for a ring none of whose sides is on the screen:
+    // its box, the box of the popover it is in if any, and the window.
+    const box = (e: Element): string => {
+      const r = e.getBoundingClientRect()
+      return `${Math.round(r.left)},${Math.round(r.top)} to ${Math.round(r.right)},${Math.round(r.bottom)}`
+    }
+    const popover = el.closest('[popover]')
+    const where =
+      `the control at ${box(el)}` +
+      (popover ? `, its popover at ${box(popover)}` : '') +
+      `, the window ${innerWidth}x${innerHeight}`
+    const outline =
+      style.outlineStyle === 'none' || outlineWidth === 0
+        ? null
+        : reading(
+            'outline',
+            outlineWidth,
+            style.outlineColor,
+            offset >= 0 ? groundsOutside(el, offset + outlineWidth / 2) : own(),
+            { offset },
+            where,
+          )
+    const shadows: RingReading[] = []
+    if (style.boxShadow !== 'none')
+      for (const layer of layersOf(style.boxShadow)) {
+        const colourText = /rgba?\([^)]*\)/.exec(layer)?.[0]
+        if (colourText === undefined) continue
+        const lengths = (layer.replace(colourText, '').match(/-?[\d.]+px/g) ?? []).map(parseFloat)
+        // x, y, blur, spread: a ring has no offset and no blur.
+        if (lengths.length < 4 || lengths[0] !== 0 || lengths[1] !== 0 || lengths[2] !== 0) continue
+        shadows.push(
+          reading(
+            'shadow',
+            lengths[3],
+            colourText,
+            layer.includes('inset') ? own() : groundsOutside(el, lengths[3] / 2),
+            { inset: layer.includes('inset'), opaque: parseColour(colourText)?.[3] === 1 },
+            where,
+          ),
+        )
+      }
+    return { outline, shadows }
+  }
   const chainOf = (deep: Element): Element[] => {
     const chain = [deep]
     const host = controlOf(deep)
@@ -295,10 +579,26 @@ export function installProbe(): void {
   // document can say, by identity, that focus is where it was put.
   let handFrom: Element | 'top' | null = null
   let aimedAt: Element | null = null
+  // Where `begin()` put focus: the screen's heading, or an open popover's
+  // invoker; null in a dialog.
+  let start: Element | null = null
+  // Every element a stop's chain can hold, as `begin()` found it at rest: the
+  // ring a control left the document with is still the ring it had before
+  // it took focus.
+  let atRest = new Map<Element, { outline: string; shadow: string }>()
   let stops: {
     control: Element
+    /**
+     * What the control is called, taken at the stop while it holds focus and
+     * is in the document. Not at `finish()`: a control that has left the
+     * document by then is named by what is left of it, and an input's
+     * `labels` are looked up in the document it was taken out of, so the
+     * picker's hex field read as its generated id (issue 436).
+     */
+    name: string
     chain: Element[]
     focused: { outline: string; shadow: string }[]
+    measured: ReturnType<typeof rings>[]
   }[] = []
 
   w.__a11y = {
@@ -312,10 +612,37 @@ export function installProbe(): void {
       // From the top: a screen's heading starts the sequence, since Chromium
       // carries on from the last focused place even after a blur; a dialog
       // starts from its own first control.
+      //
+      // An open popover with an invoker starts it from that invoker instead
+      // (issue 436). The app's colour panel closes when focus lands anywhere
+      // but its chip or itself, as a person meets it, so a walk from the
+      // heading would close it before reaching it and walk a screen with no
+      // panel; from its chip, the first press goes into it, the walk goes on
+      // round the end of the document (`lapsed()`, the wrap) and ends back at
+      // the chip, with the panel shut by then.
       ;(document.activeElement as HTMLElement | null)?.blur?.()
-      const top =
-        document.querySelector('dialog[open]') === null ? document.querySelector('h1') : null
-      top?.focus()
+      // The rest of every wanted control's chain, read while nothing is
+      // focused (issue 436): the control, its parent, and what its shadow
+      // root holds, which is where a kit button's inner button and that
+      // button's parent are. `finish()` reads the rest of an element still
+      // in the document then, as it always did, and takes this reading only
+      // for one that has left it: the colour panel's controls, unmounted
+      // once the walk has gone through the panel and on, which closes it.
+      // Read here and not when focus moves on from a control, because the
+      // panel closes in the very focus event that moves it on and its
+      // controls go a render later, so a reading then could find them or not.
+      atRest = new Map()
+      for (const el of want)
+        for (const part of [el, el.parentElement, ...(el.shadowRoot?.querySelectorAll('*') ?? [])])
+          if (part !== null && !atRest.has(part)) atRest.set(part, ring(part))
+      const dialog = document.querySelector('dialog[open]')
+      const popover = dialog === null ? document.querySelector('[popover]:popover-open') : null
+      const invoker =
+        popover !== null && popover.id !== ''
+          ? document.querySelector(`[popovertarget="${CSS.escape(popover.id)}"]`)
+          : null
+      start = dialog !== null ? null : (invoker ?? document.querySelector('h1'))
+      ;(start as HTMLElement | null)?.focus?.()
       return want.length
     },
     step() {
@@ -345,7 +672,13 @@ export function installProbe(): void {
       last = control
       visited.add(control)
       const chain = chainOf(deep)
-      stops.push({ control, chain, focused: chain.map(ring) })
+      stops.push({
+        control,
+        name: describe(control),
+        chain,
+        focused: chain.map(ring),
+        measured: chain.map(rings),
+      })
       return { state: 'stop', complete: complete(), at: where(), onAimed }
     },
     past(again = false, explicit) {
@@ -394,8 +727,8 @@ export function installProbe(): void {
       // arbitrary.
       if (last !== null && !last.isConnected)
         return { detached: true, next: false, frame: null, skipped: null, topUnread }
-      // The last control read, or the screen's heading where none has been.
-      const from = last ?? document.querySelector('h1')
+      // The last control read, or where the walk began where none has been.
+      const from = last ?? start ?? document.querySelector('h1')
       const next = want.find((el) => el.isConnected && !visited.has(el) && follows(el, from))
       // Nothing wanted follows the last control read: a press from there
       // leaves the end of the document and comes back round to the top.
@@ -427,24 +760,23 @@ export function installProbe(): void {
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
-      const unringed: string[] = []
-      for (const stop of stops) {
-        // A frame's page is its own; the engine draws its focus.
-        if (stop.control.tagName === 'IFRAME' || !stop.control.isConnected) continue
-        const rest = stop.chain.map(ring)
-        // An outline the control did not have at rest, or a shadow where it
-        // had none: a shadow that merely changes does not count, because a
-        // kit text field drops its resting edge on focus and would pass
-        // with no ring at all.
-        const shows = stop.focused.some(
-          (focused, i) =>
-            (focused.outline !== 'none' && focused.outline !== rest[i].outline) ||
-            (focused.shadow !== 'none' && rest[i].shadow === 'none'),
-        )
-        if (!shows) unringed.push(describe(stop.control))
-      }
+      // What each stop's chain is at rest, read now for an element still in
+      // the document, and as `begin()` read it for one that has left it. One
+      // that has left it and was not read then has no rest to compare with,
+      // and its stop is reported unjudged by `judgeStops` rather than dropped.
+      const readings: StopReading[] = stops.map((stop) => {
+        const rest = stop.chain.map((el) => (el.isConnected ? ring(el) : (atRest.get(el) ?? null)))
+        return {
+          control: stop.name,
+          // A frame's page is its own; the engine draws its focus.
+          frame: stop.control.tagName === 'IFRAME',
+          focused: stop.focused,
+          rest: rest.every((r) => r !== null) ? (rest as RingStyle[]) : null,
+          measured: stop.measured,
+        }
+      })
       const missed = want.filter((el) => el.isConnected && !visited.has(el)).map(describe)
-      return { missed, unringed, stops: stops.length }
+      return { missed, readings, stops: stops.length }
     },
     moving() {
       const out: string[] = []
@@ -597,9 +929,25 @@ export async function controlsOf(page: Page, name: string | RegExp): Promise<str
   }
 }
 
-/** A Tab walk from the top reaches every enabled control, and each shows its focus. */
-export async function expectTabWalk(page: Page, where: string): Promise<void> {
+/**
+ * A Tab walk from the top reaches every enabled control, and each shows its
+ * focus. `judges` names controls whose rings must be among those judged: a
+ * control that leaves the document before the walk reaches it, as a panel's
+ * do when the panel closes, is neither missed nor judged, so a sweep that
+ * exists for such controls says which they are.
+ */
+export async function expectTabWalk(
+  page: Page,
+  where: string,
+  { judges = [] }: { judges?: RegExp[] } = {},
+): Promise<void> {
   await page.evaluate(installProbe)
+  // The pointer out of the way first, and kept there: a control can draw its
+  // resting edge only while it is not hovered (the kit's text field does,
+  // `figui-adapter.css`), and the pointer stays wherever a set-up's click left
+  // it while the walk scrolls the column under it, so a control could be
+  // hovered for one of its two readings and not the other.
+  await page.mouse.move(0, 0)
   const wanted = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.begin())
   expect(wanted, `${where}: there are controls to reach`).toBeGreaterThan(0)
   // A deadline, not a count of presses: the walk ends when focus comes back
@@ -721,7 +1069,32 @@ export async function expectTabWalk(page: Page, where: string): Promise<void> {
   const found = await page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.finish())
   expect(ended, endMessage(where, ended, trace)).toBe(true)
   expect(found.missed, missMessage(where, found.missed, trace)).toEqual([])
-  expect(found.unringed, `${where}: controls with no visible focus`).toEqual([])
+  const judged = judgeStops(found.readings)
+  // A control the walk reached and then lost - its panel closed and it left
+  // the document - before its ring could be compared with its rest is a
+  // failure of its own, never a pass by omission (issue 436).
+  expect(
+    judged.unjudged,
+    `${where}: controls reached whose ring could not be judged, since they left the document`,
+  ).toEqual([])
+  expect(judged.unringed, `${where}: controls with no visible focus`).toEqual([])
+  const ringed = judged.rings.map((r) => r.control)
+  expect(
+    judges.filter((pattern) => !ringed.some((control) => pattern.test(control))).map(String),
+    `${where}: controls this sweep is for whose rings were not judged (judged: ${ringed.join(', ')})`,
+  ).toEqual([])
+  // And the ring is a ring: at least two CSS pixels thick, and 3:1 against the
+  // ground it is drawn on (issue 436, R10-03; `ring.ts` has the rule). A walk
+  // that reached controls and found some ring on each is not yet one that
+  // found a ring a person can see.
+  expect(
+    judged.rings.length,
+    `${where}: the walk measured the ring of every control it reached`,
+  ).toBeGreaterThan(0)
+  expect(
+    weakRings(judged.rings),
+    `${where}: focus rings under ${MIN_RING_WIDTH}px or under ${MIN_RING_CONTRAST}:1 against their ground`,
+  ).toEqual([])
 }
 
 /** With reduced motion, nothing animates and no transition lasts. */
@@ -775,16 +1148,157 @@ export async function expectButtonsHoldTheirBox(page: Page, where: string): Prom
 }
 
 /**
+ * An open colour popover is wholly inside the window and clear of the chip
+ * that opened it (issue 436). It is in the top layer, placed by the platform
+ * against its chip, and used to run off the bottom of a short window with the
+ * controls inside it out of sight while focus was on them, or to sit over the
+ * chip. Polled, since the page is scrolled to fit it as it opens.
+ */
+export async function expectPopoverClear(
+  page: Page,
+  chip: Locator,
+  popover: Locator,
+  where: string,
+): Promise<void> {
+  let seen = ''
+  await expect
+    .poll(
+      async () => {
+        const [c, p, win] = await Promise.all([
+          chip.boundingBox(),
+          popover.boundingBox(),
+          page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight })),
+        ])
+        if (c === null || p === null) return 'a box could not be read'
+        seen = JSON.stringify({ chip: c, popover: p, window: win })
+        const problems: string[] = []
+        if (p.x < 0 || p.y < 0 || p.x + p.width > win.w || p.y + p.height > win.h)
+          problems.push('the popover is not wholly inside the window')
+        const apart =
+          p.y >= c.y + c.height ||
+          p.y + p.height <= c.y ||
+          p.x >= c.x + c.width ||
+          p.x + p.width <= c.x
+        if (!apart) problems.push('the popover intersects its chip')
+        if (c.y < 0 || c.y + c.height > win.h) problems.push('the chip is not inside the window')
+        return problems.join('; ')
+      },
+      { message: `${where}: the popover, its chip and the window`, timeout: 5_000 },
+    )
+    .toBe('')
+  expect(seen, `${where}: boxes`).not.toBe('')
+}
+
+/**
+ * The resting edges of the controls whose edge is a shadow, with the page in
+ * forced colours (Windows high contrast; issue 436, R10-04). The mode removes
+ * every box-shadow, so a field, a select, a checkbox or a textarea drawn by a
+ * shadow alone is a word on nothing. Each visible one must have a border or an
+ * outline of its own, in a colour other than the ground it sits on.
+ *
+ * Emulated with `page.emulateMedia({ forcedColors: 'active' })`, asserted to
+ * have taken, and put back. The pointer is parked and focus dropped first,
+ * since the kit's text field draws its edge only while it is neither hovered
+ * nor focused. A kind with none visible is a failure and not a pass, except
+ * where `optional` says the screen may not draw it.
+ */
+export async function expectEdgesInForcedColours(
+  page: Page,
+  where: string,
+  optional: string[] = [],
+): Promise<void> {
+  await page.emulateMedia({ forcedColors: 'active' })
+  try {
+    expect(
+      await page.evaluate(() => window.matchMedia('(forced-colors: active)').matches),
+      `${where}: forced colours are emulated in the Electron page`,
+    ).toBe(true)
+    await page.mouse.move(0, 0)
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.())
+    const kinds = await page.evaluate(() => {
+      const KINDS: Record<string, string> = {
+        'text field': 'fig-input-text',
+        select: 'fig-dropdown > select',
+        checkbox: "input[type='checkbox']:not(.switch)",
+        textarea: '.export-choices textarea',
+        'date control': ".field input[type='date']",
+      }
+      const solid = (style: string, width: string, colour: string): boolean =>
+        style !== 'none' && parseFloat(width) > 0 && !/^rgba\(.*, 0\)$/.test(colour)
+      const groundOf = (el: Element): string => {
+        for (let up = el.parentElement; up !== null; up = up.parentElement) {
+          const colour = getComputedStyle(up).backgroundColor
+          if (!/^rgba\(.*, 0\)$/.test(colour)) return colour
+        }
+        return 'rgb(255, 255, 255)'
+      }
+      const name = (el: Element): string =>
+        `${el.tagName.toLowerCase()} "${el.getAttribute('aria-label') || el.id || el.className || el.textContent?.trim().slice(0, 30) || ''}"`
+      return Object.entries(KINDS).map(([kind, selector]) => {
+        const shown = [...document.querySelectorAll(selector)].filter(
+          (el) => el.getClientRects().length > 0,
+        )
+        const bare: string[] = []
+        for (const el of shown) {
+          const style = getComputedStyle(el)
+          const ground = groundOf(el)
+          const edges = [
+            ...(['Top', 'Right', 'Bottom', 'Left'] as const)
+              .filter((side) =>
+                solid(
+                  style[`border${side}Style`],
+                  style[`border${side}Width`],
+                  style[`border${side}Color`],
+                ),
+              )
+              .map((side) => style[`border${side}Color`]),
+            ...(solid(style.outlineStyle, style.outlineWidth, style.outlineColor)
+              ? [style.outlineColor]
+              : []),
+          ]
+          if (!edges.some((colour) => colour !== ground))
+            bare.push(`${name(el)}: edges ${edges.join(' | ') || 'none'} on ${ground}`)
+        }
+        return { kind, count: shown.length, bare }
+      })
+    })
+    for (const { kind, count, bare } of kinds) {
+      if (!optional.includes(kind))
+        expect(
+          count,
+          `${where}: a ${kind} is drawn on this screen, so its edge was checked`,
+        ).toBeGreaterThan(0)
+      expect(bare, `${where}: a ${kind} with no border or outline in forced colours`).toEqual([])
+    }
+  } finally {
+    await page.emulateMedia({ forcedColors: 'none' })
+  }
+}
+
+/**
  * Names, each said once, the Tab walk and motion, in both of the interface's
  * themes (A5.6-09):
  * a focus ring or a control that only one theme draws is a defect the other
  * would hide. The session is left in the default theme, Night, as it began.
+ *
+ * `judges` is `expectTabWalk`'s, for each theme.
+ *
+ * `before` puts the screen back in the state being swept, before each theme:
+ * a walk can change it, as a colour panel the walk went through is closed
+ * when focus leaves it (issue 436), and the second theme would otherwise
+ * sweep a screen without it.
  */
-export async function sweep(page: Page, where: string, scope?: Locator): Promise<void> {
+export async function sweep(
+  page: Page,
+  where: string,
+  scope?: Locator,
+  { before, judges }: { before?: () => Promise<void>; judges?: RegExp[] } = {},
+): Promise<void> {
   let failure: unknown = null
   try {
     for (const theme of THEMES) {
       await inTheme(page, theme)
+      await before?.()
       const here = `${where} (${theme.name})`
       // One snapshot for both checks of it. Two would be two trees on a
       // screen that is moving - a feed being added, a sample downloading -
@@ -793,7 +1307,7 @@ export async function sweep(page: Page, where: string, scope?: Locator): Promise
       await expectNamed(snapshot, here)
       await expectNoDuplicatedNames(snapshot, here)
       await expectButtonsHoldTheirBox(page, here)
-      await expectTabWalk(page, here)
+      await expectTabWalk(page, here, { judges })
       await expectStill(page, here)
     }
   } catch (error) {

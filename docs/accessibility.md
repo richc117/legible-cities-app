@@ -39,11 +39,24 @@ person's, recorded in [Reader runs](#reader-runs).
    accessibility tree has a name (`ariaSnapshot()`), and nothing in it has
    the name of something it is inside (#208, below); a Tab walk from the
    top reaches every enabled control and each shows a ring it did not have
-   at rest; with reduced motion emulated, and the emulation asserted to
-   take effect, no element or open shadow root has a running animation or
+   at rest (a walk with a popover open begins at the popover's invoker
+   instead, since the colour panel closes when focus lands anywhere but its
+   chip or inside it, and goes round the end of the document back to it;
+   since issue 436 a control reached that has left the document by the
+   walk's end is judged against its rest as read when the walk began, and
+   one that cannot be is a failure of its own); with reduced motion
+   emulated, and the emulation asserted to take effect, no element or open shadow root has a running animation or
    a transition that lasts, and no native button holds more than its box
    (`expectButtonsHoldTheirBox`, issue 273: the text of a row hanging
-   below its fill is content taller than the button). It also asserts each fix below where a person
+   below its fill is content taller than the button). **Since issue 436**
+   each ring the walk finds is measured from computed styles and must be at
+   least 2 CSS pixels thick and 3:1 against the ground behind it
+   (`tests/support/ring.ts`; WCAG 2.4.13); one sweep of the project is made
+   with cell 02's Layout tuning and one line's options open, which every
+   other sweep leaves shut; and one check runs the page in forced colours
+   (`page.emulateMedia({ forcedColors: 'active' })`) and requires the
+   resting edge of every text field, select, checkbox and textarea to be a
+   border or an outline. It also asserts each fix below where a person
    meets it. **Its first runs** (macOS, 2026-09-13, by the coordinator, not
    by the lane that wrote it) passed every screen's names, walk and motion
    checks; the removed feed's focus (D5) and the one-control dialog's walk
@@ -341,7 +354,9 @@ which it is.
   its ancestors is (Method, 2), and a unit test guards that panel. What it
   still cannot see: two siblings under one name, which are not nested; a
   name inside a closed disclosure, whose contents are `hidden` and out of
-  the tree until a sweep opens it; a name longer than 900 characters,
+  the tree until a sweep opens it (the layout tuning and one line's
+  options are opened by one sweep of the project since issue 436; the other
+  lines' options are the same component); a name longer than 900 characters,
   which Playwright's snapshot drops; and a repetition under an ancestor
   that is named by what it holds, which the rule allows by role. Two more
   are Playwright's. **A frame's title**: its snapshot gives every `iframe`
@@ -1224,7 +1239,13 @@ a table).
   the value changing. Press Escape: the picker goes and focus is back on
   the chip. Type a hex value that is not one, press **Use this colour**,
   and listen for "A colour is six hexadecimal digits, such as 0072bc." read
-  with the field when you return to it.
+  with the field when you return to it. The panel closes whenever focus
+  lands anywhere but its chip or inside it (issue 436): open it again and
+  press Shift+Tab from the chip, then open it, Tab into it and on past its
+  last control, then open it and click into the map. Each time listen for
+  the chip read as collapsed when you return to it, and check that nothing
+  of the panel is left over the control focus is on. Focus going back to
+  the chip from inside the panel leaves it open.
 - **Line options** (issue 394). After each row of "Lines", listen for the
   button "Line options for line `<label>`, Default", collapsed. Press it:
   listen for expanded and the group "Line options for line `<label>`",
@@ -1503,6 +1524,34 @@ animation (the engine's, F1).
 | Keyboard only, Night and Parchment, reduced motion on | 0.1.0 | macOS and Windows, versions not recorded | none | on or before 8 Oct 2026 | the maintainer | none noted; the walk was reported done in the coordinating session, its measurements not carried by the report |
 | VoiceOver | 0.1.0 | macOS, version not recorded | VoiceOver, version not recorded | on or before 8 Oct 2026 | the maintainer | none noted |
 | Narrator | 0.1.0 | Windows, version not recorded | Narrator, version not recorded | on or before 8 Oct 2026 | the maintainer | none noted |
+| Windows high contrast, the four contrast themes (steps under "Windows high contrast") | | | none | | | |
+
+### Windows high contrast (issue 436)
+
+A person's run, because the emulation in the sweep proves the edges exist and
+not that they can be seen on a real palette. On Windows 11, Settings,
+Accessibility, **Contrast themes**; choose **Aquatic**, then **Night sky**,
+then **Desert** and then **Dusk**, pressing **Apply** and waiting for the
+screen to settle (Left Alt + Left Shift + Print Screen toggles the last
+theme). In each, with the app started afresh:
+
+1. Open a project with a laid-out map. In cell 02 open **Layout tuning**; in
+   cell 05 open **Line options** for one line and choose a casing; open cell
+   06.
+2. Look at every text field, select, checkbox and the alt-text box. Each has
+   a visible edge, and a checked checkbox shows its tick.
+3. In cell 05 drag a line by its grip: the carried row has an edge.
+4. In a trip picker (cell 03, when the map is drawn), type and move the highlight with the arrow keys: the highlighted
+   option is told from the others.
+5. Tab through the screen: every control shows a focus ring in the palette's
+   colours.
+6. Not covered by a rule, so look and record what you see: the switch in line
+   options (is its on and off told by more than colour?), the rail's current
+   step (is it told from the rest?), and the cards of cell 04's theme.
+
+Record in the table under Reader runs: the app version, the Windows version,
+the contrast theme, the date, who walked it, and what was seen. No result is
+filled in here.
 
 ## Left for a person
 

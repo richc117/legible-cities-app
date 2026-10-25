@@ -996,3 +996,48 @@ fig-button:not([icon]) > .icon {
     animation: none !important;
   }
 }
+
+/* Windows high contrast and the browser's forced colours (issue 436, R10-04).
+   The mode replaces every colour the page sets with the user's palette and
+   removes every box-shadow, and the resting edges of the kit's text field,
+   its select and its checkbox, the sidecar's textarea and the carried row
+   are drawn with a shadow (figui-adapter.css, panels.css): in the mode they
+   have no edge at all, and a field is a word over nothing. Each is given a
+   real border or outline here, in a system colour, which the mode keeps. The
+   system colour keywords are not literals - they are the user's palette, not
+   ours - and these rules name no other colour.
+
+   A border, with the box-sizing that keeps the control's size, where the
+   control has a box of its own; an outline drawn inward where a border would
+   resize the element - the kit's text field, whose edge the kit also draws
+   under the pointer with a shadow, so the edge here is not conditional on the
+   pointer, and the carried row of the line order. The field's own focus ring
+   is an outline on the same element, so its rule is kept off the focused
+   field. The checked checkbox's mark was a
+   background, which the mode turns into the canvas, so it is a system colour
+   too. The highlighted option of the combobox was told apart by a shadow and
+   a ground; both are gone, so it takes an outline in the mode's highlight.
+   Focus rings are outlines and stay as they are. */
+@media (forced-colors: active) {
+  fig-input-text:not(:focus-within),
+  .line-row-group[data-dragged] {
+    outline: var(--border-width) solid CanvasText;
+    outline-offset: calc(-1 * var(--border-width));
+  }
+
+  fig-dropdown > select,
+  input[type='checkbox']:not(.switch),
+  .export-choices textarea {
+    box-sizing: border-box;
+    border: var(--border-width) solid CanvasText;
+  }
+
+  input[type='checkbox']:not(.switch):checked::after {
+    background-color: CanvasText;
+  }
+
+  .combobox-popup [role='option'][aria-selected='true'] {
+    outline: var(--focus-ring-width) solid Highlight;
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+}

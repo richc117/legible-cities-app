@@ -612,7 +612,49 @@ next before it says what went wrong.
 
 - Every control reachable by Tab in reading order; every list navigable by
   arrow keys; every dialog trapped, Escape closes, focus returns.
-- Focus is `--focus-ring` on every focusable element, never removed.
+- Focus is `--focus-ring` on every focusable element, never removed. The
+  sweep measures it from computed styles: at least 2 CSS pixels thick and
+  3:1 against the ground it is drawn on (WCAG 2.4.13). The ground is read
+  where the ring is drawn: for a ring outside its control, the colour the
+  page paints under the middle of the ring's band at the midpoint of each of
+  the control's four sides (`elementsFromPoint`, so stacking and clipping
+  count; a border that is opaque at that point hides its element's
+  background there, image or not, as the colour picker's black border hides
+  the gradient of its colour area; every layer's opacity is applied), the
+  worst side deciding; for a ring inside it,
+  the control's own background over its ancestors'. A ground that is an
+  image showing, a frame, a video or a colour it cannot parse is reported
+  as unreadable and fails, not guessed, and the report names each side with
+  its ground or why it could not be read; a side off the screen is not
+  read.
+  An outline and a hard-edged shadow on one element are read as two bands,
+  each counting towards the thickness only if it clears 3:1 itself
+  (`tests/support/ring.ts`); no control draws one today.
+- Forced colours (Windows high contrast; issue 436). The mode replaces every
+  colour with the user's palette and removes every `box-shadow`, so the
+  resting edges drawn as a shadow - the kit's text field, a select, a
+  checkbox, the sidecar's textarea - are given a real border in
+  `CanvasText` in one `@media (forced-colors: active)` block at the end of
+  `styles/app.css`, the kit's text field and the carried row of the line
+  order an outline drawn inward, which changes no layout; the checked
+  checkbox's mark and the combobox's highlighted option take `CanvasText`
+  and `Highlight` too. A system colour keyword is the user's palette and not
+  a literal of ours, which the no-literals test does not flag. Not covered
+  by the block: the switch's track, the rail's current step (told by its
+  ground) and `prefers-contrast`; they are a person's step in
+  `docs/accessibility.md`.
+- The colour panel (the popover a chip opens, issue 436) keeps clear of its
+  chip by the width of the chip's focus ring and its offset
+  (`--focus-ring-offset` plus `--focus-ring-width`) on whichever side it is
+  placed, is brought into the window when it opens or takes focus (the chip's
+  scroller moves by the least that fits both, never smoothly), and closes
+  when focus lands anywhere but its chip or inside it, by a key or by the
+  app: an auto popover is dismissed by a press and not by focus, and one left
+  open covered the controls beside its chip - placed above a chip near the
+  window's foot, the row above it, which Shift+Tab from the chip reached.
+  A click into the map closes it too, by intent: focus lands on the map's
+  frame, which is outside it. Because of this rule, the sweep's walk begins
+  at an open popover's invoker.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is
