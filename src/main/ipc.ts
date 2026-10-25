@@ -156,6 +156,30 @@ function readServiceDay(raw: unknown): string {
   return date
 }
 
+/**
+ * A change to the two inputs a person chose (spec 037, FR-005): the mode,
+ * the operator or both, each held to the rule `readInputs` holds it to, and
+ * at least one of them. The store writes the fields it names and leaves the
+ * other as the writes before it left it.
+ */
+function readInputsPatch(raw: unknown): Partial<ProjectInputs> {
+  const input = isObject(raw) ? raw : {}
+  const patch: Partial<ProjectInputs> = {}
+  if (input.mode !== undefined) {
+    const mode = typeof input.mode === 'string' ? input.mode : ''
+    check(validateMode(mode))
+    patch.mode = mode
+  }
+  if (input.agency !== undefined) {
+    const agency = input.agency === null ? null : input.agency
+    if (typeof agency !== 'string' && agency !== null) throw new Error('agency must be text')
+    check(validateAgency(agency))
+    patch.agency = agency
+  }
+  if (patch.mode === undefined && !('agency' in patch)) check(validateMode(''))
+  return patch
+}
+
 /** The two inputs a person chose: a mode by the engine's rule, an agency id or none. */
 function readInputs(raw: unknown): ProjectInputs {
   const input = isObject(raw) ? raw : {}
@@ -383,7 +407,7 @@ export function registerProjectHandlers(
     store.completeRebuild(readId(id), readRebuildDone(done)),
   )
   handle(CHANNELS.projectsSetInputs, (id, inputs) =>
-    store.setInputs(readId(id), readInputs(inputs)),
+    store.setInputs(readId(id), readInputsPatch(inputs)),
   )
   // A redraw's sent set (spec 037) follows the choice it drew, and its
   // stations (issue 272) ride as an optional last argument, passed on only

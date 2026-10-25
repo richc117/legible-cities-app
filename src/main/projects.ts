@@ -209,6 +209,11 @@ export class ProjectStore {
    * one making it, and each waits for the other forever. Share a private
    * helper instead. A queued write counts in `writing` from the moment it
    * is asked for, so the reset's guard sees writes that are still waiting.
+   *
+   * `get` waits here too, so a read answers with every write sent before
+   * it: what a run reads its inputs by (spec 037). This queue and the
+   * bridge's order are the record session; docs/ARCHITECTURE.md, "The
+   * record session", has the rule a new writer follows.
    */
   readonly #queues = new Map<string, Promise<void>>()
 
@@ -591,22 +596,31 @@ export class ProjectStore {
    * run draws a different layout, which the run says; nothing is re-laid
    * out here. An empty agency is none.
    */
-  async setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+  async setInputs(id: string, inputs: Partial<ProjectInputs>): Promise<ProjectRecord> {
     return this.#track(() => this.#serial(id, () => this.#setInputsTracked(id, inputs)))
   }
 
-  async #setInputsTracked(id: string, inputs: ProjectInputs): Promise<ProjectRecord> {
+  /**
+   * A patch of the two (spec 037, FR-005): the fields it names, onto the
+   * record as the writes before it left it. An operator chosen a moment
+   * after a mode is sent alone, and so cannot put back a mode still on its
+   * way here (issue 407).
+   */
+  async #setInputsTracked(id: string, inputs: Partial<ProjectInputs>): Promise<ProjectRecord> {
     this.checkId(id)
-    const agency = inputs.agency == null ? null : inputs.agency.trim() || null
-    check(validateMode(inputs.mode))
-    check(validateAgency(agency))
+    const named = inputs.agency === undefined ? undefined : inputs.agency?.trim() || null
+    if (inputs.mode === undefined && named === undefined) check(validateMode(''))
+    if (inputs.mode !== undefined) check(validateMode(inputs.mode))
+    if (named !== undefined) check(validateAgency(named))
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
-    if (record.mode === inputs.mode && record.agency === agency) return record
+    const mode = inputs.mode ?? record.mode
+    const agency = named === undefined ? record.agency : named
+    if (record.mode === mode && record.agency === agency) return record
     const updated: ProjectRecord = {
       ...record,
       version: RECORD_VERSION,
-      mode: inputs.mode,
+      mode,
       agency,
       modified: new Date().toISOString(),
     }

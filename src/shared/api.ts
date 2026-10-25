@@ -114,8 +114,10 @@ export interface Api {
      * The mode and agency a person chose with the feed in view (A2-02);
      * validated on the main side with the record's own rules. The next
      * layout passes them to the engine, which names a layout for them.
+     * Either may be sent alone (spec 037): the store writes the fields it is
+     * sent onto the record as the writes before it left it.
      */
-    setInputs(id: string, inputs: ProjectInputs): Promise<ProjectRecord>
+    setInputs(id: string, inputs: Partial<ProjectInputs>): Promise<ProjectRecord>
     /**
      * The line colours a person chose (A4-01), written once the map has
      * been drawn with them, as a chosen day is: the record and the page on

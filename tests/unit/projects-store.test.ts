@@ -2395,3 +2395,36 @@ describe('a sent set the store refuses', () => {
     expect(await readFile(join(root, project.id, 'project.json'), 'utf8')).toBe(before)
   })
 })
+
+// A write is a patch of the fields it names (spec 037, FR-005): the inputs'
+// writer takes the mode, the operator or both, and leaves the other as the
+// writes before it left it, so an operator chosen a moment after a mode
+// cannot put the old mode back (issue 407).
+describe('the inputs, one of the two at a time', () => {
+  it('writes the operator alone onto the mode the write before it left', async () => {
+    // Mutation: `setInputs` taking the record's mode only when the patch has
+    // none and the agency the same way (`?? record.mode` replaced by the
+    // patch's own field) - the mode is lost, or the operator is.
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const mode = store.setInputs(project.id, { mode: 'subway', agency: null })
+    const operator = store.setInputs(project.id, { agency: 'METRO' })
+    await mode
+    expect(await operator).toMatchObject({ mode: 'subway', agency: 'METRO' })
+    expect(await store.setInputs(project.id, { mode: 'tram' })).toMatchObject({
+      mode: 'tram',
+      agency: 'METRO',
+    })
+    expect(await store.setInputs(project.id, { agency: null })).toMatchObject({
+      mode: 'tram',
+      agency: null,
+    })
+  })
+
+  it('refuses a write that names neither, and each field by its own rule', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    await expect(store.setInputs(project.id, {})).rejects.toThrow()
+    await expect(store.setInputs(project.id, { mode: 'Rail!' })).rejects.toThrow()
+    await expect(store.setInputs(project.id, { agency: 'x'.repeat(500) })).rejects.toThrow()
+    expect(await store.get(project.id)).toMatchObject({ mode: 'all', agency: null })
+  })
+})

@@ -119,8 +119,9 @@ export interface ProjectState {
   ) => Promise<RenderStageResult>
   /**
    * The mode and the operator, written at once (A2-02). Handed a function,
-   * the two are made from the record as the writes on their way leave it,
-   * and sent once they have landed (issue 407, `LayoutRun.writingFrom`).
+   * only the fields it does not take from the record it is handed are sent,
+   * and the store writes them onto the record as the writes before them left
+   * it (issue 407, spec 037).
    */
   setInputs: (inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs)) => Promise<void>
   /** The service day a person chose, written at once and drawing nothing (A5.5-15). */
@@ -168,6 +169,25 @@ export interface ProjectState {
  */
 export const sampleNotKept = (name: string): string =>
   `Opening ${name} was cancelled while its feed downloaded, so the project was not kept.`
+
+/** A mode and an operator no record can hold, to see which of the two a function takes from one. */
+const FROM_RECORD = { mode: '\u0000mode', agency: '\u0000agency' }
+
+/**
+ * The fields an inputs function chooses itself, as a patch: the ones it
+ * takes from the record it is handed are left out, for the store to keep as
+ * the writes before this one left them (spec 037).
+ */
+export function namedBy(
+  inputs: (record: ProjectRecord) => ProjectInputs,
+  project: ProjectRecord,
+): Partial<ProjectInputs> {
+  const chosen = inputs({ ...project, ...FROM_RECORD })
+  const patch: Partial<ProjectInputs> = {}
+  if (chosen.mode !== FROM_RECORD.mode) patch.mode = chosen.mode
+  if (chosen.agency !== FROM_RECORD.agency) patch.agency = chosen.agency
+  return patch
+}
 
 export function useProjectState(
   id: string,
@@ -454,31 +474,28 @@ export function useProjectState(
   // The two inputs chosen with the feed in view: the record comes back
   // written, and the run reads it when it next starts.
   //
-  // Three writers hand their write to the run as they send it - this one,
-  // the day's and the tuning's (`run.writing`, issue 388): they write fields
-  // a layout run reads, and a field committed by leaving it for "Lay out" is
-  // a write still on its way as that press starts the run. The run waits for
-  // it and reads the record it leaves, not the one this screen held at the
-  // press; every start goes through the run, so Lay out, Lay out again,
-  // Re-layout, the rebuild for a day and Run all all do, and Run all chooses
-  // which run to make from the record the write leaves, too (issue 407). The
-  // theme and the export's choice are fields no run reads, and are not
-  // handed over.
+  // Every write here is sent the moment it is asked for, and a run reads its
+  // record from the store, which answers the read only once every write sent
+  // before it has landed (spec 037, "The record session" in
+  // docs/ARCHITECTURE.md). So a field committed by leaving it for "Lay out"
+  // is in what the run sends, and the answers come back in the order the
+  // writes went, so the last one this screen takes is the last one written.
   //
-  // The operator alone is sent with the mode the record holds once the writes
-  // ahead of it have landed, not the mode this screen held (issue 407): the
-  // bridge takes the two together, and a mode chosen a moment before and
-  // still on its way would otherwise be put back by it.
+  // The operator alone is sent without the mode (issue 407): the store
+  // writes the fields a write names onto the record as the writes before it
+  // left it, so a mode chosen a moment before and still on its way is not
+  // put back by the mode this screen held. Handed a function of the record -
+  // the inputs panel's way of saying which of the two it takes from it - the
+  // fields the function takes from the record are the ones left out.
   const setInputs = async (
     inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
   ): Promise<void> => {
-    const send = (chosen: ProjectInputs): Promise<ProjectRecord> =>
-      window.api.projects.setInputs(id, chosen)
-    let write: Promise<ProjectRecord>
-    if (typeof inputs !== 'function') write = run.writing(send(inputs))
-    else if (project !== null) write = run.writingFrom(project, (landed) => send(inputs(landed)))
-    else throw new Error('The project has not been read yet.')
-    const record = await write
+    let patch: Partial<ProjectInputs> = inputs as ProjectInputs
+    if (typeof inputs === 'function') {
+      if (project === null) throw new Error('The project has not been read yet.')
+      patch = namedBy(inputs, project)
+    }
+    const record = await window.api.projects.setInputs(id, patch)
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: { ...current.project, ...record } }
@@ -492,7 +509,7 @@ export function useProjectState(
   // never say the map does not show the day a person picked. A rejection
   // is the caller's to show, as the rename's is.
   const setDate = async (date: string): Promise<void> => {
-    const record = await run.writing(window.api.projects.setDate(id, date))
+    const record = await window.api.projects.setDate(id, date)
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: { ...current.project, ...record } }
@@ -534,7 +551,7 @@ export function useProjectState(
   // The record comes back whole and goes in whole (`tunedProject`): a reset
   // removes the key, which a merge would keep.
   const setTuning = async (tuning: ProjectTuning): Promise<void> => {
-    const record = await run.writing(window.api.projects.setTuning(id, tuning))
+    const record = await window.api.projects.setTuning(id, tuning)
     setState((current) =>
       current.status === 'ready'
         ? { status: 'ready', project: tunedProject(current.project, record) }

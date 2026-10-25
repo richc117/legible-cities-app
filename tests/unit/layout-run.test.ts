@@ -34,8 +34,10 @@ import {
   stoppedSentence,
 } from '../../src/renderer/src/LayoutRun'
 import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
+import { linesParams } from '../../src/renderer/src/lineOptions'
 import { runAllPlan } from '../../src/renderer/src/runAll'
 import { redrawPageOnOpen } from '../../src/renderer/src/notebook/olderPage'
+import { styleParams } from '../../src/renderer/src/styleRules'
 import { cellOfRun, runGraph } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { cameTooLate, ERROR_CODES, type EngineState } from '../../src/shared/engine'
@@ -211,8 +213,13 @@ function setup(
   const completeStyle = vi.fn(async () => ({}))
   const completeLines = vi.fn(async () => ({}))
   const record = project(over)
+  // The store's record, as a run's read answers it: the one handed, until a
+  // test says the store holds another (spec 037).
+  let held = record
+  const read = vi.fn(async (id: string) => (void id, held))
   const run = new LayoutRun({
     client,
+    read,
     complete,
     completeRebuild,
     completeColors,
@@ -232,12 +239,40 @@ function setup(
     completeStyle,
     completeLines,
     record,
+    read,
+    /** Say the store holds this record from now on. */
+    store: (next: ProjectRecord) => {
+      held = next
+    },
+    /** What the store holds now. */
+    stored: () => held,
+    /** Hold the next read until the test answers or refuses it. */
+    hold: () => {
+      let answer!: (r: ProjectRecord) => void
+      let refuse!: (reason: unknown) => void
+      read.mockImplementationOnce(
+        () =>
+          new Promise<ProjectRecord>((yes, no) => {
+            answer = yes
+            refuse = no
+          }),
+      )
+      return {
+        answer: (r: ProjectRecord) => answer(r),
+        refuse: (reason: unknown) => refuse(reason),
+      }
+    },
     begin: () => run.start(record, engine),
   }
 }
 
-/** The layout answered and the day chosen: the map call is next. */
+/**
+ * The layout answered and the day chosen: the map call is next. A run that
+ * has only just been started is still reading its record (spec 037), so the
+ * read is let answer first.
+ */
 async function laidOut(calls: Pending[], built = BUILT): Promise<void> {
+  if (calls.length === 0) await tick()
   calls[0].resolve(built)
   await tick()
   calls[1].resolve(SERVICE)
@@ -277,6 +312,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('sends the feed key, then asks which day with the lines the layout drew, then draws for it', async () => {
     const { calls, begin } = setup()
     begin()
+    await tick()
     expect(calls[0]).toMatchObject({ method: 'graph.build', params: { key: 'la-metro-rail' } })
     calls[0].resolve(BUILT)
     await tick()
@@ -298,6 +334,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('says what it is waiting for while the day is chosen', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi'])
       calls[0].report(stage, `${stage} finished`)
     calls[0].resolve(BUILT)
@@ -317,6 +354,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('a re-layout forces every stage and says so when done', async () => {
     const { run, calls, complete, record } = setup({ layout: LAYOUT })
     run.start(record, READY, { force: true })
+    await tick()
     expect(calls[0]).toMatchObject({
       method: 'graph.build',
       params: { key: 'la-metro-rail', mode: 'all', force: true },
@@ -347,6 +385,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('an ordinary run sends no force', async () => {
     const { calls, begin } = setup()
     begin()
+    await tick()
     expect(Object.keys(calls[0].params).sort()).toEqual(['agency', 'key', 'mode'])
   })
 
@@ -360,6 +399,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
       tuning: { grid: 'orthoradial', gridSize: 50, deg45: 3, diagonal: 1 },
     })
     begin()
+    await tick()
     expect(calls[0].params.tuning).toEqual({
       grid: 'orthoradial',
       grid_size: 50,
@@ -379,12 +419,14 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('sends a re-layout the tuning too, since it lays out the same inputs', async () => {
     const { run, calls, record } = setup({ layout: LAYOUT, tuning: { mergeDistance: 80 } })
     run.start(record, READY, { force: true })
+    await tick()
     expect(calls[0].params).toMatchObject({ force: true, tuning: { merge_distance: 80 } })
   })
 
   it('sends no tuning, and tells the store none, for a project that never tuned', async () => {
     const { calls, complete, begin } = setup()
     begin()
+    await tick()
     expect(calls[0].params).not.toHaveProperty('tuning')
     await laidOut(calls)
     calls[2].resolve({ files: {} })
@@ -396,6 +438,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it('sends what the run was started with, whatever the record says by the time it ends', async () => {
     const { calls, complete, record, run } = setup({ tuning: { grid: 'hexalinear' } })
     run.start(record, READY)
+    await tick()
     // A tuning committed while the run goes is a new record; the run's own
     // is the one it was handed.
     record.tuning = { grid: 'ortholinear' }
@@ -445,6 +488,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
     // operator; left out, it would read as the registry entry's.
     const none = setup({ mode: 'all', agency: null })
     none.begin()
+    await tick()
     expect(none.calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'all', agency: '' })
   })
 
@@ -504,6 +548,7 @@ describe('the run asks for the layout, then the day, then the map', () => {
   it("a refused day fails the run with the engine's sentence and writes nothing", async () => {
     const { run, calls, complete, begin } = setup()
     begin()
+    await tick()
     calls[0].resolve(BUILT)
     await tick()
     calls[1].reject({
@@ -531,6 +576,7 @@ describe('a rebuild for a chosen day', () => {
       service: WINDOW,
     })
     run.rebuild(record, READY, '2026-09-12')
+    await tick()
     expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({
@@ -559,6 +605,7 @@ describe('a rebuild for a chosen day', () => {
   it('writes nothing when cancelled, and says the day is kept', async () => {
     const { run, calls, completeRebuild, record } = setup({ layout: LAYOUT, service: WINDOW })
     run.rebuild(record, READY, '2026-09-12')
+    await tick()
     run.cancel()
     expect(calls[0].cancelled).toBe(true)
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
@@ -573,6 +620,7 @@ describe('a rebuild for a chosen day', () => {
     const { run, calls, completeRebuild, record } = setup({ layout: LAYOUT, service: WINDOW })
     completeRebuild.mockRejectedValueOnce(new Error('the feed covers 2026-01-01 to 2026-12-31'))
     run.rebuild(record, READY, '2027-01-01')
+    await tick()
     calls[0].resolve({ files: {} })
     await tick()
     expect(run.snapshot.state).toBe('failed')
@@ -605,6 +653,7 @@ describe('what the map call said about the map it drew', () => {
   it("a rebuild for a chosen day gets that day's figures, from the same call", async () => {
     const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15', service: WINDOW })
     run.rebuild(record, READY, '2026-09-12')
+    await tick()
     // A clean network: no sentences, and a score of zero.
     calls[0].resolve({ ...MAP, date: '2026-09-12', caveats: [], issues: 0 })
     await tick()
@@ -632,6 +681,7 @@ describe('what the map call said about the map it drew', () => {
     await tick()
     expect(run.snapshot.report).not.toBeNull()
     run.start(record, READY)
+    await tick()
     expect(run.snapshot.report, "the last run's figures go when the next begins").toBeNull()
     calls[3].reject({ code: -32000, message: 'the feed could not be read' })
     await tick()
@@ -703,6 +753,7 @@ describe('the sentence on screen describes the stage that finished', () => {
   it('walks the stages and keeps the last completed sentence', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     expect(run.snapshot.stages[0].state).toBe('running')
     calls[0].report('gtfs2graph', '114 nodes, 112 edges')
     expect(run.snapshot.stages[0].state).toBe('done')
@@ -713,6 +764,7 @@ describe('the sentence on screen describes the stage that finished', () => {
   it("ignores the map call repeating the layout's stages", async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     for (const stage of ['gtfs2graph', 'topo', 'loom', 'octi']) {
       calls[0].report(stage, `${stage} finished`)
     }
@@ -736,11 +788,12 @@ describe('the sentence on screen describes the stage that finished', () => {
     )
   })
 
-  it('notifies a subscriber of each change and stops when it unsubscribes', () => {
+  it('notifies a subscriber of each change and stops when it unsubscribes', async () => {
     const { run, calls, begin } = setup()
     const seen: string[] = []
     const off = run.subscribe((s) => seen.push(s.state))
     begin()
+    await tick()
     calls[0].report('gtfs2graph', 'x')
     off()
     calls[0].report('topo', 'y')
@@ -793,6 +846,7 @@ describe('cancelling and failing write nothing', () => {
   it('cancels the request in flight and says the run was cancelled', async () => {
     const { run, calls, complete, begin } = setup()
     begin()
+    await tick()
     run.cancel()
     expect(calls[0].cancelled).toBe(true)
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
@@ -805,6 +859,7 @@ describe('cancelling and failing write nothing', () => {
   it('a forced run stopped after the layout answered says the layout was replaced', async () => {
     const { run, calls, record } = setup({ layout: LAYOUT })
     run.start(record, READY, { force: true })
+    await tick()
     expect(run.snapshot.replaced).toBe(false)
     calls[0].resolve(BUILT)
     await tick()
@@ -826,6 +881,7 @@ describe('cancelling and failing write nothing', () => {
   it('an unforced run stopped after the layout answered left the stored layout alone', async () => {
     const { run, calls, begin } = setup({ layout: LAYOUT })
     begin()
+    await tick()
     calls[0].resolve(BUILT)
     await tick()
     run.cancel()
@@ -847,6 +903,7 @@ describe('cancelling and failing write nothing', () => {
   it('a cancel that lands between the layout and the day stops before the map is asked for', async () => {
     const { run, calls, complete, begin } = setup()
     begin()
+    await tick()
     calls[0].resolve(BUILT)
     // Cancelled before the microtask that sends feeds.service has run: the
     // run notices when it wakes and asks for nothing more.
@@ -860,6 +917,7 @@ describe('cancelling and failing write nothing', () => {
   it("marks the running stage failed and shows the engine's sentence, not its detail", async () => {
     const { run, calls, complete, begin } = setup()
     begin()
+    await tick()
     calls[0].report('gtfs2graph', 'ok')
     calls[0].reject({
       code: -32000,
@@ -897,6 +955,7 @@ describe('the run survives the record it writes', () => {
     })
     const run = new LayoutRun({
       client,
+      read: async () => record,
       complete,
       completeRebuild: async () => ({}),
       completeColors: async () => ({}),
@@ -917,6 +976,7 @@ describe('the run survives the record it writes', () => {
     const complete = vi.fn(async () => ({ changed: false, relaid: false }))
     const run = new LayoutRun({
       client,
+      read: async () => project({ date: '2026-01-01' }),
       complete,
       completeRebuild: async () => ({}),
       completeColors: async () => ({}),
@@ -926,6 +986,7 @@ describe('the run survives the record it writes', () => {
       today: () => '2026-09-08',
     })
     run.start(project({ date: '2026-01-01' }), READY)
+    await tick()
     // The record is written again while the run is in flight, as another
     // screen might. The run is unmoved: it holds the day it began with.
     project({ date: '2026-12-25' })
@@ -951,10 +1012,12 @@ describe('the run refuses when it cannot start', () => {
     // while it is starting. The sentence must be the layout run's.
     const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW })
     run.rebuild(record, READY, '2026-09-12')
+    await tick()
     calls[0].resolve({ files: {} })
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true })
     run.start(record, null)
+    await tick()
     expect(run.snapshot).toMatchObject({
       state: 'failed',
       rebuilt: false,
@@ -963,6 +1026,7 @@ describe('the run refuses when it cannot start', () => {
     })
     // And the other way round, after a re-layout stopped with the layout replaced.
     run.start(record, READY, { force: true })
+    await tick()
     calls[1].resolve(BUILT)
     await tick()
     run.cancel()
@@ -970,6 +1034,7 @@ describe('the run refuses when it cannot start', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'cancelled', forced: true, replaced: true })
     run.rebuild(record, null, '2026-09-12')
+    await tick()
     expect(run.snapshot).toMatchObject({
       state: 'failed',
       rebuilt: true,
@@ -985,10 +1050,12 @@ describe('the run refuses when it cannot start', () => {
     expect(run.snapshot.error).toMatch(/starting/i)
   })
 
-  it('refuses a second run while one is in flight', () => {
-    const { calls, begin } = setup()
+  it('refuses a second run while one is in flight', async () => {
+    const { calls, begin, read } = setup()
     begin()
     begin()
+    await tick()
+    expect(read, 'one read, for the one run').toHaveBeenCalledTimes(1)
     expect(calls).toHaveLength(1)
   })
 })
@@ -1966,8 +2033,10 @@ describe('a redraw drawn and then not kept', () => {
     await tick()
     expect(made.run.snapshot.unkept).toBe(true)
     made.run.recolour(made.record, null, { colors: { A: '#00ff00' }, defaultColor: '#00ff00' })
+    await tick()
     expect(made.run.snapshot).toMatchObject({ state: 'failed', unkept: false })
     made.run.recolour(made.record, READY, { colors: { A: '#00ff00' }, defaultColor: '#00ff00' })
+    await tick()
     expect(made.run.snapshot).toMatchObject({ state: 'running', unkept: false })
   })
 
@@ -1981,6 +2050,7 @@ describe('a redraw drawn and then not kept', () => {
     await tick()
     expect(made.run.snapshot.unkept).toBe(true)
     made.run.reorder({ ...made.record, layout: null }, READY, ['B', 'A'])
+    await tick()
     expect(made.run.snapshot).toMatchObject({ state: 'failed', unkept: false })
   })
 
@@ -2031,6 +2101,7 @@ describe('the run as a job', () => {
   it('keeps its own log lines, from every call it makes, and its stages and sentence as the snapshot has them', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     calls[0].log('info', 'gtfs2graph: running')
     calls[0].report('gtfs2graph', 'gtfs2graph: 3 nodes')
     await laidOut(calls)
@@ -2044,6 +2115,7 @@ describe('the run as a job', () => {
   it('ends done with an end time, and a new attempt is a new job', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     const first = run.job()?.id
     await laidOut(calls)
     calls[2].resolve(MAP)
@@ -2055,6 +2127,7 @@ describe('the run as a job', () => {
     expect(done?.ended).not.toBeNull()
     expect((done?.ended ?? 0) >= (done?.started ?? 0)).toBe(true)
     begin()
+    await tick()
     expect(run.job()?.id).not.toBe(first)
     expect(run.job()?.state).toBe('running')
   })
@@ -2062,6 +2135,7 @@ describe('the run as a job', () => {
   it("a failure carries the engine's hint and its detail, both without paths", async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     const detail = ['ValueError: empty graph in ', '', 'engine-home', 'graphs', 'la.json'].join('/')
     calls[0].reject({
       code: -32000,
@@ -2088,27 +2162,32 @@ describe('the run as a job', () => {
   it('names a re-layout, a rebuild, a recolour, a reorder and a restyle by what they are', async () => {
     const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15' })
     run.start(record, READY, { force: true })
+    await tick()
     expect(run.job()).toMatchObject({ kind: 'layout', label: 'Re-layout' })
     run.cancel()
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.job()?.state).toBe('cancelled')
     run.rebuild(record, READY, '2026-09-16')
+    await tick()
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-16' })
     run.cancel()
     calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     run.recolour(record, READY, { colors: {}, defaultColor: '#888888' })
+    await tick()
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in new colours' })
     run.cancel()
     calls[2].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     run.reorder(record, READY, ['B', 'A'])
+    await tick()
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in a new line order' })
     run.cancel()
     calls[3].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     run.restyle(record, READY, { lineWidth: 12 })
+    await tick()
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Redraw in new sizes' })
   })
 
@@ -2160,6 +2239,7 @@ describe("a feed's download inside the run", () => {
   it('is kept apart from the stages, and the first stage of the layout ends it', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     calls[0].report('download', 'downloaded 65,536 of 1,732,403 bytes', 0.0378)
     expect(run.snapshot.download).toEqual({
       message: 'downloaded 65,536 of 1,732,403 bytes',
@@ -2183,6 +2263,7 @@ describe("a feed's download inside the run", () => {
       return false
     })
     refused.begin()
+    await tick()
     refused.calls[0].report('download', 'downloaded 21 of 21 bytes', 1)
     refused.calls[0].reject({
       code: -32000,
@@ -2202,6 +2283,7 @@ describe("a feed's download inside the run", () => {
     // A failure before the first byte - offline, a 404 - reported nothing.
     const early = setup({}, READY, async () => false)
     early.begin()
+    await tick()
     early.calls[0].reject({
       code: -32000,
       message: 'feed',
@@ -2218,6 +2300,7 @@ describe("a feed's download inside the run", () => {
     // gtfs2graph after it must not call the kept zip missing.
     const kept = setup({}, READY, async () => true)
     kept.begin()
+    await tick()
     kept.calls[0].report('download', 'downloaded 1,732,403 bytes', 0)
     kept.run.cancel()
     kept.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
@@ -2230,6 +2313,7 @@ describe("a feed's download inside the run", () => {
   it('asks nothing of a run with no registry to ask, or one past its first stage', async () => {
     const none = setup()
     none.begin()
+    await tick()
     none.calls[0].report('download', 'downloaded 65,536 bytes', 0.1)
     none.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
@@ -2238,6 +2322,7 @@ describe("a feed's download inside the run", () => {
     const asked: string[] = []
     const past = setup({}, READY, async (key) => (asked.push(key), false))
     past.begin()
+    await tick()
     past.calls[0].report('gtfs2graph', '114 nodes')
     past.calls[0].reject({
       code: -32000,
@@ -2252,6 +2337,7 @@ describe("a feed's download inside the run", () => {
   it('ends not knowing, rather than claiming either, when the registry fails', async () => {
     const broken = setup({}, READY, () => Promise.reject(new Error('engine gone')))
     broken.begin()
+    await tick()
     broken.calls[0].report('download', 'downloaded 65,536 bytes', 0.1)
     broken.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
@@ -2265,6 +2351,8 @@ describe("a feed's download inside the run", () => {
     try {
       const hung = setup({}, READY, () => new Promise<boolean>(() => undefined))
       hung.begin()
+      // The read answers in a microtask; the timers are the test's here.
+      await vi.advanceTimersByTimeAsync(0)
       hung.calls[0].report('download', 'downloaded 65,536 bytes', 0.1)
       hung.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
       await vi.advanceTimersByTimeAsync(0)
@@ -2277,9 +2365,10 @@ describe("a feed's download inside the run", () => {
     }
   })
 
-  it('draws a large download at most four times a second, and always its last byte', () => {
+  it('draws a large download at most four times a second, and always its last byte', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     const seen: string[] = []
     run.subscribe((s) => {
       if (s.download !== null && seen[seen.length - 1] !== s.download.message)
@@ -2290,9 +2379,10 @@ describe("a feed's download inside the run", () => {
     expect(seen).toEqual(['downloaded 1 of 50 bytes', 'downloaded 50 of 50 bytes'])
   })
 
-  it('clears the last download when a start is refused', () => {
+  it('clears the last download when a start is refused', async () => {
     const { run, calls, record } = setup()
     run.start(record, READY)
+    await tick()
     calls[0].report('download', 'downloaded 65,536 bytes', 0.1)
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     return tick().then(() => {
@@ -2306,219 +2396,168 @@ describe("a feed's download inside the run", () => {
   it('is gone when the next run begins, and a feed on disk never sets it', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     calls[0].report('download', 'downloaded 65,536 bytes', 0)
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     begin()
+    await tick()
     expect(run.snapshot.download).toBeNull()
     calls[calls.length - 1].report('gtfs2graph', '114 nodes')
     expect(run.snapshot.download).toBeNull()
   })
 })
 
-// Issue 388. A field in cell 02's Layout tuning commits when it is left, and
-// cell 01's mode and operator when they are chosen, each through a write the
-// screen hands the run (`writing`) as it sends it. When what took focus away
-// is the press on "Lay out", that write is on its way as the press starts
-// the run: the run is going from the press, and reads the record once the
-// write has answered. `tests/unit/project-state-writes.test.tsx` holds the
-// screen's writers to it; these hold the run's own rules.
-describe('a start with a write to the record on its way', () => {
-  /** A write on its way: held until the test answers it, as the store's are. */
-  function held(): {
-    promise: Promise<ProjectRecord>
-    answer: (record: ProjectRecord) => void
-    refuse: (reason: unknown) => void
-  } {
-    let answer!: (record: ProjectRecord) => void
-    let refuse!: (reason: unknown) => void
-    const promise = new Promise<ProjectRecord>((yes, no) => {
-      answer = yes
-      refuse = no
+// Spec 037 (issues 388, 407). A run reads its record once, at its start,
+// from the store (`RunOptions.read`, `projects.get` queued in main behind the
+// project's writes), and plans from what the store answers, never from the
+// record the screen handed, which may be a render behind: a field committed
+// by leaving it for "Lay out", a day still in its debounce, a write the
+// store has answered and the screen has not drawn. That the store's answer
+// holds every write sent before the read is main's (FR-006) and the
+// bridge's (FR-008), held in `projects-store.test.ts`, `ipc.test.ts` and
+// `tests/e2e/record-order.spec.ts`; these hold the run's own rules.
+describe('a run reads its record from the store, once, at its start', () => {
+  it('plans from the record the store answers, not the one handed, and tells the store what it sent', async () => {
+    // Mutation: `#readFor` answering the record handed (`start` passing
+    // `handed` to `#layOut`) - graph.build goes with LOOM's defaults and the
+    // mode the screen held.
+    const s = setup({ layout: LAYOUT })
+    s.store({ ...s.record, mode: 'subway', agency: 'METRO', tuning: { gridSize: 50 } })
+    s.begin()
+    expect(s.run.snapshot.state, 'going from the press: Cancel is on the screen').toBe('running')
+    expect(s.calls, 'nothing is asked before the record is read').toHaveLength(0)
+    s.begin()
+    await tick()
+    expect(s.read, 'read once, for the one run').toHaveBeenCalledTimes(1)
+    expect(s.read).toHaveBeenCalledWith('p1')
+    expect(s.calls, 'one run: the second press was refused as any is').toHaveLength(1)
+    expect(s.calls[0].params).toEqual({
+      key: 'la-metro-rail',
+      mode: 'subway',
+      agency: 'METRO',
+      tuning: { grid_size: 50 },
     })
-    return { promise, answer, refuse }
-  }
-
-  it('waits for it, sends what the store answered, and tells the store that is what was sent', async () => {
-    // Mutation: `start` reading the record it was handed whatever is on its
-    // way (`this.#writes.size === 0 ? handed : …` made `handed`) - graph.build
-    // goes at the press, with LOOM's defaults.
-    const { run, calls, complete, record, begin } = setup({ layout: LAYOUT })
-    const write = held()
-    void run.writing(write.promise)
-    begin()
-    expect(run.snapshot.state, 'going from the press: Cancel is on the screen').toBe('running')
-    expect(calls, 'nothing is asked while the write is on its way').toHaveLength(0)
-    begin()
-    write.answer({ ...record, tuning: { gridSize: 50 } })
+    await laidOut(s.calls)
+    s.calls[2].resolve({ files: {} })
     await tick()
-    expect(calls, 'one run: the second press was refused as any is').toHaveLength(1)
-    expect(calls[0].params.tuning).toEqual({ grid_size: 50 })
-    await laidOut(calls)
-    calls[2].resolve({ files: {} })
-    await tick()
-    expect((complete.mock.calls[0] as unknown[])[1]).toMatchObject({ tuning: { gridSize: 50 } })
+    expect((s.complete.mock.calls[0] as unknown[])[1]).toMatchObject({ tuning: { gridSize: 50 } })
   })
 
-  it('takes the mode and the operator the same way', async () => {
-    const { run, calls, record, begin } = setup()
-    const write = held()
-    void run.writing(write.promise)
-    begin()
-    write.answer({ ...record, mode: 'subway', agency: 'METRO' })
+  it('reads once: what the store holds after the run has read it is not what it sends', async () => {
+    // A run sends what it was started with (spec 033, FR-007). Mutation: the
+    // record read again before map.build - the colours written since go with
+    // the map, and the record would say they were drawn from a run that did
+    // not choose them.
+    const s = setup({ layout: LAYOUT })
+    s.begin()
     await tick()
-    expect(calls[0].params).toEqual({ key: 'la-metro-rail', mode: 'subway', agency: 'METRO' })
+    s.store({ ...s.record, colors: { A: '#ff0000' } })
+    await laidOut(s.calls)
+    expect(s.read).toHaveBeenCalledTimes(1)
+    expect(s.calls[2].params.colors).toEqual({})
   })
 
-  it('sends graph.build in the same turn as the press when nothing is on its way', async () => {
-    // Mutation: `start` awaiting `#afterWrites` whatever is on its way -
-    // nothing is asked until a later turn, and the first assertion fails.
-    const { run, calls, record, begin } = setup()
-    // A write that has answered is behind the press, not on its way.
-    await run.writing(Promise.resolve({ ...record, mode: 'rail' }))
-    begin()
-    expect(calls, 'asked at once').toHaveLength(1)
-    expect(calls[0].params.mode, 'from the record handed').toBe('all')
+  it('a rebuild and each of the four redraws read the same way: map.build in what the store holds', async () => {
+    // Mutation: one of them drawing from the record handed - its map.build
+    // goes in the colours, order or sizes the screen held.
+    const drawn = { layout: LAYOUT, date: '2026-09-15', service: WINDOW }
+    const stored = { colors: { A: '#0072bc' }, lineOrder: ['B', 'A'], style: { lineWidth: 11 } }
+    const presses: [string, (s: ReturnType<typeof setup>) => void, Record<string, unknown>][] = [
+      ['a rebuild', (s) => s.run.rebuild(s.record, READY, '2026-09-12'), {}],
+      [
+        'a recolour',
+        (s) =>
+          s.run.recolour(s.record, READY, { colors: { K: '#00ff00' }, defaultColor: '#888888' }),
+        { colors: { K: '#00ff00' } },
+      ],
+      ['a reorder', (s) => s.run.reorder(s.record, READY, ['A']), { line_order: ['A'] }],
+      ['a restyle', (s) => s.run.restyle(s.record, READY, { lineWidth: 12 }), {}],
+      ['a redraw of the lines', (s) => s.run.redrawLines(s.record, READY, {}), {}],
+    ]
+    for (const [name, press, own] of presses) {
+      const s = setup(drawn)
+      s.store({ ...s.record, ...stored })
+      press(s)
+      expect(s.calls, `${name}: nothing before the read`).toHaveLength(0)
+      await tick()
+      expect(s.calls[0], name).toMatchObject({
+        method: 'map.build',
+        params: { layout: LAYOUT, colors: { A: '#0072bc' }, line_order: ['B', 'A'], ...own },
+      })
+      if (name !== 'a restyle')
+        expect(s.calls[0].params.style, `${name}: the stored sizes`).toEqual({ line_width: 11 })
+    }
   })
 
-  it('takes the last write the store took, whichever answer arrived first', async () => {
-    // Two commits on their way: a grid, then a penalty. The store writes a
-    // project's record one write at a time, in the order they were sent, so
-    // the second answer holds both. Mutation: `#afterWrites` taking the
-    // first answer rather than the last - the run goes without the penalty.
-    const { run, calls, record, begin } = setup()
-    const grid = held()
-    const penalty = held()
-    void run.writing(grid.promise)
-    void run.writing(penalty.promise)
-    begin()
-    penalty.answer({ ...record, tuning: { grid: 'orthoradial', deg45: 3 } })
-    await tick()
-    expect(calls, 'not while the grid is still on its way').toHaveLength(0)
-    grid.answer({ ...record, tuning: { grid: 'orthoradial' } })
-    await tick()
-    expect(calls[0].params.tuning).toEqual({ grid: 'orthoradial', penalties: { deg45: 3 } })
+  it('a cancel ends the read at once, and nothing is asked when the store answers after it', async () => {
+    // Mutation: `cancel` not waking the read - the run stays running until
+    // the store answers, and then draws a run that was cancelled.
+    const presses: [string, (s: ReturnType<typeof setup>) => void][] = [
+      ['a layout run', (s) => s.begin()],
+      ['a rebuild', (s) => s.run.rebuild(s.record, READY, '2026-09-12')],
+      ['Run all', (s) => s.run.runAll(s.record, READY, runAllPlan)],
+      [
+        'a recolour',
+        (s) => s.run.recolour(s.record, READY, { colors: {}, defaultColor: '#888888' }),
+      ],
+    ]
+    for (const [name, press] of presses) {
+      const s = setup({
+        layout: LAYOUT,
+        date: '2026-09-15',
+        service: WINDOW,
+        tuning: { gridSize: 50 },
+      })
+      const read = s.hold()
+      press(s)
+      expect(s.run.snapshot.state, name).toBe('running')
+      s.run.cancel()
+      await tick()
+      expect(s.run.snapshot.state, name).toBe('cancelled')
+      read.answer(s.record)
+      await tick()
+      expect(s.calls, `${name}: nothing was asked`).toHaveLength(0)
+      expect(s.run.snapshot.state, name).toBe('cancelled')
+    }
   })
 
-  it('takes the last write the store took when a later one was refused', async () => {
-    const { run, calls, record, begin } = setup()
-    const grid = held()
-    const penalty = held()
-    void run.writing(grid.promise)
-    run.writing(penalty.promise).catch(() => undefined)
-    begin()
-    grid.answer({ ...record, tuning: { grid: 'orthoradial' } })
-    penalty.refuse(new Error('tuning.penalties.deg45 must be from 0 to 10'))
+  it('a read the store refuses fails the run with its sentence, and asks nothing', async () => {
+    // Mutation: the read's refusal left unhandled - the run stays running
+    // for good, with an unhandled rejection.
+    const s = setup({ layout: LAYOUT, date: '2026-09-15', service: WINDOW })
+    const read = s.hold()
+    s.run.rebuild(s.record, READY, '2026-09-12')
+    read.refuse(new Error('not found'))
     await tick()
-    expect(calls[0].params.tuning).toEqual({ grid: 'orthoradial' })
+    expect(s.run.snapshot).toMatchObject({ state: 'failed', rebuilt: true, error: 'not found' })
+    expect(s.calls).toHaveLength(0)
   })
 
-  it('a refused write: the run goes from the record as it stands, and the writer hears why', async () => {
-    // Mutation: `writing` without its refusal handler - the wait never ends
-    // (or ends in an unhandled rejection), and nothing is asked. Mutation:
-    // `writing` answering the writer with its own settled promise rather
-    // than the write - the writer is told nothing was refused.
-    const { run, calls, begin } = setup({ mode: 'all' })
-    const write = held()
-    const writer = run.writing(write.promise)
-    begin()
-    write.refuse(new Error('read-only'))
-    await expect(writer).rejects.toThrow('read-only')
-    await tick()
-    expect(calls).toHaveLength(1)
-    expect(calls[0].params.mode, 'the record handed: the store took nothing').toBe('all')
-  })
-
-  it('a cancel ends the wait, and nothing is asked when the write answers after it', async () => {
-    // Mutation: `cancel` not waking the wait - the run stays running until
-    // the store answers, and then lays out a run that was cancelled.
-    const { run, calls, record, begin } = setup()
-    const write = held()
-    void run.writing(write.promise)
-    begin()
-    run.cancel()
-    await tick()
-    expect(run.snapshot.state).toBe('cancelled')
-    write.answer({ ...record, mode: 'subway' })
-    await tick()
-    expect(calls, 'nothing was asked').toHaveLength(0)
-    expect(run.snapshot.state).toBe('cancelled')
-  })
-
-  it('a cancel ends a rebuild’s wait too, and map.build is not sent when the write answers after it', async () => {
-    // Mutation: `rebuild` not looking at the cancel after the wait - a
-    // cancelled rebuild would then draw the map and rewrite the page on disk.
-    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW })
-    const write = held()
-    void run.writing(write.promise)
-    run.rebuild(record, READY, '2026-09-12')
-    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true })
-    run.cancel()
-    await tick()
-    expect(run.snapshot.state).toBe('cancelled')
-    write.answer({ ...record, colors: { A: '#0072bc' } })
-    await tick()
-    expect(calls, 'nothing was asked').toHaveLength(0)
-    expect(run.snapshot.state).toBe('cancelled')
-  })
-
-  it('does not wait for a write sent after the start: the run sends what it was started with', async () => {
-    // Mutation: `#afterWrites` waiting until no write at all is on its way
-    // - a field committed while the run waits would hold it, and be sent.
-    const { run, calls, record, begin } = setup()
-    const first = held()
-    const later = held()
-    void run.writing(first.promise)
-    begin()
-    void run.writing(later.promise)
-    first.answer({ ...record, mode: 'subway' })
-    await tick()
-    expect(calls).toHaveLength(1)
-    expect(calls[0].params.mode).toBe('subway')
-    later.answer({ ...record, mode: 'tram' })
-  })
-
-  it('a rebuild for a chosen day reads the record the same way', async () => {
-    // Mutation: `rebuild` reading the record it was handed whatever is on
-    // its way - map.build goes at the press, in the colours handed.
-    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW })
-    const write = held()
-    void run.writing(write.promise)
-    run.rebuild(record, READY, '2026-09-12')
-    expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true })
-    expect(calls).toHaveLength(0)
-    write.answer({ ...record, colors: { A: '#0072bc' } })
-    await tick()
-    expect(calls[0]).toMatchObject({
-      method: 'map.build',
-      params: { layout: LAYOUT, date: '2026-09-12', colors: { A: '#0072bc' } },
+  it('a redraw whose record has nothing drawn by the time it is read fails in its own words', () => {
+    // The record handed at the press had a map; the store's no longer does.
+    const s = setup({ layout: LAYOUT, date: '2026-09-15', service: WINDOW })
+    s.store({ ...s.record, layout: null })
+    s.run.reorder(s.record, READY, ['A'])
+    return tick().then(() => {
+      expect(s.run.snapshot).toMatchObject({
+        state: 'failed',
+        reordered: true,
+        error: 'Lay the project out before arranging the lines.',
+      })
+      expect(s.calls).toHaveLength(0)
     })
   })
 })
 
 // Issue 407. Run all chooses its run - a layout, or a rebuild for the
-// record's day - and it chooses it from the record a start reads: with a
-// write on its way it is going from the press as the press's plan would go,
-// waits as a start does, and makes the plan again from the record the
-// writes leave, with the run as the press found it. `runAllPlan` is the real
-// one, handed in as the header hands it; what is held here is which record
-// and which run it is asked about, and what is started.
-describe('Run all with a write to the record on its way', () => {
-  /** A write on its way: held until the test answers it, as the store's are. */
-  function held(): {
-    promise: Promise<ProjectRecord>
-    answer: (record: ProjectRecord) => void
-    refuse: (reason: unknown) => void
-  } {
-    let answer!: (record: ProjectRecord) => void
-    let refuse!: (reason: unknown) => void
-    const promise = new Promise<ProjectRecord>((yes, no) => {
-      answer = yes
-      refuse = no
-    })
-    return { promise, answer, refuse }
-  }
-
+// record's day - and it chooses it from the record the store answers: it is
+// going from the press as the press's plan would go, reads as a start does,
+// and makes the plan again from the record read, with the run as the press
+// found it. `runAllPlan` is the real one, handed in as the header hands it;
+// what is held here is which record and which run it is asked about, and
+// what is started.
+describe('Run all plans again from the record the store answers', () => {
   /** Laid out and drawn for the 15th, and the 12th chosen since: only the day is behind. */
   function dayBehind(over: Partial<ProjectRecord> = {}): ProjectRecord {
     const drawn = project({
@@ -2531,25 +2570,23 @@ describe('Run all with a write to the record on its way', () => {
     return { ...drawn, drawn: drawnOf(drawn), date: '2026-09-12', ...over }
   }
 
-  it('a tuning that lands while it waits makes it a layout, though only the day was behind at the press', async () => {
-    // Mutation: the plan after the wait made from the record handed at the
+  it('a tuning the store holds makes it a layout, though only the day was behind on the screen', async () => {
+    // Mutation: the plan after the read made from the record handed at the
     // press (`planOf(handed, …)` in `runAll`) - a rebuild for the day, and
     // no graph.build, so the tuning waits for one more press.
-    const { run, calls, record, complete } = setup(dayBehind())
+    const { run, calls, record, complete, store } = setup(dayBehind())
     expect(runAllPlan(record, run.snapshot), 'the plan at the press').toEqual({
       kind: 'rebuild',
       date: '2026-09-12',
     })
-    const write = held()
-    void run.writing(write.promise)
+    store({ ...record, tuning: { gridSize: 50 } })
     run.runAll(record, READY, runAllPlan)
     // Going from the press as the press's plan would go: cell 03's run.
     expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
     expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
     const job = run.job()?.id
-    expect(calls, 'nothing is asked while the write is on its way').toHaveLength(0)
+    expect(calls, 'nothing is asked before the record is read').toHaveLength(0)
 
-    write.answer({ ...record, tuning: { gridSize: 50 } })
     await tick()
     expect(calls.map((c) => c.method)).toEqual(['graph.build'])
     expect(calls[0].params.tuning).toEqual({ grid_size: 50 })
@@ -2573,15 +2610,13 @@ describe('Run all with a write to the record on its way', () => {
     })
   })
 
-  it('a day that lands while it waits is the day the rebuild draws and writes', async () => {
+  it('a day the store holds is the day the rebuild draws and writes', async () => {
     // Mutation: the rebuild started for the day of the plan at the press
-    // (`pressed.date` after the wait) - the 12th is drawn, and written back
+    // (`pressed.date` after the read) - the 12th is drawn, and written back
     // over the 20th the person chose.
-    const { run, calls, record, completeRebuild } = setup(dayBehind())
-    const write = held()
-    void run.writing(write.promise)
+    const { run, calls, record, completeRebuild, store } = setup(dayBehind())
+    store({ ...record, date: '2026-09-20' })
     run.runAll(record, READY, runAllPlan)
-    write.answer({ ...record, date: '2026-09-20' })
     await tick()
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({
@@ -2597,57 +2632,27 @@ describe('Run all with a write to the record on its way', () => {
     })
   })
 
-  it('a refused write: the plan is the one the record as it stands makes, and the writer hears why', async () => {
-    // Mutation: `writing` without its refusal handler - Run all waits for
-    // ever, and nothing is drawn.
-    const { run, calls, record } = setup(dayBehind())
-    const write = held()
-    const writer = run.writing(write.promise)
-    run.runAll(record, READY, runAllPlan)
-    write.refuse(new Error('read-only'))
-    await expect(writer).rejects.toThrow('read-only')
-    await tick()
-    expect(calls.map((c) => c.method)).toEqual(['map.build'])
-    expect(calls[0].params.date).toBe('2026-09-12')
-  })
-
-  it('a cancel ends the wait, and nothing is asked when the write answers after it', async () => {
-    // Mutation: `runAll` not looking at the cancel after the wait - a Run
-    // all that was stopped lays the project out once the write lands.
-    const { run, calls, record } = setup(dayBehind())
-    const write = held()
-    void run.writing(write.promise)
-    run.runAll(record, READY, runAllPlan)
-    run.cancel()
-    await tick()
-    expect(run.snapshot).toMatchObject({ state: 'cancelled', rebuilt: true, day: '2026-09-12' })
-    write.answer({ ...record, tuning: { gridSize: 50 } })
-    await tick()
-    expect(calls, 'nothing was asked').toHaveLength(0)
-    expect(run.snapshot.state).toBe('cancelled')
-  })
-
-  it('with nothing on its way, starts the plan in the press’s own turn, as cell 02’s or cell 03’s own press would', () => {
-    // Mutation: `runAll` waiting for the writes whatever is on its way -
-    // nothing is asked in the press's turn.
+  it('with the record as the screen holds it, the plan is the press’s, a turn later', async () => {
     const day = setup(dayBehind())
     day.run.runAll(day.record, READY, runAllPlan)
+    expect(day.run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
+    await tick()
     expect(day.calls.map((c) => c.method)).toEqual(['map.build'])
     expect(day.calls[0].params.date).toBe('2026-09-12')
-    expect(day.run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
     expect(day.run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
 
     const tuned = setup(dayBehind({ date: '2026-09-15', tuning: { gridSize: 50 } }))
     tuned.run.runAll(tuned.record, READY, runAllPlan)
+    await tick()
     expect(tuned.calls.map((c) => c.method)).toEqual(['graph.build'])
     expect(tuned.run.snapshot).toMatchObject({ rebuilt: false, forced: false, day: null })
     expect(tuned.run.job()).toMatchObject({ kind: 'layout', label: 'Layout run' })
+  })
 
-    // And refused in that turn, as the press's own run is, where the engine
-    // cannot run it: with a write on its way too, since nothing waits to be
-    // refused.
+  it('is refused in the press’s own turn where the engine cannot run, and reads nothing', () => {
+    // Mutation: `runAll` reading before it asks the engine - the refusal
+    // waits a turn, and a record is read for a run that cannot go.
     const refused = setup(dayBehind(), null)
-    void refused.run.writing(held().promise)
     refused.run.runAll(refused.record, null, runAllPlan)
     expect(refused.run.snapshot).toMatchObject({
       state: 'failed',
@@ -2655,25 +2660,24 @@ describe('Run all with a write to the record on its way', () => {
       day: '2026-09-12',
       error: 'The engine is still starting. Try again in a moment.',
     })
+    expect(refused.read).not.toHaveBeenCalled()
   })
 
   it('a layout at the press that becomes a rebuild forgets the feed: a cancel then asks the registry nothing', async () => {
-    // A mode chosen, so the press's plan is a layout, and put back by the
-    // write on its way, so only the day is behind once it lands. A layout
-    // stopped before its first stage asks the registry whether its feed is
-    // on disk (issue 178); a rebuild never does. Mutation: the feed kept
-    // when the run becomes a rebuild (`this.#feedKey = null` dropped from
-    // `runAll`) - the stopped rebuild asks the registry about the feed.
+    // A mode chosen on the screen, so the press's plan is a layout, and put
+    // back in the store, so only the day is behind in the record read. A
+    // layout stopped before its first stage asks the registry whether its
+    // feed is on disk (issue 178); a rebuild never does. Mutation: the feed
+    // kept when the run becomes a rebuild (`this.#feedKey = null` dropped
+    // from `runAll`) - the stopped rebuild asks the registry about the feed.
     const onDisk = vi.fn(async () => true)
-    const { run, calls, record } = setup(dayBehind({ mode: 'subway' }), READY, onDisk)
+    const { run, calls, record, store } = setup(dayBehind({ mode: 'subway' }), READY, onDisk)
     expect(runAllPlan(record, run.snapshot), 'the plan at the press').toEqual({ kind: 'layout' })
-    const write = held()
-    void run.writing(write.promise)
+    store({ ...record, mode: 'all' })
     run.runAll(record, READY, runAllPlan)
     expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: false, day: null })
     expect(run.job()).toMatchObject({ kind: 'layout', label: 'Layout run' })
 
-    write.answer({ ...record, mode: 'all' })
     await tick()
     expect(calls.map((c) => c.method)).toEqual(['map.build'])
     expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
@@ -2686,14 +2690,15 @@ describe('Run all with a write to the record on its way', () => {
     expect(onDisk, 'the registry is not asked about a rebuild').not.toHaveBeenCalled()
   })
 
-  it('a write that leaves nothing to run puts the run back as it stood: nothing asked, no job ended', async () => {
+  it('a record that leaves nothing to run puts the run back as it stood: nothing asked, no job ended', async () => {
     // A day chosen and then put back to the one the map shows, the second
-    // write still on its way at the press. Mutation: a plan of none after
-    // the wait taken for the press's plan (`#withdraw` not called) - the
+    // in the store and not yet on the screen. Mutation: a plan of none after
+    // the read taken for the press's plan (`#withdraw` not called) - the
     // run never ends, or draws a day nobody now chose.
-    const { run, calls, record, completeRebuild } = setup(dayBehind())
+    const { run, calls, record, completeRebuild, store } = setup(dayBehind())
     // A run that finished before, so there is a job to go back to.
     run.rebuild(record, READY, '2026-09-12')
+    await tick()
     calls[0].resolve({ files: {} })
     await tick()
     const before = run.snapshot
@@ -2702,11 +2707,9 @@ describe('Run all with a write to the record on its way', () => {
     const ended: string[] = []
     run.subscribe((s) => ended.push(s.state))
 
-    const write = held()
-    void run.writing(write.promise)
+    store({ ...record, date: '2026-09-15' })
     run.runAll(record, READY, runAllPlan)
     expect(run.snapshot.state).toBe('running')
-    write.answer({ ...record, date: '2026-09-15' })
     await tick()
     expect(calls, 'only the first rebuild was ever asked').toHaveLength(1)
     expect(completeRebuild).toHaveBeenCalledTimes(1)
@@ -2725,6 +2728,7 @@ describe('Run all with a write to the record on its way', () => {
       colors: { A: '#0072bc' },
       defaultColor: '#888888',
     })
+    await tick()
     redrawn.run.cancel()
     redrawn.calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
@@ -2736,10 +2740,8 @@ describe('Run all with a write to the record on its way', () => {
       if (stoppedNow(seen, now)) stops.push(s.state)
       seen = now
     })
-    const write = held()
-    void redrawn.run.writing(write.promise)
+    redrawn.store({ ...redrawn.record, date: '2026-09-15' })
     redrawn.run.runAll(redrawn.record, READY, runAllPlan)
-    write.answer({ ...redrawn.record, date: '2026-09-15' })
     await tick()
     expect(stops, 'no stop of the colours’ own').toEqual([])
     expect(redrawn.run.snapshot).toMatchObject({
@@ -2752,125 +2754,25 @@ describe('Run all with a write to the record on its way', () => {
     // A stopped layout run has no panel to put back, and is restored as it was.
     const laid = setup(dayBehind())
     laid.run.start(laid.record, READY)
+    await tick()
     laid.run.cancel()
     laid.calls[0].resolve(BUILT)
     await tick()
     const stopped = laid.run.snapshot
     expect(stopped.state).toBe('cancelled')
-    const again = held()
-    void laid.run.writing(again.promise)
+    laid.store({ ...laid.record, date: '2026-09-15' })
     laid.run.runAll(laid.record, READY, runAllPlan)
-    again.answer({ ...laid.record, date: '2026-09-15' })
     await tick()
     expect(laid.run.snapshot).toBe(stopped)
   })
 })
 
-// Issue 407. A write leaves those on their way the moment the store answers
-// it, and the screen draws the answer when React next renders, a task or so
-// later; a press in that beat is handed the record from before the write.
-// The run keeps the store's latest answer and reads it where it was written
-// after the record handed, by the store's own stamp (`modified`).
-describe('a press after a write has answered and before the screen has drawn it', () => {
-  const EARLIER = '2026-09-01T00:00:00.000Z'
-  const LATER = '2026-09-01T00:00:01.000Z'
-  const LATEST = '2026-09-01T00:00:02.000Z'
-
-  it('lays out, rebuilds and runs all from the answer, in the press’s own turn', async () => {
-    // Mutation: `#current` answering the record handed whatever the store
-    // took - each run goes from the record before the write.
-    const laid = setup({ modified: EARLIER })
-    await laid.run.writing(Promise.resolve({ ...laid.record, mode: 'subway', modified: LATER }))
-    laid.begin()
-    expect(laid.calls, 'asked at once: nothing is on its way').toHaveLength(1)
-    expect(laid.calls[0].params.mode).toBe('subway')
-
-    const drawn = setup({ layout: LAYOUT, service: WINDOW, modified: EARLIER })
-    await drawn.run.writing(
-      Promise.resolve({ ...drawn.record, colors: { A: '#0072bc' }, modified: LATER }),
-    )
-    drawn.run.rebuild(drawn.record, READY, '2026-09-12')
-    expect(drawn.calls[0]).toMatchObject({
-      method: 'map.build',
-      params: { date: '2026-09-12', colors: { A: '#0072bc' } },
-    })
-
-    // Only the day behind on the screen's record, and a tuning the store has
-    // taken: a layout, with it.
-    const shown = project({
-      layout: LAYOUT,
-      made: MADE,
-      built: { mode: 'all', agency: null },
-      service: WINDOW,
-      date: '2026-09-15',
-      modified: EARLIER,
-    })
-    const behind = { ...shown, drawn: drawnOf(shown), date: '2026-09-12' }
-    const all = setup(behind)
-    await all.run.writing(Promise.resolve({ ...behind, tuning: { gridSize: 50 }, modified: LATER }))
-    all.run.runAll(all.record, READY, runAllPlan)
-    expect(all.calls.map((c) => c.method)).toEqual(['graph.build'])
-    expect(all.calls[0].params.tuning).toEqual({ grid_size: 50 })
-  })
-
-  it('reads the record handed where it was written after the answer: a later edit the screen has drawn', async () => {
-    // Mutation: `#current` taking the answer whenever there is one - the
-    // run goes from a record older than the one the screen holds.
-    const { run, calls, record } = setup({ modified: EARLIER })
-    await run.writing(Promise.resolve({ ...record, mode: 'subway', modified: LATER }))
-    run.start({ ...record, mode: 'tram', modified: LATEST }, READY)
-    expect(calls[0].params.mode).toBe('tram')
-  })
-
-  it('forgets the answer once a run of its own has finished, whose write and read-back are newer', async () => {
-    // The stamps are the main process's clock. A clock stepped back between
-    // the answer and the run's own write would make the answer look newer
-    // than the record read back after the run, which it is not. Mutation:
-    // `#finish` keeping `#taken` - the next run goes from the answer from
-    // before the last one, with the mode it held then.
-    const { run, calls, record } = setup({ layout: LAYOUT, service: WINDOW, modified: EARLIER })
-    await run.writing(
-      Promise.resolve({ ...record, mode: 'subway', modified: '2026-09-01T00:00:09.000Z' }),
-    )
-    run.rebuild(record, READY, '2026-09-12')
-    calls[0].resolve({ files: {} })
-    await tick()
-    expect(run.snapshot.state).toBe('done')
-    // The record as the screen reads it back, stamped after the clock stepped back.
-    run.start({ ...record, mode: 'tram', modified: LATER }, READY)
-    expect(calls[1]).toMatchObject({ method: 'graph.build', params: { mode: 'tram' } })
-  })
-
-  it('keeps the answer to the write sent last, whichever answer arrived last', async () => {
-    // The store answers in the order it was sent; the rule does not lean
-    // on it. Mutation: every answer kept as it arrives (the order of the
-    // writes not compared) - the run goes from the first write's answer.
-    const { run, calls, record, begin } = setup({ modified: EARLIER })
-    let first!: (r: ProjectRecord) => void
-    let second!: (r: ProjectRecord) => void
-    void run.writing(new Promise<ProjectRecord>((yes) => (first = yes)))
-    void run.writing(new Promise<ProjectRecord>((yes) => (second = yes)))
-    second({ ...record, mode: 'subway', agency: 'METRO', modified: LATEST })
-    await tick()
-    first({ ...record, mode: 'subway', modified: LATER })
-    await tick()
-    begin()
-    expect(calls[0].params).toMatchObject({ mode: 'subway', agency: 'METRO' })
-  })
-})
-
 // Issue 407. Cell 03's day is written a beat after it is picked, so a press
-// on "Lay out again" or Run all in that beat found no write on its way: the
-// run drew the day the record held, and the day landed while it went, to be
-// recorded as the day drawn. A control holding a choice back hears the
-// press first (`beforeStart`) and sends it, so it is a write on its way.
+// on "Lay out again" or Run all in that beat would read a record without it,
+// and draw the day before. A control holding a choice back hears the press
+// first (`beforeStart`) and sends it, before the run reads its record, so
+// the store answers the read with it (spec 037).
 describe('a press tells what holds a choice back, before it reads the record', () => {
-  function held(): { promise: Promise<ProjectRecord>; answer: (r: ProjectRecord) => void } {
-    let answer!: (r: ProjectRecord) => void
-    const promise = new Promise<ProjectRecord>((yes) => (answer = yes))
-    return { promise, answer }
-  }
-
   /** Laid out and drawn for the 15th, and nothing behind. */
   function drawn(): ProjectRecord {
     const record = project({
@@ -2883,26 +2785,32 @@ describe('a press tells what holds a choice back, before it reads the record', (
     return { ...record, drawn: drawnOf(record) }
   }
 
-  it('a write sent as the press is heard is waited for, by a layout run, a rebuild and Run all', async () => {
+  it('a write sent as the press is heard goes before the read, for a layout run, a rebuild and Run all', async () => {
     // Mutation: the listeners told after the record is read, or not at all
-    // (`#pressed()` in `start`, `rebuild` or `runAll`) - the run goes at the
-    // press, for the 15th.
+    // (`#pressed()` in `start`, `rebuild` or `runAll`) - the read goes first,
+    // and the run draws the 15th.
     const presses: [string, (run: LayoutRun, record: ProjectRecord) => void][] = [
       ['a layout run', (run, record) => run.start(record, READY)],
       ['a rebuild', (run, record) => run.rebuild(record, READY, '2026-09-20')],
       ['Run all', (run, record) => run.runAll(record, READY, runAllPlan)],
     ]
     for (const [name, press] of presses) {
-      const { run, calls, record } = setup(drawn())
-      const write = held()
-      run.beforeStart(() => void run.writing(write.promise))
-      press(run, record)
-      expect(run.snapshot.state, name).toBe('running')
-      expect(calls, `${name}: nothing asked while the day is on its way`).toHaveLength(0)
-      write.answer({ ...record, date: '2026-09-20' })
+      const s = setup(drawn())
+      const order: string[] = []
+      s.read.mockImplementation(async () => {
+        order.push('read')
+        return s.stored()
+      })
+      // The day's flush: a write sent at once, which the store then holds.
+      s.run.beforeStart(() => {
+        order.push('write')
+        s.store({ ...s.record, date: '2026-09-20' })
+      })
+      press(s.run, s.record)
+      expect(order, name).toEqual(['write', 'read'])
       await tick()
-      if (calls[0].method === 'graph.build') await laidOut(calls)
-      const map = calls.find((c) => c.method === 'map.build')
+      if (s.calls[0].method === 'graph.build') await laidOut(s.calls)
+      const map = s.calls.find((c) => c.method === 'map.build')
       expect(map?.params.date, `${name} draws the day`).toBe('2026-09-20')
     }
   })
@@ -2917,12 +2825,14 @@ describe('a press tells what holds a choice back, before it reads the record', (
     expect(heard, 'a redraw draws the day the map shows').not.toHaveBeenCalled()
     run.start(record, READY)
     expect(heard, 'refused: a run is going').not.toHaveBeenCalled()
+    await tick()
     run.cancel()
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.snapshot.state).toBe('cancelled')
     run.start(record, READY)
     expect(heard, 'told of a press while it listens').toHaveBeenCalledTimes(1)
+    await tick()
     run.cancel()
     calls[1].resolve(BUILT)
     await tick()
@@ -2931,122 +2841,6 @@ describe('a press tells what holds a choice back, before it reads the record', (
     run.start(record, READY)
     expect(run.snapshot.state, 'started').toBe('running')
     expect(heard, 'and not once it has gone').toHaveBeenCalledTimes(1)
-  })
-})
-
-// Issue 407. The bridge writes the mode and the operator together, so an
-// operator chosen while a mode is on its way was sent with the mode the
-// screen held, and put the old mode back. `writingFrom` makes a write from
-// the record the writes ahead of it leave, and sends it once they have
-// landed; it is on its way from the moment it is handed over, so a start
-// waits for it as for any.
-describe('a write made from the record the writes ahead of it leave', () => {
-  function held(): {
-    promise: Promise<ProjectRecord>
-    answer: (r: ProjectRecord) => void
-    refuse: (reason: unknown) => void
-  } {
-    let answer!: (r: ProjectRecord) => void
-    let refuse!: (reason: unknown) => void
-    const promise = new Promise<ProjectRecord>((yes, no) => {
-      answer = yes
-      refuse = no
-    })
-    return { promise, answer, refuse }
-  }
-
-  /** What the writer sends: the operator, with the mode of the record it was handed. */
-  const operator = (agency: string) =>
-    vi.fn((record: ProjectRecord) => Promise.resolve({ ...record, agency }))
-
-  it('is sent at once, from the record handed, where nothing is on its way', () => {
-    const { run, record } = setup()
-    const send = operator('METRO')
-    void run.writingFrom(record, send)
-    expect(send).toHaveBeenCalledWith(record)
-  })
-
-  it('waits for a mode on its way, and is made from the record it leaves', async () => {
-    // Mutation: `writingFrom` sending at once from the record handed (no
-    // wait on `#ahead`) - the operator goes with the old mode, and the store,
-    // writing it second, puts that mode back.
-    const { run, record } = setup()
-    const mode = held()
-    void run.writing(mode.promise)
-    const send = operator('METRO')
-    const written = run.writingFrom(record, send)
-    expect(send, 'not while the mode is on its way').not.toHaveBeenCalled()
-    mode.answer({ ...record, mode: 'subway' })
-    await tick()
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
-    await expect(written).resolves.toMatchObject({ mode: 'subway', agency: 'METRO' })
-  })
-
-  it('waits for a write sent while it waits too, so it is written after it and holds it', async () => {
-    // A mode on its way, the operator, then another mode, sent at once.
-    // Mutation: `#ahead` waiting only for the writes handed over before it -
-    // the operator goes after the first mode with that mode, and is written
-    // after the second, putting the first back.
-    const { run, record } = setup()
-    const first = held()
-    const second = held()
-    void run.writing(first.promise)
-    const send = operator('METRO')
-    void run.writingFrom(record, send)
-    void run.writing(second.promise)
-    first.answer({ ...record, mode: 'subway' })
-    await tick()
-    expect(send, 'not while the second mode is on its way').not.toHaveBeenCalled()
-    second.answer({ ...record, mode: 'tram' })
-    await tick()
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ mode: 'tram' }))
-  })
-
-  it('a start waits for it, and reads its answer, which holds the writes sent before it', async () => {
-    // It is sent last of the three, so its answer is the record as the store
-    // last wrote it, though it was handed over second. Mutation: the answer
-    // a start reads taken by the order the writes were handed over (the last
-    // of them answered) rather than sent - the run goes without the operator.
-    const { run, calls, record, begin } = setup()
-    const first = held()
-    const second = held()
-    void run.writing(first.promise)
-    void run.writingFrom(record, operator('METRO'))
-    void run.writing(second.promise)
-    begin()
-    first.answer({ ...record, mode: 'subway' })
-    second.answer({ ...record, mode: 'tram' })
-    await tick()
-    await tick()
-    expect(calls).toHaveLength(1)
-    expect(calls[0].params).toMatchObject({ mode: 'tram', agency: 'METRO' })
-  })
-
-  it('a refusal ahead of it: made from the record as it stands', async () => {
-    const { run, record } = setup()
-    const mode = held()
-    run.writing(mode.promise).catch(() => undefined)
-    const send = operator('METRO')
-    void run.writingFrom(record, send)
-    mode.refuse(new Error('read-only'))
-    await tick()
-    expect(send).toHaveBeenCalledWith(record)
-  })
-
-  it('two made from the record: the second waits for the first, and is made from its answer', async () => {
-    // Mutation: `#ahead` counting one made after it that has not been sent -
-    // each waits for the other, and neither is ever sent.
-    const { run, record } = setup()
-    const mode = held()
-    void run.writing(mode.promise)
-    const sub = operator('SUB')
-    const metro = vi.fn((r: ProjectRecord) => Promise.resolve({ ...r, lineOrder: ['A'] }))
-    void run.writingFrom(record, sub)
-    void run.writingFrom(record, metro)
-    mode.answer({ ...record, mode: 'subway' })
-    await tick()
-    expect(sub).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway' }))
-    expect(metro).toHaveBeenCalledWith(expect.objectContaining({ mode: 'subway', agency: 'SUB' }))
   })
 })
 
@@ -3099,6 +2893,7 @@ describe('a cancel that came too late', () => {
     // Mutation: the cancel looked at again after the draw in `#drawDay`.
     const { run, calls, completeRebuild, record } = setup(stored)
     run.rebuild(record, READY, '2026-09-12')
+    await tick()
     run.cancel()
     calls[0].resolve(late(MAP))
     await tick()
@@ -3124,6 +2919,7 @@ describe('a cancel that came too late', () => {
     })
     expect(runAllPlan(record, run.snapshot)).toEqual({ kind: 'rebuild', date: '2026-09-12' })
     run.runAll(record, READY, runAllPlan)
+    await tick()
     run.cancel()
     calls[0].resolve(late(MAP))
     await tick()
@@ -3219,6 +3015,7 @@ describe('a cancel that came too late', () => {
     // "is kept" read there as a second, contrary answer.
     const { run, calls, complete, begin } = setup()
     begin()
+    await tick()
     run.cancel()
     expect(calls[0].cancelled).toBe(true)
     calls[0].resolve(late(BUILT))
@@ -3240,6 +3037,7 @@ describe('a cancel that came too late', () => {
   it('a forced layout call that answers too late is a replaced layout, and says the next run draws from it', async () => {
     const { run, calls, record } = setup({ layout: LAYOUT })
     run.start(record, READY, { force: true })
+    await tick()
     run.cancel()
     calls[0].resolve(late(BUILT))
     await tick()
@@ -3255,6 +3053,7 @@ describe('a cancel that came too late', () => {
   it('a layout call that answers without the field after a cancel stops there in the ordinary words', async () => {
     const { run, calls, begin } = setup()
     begin()
+    await tick()
     run.cancel()
     calls[0].resolve(BUILT)
     await tick()
@@ -3310,11 +3109,139 @@ describe("a run's kind is one union, and the flags are derived from it (issue 42
   })
 })
 
+// User Story 1's matrix at the run (spec 037, SC-001): every kind of run
+// hands its completion what its map.build was sent - the same values the
+// request was built from, from the record it read at its start - whatever
+// the store holds by the time it finishes. `projects-store.test.ts` holds
+// the other half: `drawn` is made from that and nothing else.
+describe('what each run tells the store it sent', () => {
+  /** Drawn for the 15th, with a choice of its own in every field a draw sends. */
+  const chosen = (): ProjectRecord => {
+    const record = project({
+      layout: LAYOUT,
+      made: MADE,
+      built: { mode: 'all', agency: null },
+      service: WINDOW,
+      date: '2026-09-15',
+      colors: { A: '#0072bc' },
+      defaultColor: '#123456',
+      lineOrder: ['B', 'A'],
+      style: { lineWidth: 11 },
+      lines: { A: { name: 'Airport' } },
+    })
+    return { ...record, drawn: drawnOf(record) }
+  }
+  /** Every field a draw sends, chosen otherwise: a write landing while the run went. */
+  const meanwhile = (record: ProjectRecord): ProjectRecord => ({
+    ...record,
+    date: '2026-09-20',
+    colors: { K: '#ff0000' },
+    defaultColor: '#654321',
+    lineOrder: ['K'],
+    style: { lineWidth: 9 },
+    lines: { B: { hidden: true } },
+    tuning: { gridSize: 50 },
+  })
+
+  const RUNS: {
+    kind: string
+    press: (s: ReturnType<typeof setup>) => void
+    sent: (s: ReturnType<typeof setup>) => unknown
+    over: (record: ProjectRecord) => Parameters<typeof sentOf>[1]
+  }[] = [
+    {
+      kind: 'layout',
+      press: (s) => s.begin(),
+      sent: (s) => (s.complete.mock.calls[0] as unknown[])[1],
+      over: () => ({ layout: LAYOUT, made: MADE, date: '2026-09-15' }),
+    },
+    {
+      kind: 'rebuild',
+      press: (s) => s.run.rebuild(s.record, READY, '2026-09-12'),
+      sent: (s) => (s.completeRebuild.mock.calls[0] as unknown[])[1],
+      over: () => ({ date: '2026-09-12' }),
+    },
+    {
+      kind: 'Run all',
+      press: (s) => s.run.runAll({ ...s.record, date: '2026-09-12' }, READY, runAllPlan),
+      sent: (s) => (s.completeRebuild.mock.calls[0] as unknown[])[1],
+      over: () => ({ date: '2026-09-12' }),
+    },
+    {
+      kind: 'colours',
+      press: (s) =>
+        s.run.recolour(s.record, READY, { colors: { C: '#00ff00' }, defaultColor: '#000000' }),
+      sent: (s) => (s.completeColors.mock.calls[0] as unknown[])[2],
+      over: (r) => ({
+        date: drawnDate(r) ?? '',
+        colors: { C: '#00ff00' },
+        defaultColor: '#000000',
+      }),
+    },
+    {
+      kind: 'order',
+      press: (s) => s.run.reorder(s.record, READY, ['A', 'B']),
+      sent: (s) => (s.completeOrder.mock.calls[0] as unknown[])[2],
+      over: (r) => ({ date: drawnDate(r) ?? '', lineOrder: ['A', 'B'] }),
+    },
+    {
+      kind: 'sizes',
+      press: (s) => s.run.restyle(s.record, READY, { lineWidth: 12 }),
+      sent: (s) => (s.completeStyle.mock.calls[0] as unknown[])[2],
+      over: (r) => ({ date: drawnDate(r) ?? '', style: { lineWidth: 12 } }),
+    },
+    {
+      kind: 'options',
+      press: (s) => s.run.redrawLines(s.record, READY, { A: { hidden: true } }),
+      sent: (s) => (s.completeLines.mock.calls[0] as unknown[])[2],
+      over: (r) => ({ date: drawnDate(r) ?? '', lines: { A: { hidden: true } } }),
+    },
+  ]
+
+  for (const run of RUNS)
+    it(`${run.kind}: what map.build was sent, with every field written while it drew`, async () => {
+      // Mutation: `#draw` building the sent set from the record as it stood
+      // after the draw (a read again before the completion), or from the
+      // record handed at the press - the fields written meanwhile, or the
+      // run's own choice, are then in what the store is told was drawn.
+      const s = setup(chosen())
+      // The store holds what the screen does not yet: another default colour
+      // and another order, which the run must send rather than the screen's.
+      const stored = { ...s.record, defaultColor: '#abcdef', lineOrder: ['A', 'B', 'K'] }
+      s.store(run.kind === 'Run all' ? { ...stored, date: '2026-09-12' } : stored)
+      const read = s.stored()
+      run.press(s)
+      await tick()
+      // Everything a draw sends is written otherwise while the run goes.
+      s.store(meanwhile(read))
+      if (s.calls[0].method === 'graph.build') await laidOut(s.calls)
+      const map = s.calls.find((c) => c.method === 'map.build')
+      expect(map, 'the map was asked for').toBeDefined()
+      map?.resolve({ files: {} })
+      await tick()
+      expect(s.run.snapshot.state).toBe('done')
+      const sent = run.sent(s) as Record<string, unknown> & { sent?: unknown }
+      const set = (sent.sent ?? sent) as ReturnType<typeof sentOf>
+      expect(set, 'the record it read, with its own choice').toEqual(sentOf(read, run.over(read)))
+      // And it is what the request carried, field by field.
+      const params = map?.params as Record<string, unknown>
+      expect(params.layout).toBe(set.layout)
+      expect(params.date).toBe(set.date)
+      expect(params.colors).toEqual(set.colors)
+      expect(params.default_color).toBe(set.defaultColor)
+      expect(params.line_order ?? []).toEqual(set.lineOrder)
+      expect({ style: params.style, lines: params.lines }).toEqual({
+        style: styleParams(set.style).style,
+        lines: linesParams(set.lines).lines,
+      })
+    })
+})
+
 // The redraw a project's opening makes of a page an older engine drew (issue
 // 465), as the run sees it. It goes through Run all, so the day it draws is
-// the record's once the writes on their way have landed (issue 407): cell 03
-// holds a day a person picked for a moment before writing it, and a start
-// flushes that write first.
+// the record's as the run reads it from the store (issue 407, spec 037):
+// cell 03 holds a day a person picked for a moment before writing it, and a
+// start flushes that write first, before the read.
 describe('the redraw of an older page as its project opens', () => {
   /** Laid out and drawn for the 15th, the record's day the same: an older page's project. */
   function drawnFor15(): ProjectRecord {
@@ -3325,24 +3252,18 @@ describe('the redraw of an older page as its project opens', () => {
       service: WINDOW,
       date: '2026-09-15',
     })
-    return { ...laid, drawn: drawnFrom(laid) }
+    return { ...laid, drawn: drawnOf(laid) }
   }
   const OLDER = { older: true, drawnHere: 0 }
   const screen = (record: ProjectRecord) => ({ ...record, readOnly: false })
-
-  function held() {
-    let answer!: (record: ProjectRecord) => void
-    const promise = new Promise<ProjectRecord>((yes) => {
-      answer = yes
-    })
-    return { promise, answer }
-  }
 
   it('is cell 03’s rebuild for the day the map shows, its job, its line and its sentence', async () => {
     const opened = setup(drawnFor15())
     redrawPageOnOpen(opened.run, screen(opened.record), READY, OLDER)
     const pressed = setup(drawnFor15())
     pressed.run.rebuild(pressed.record, READY, '2026-09-15')
+    // Each reads its record first (spec 037).
+    await tick()
     for (const { run, calls } of [opened, pressed]) {
       expect(calls.map((c) => c.method)).toEqual(['map.build'])
       expect(calls[0].params).toMatchObject({ layout: LAYOUT, date: '2026-09-15' })
@@ -3355,7 +3276,12 @@ describe('the redraw of an older page as its project opens', () => {
     expect(timeless(opened.run), 'the same job').toEqual(timeless(pressed.run))
     expect(opened.run.snapshot, 'the same run, done').toEqual(pressed.run.snapshot)
     expect(opened.run.snapshot).toMatchObject({ state: 'done', rebuilt: true, day: '2026-09-15' })
-    expect(opened.completeRebuild).toHaveBeenCalledWith('p1', { date: '2026-09-15' })
+    // Its write is the rebuild's own: what the map was sent, for the day it
+    // already was, as cell 03's rebuild writes it.
+    expect(opened.completeRebuild).toHaveBeenCalledWith('p1', {
+      sent: sentOf(opened.record, { date: '2026-09-15' }),
+    })
+    expect(opened.completeRebuild.mock.calls[0]).toEqual(pressed.completeRebuild.mock.calls[0])
   })
 
   it('draws nothing, and writes no day back, over a day chosen just before it', async () => {
@@ -3363,15 +3289,12 @@ describe('the redraw of an older page as its project opens', () => {
     // screen held (`run.rebuild(project, engine, now.date)`, as it first was)
     // - it waits for the flushed write and then draws the 15th, and
     // `completeRebuild` writes the 15th back over the 20th just chosen.
-    const { run, calls, record, completeRebuild } = setup(drawnFor15())
-    const write = held()
-    // Cell 03's held day, flushed by the start as `ServiceDay` flushes it.
-    run.beforeStart(() => {
-      void run.writing(write.promise)
-    })
+    const { run, calls, record, completeRebuild, store } = setup(drawnFor15())
+    // Cell 03's held day, flushed by the start as `ServiceDay` flushes it:
+    // sent before the run's read, so the store answers the read with it.
+    run.beforeStart(() => store({ ...record, date: '2026-09-20' }))
     const before = run.snapshot
     redrawPageOnOpen(run, screen(record), READY, OLDER)
-    write.answer({ ...record, date: '2026-09-20', modified: '2026-09-02T00:00:00.000Z' })
     await tick()
     await tick()
     expect(calls, 'nothing was drawn').toHaveLength(0)
@@ -3385,12 +3308,12 @@ describe('the redraw of an older page as its project opens', () => {
     // flushed by its start. Mutation: the redraw started as cell 03's rebuild
     // for the day the screen held - it waits for the write in flight and
     // then draws the 15th over the 20th.
-    const { run, calls, record, completeRebuild } = setup(drawnFor15())
-    const write = held()
-    void run.writing(write.promise)
+    const { run, calls, record, completeRebuild, store } = setup(drawnFor15())
+    // Sent before the redraw was asked for: in the store's queue, ahead of
+    // the run's read, while the screen still holds the 15th.
+    store({ ...record, date: '2026-09-20' })
     const before = run.snapshot
     redrawPageOnOpen(run, screen(record), READY, OLDER)
-    write.answer({ ...record, date: '2026-09-20', modified: '2026-09-02T00:00:00.000Z' })
     await tick()
     await tick()
     expect(calls, 'nothing was drawn').toHaveLength(0)
@@ -3404,6 +3327,7 @@ describe('the redraw of an older page as its project opens', () => {
     // open; this pins the answer as built): a failed rebuild, in cell 03.
     const { run, calls, record, completeRebuild } = setup(drawnFor15())
     redrawPageOnOpen(run, screen(record), READY, OLDER)
+    await tick()
     calls[0].reject(new Error('la-metro-rail has no stored layout cccccccc'))
     await tick()
     expect(run.snapshot).toMatchObject({

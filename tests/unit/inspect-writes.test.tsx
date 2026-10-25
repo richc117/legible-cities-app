@@ -1,7 +1,8 @@
 // Cell 01's mode and operator as `Inspect` writes them (issue 407): its own
-// handlers, run for real, against the real `LayoutRun` and a stand-in store
-// that writes one write at a time in the order it was sent them, as the
-// main process's does.
+// handlers, run for real, through what `useProjectState` makes of what they
+// hand it (`namedBy`, spec 037), against a stand-in store that writes one
+// write at a time in the order it was sent them, each the fields it names
+// onto the record as it then stands, as the main process's does.
 //
 // Nothing in this suite renders to a DOM. `Inspect` is called as a function
 // inside a component that renders nothing, so its hooks are that
@@ -14,8 +15,8 @@
 import { act, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import Inspect from '../../src/renderer/src/Inspect'
+import { namedBy } from '../../src/renderer/src/notebook/useProjectState'
 import type { EngineState } from '../../src/shared/engine'
 import type { ProjectInputs, ProjectRecord } from '../../src/shared/project'
 import type { Inspection } from '../../src/shared/protocol'
@@ -112,14 +113,14 @@ function container(): Element {
  * a time in the order it was sent them, each answer the whole record.
  */
 function heldStore(): {
-  send: (inputs: ProjectInputs) => Promise<ProjectRecord>
-  sent: ProjectInputs[]
+  send: (inputs: Partial<ProjectInputs>) => Promise<ProjectRecord>
+  sent: Partial<ProjectInputs>[]
   answerAll: () => Promise<void>
   record: () => ProjectRecord
 } {
   let stored = RECORD
-  const sent: ProjectInputs[] = []
-  const waiting: { inputs: ProjectInputs; answer: (r: ProjectRecord) => void }[] = []
+  const sent: Partial<ProjectInputs>[] = []
+  const waiting: { inputs: Partial<ProjectInputs>; answer: (r: ProjectRecord) => void }[] = []
   return {
     send(inputs) {
       sent.push(inputs)
@@ -140,19 +141,16 @@ function heldStore(): {
 let root: Root
 let tree: JSX.Element
 let store: ReturnType<typeof heldStore>
-let run: LayoutRun
 
 /**
  * What `useProjectState`'s `setInputs` does with what the panel hands it: a
- * value goes at once, a function of the record once the writes ahead of it
- * have landed. The panel's own handlers are what is under test.
+ * value goes at once, and so does a function of the record, as the fields
+ * it chooses itself. The panel's own handlers are what is under test.
  */
 const onInputs = async (
   inputs: ProjectInputs | ((record: ProjectRecord) => ProjectInputs),
 ): Promise<void> => {
-  await (typeof inputs === 'function'
-    ? run.writingFrom(RECORD, (landed) => store.send(inputs(landed)))
-    : run.writing(store.send(inputs)))
+  await store.send(typeof inputs === 'function' ? namedBy(inputs, RECORD) : inputs)
 }
 
 // One of each for the life of the file, as the screen's are for the life of
@@ -184,20 +182,6 @@ async function opened(registry: ProjectInputs | null): Promise<void> {
 
 beforeEach(() => {
   store = heldStore()
-  run = new LayoutRun({
-    client: {
-      request: () => {
-        throw new Error('nothing here runs')
-      },
-    },
-    complete: async () => ({ changed: false, relaid: false }),
-    completeRebuild: async () => ({}),
-    completeColors: async () => ({}),
-    completeOrder: async () => ({}),
-    completeStyle: async () => ({}),
-    completeLines: async () => ({}),
-    today: () => '2026-09-08',
-  })
   root = createRoot(container())
 })
 
@@ -209,24 +193,22 @@ afterEach(() => {
 describe('the mode and the operator, chosen a moment apart', () => {
   it('an operator chosen while a mode is on its way goes with that mode', async () => {
     // Mutation: `chooseAgency` writing `{ mode: project.mode, agency: next }`
-    // again - the operator goes at once with subway, and the store, writing
-    // it second, puts subway back.
+    // again - the operator goes with subway, and the store, writing it
+    // second, puts subway back.
     await opened(null)
     act(() => select('Mode')('rail'))
     act(() => select('Operator')('SUB'))
-    expect(store.sent, 'the operator waits for the mode').toEqual([
+    expect(store.sent, 'the operator goes at once, alone').toEqual([
       { mode: 'rail', agency: 'METRO' },
+      { agency: 'SUB' },
     ])
     await act(() => store.answerAll())
     expect(store.record()).toMatchObject({ mode: 'rail', agency: 'SUB' })
   })
 
   it('the feed’s entry, used after an operator still waiting, is what the record ends on', async () => {
-    // A mode, then an operator, which waits for the mode, then "Use the
-    // feed's entry": the last press is the entry. Mutation: `useEntry`
-    // writing the entry at once (`void store(registry)`) - it is sent ahead
-    // of the operator still waiting, which is then written last, with the
-    // entry's mode and the earlier operator.
+    // A mode, then an operator, then "Use the feed's entry": the last press
+    // is the entry, sent last and written last, and the record ends on it.
     await opened({ mode: 'subway', agency: 'METRO' })
     act(() => select('Mode')('rail'))
     act(() => select('Operator')('SUB'))

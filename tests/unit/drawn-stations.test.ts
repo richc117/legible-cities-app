@@ -403,6 +403,8 @@ describe('the layout run hands the record its build’s stations', () => {
     const written: { method: string; done: unknown }[] = []
     const run = new LayoutRun({
       client: client(stations),
+      // The store's record, as the run reads it at its start (spec 037).
+      read: async () => project,
       complete: async (_id, done) => {
         written.push({ method: 'complete', done })
         return { changed: false, relaid: false }

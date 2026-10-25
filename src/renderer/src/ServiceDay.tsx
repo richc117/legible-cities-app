@@ -86,12 +86,11 @@ const CHOICE_DELAY = 250
  * The chosen day's write, held back by `CHOICE_DELAY` and never lost: sent at
  * once when the form goes, and when a layout run, a rebuild or Run all
  * starts (issue 407), whichever control started it. The second is the
- * run's own hook (`beforeStart`), told of the press before the run looks
- * for the writes on their way, so a day picked a moment before "Lay out
- * again" or Run all is a write the run waits for and draws. Left to its
- * timer it landed while the run went, with the control already disabled,
- * and the layout run's write kept it and recorded it as the day drawn
- * (`drew` in the store); a rebuild wrote its own day back over it.
+ * run's own hook (`beforeStart`), told of the press before the run reads
+ * its record, so a day picked a moment before "Lay out again" or Run all is
+ * a write sent before that read, which the store answers with it (spec 037):
+ * the run draws the day. Left to its timer it landed while the run went,
+ * with the control already disabled, and the run drew the day before it.
  *
  * Flushed rather than cancelled, which is the opposite of what the colour
  * and order panels do with theirs: their pending call is a redraw a person

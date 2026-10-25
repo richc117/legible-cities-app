@@ -1,8 +1,9 @@
 // Cell 03's service day as `ServiceDay` writes it, against the real
 // `LayoutRun` (issue 407): a day picked is written a quarter of a second
-// later, and a run started inside that beat must send it first, wait for
-// it and draw it, rather than draw the day the record held and let the day
-// land while it goes.
+// later, and a run started inside that beat must send it first and draw
+// it, rather than draw the day the record held and let the day land while
+// it goes. The store here is main's in miniature (spec 037): one queue, and
+// the run's read answered only once the write sent before it has landed.
 //
 // Nothing in this suite renders to a DOM. `ServiceDay` is called as a
 // function inside a component that renders nothing, so its hooks are that
@@ -82,14 +83,22 @@ let run: LayoutRun
 let asked: { method: string; params: Record<string, unknown>; resolve: (v: unknown) => void }[]
 const complete = vi.fn(async () => ({ changed: false, relaid: false }))
 let answerDay: (record: ProjectRecord) => void
-/** What the screen's `setDate` does: hand the write to the run as it is sent. */
+/** What the store holds, and its one queue, as `ProjectStore.#serial` keeps it. */
+let stored: ProjectRecord
+let line: Promise<unknown>
+function queued<T>(step: () => Promise<T>): Promise<T> {
+  const next = line.then(step)
+  line = next.catch(() => undefined)
+  return next
+}
+/** What the screen's `setDate` does: send the write at once; it lands when the test says. */
 const onDate = vi.fn(async (date: string): Promise<void> => {
   void date
-  await run.writing(
-    new Promise<ProjectRecord>((answer) => {
+  await queued(async () => {
+    stored = await new Promise<ProjectRecord>((answer) => {
       answerDay = answer
-    }),
-  )
+    })
+  })
 })
 const handback = { current: null }
 
@@ -102,7 +111,11 @@ beforeEach(() => {
   asked = []
   complete.mockClear()
   onDate.mockClear()
+  stored = DRAWN
+  line = Promise.resolve()
   run = new LayoutRun({
+    // The run's read, queued behind the writes sent before it.
+    read: () => queued(async () => stored),
     client: {
       request(method, params) {
         let resolve!: (value: unknown) => void
@@ -136,8 +149,8 @@ afterEach(() => {
 describe('a day picked in cell 03, still waiting to be written when a run starts', () => {
   it('is sent by the press, waited for, and is the day the run draws and records', async () => {
     // Mutation: `ServiceDay` handing `useDayChoice` something other than its
-    // run, which never hears the press - the run lays out at once, for the
-    // 15th, and the 20th is written a quarter of a second later.
+    // run, which never hears the press - the run reads the 15th and lays it
+    // out, and the 20th is written a quarter of a second later.
     await act(async () => root.render(<Harness />))
     const [control] = find(tree, (e) => e.type === 'input' && e.props.type === 'date')
     expect(control, 'the date control').toBeDefined()
@@ -150,7 +163,8 @@ describe('a day picked in cell 03, still waiting to be written when a run starts
 
     act(() => run.start(DRAWN, READY))
     expect(onDate, 'sent by the press').toHaveBeenCalledWith('2026-09-20')
-    expect(asked, 'and waited for').toHaveLength(0)
+    await act(tick)
+    expect(asked, 'and the run’s read waits behind it').toHaveLength(0)
     await act(async () => {
       answerDay({ ...DRAWN, date: '2026-09-20' })
       await tick()

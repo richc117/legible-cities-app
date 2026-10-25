@@ -284,9 +284,14 @@ describe('registerProjectHandlers', () => {
     expect(calls).toEqual([])
     await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'tram', agency: null })
     await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'all', agency: 'M', extra: 1 })
+    // Either alone, as a patch of the field it names (spec 037).
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { agency: 'METRO' })
+    await call(CHANNELS.projectsSetInputs, 'abcdefghijk1', { mode: 'subway' })
     expect(calls).toEqual([
       { method: 'setInputs', args: ['abcdefghijk1', { mode: 'tram', agency: null }] },
       { method: 'setInputs', args: ['abcdefghijk1', { mode: 'all', agency: 'M' }] },
+      { method: 'setInputs', args: ['abcdefghijk1', { agency: 'METRO' }] },
+      { method: 'setInputs', args: ['abcdefghijk1', { mode: 'subway' }] },
     ])
   })
 

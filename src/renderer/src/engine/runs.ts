@@ -262,6 +262,9 @@ export function layoutRunFor(projectId: string): LayoutRun {
   if (existing !== undefined) return existing
   const run = new LayoutRun({
     client: engineClient(),
+    // The run's one read of its record, queued in main behind the writes
+    // sent before it (spec 037).
+    read: (id) => window.api.projects.get(id),
     complete: (id, done) => window.api.projects.completeLayout(id, done),
     completeRebuild: (id, done) => window.api.projects.completeRebuild(id, done),
     completeColors: (id, palette, sent, stations) =>
