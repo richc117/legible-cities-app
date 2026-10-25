@@ -1,6 +1,19 @@
-# Every change, on the three platforms: style, types, unit tests, a build,
-# and the end-to-end suite, which launches the real application. The job
-# names are the required status checks in docs/repository-settings.md.
+# Two layers, each a required check (docs/repository-settings.md,
+# specs/038-test-pyramid/contracts/ci-layers.md).
+#
+# `ci (<os>)` is the fast layer, on Ubuntu, macOS and Windows for every pull
+# request and every push to `main`: style, types, unit tests and a build. It
+# launches nothing and answers in minutes.
+#
+# `e2e (<os>)` is the long layer, on macOS and Windows, the two platforms
+# people install: the Playwright suite over the real application. It always
+# starts and always reports, because a required check that never starts
+# blocks the merge for ever and a `paths:` filter makes exactly that. Its
+# first step (scripts/ci-decide.mjs) prints the changed paths and the rule
+# that judged them; when every path of a pull request is documentation, every
+# later step is skipped and the job passes in under two minutes with a
+# notice. A push to `main` always runs the suite. There is no Ubuntu leg of
+# it; determinism.yml and e2e-loop.yml keep Ubuntu as an option.
 name: ci
 
 on:
@@ -22,8 +35,9 @@ jobs:
   ci:
     name: ci (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # The slowest of the last eight runs took 33 minutes (macOS).
-    timeout-minutes: 60
+    # Install, lint, types, units and a build; the end-to-end suite is the
+    # other job's.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -39,9 +53,9 @@ jobs:
       - name: Install
         run: npm ci
 
-      # Since Electron 42 the npm package fetches no binary; without this
-      # step the first electron.launch() in the end-to-end suite would download
-      # it against the launch timeout (specs/001, research.md section 3).
+      # Since Electron 42 the npm package fetches no binary, and the fast
+      # layer keeps this step so that both layers start from the same
+      # install (contracts/ci-layers.md; specs/001, research.md section 3).
       - name: Fetch the Electron binary
         run: npx install-electron --no
 
@@ -57,20 +71,63 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: End-to-end suite (Linux, under a display server)
-        if: runner.os == 'Linux'
-        run: xvfb-run -a npm run test:e2e
+  e2e:
+    name: e2e (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # The slowest of the last eight runs took 33 minutes (macOS), build and
+    # lint included.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    steps:
+      # The whole history, so that git can diff the pull request's base
+      # against its head.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      # Prints the changed paths and the rule that judged them, and sets
+      # `run`. Every step after it is gated on that output being anything
+      # but 'false', so a step that failed to set it runs the suite.
+      - name: Decide whether the suite runs
+        id: decide
+        shell: bash
         env:
-          CI: 'true'
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci-decide.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Install
+        if: steps.decide.outputs.run != 'false'
+        run: npm ci
+
+      # Since Electron 42 the npm package fetches no binary; without this
+      # step the first electron.launch() in the end-to-end suite would download
+      # it against the launch timeout (specs/001, research.md section 3).
+      - name: Fetch the Electron binary
+        if: steps.decide.outputs.run != 'false'
+        run: npx install-electron --no
+
+      - name: Build
+        if: steps.decide.outputs.run != 'false'
+        run: npm run build
 
       - name: End-to-end suite
-        if: runner.os != 'Linux'
+        if: steps.decide.outputs.run != 'false'
         run: npm run test:e2e
         env:
           CI: 'true'
 
       - name: Keep the failure evidence
-        if: failure()
+        if: failure() && steps.decide.outputs.run != 'false'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-${{ matrix.os }}

@@ -90,8 +90,10 @@ npm run dev                       # the window; interface edits hot-reload
 ```
 
 The terminal shows the three configured locations and their sources before
-the window opens. The checks, which `.github/workflows/ci.yml` runs on
-Ubuntu, macOS and Windows for every change:
+the window opens. The checks, of which `.github/workflows/ci.yml` runs the
+first four on Ubuntu, macOS and Windows for every change, and the last on
+macOS and Windows (skipped on a pull request that changes only
+documentation):
 
 ```
 npm run lint          # eslint and prettier

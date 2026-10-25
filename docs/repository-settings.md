@@ -27,13 +27,26 @@ Everything below is free for a public repository.
 
 ## Branch protection on `main`
 
-Applied 2026-09-07, when A0-09 landed the `ci` check. Direct commits to
-`main` ended with the commit that ticked these boxes; see `CONTRIBUTING.md`.
+Applied 2026-09-07, when A0-09 landed the `ci` check. The two `e2e` checks
+are required from the merge that split the layers (issue 500), and the
+setting is changed within the hour of that merge (task T011 of spec 038).
+Direct commits to `main` ended with the commit that ticked these boxes; see
+`CONTRIBUTING.md`.
 
 - [x] Require a pull request before merging.
-- [x] Require status checks to pass: `gitleaks`, `preflight`, and the three
-      `ci (<os>)` jobs: `ci (ubuntu-22.04)`, `ci (macos-15)`,
-      `ci (windows-latest)`.
+- [x] Require status checks to pass, seven of them: `gitleaks`,
+      `preflight`, the three `ci (<os>)` jobs (`ci (ubuntu-22.04)`,
+      `ci (macos-15)`, `ci (windows-latest)`) and the two `e2e (<os>)` jobs
+      (`e2e (macos-15)`, `e2e (windows-latest)`). `ci` is the fast layer
+      (style, types, unit tests, a build) and `e2e` the end-to-end suite
+      over the real application; a pull request whose every changed path is
+      documentation still gets an `e2e` result, which passes at once
+      without running the suite (`scripts/ci-decide.mjs`). No job has a
+      `paths:` filter, because a required check that never starts blocks the
+      merge. Ubuntu has no `e2e` leg. The list is
+      `specs/038-test-pyramid/contracts/ci-layers.md`'s; a change to the
+      jobs' names in `ci.yml` is a change here and to the setting, in the
+      same hour.
 - [x] Require branches to be up to date before merging.
 - [x] Block force pushes.
 - [x] Block deletions.

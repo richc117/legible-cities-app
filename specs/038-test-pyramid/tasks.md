@@ -30,14 +30,14 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
 
 ## Phase 3: FR-003, the CI split (pull request 3; US3)
 
-- [ ] T008 [US3] In `.github/workflows/ci.yml`:
+- [x] T008 [US3] In `.github/workflows/ci.yml`:
   - Make `ci (<os>)` the fast layer on three platforms: install, Electron binary, lint, typecheck, unit tests, build. Remove both e2e steps.
   - Add `e2e (<os>)` on `macos-15` and `windows-latest`, with `fetch-depth: 0`.
   - The e2e job's first step decides `docsOnly` by R3's denylist, from `git diff --name-only` between base and head, and prints its decision (data-model.md). Every later step is gated `if: steps.decide.outputs.run == 'true'`; on a push to `main` it always runs.
   - Then install, Electron binary, build, `npm run test:e2e`, and keep the failure evidence.
   - Timeouts are 20 and 60 minutes; the per-ref concurrency is kept.
-- [ ] T009 [US3] Test the decision step's rule as a script under `scripts/` with a unit test, or inline with a table in the workflow's comment. Cover: all docs; one `src/` file among docs; an empty diff (runs); a new top-level file (runs); `.claude/**` only. Show the denylist's widest entry removed turns a docs-only row to "runs".
-- [ ] T010 [US3] `docs/repository-settings.md`: list the seven required checks. `docs/ARCHITECTURE.md:1269`: correct "The smoke test". `CONTRIBUTING.md`: say what runs on a contributor's pull request.
+- [x] T009 [US3] Test the decision step's rule as a script under `scripts/` with a unit test, or inline with a table in the workflow's comment. Cover: all docs; one `src/` file among docs; an empty diff (runs); a new top-level file (runs); `.claude/**` only. Show the denylist's widest entry removed turns a docs-only row to "runs".
+- [x] T010 [US3] `docs/repository-settings.md`: list the seven required checks. `docs/ARCHITECTURE.md:1269`: correct "The smoke test". `CONTRIBUTING.md`: say what runs on a contributor's pull request (left to issue 488, which rewrites that file; the sentence is in lane 500's report).
 - [ ] T011 [US3] The coordinator changes branch protection to contracts/ci-layers.md's seven checks in the same hour as the merge, and proves quickstart.md's FR-003 steps 1-5 on the pull request itself.
 
 ## Phase 4: Part 2, the DOM layer (outline; may follow 1.0; US1)

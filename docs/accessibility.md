@@ -599,7 +599,7 @@ or a design decision.
   map…") asserted both, on both tabs at the time, with forty controls in the
   frame, and
   that the map does not move when the skip appears; it passed in a full
-  end-to-end run on macOS (2026-09-13), and CI runs it on three platforms. Going backwards is unchanged: Shift+Tab from the toolbar walks
+  end-to-end run on macOS (2026-09-13), and CI runs it on two (macOS and Windows). Going backwards is unchanged: Shift+Tab from the toolbar walks
   back through the map. The VoiceOver and Narrator columns are still a
   person's. *In the notebook* (ADR-045) there are no tabs: the skip sat
   before the pinned map at the top of the column and sent focus to Rename

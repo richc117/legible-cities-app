@@ -1,8 +1,8 @@
 // The end-to-end checks: launch the built app, find the window, read the
 // Library, prove the origin, quit, and see the process end; then the
 // project lifecycle from the Library, across a relaunch, and the served
-// output of a real project. Runs on the three runners; on Linux under
-// xvfb-run (research.md section 3).
+// output of a real project. Runs on the macOS and Windows runners; locally
+// on Linux under xvfb-run (research.md section 3).
 
 import { spawn } from 'node:child_process'
 import {
