@@ -25,6 +25,17 @@
 // waits for it too, and is handed to the app's own handler after it, in the
 // order the two arrived. A read sent before any held write arrived goes at
 // once, as it would in the app.
+//
+// **What this models, and what it cannot catch.** It models the store's
+// queue as the app has it: a write in it the turn it arrives, and a read
+// behind it. The specs that hold a write through it therefore prove that a
+// run plans from the record its read answers - a run planning from the
+// record it was handed fails them - but not the order itself: a `get`
+// outside the store's queue, or an `await` before a writer reaches it, is
+// invisible here, because this puts the read behind the write whatever the
+// store does. Those are caught by `tests/unit/projects-store.test.ts` ("the
+// record session"), `tests/unit/ipc.test.ts` and
+// `tests/e2e/record-order.spec.ts`.
 
 import type { ElectronApplication } from '@playwright/test'
 import { CHANNELS } from '../../src/shared/api'

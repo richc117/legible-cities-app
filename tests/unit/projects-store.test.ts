@@ -2108,6 +2108,140 @@ describe('the record session', () => {
     expect((await read).theme, 'and answers with it').toBe('sepia')
   })
 
+  /** Every writer of a record, each with a write a read after it must see. */
+  const WRITERS: {
+    name: string
+    write: (s: ProjectStore, record: ProjectRecord) => Promise<unknown>
+    sees: (record: ProjectRecord) => unknown
+    is: unknown
+  }[] = [
+    {
+      name: 'setInputs',
+      write: (s, r) => s.setInputs(r.id, { agency: 'METRO' }),
+      sees: (r) => r.agency,
+      is: 'METRO',
+    },
+    {
+      name: 'setTuning',
+      write: (s, r) => s.setTuning(r.id, { gridSize: 150 }),
+      sees: (r) => r.tuning,
+      is: { gridSize: 150 },
+    },
+    {
+      name: 'setDate',
+      write: (s, r) => s.setDate(r.id, '2026-09-12'),
+      sees: (r) => r.date,
+      is: '2026-09-12',
+    },
+    {
+      name: 'completeLayout',
+      write: (s, r) =>
+        s.completeLayout(r.id, {
+          date: '2026-09-15',
+          layout: 'b'.repeat(64),
+          service: WINDOW,
+          made: LATER,
+          built: BUILT,
+          sent: sentOf(r, { layout: 'b'.repeat(64), made: LATER, date: '2026-09-15' }),
+        }),
+      sees: (r) => r.layout,
+      is: 'b'.repeat(64),
+    },
+    {
+      name: 'completeRebuild',
+      write: (s, r) => s.completeRebuild(r.id, { sent: sentOf(r, { date: '2026-09-12' }) }),
+      sees: (r) => r.drawn?.date,
+      is: '2026-09-12',
+    },
+    {
+      name: 'completeColors',
+      write: (s, r) => {
+        const palette = { colors: { A: '#0072bc' }, defaultColor: '#888888' }
+        return s.completeColors(r.id, palette, sentOf(r, { date: '2026-09-15', ...palette }))
+      },
+      sees: (r) => r.colors,
+      is: { A: '#0072bc' },
+    },
+    {
+      name: 'completeOrder',
+      write: (s, r) =>
+        s.completeOrder(r.id, ['K', 'A'], sentOf(r, { date: '2026-09-15', lineOrder: ['K', 'A'] })),
+      sees: (r) => r.lineOrder,
+      is: ['K', 'A'],
+    },
+    {
+      name: 'completeStyle',
+      write: (s, r) =>
+        s.completeStyle(
+          r.id,
+          { lineWidth: 12 },
+          sentOf(r, { date: '2026-09-15', style: { lineWidth: 12 } }),
+        ),
+      sees: (r) => r.style,
+      is: { lineWidth: 12 },
+    },
+    {
+      name: 'completeLines',
+      write: (s, r) =>
+        s.completeLines(
+          r.id,
+          { A: { hidden: true } },
+          sentOf(r, { date: '2026-09-15', lines: { A: { hidden: true } } }),
+        ),
+      sees: (r) => r.lines,
+      is: { A: { hidden: true } },
+    },
+    {
+      name: 'setTheme',
+      write: (s, r) => s.setTheme(r.id, 'sepia'),
+      sees: (r) => r.theme,
+      is: 'sepia',
+    },
+    {
+      name: 'setExport',
+      write: (s, r) => s.setExport(r.id, { preset: 'bluesky', options: {} } as never),
+      sees: (r) => r.export.preset,
+      is: 'bluesky',
+    },
+    {
+      name: 'rename',
+      write: (s, r) => s.rename(r.id, 'Renamed'),
+      sees: (r) => r.name,
+      is: 'Renamed',
+    },
+  ]
+
+  it.each(WRITERS)(
+    '$name: a read sent the moment after it waits for it, however long it takes',
+    async ({ write, sees, is }) => {
+      // Mutation: an `await` before `#serial` in this writer (`await
+      // Promise.resolve()` at the top of the public method) - the read sent
+      // after it reaches the queue first, and answers without the write.
+      const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+      await drawsOn(store).completeLayout(project.id, {
+        date: '2026-09-15',
+        layout: 'a'.repeat(64),
+        service: WINDOW,
+        made: MADE,
+        built: BUILT,
+      })
+      const before = await store.get(project.id)
+      const gated = gatedStore()
+      const written = write(gated.store, before)
+      const read = gated.store.get(project.id)
+      let answered = false
+      void read.then(() => {
+        answered = true
+      })
+      await expect.poll(() => gated.waiting(), { timeout: 5_000 }).toBe(1)
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(answered, 'the read waits behind the write').toBe(false)
+      gated.open()
+      await written
+      expect(sees(await read), 'and answers with it').toEqual(is)
+    },
+  )
+
   it('does not hold a read of another project behind this one’s write', async () => {
     const one = await store.create({ name: 'One', feed: 'la-metro-rail' })
     const two = await store.create({ name: 'Two', feed: 'la-metro-rail' })
