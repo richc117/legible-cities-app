@@ -1234,7 +1234,11 @@ since nothing records which engine drew a page. The screen then asks for the
 rebuild cell 03 makes for a day, for the day the record holds and the map
 already shows: a `map.build` from the stored layout with the record's
 colours, order, style and line options, never a re-layout (ADR-023), shown
-and written as that rebuild always is, and failing as cell 03's own. It is
+and written as that rebuild always is, and failing as cell 03's own -
+where cell 03 says, in words for a person who pressed nothing, that the map
+could not be redrawn as the project opened, the engine's reason, and what
+still holds of the map on screen for the seams it lacks (issue 517,
+`frameFailure` in `notebook/olderPage.ts`). It is
 started through Run all's machinery rather than as cell 03's press, so the
 day is decided from the record once the writes on their way have landed: a
 start flushes cell 03's held day first, and a rebuild for the day the
