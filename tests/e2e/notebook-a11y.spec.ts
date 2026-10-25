@@ -22,6 +22,7 @@ import {
   PYTHON,
   controlsOf,
   expectEdgesInForcedColours,
+  expectPopoverClear,
   expectNamed,
   expectNoDuplicatedNames,
   fixture,
@@ -244,6 +245,13 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await expect
       .poll(() => controlsOf(page, 'Choose the colour of line A'))
       .toEqual(['Colour for line A'])
+    // Wholly in the window, and clear of its own chip (issue 436).
+    await expectPopoverClear(
+      page,
+      colours.getByRole('button', { name: 'Choose the colour of line A' }),
+      picker,
+      "the project, line A's colour picker",
+    )
     await sweep(page, 'the project, a colour picker open')
     await picker.getByRole('slider', { name: 'Hue' }).focus()
     await page.keyboard.press('Shift+Tab')
@@ -440,6 +448,40 @@ test('forced colours (Windows high contrast): the resting edges of fields, selec
     await openTheDisclosures(page)
     await openCell(page, 'export')
     await expectEdgesInForcedColours(page, 'the project, forced colours', ['date control'])
+  })
+})
+
+// Mutations the coordinator runs this under, each of which must turn it red:
+// - `keepInWindow` not called (ColourChip.tsx): the popover of the last line
+//   runs past the window's foot in a short window.
+// - the `onBlur` that closes the panel removed: the panel stays open over the
+//   rows below it after a Tab out of it.
+// - the popover's margin set back to 0 (panels.css): the popover touches the
+//   chip's ring, which the first part of the test does not see; the
+//   intersection check here sees it only if the popover overlaps the chip's
+//   box itself.
+test("the last line's colour popover is opened and left from the keyboard, in the window and clear of its chip", async () => {
+  test.setTimeout(240_000)
+  const p = profile()
+  await withApp(p, async (page) => {
+    await openLaidOut(page, 'Los Angeles')
+    const colours = page.getByRole('region', { name: 'Line colours' })
+    const chip = colours.getByRole('button', { name: 'Choose the colour of line K' })
+    await chip.focus()
+    await page.keyboard.press('Enter')
+    const popover = colours.getByRole('group', { name: 'Colour for line K' })
+    await expect(popover).toBeVisible()
+    await expectPopoverClear(page, chip, popover, "line K's colour popover")
+
+    // Walking on with Tab leaves it, and closes it, so it never lies over the
+    // controls after it: a press of Tab is a way out, not a dismissal by a
+    // pointer, and an auto popover is only light-dismissed by the pointer.
+    for (let i = 0; i < 10 && (await popover.isVisible()); i++) await page.keyboard.press('Tab')
+    await expect(popover).toBeHidden()
+    expect(
+      await page.evaluate(() => document.activeElement?.tagName.toLowerCase() ?? 'nothing'),
+      'focus went on to a control and was not dropped',
+    ).not.toBe('body')
   })
 })
 

@@ -643,6 +643,13 @@ next before it says what went wrong.
   by the block: the switch's track, the rail's current step (told by its
   ground) and `prefers-contrast`; they are a person's step in
   `docs/accessibility.md`.
+- The colour panel (the popover a chip opens, issue 436) keeps clear of its
+  chip by the width of the chip's focus ring and its offset
+  (`--focus-ring-offset` plus `--focus-ring-width`) on whichever side it is
+  placed, is brought into the window when it opens or takes focus (the chip's
+  scroller moves by the least that fits both, never smoothly), and closes
+  when focus leaves it for another control: an auto popover is dismissed by a
+  press and not by Tab, and one left open covered the controls after it.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is

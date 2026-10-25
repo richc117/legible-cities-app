@@ -14,6 +14,38 @@ import TextInput from './kit/TextInput'
 /** A colour chosen is data, not a token: it is drawn from the record, never from a stylesheet. */
 const swatch = (colour: string): { background: string } => ({ background: colour })
 
+/** The nearest ancestor that scrolls vertically, else the page. */
+function scrollerOf(el: HTMLElement): Element {
+  for (let up = el.parentElement; up !== null; up = up.parentElement) {
+    const { overflowY } = getComputedStyle(up)
+    if ((overflowY === 'auto' || overflowY === 'scroll') && up.scrollHeight > up.clientHeight)
+      return up
+  }
+  return document.scrollingElement ?? document.documentElement
+}
+
+/**
+ * Bring the chip and the panel it opened into the window together (issue
+ * 436). The panel is in the top layer, placed by the platform against the
+ * chip below it or, where that does not fit, above it; where neither fits it
+ * stays below and runs past the window, with the controls inside it out of
+ * sight while focus is on them. A fixed box is never scrolled into view, so
+ * it is the chip's scroller that moves, by the least that fits both, never
+ * smoothly and never so far that the chip goes under the header.
+ */
+function keepInWindow(chip: HTMLElement, panel: HTMLElement): void {
+  const c = chip.getBoundingClientRect()
+  const p = panel.getBoundingClientRect()
+  const top = Math.min(c.top, p.top)
+  const bottom = Math.max(c.bottom, p.bottom)
+  const header = document.querySelector('.app-header')?.getBoundingClientRect().bottom ?? 0
+  let by = 0
+  if (bottom > window.innerHeight) by = Math.min(bottom - window.innerHeight, top - header)
+  else if (top < header) by = top - header
+  if (by === 0 || Number.isNaN(by)) return
+  scrollerOf(chip).scrollBy({ top: by, behavior: 'instant' })
+}
+
 /** What a chip names, what it shows, and what its gestures do. */
 export interface ColourPanelProps {
   /** The chip's name, which names what it colours ("Choose the colour of line A"). */
@@ -113,7 +145,29 @@ export function useColourPanel({
         if (event.newState === 'closed') {
           onClosed()
           setOpen(false)
-        }
+        } else if (chipRef.current !== null && panelRef.current !== null)
+          keepInWindow(chipRef.current, panelRef.current)
+      }}
+      // Focus entering the panel by a key (Tab from the chip) finds it where
+      // it is: brought into the window if the page has moved since it opened.
+      onFocus={() => {
+        if (chipRef.current !== null && panelRef.current !== null)
+          keepInWindow(chipRef.current, panelRef.current)
+      }}
+      // Focus leaving the panel for another control closes it. An auto
+      // popover is light-dismissed by a press outside and not by Tab, so a
+      // person walking on with the keyboard left it open over the rows below
+      // it, and landed on controls it covered (issue 436). Focus going back
+      // to the chip, or to nowhere (the window losing it), leaves it open.
+      onBlur={(event) => {
+        const next = event.relatedTarget
+        if (
+          next instanceof Node &&
+          next !== chipRef.current &&
+          panelRef.current?.contains(next) === false &&
+          panelRef.current.matches(':popover-open')
+        )
+          panelRef.current.hidePopover()
       }}
     >
       {open && (

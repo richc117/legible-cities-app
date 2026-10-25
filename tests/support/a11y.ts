@@ -1077,6 +1077,48 @@ export async function expectButtonsHoldTheirBox(page: Page, where: string): Prom
 }
 
 /**
+ * An open colour popover is wholly inside the window and clear of the chip
+ * that opened it (issue 436). It is in the top layer, placed by the platform
+ * against its chip, and used to run off the bottom of a short window with the
+ * controls inside it out of sight while focus was on them, or to sit over the
+ * chip. Polled, since the page is scrolled to fit it as it opens.
+ */
+export async function expectPopoverClear(
+  page: Page,
+  chip: Locator,
+  popover: Locator,
+  where: string,
+): Promise<void> {
+  let seen = ''
+  await expect
+    .poll(
+      async () => {
+        const [c, p, win] = await Promise.all([
+          chip.boundingBox(),
+          popover.boundingBox(),
+          page.evaluate(() => ({ w: window.innerWidth, h: window.innerHeight })),
+        ])
+        if (c === null || p === null) return 'a box could not be read'
+        seen = JSON.stringify({ chip: c, popover: p, window: win })
+        const problems: string[] = []
+        if (p.x < 0 || p.y < 0 || p.x + p.width > win.w || p.y + p.height > win.h)
+          problems.push('the popover is not wholly inside the window')
+        const apart =
+          p.y >= c.y + c.height ||
+          p.y + p.height <= c.y ||
+          p.x >= c.x + c.width ||
+          p.x + p.width <= c.x
+        if (!apart) problems.push('the popover intersects its chip')
+        if (c.y < 0 || c.y + c.height > win.h) problems.push('the chip is not inside the window')
+        return problems.join('; ')
+      },
+      { message: `${where}: the popover, its chip and the window`, timeout: 5_000 },
+    )
+    .toBe('')
+  expect(seen, `${where}: boxes`).not.toBe('')
+}
+
+/**
  * The resting edges of the controls whose edge is a shadow, with the page in
  * forced colours (Windows high contrast; issue 436, R10-04). The mode removes
  * every box-shadow, so a field, a select, a checkbox or a textarea drawn by a
