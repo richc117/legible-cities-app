@@ -1694,7 +1694,25 @@ a request that would only be refused again. The Outputs list reads only
 sidecars, so neither a `.part` file nor `map.build`'s hidden staging folder
 is ever a row. A layout run and an export of one project cannot overlap,
 because the export reads the page a layout would rewrite: each button is
-disabled while the other runs, and so is delete.
+disabled while the other runs, and so is delete. That is the screen's rule,
+and main holds only part of it (issue 491, spec 037). `ProjectActivity`
+(`src/main/projectActivity.ts`) records which projects have a `map.build`
+writing their `out` folder in flight (set by the engine bridge before the
+guard's await, cleared in `finally`), which have an export running, and which
+are being deleted. An export may not start while the map is being written,
+planning and writing nothing; a deletion may not run while a request names
+the project or it exports, leaving the record and `out/<id>` as they were;
+and a `map.build` is refused while the deletion runs. Each says why in a
+sentence (`src/shared/activity.ts`), the screen's confirm re-reads its runs
+and says the same. A mark follows the engine's answer, not its work, so when
+a bound ends a project's `map.build` (`inactive`) while the engine still
+reports a request it stopped answering (`Sidecar.abandoned`), the bridge
+calls `abandon(project)` and an export or deletion of that project alone is
+refused until the count reads 0; the deletion mark is checked by itself for
+a `map.build`. Requests a stop fails are not counted, so for at most
+`shutdownMs` they leave no mark. A `map.build` sent during an export, and a layout's earlier
+steps (`graph.build` names a feed, which projects share, not a project), are
+the screen's alone.
 
 ### The export's choices
 

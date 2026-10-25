@@ -69,6 +69,7 @@ import {
 import { isLayoutId, type LayoutDone, type LayoutResult } from '../shared/layout'
 import { readStations, type Station } from '../shared/trip'
 import { isValidProjectId } from './paths'
+import { ProjectActivity } from './projectActivity'
 import {
   failedWords,
   folderWords,
@@ -228,6 +229,7 @@ export class ProjectStore {
     home: string,
     private readonly log: (message: string) => void,
     private readonly replace: ReplaceOptions = {},
+    private readonly activity: ProjectActivity = new ProjectActivity(() => 0),
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')
@@ -1174,23 +1176,37 @@ export class ProjectStore {
   }
 
   async #deleteTracked(id: string): Promise<DeleteResult> {
-    if (!(await this.exists(this.dir(id)))) throw new Error('not found')
-    const result: DeleteResult = { removed: [], failed: [] }
-    const targets = [
-      { folder: 'project', path: this.dir(id) },
-      { folder: 'output', path: this.outputDir(id) },
-    ] as const
-    // Each removal is attempted whatever happened to the other, so the
-    // record goes where it can and the person hears about the rest.
-    for (const { folder, path } of targets) {
-      if (!(await this.exists(path))) continue
-      try {
-        await rm(path, { recursive: true, force: true })
-        result.removed.push(folder)
-      } catch (error) {
-        result.failed.push({ folder, reason: reasonOf(error) })
+    // Asked here, after the writes queued ahead of the deletion have landed
+    // and before anything is read or removed: a button pressed while an
+    // export or a map write is going is refused, and the record and the
+    // output folder are as they were (issue 491).
+    const going = this.activity.deleteRefusal(id)
+    if (going !== null) throw new Error(going)
+    // Marked at the same synchronous point as the check, to the end of the
+    // removals: a map.build sent while they await would otherwise pass the
+    // bridge and write into the folder being removed.
+    const release = this.activity.beginDelete(id)
+    try {
+      if (!(await this.exists(this.dir(id)))) throw new Error('not found')
+      const result: DeleteResult = { removed: [], failed: [] }
+      const targets = [
+        { folder: 'project', path: this.dir(id) },
+        { folder: 'output', path: this.outputDir(id) },
+      ] as const
+      // Each removal is attempted whatever happened to the other, so the
+      // record goes where it can and the person hears about the rest.
+      for (const { folder, path } of targets) {
+        if (!(await this.exists(path))) continue
+        try {
+          await rm(path, { recursive: true, force: true })
+          result.removed.push(folder)
+        } catch (error) {
+          result.failed.push({ folder, reason: reasonOf(error) })
+        }
       }
+      return result
+    } finally {
+      release()
     }
-    return result
   }
 }

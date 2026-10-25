@@ -36,6 +36,7 @@ import { byTag, holdingSink, log, setSink, toStderrRedacted } from './log'
 import { LOG_WAIT_MS, openLogFile, within, type LogFile } from './log-file'
 import { shortHomeFrom } from './diagnostics-text'
 import { knownRoots } from './paths-in-text'
+import { ProjectActivity } from './projectActivity'
 import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
@@ -442,7 +443,12 @@ if (!hasLock) {
         runCheck()
       })
     }
-    const store = new ProjectStore(config.home, (m) => log.warn('projects', m))
+    // Which projects have a map being written or an export running, for the
+    // store's deletion, the exporter's start and the engine bridge to share
+    // (issue 491), and which also refuses while the engine reports a request
+    // it was stopped from answering.
+    const activity = new ProjectActivity(() => engine.abandoned)
+    const store = new ProjectStore(config.home, (m) => log.warn('projects', m), {}, activity)
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
     // Every record and every output folder lives under the engine's home, so
@@ -667,6 +673,7 @@ if (!hasLock) {
       async (method, params) =>
         resetInProgress() ?? (await registry(method, params)) ?? resetInProgress(),
       pathRoots,
+      activity,
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of
@@ -736,6 +743,7 @@ if (!hasLock) {
       // The frames live under the engine home, so no export may begin while
       // that folder is being removed.
       blocked: resetInProgress,
+      activity,
       keepFrames: keptFramesFolder(process.env, app.isPackaged),
       log: (message) => log.info('export', message),
     })

@@ -169,7 +169,27 @@ and is told the file's name, never its path. The engine's plan goes through
 `validateCaptureJob` before a window exists, and its file name must be a
 bare name: both arrive from another process. The frames are removed when
 the export ends, whichever way. A layout run and an export of one project
-never overlap: the export reads the page a layout rewrites.
+never overlap: the export reads the page a layout rewrites. The screen holds
+that rule with disabled buttons; **main holds only part of it** (issue 491,
+spec 037). `ProjectActivity` (`src/main/projectActivity.ts`) marks a project
+while a `map.build` writing its `out` folder is in flight (set in
+`engine-ipc.ts` before the guard's await, cleared in `finally`, so a failed
+or cancelled request clears it), while its export runs, and while its
+deletion runs. What main refuses: an export may not start while the map is
+being written, with nothing planned or written; a deletion may not run while
+a request names the project or it exports, with the record and `out/<id>`
+untouched; and a `map.build` is refused while the project's deletion runs.
+Of those, the export and the deletion also refuse for a project whose
+`map.build` a bound ended (`inactive`, from `Sidecar.expire`) while the
+engine still reports a request it stopped answering (`Sidecar.abandoned`),
+since a mark follows the engine's answer and not its work; the bridge calls
+`activity.abandon(project)`, only that project is held, and the hold ends
+when the count reads 0. `requestRefusal` checks the delete mark alone. A
+stop's failed requests are not counted, so for at most `shutdownMs` they
+leave no mark (a known limit, `projectActivity.ts`). The sentences are `src/shared/activity.ts`. **The screen
+alone still holds** a `map.build` sent during an export, and a layout's
+earlier steps: `graph.build` names a feed, not a project, so main cannot tell
+whose it is.
 
 ## The hygiene hook and a commit
 

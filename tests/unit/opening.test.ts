@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { CaptureOptions, CaptureResult } from '../../src/main/capture'
 import { Exporter, type ExportEngine } from '../../src/main/export'
+import { ProjectActivity } from '../../src/main/projectActivity'
 import type { CaptureJob } from '../../src/shared/capture'
 import { ERROR_CODES } from '../../src/shared/engine'
 import {
@@ -431,6 +432,7 @@ function exporter(choice: ExportChoice, storyboards: unknown[] = TABLES.storyboa
     readOnly: false,
   }
   const run = new Exporter({
+    activity: new ProjectActivity(() => 0),
     engine,
     projects: { get: async () => record },
     capture: async (job: CaptureJob, options: CaptureOptions): Promise<CaptureResult> => {

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../../shared/activity'
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
 import type { ExportChoice } from '../../../shared/export'
@@ -615,6 +616,12 @@ export function useProjectState(
   // A rejection stays in the confirm dialog; a result goes back to the
   // Library, with a sentence if some folder remained.
   const remove = async (): Promise<void> => {
+    // Re-read at the moment of confirming: the button was disabled when the
+    // dialog opened, but a run can have started since, and `exporting` and
+    // `layingOut` are the render's. Main refuses too (issue 491); this says
+    // it without the round trip, in the same words.
+    if (exporter.snapshot.state === 'running') throw new Error(DELETE_WHILE_EXPORTING)
+    if (run.snapshot.state === 'running') throw new Error(DELETE_WHILE_DRAWING)
     const result = await window.api.projects.delete(id)
     // Deleted: its finished jobs leave the inspector. Only on this signal,
     // never because a list read happened to miss the record (A1-03).
