@@ -41,7 +41,7 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { ERROR_CODES, withoutPaths, type EngineState } from '../../src/shared/engine'
-import { runFailureSentence, screenPaths } from '../../src/shared/jobs'
+import { composeJobLog, runFailureSentence, screenPaths, type Job } from '../../src/shared/jobs'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
@@ -292,13 +292,26 @@ describe("the app's own refusals", () => {
     })
   })
 
-  it('come through byte for byte in the jobs inspector’s hint, for each run', async () => {
+  it('come through byte for byte in the jobs inspector’s hint and detail, for each run', async () => {
+    // The inspector draws the detail behind a disclosure when it differs from
+    // the hint, and the copied log adds a Detail section the same way: both
+    // must equal the sentence, so neither shows a second, rewritten copy.
+    const expectKept = (job: Job | null): void => {
+      expect(job?.hint).toBe(NAMED)
+      expect(job?.detail).toBe(NAMED)
+      expect(job?.rawDetail).toBe(NAMED)
+      const log = composeJobLog(job as Job)
+      expect(log).toContain(`## Hint\n\n${NAMED}\n`)
+      expect(log).not.toContain('## Detail')
+      expect(log).not.toContain('a file uses')
+    }
+
     const layout = await failedLayout(refused(NAMED))
-    expect(layout.job()?.hint).toBe(NAMED)
+    expectKept(layout.job())
 
     const exported = failedExport(refused(NAMED))
     await tick()
-    expect(exported.job()?.hint).toBe(NAMED)
+    expectKept(exported.job())
 
     const add = new FeedAdd({
       request: () =>
@@ -311,7 +324,7 @@ describe("the app's own refusals", () => {
     })
     add.start({ url: 'https://agency.example/gtfs.zip' }, READY)
     await tick()
-    expect(add.job()?.hint).toBe(NAMED)
+    expectKept(add.job())
   })
 
   it('are the only engine error left alone: the engine’s own code is screened', () => {
