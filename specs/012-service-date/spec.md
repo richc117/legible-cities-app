@@ -188,6 +188,9 @@ passes.
     are not told: they draw the day the map shows and keep it as the day
     drawn (`redrew`), so a day that lands during one reads as chosen and
     not drawn, which it is.
+    *As of 24 Oct 2026 (spec 037):* superseded by docs/ARCHITECTURE.md,
+    "The record session": the flushed day is sent before the run's read,
+    which the store answers with it, and `drawn` is what the run sent.
 - **FR-003**: The record MUST store the engine's answer, `{start, end,
   busiest, anchor}` (the engine's `busiest_weekday`), beside the day, and MUST write it together
   with the layout's id or not at all. The record version stays at 1: a

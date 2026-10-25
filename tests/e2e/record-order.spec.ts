@@ -18,8 +18,8 @@
 // handed over in batches, which is when an order would be lost if Electron
 // did not keep one. `e2e-loop` with `load` adds busy processes beside it.
 //
-// The record's answers are not enough to see the order of the reads, since a
-// read is not queued behind the writes before part 1's T003, so the handlers
+// The record's answers alone would not show the order of the reads, which
+// the store's queue would hide since T003 put `get` in it, so the handlers
 // are wrapped where Electron keeps them (`ipcMain`'s own map of invoke
 // handlers, as `tests/support/hold-writes.ts` does, and for the same reason
 // failing by name if a release moves it). The wrapper notes the message and

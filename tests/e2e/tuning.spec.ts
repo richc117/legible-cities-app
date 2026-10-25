@@ -37,10 +37,11 @@
 // - `askedWith` taken from the record at the run's end rather than its start:
 //   no test here can hold it (the stand-in answers too fast to commit between
 //   the request and the answer); `tests/unit/layout-run.test.ts` does.
-// - issue 388: `start` reading the record it was handed whatever write is on
-//   its way (`const project = handed` in `engine/layoutRun.ts`): 'a number
-//   committed by the press'. So does `setTuning` in `useProjectState.ts`
-//   calling the bridge without `run.writing` around it.
+// - issue 388: a run planning from the record it was handed (`#layOut(handed,
+//   …)` in `#startLayout`, `engine/layoutRun.ts`): 'a number committed by the
+//   press'. A `get` outside the store's queue is not caught here (`holdWrites`
+//   puts the read behind the held write whatever the store does); the unit
+//   tests and `record-order.spec.ts` catch it (spec 037).
 // - issue 407: Run all's plan made from the record the header held at the
 //   press - `ProjectHeader.tsx` calling `run.rebuild(project, engine,
 //   plan.date)` for its own plan, as before, or `runAll` in

@@ -114,6 +114,7 @@ sentence is the engine's.
   a bridge method validated on the main side with the record's own
   rules, and the run MUST pass the record's mode and agency to
   `graph.build`.
+  - *As of 24 Oct 2026 (spec 037):* the two mechanisms below are superseded by docs/ARCHITECTURE.md, "The record session": a run reads its record from the store, and the operator is sent alone as a patch.
   - *As of 12 Oct 2026 (issue 388):* a mode or an operator chosen just
     before **Lay out** is the one the run asks with. The choice is a
     write still on its way as the press starts the run, so the run waits

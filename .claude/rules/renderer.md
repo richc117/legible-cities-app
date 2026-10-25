@@ -139,7 +139,8 @@ Create: Windows renames it into place slowly enough to be read mid-write.
 ## Writing the record
 
 Send a write the moment the choice is made and take the answer when it
-comes. Never order, queue or hold writes back in the renderer: the bridge
+comes. Never order or queue writes in the renderer (a control that holds
+one back on a timer flushes it from the run's `beforeStart`): the bridge
 hands main a frame's calls in send order, the store applies and answers
 them in that order, and a run reads its own record from the store at its
 start, after `beforeStart` has flushed whatever a control holds back on a

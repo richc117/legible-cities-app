@@ -286,8 +286,10 @@ Only cell 03's exists, because only cell 03's has anything to go back to:
   the day, before the write takes the button away.
 - **Cell 05, the colours and the order: none.** They are written by
   `completeColors` and `completeOrder` only once the map carries them, and
-  `redrew` copies them into `drawn` in the same write, so a record this
-  build wrote never holds colours or an order the map does not. A redraw
+  `drawn` takes them from what the redraw sent in the same write, which the
+  store refuses unless it is the choice being written (spec 037), so a
+  record this build wrote never holds colours or an order the map does
+  not. A redraw
   that stops puts the panel's own swatches and rows back to the record's
   already (A4-01, A4-02). A Revert here could only ever appear over a file
   edited by hand.
@@ -378,13 +380,15 @@ callers were changed with A5.5-15 and a fifth would be a defect:
 - a recolour and a reorder (`layoutRun.ts`), which draw the map that is
   there and must not quietly draw a day nobody asked for.
 
-And the completion of a cheap edit must **not** move `drawn.date`.
-`completeColors` and `completeOrder` go through `redrew` rather than `drew`
-for exactly this: dragging a colour would otherwise close cell 03's gap with
-nobody pressing "Draw for this day", and - if a `setDate` landed between the
-debounce firing and the write - would stamp the newly chosen day on a
-picture drawn for the old one, which is the one direction of error that
-matters, since `drawn` is what everything else trusts.
+And the completion of a cheap edit must **not** move `drawn.date`. Since
+spec 037 every draw's `drawn` is made from what it sent, and a redraw sends
+the day the map already shows (`drawnDate`), which the store refuses it
+unless it is: dragging a colour would otherwise close cell 03's gap with
+nobody pressing "Draw for this day", or - with a `setDate` landing between
+the press and the write - stamp the newly chosen day on a picture drawn for
+the old one, which is the one direction of error that matters, since
+`drawn` is what everything else trusts. A layout run's `drawn.date` is the
+run's own day for the same reason, never a day written while it went.
 
 **`drawn.theme` describes the last draw, not what is on screen.** A theme
 is taken through the page's seam, which restyles it in place at the press
@@ -418,10 +422,12 @@ above, is the fallback, and so is the trip's old-page sentence.
 because a reader will otherwise assume one of them is live:
 
 - `drawn.layout` and `drawn.made` are written by `drew`, which is called
-  only by the four handlers, and `layout` and `made` are written only by
-  `completeLayout` - which calls `drew` in the same breath, after the map
-  has been drawn. So nothing in the app as it stands can move one without
-  the other. The comparisons are implemented and tested from a record, and
+  only by the six handlers that end a draw, from what the draw sent; and
+  `layout` and `made` are written only by `completeLayout`, which calls
+  `drew` in the same breath, after the map has been drawn, and refuses a
+  sent set of another layout or time than it writes. The other five refuse
+  a set that is not of the stored layout and its `made` (spec 037). So
+  nothing in the app as it stands can move one without the other. The comparisons are implemented and tested from a record, and
   they are what makes the two fields worth storing; the case that will
   exercise `made` is an engine or an app that can ask what a stored set's
   `made` is now without drawing from it. A set re-laid out under this

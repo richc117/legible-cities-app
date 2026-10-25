@@ -29,8 +29,8 @@ import {
 //
 // Pure, as the run graph is: a table of records in a unit test. The run
 // asks it (`LayoutRun.runAll`, handed `runAllPlan`), from the record a start
-// reads: the one the header held, or, with a write to it on its way at the
-// press, the one that write leaves (issue 407).
+// reads, which is the store's once every write sent before the press has
+// landed (issue 407, spec 037), not the one the header held.
 
 /** What a press of Run all would start, or that nothing needs to. */
 export type RunAllPlan =
