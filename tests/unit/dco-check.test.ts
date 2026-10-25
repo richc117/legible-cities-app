@@ -315,8 +315,11 @@ describe('the script', () => {
     expect(runRaw('[]', OWNER, 'x').code).toBe(2)
     expect(runRaw('[[]]', OWNER, 'x').code).toBe(2)
     // Each option, left out in turn, with a list that would otherwise pass.
-    expect(run(ok, { owner: null }).code).toBe(2)
-    expect(run(ok, { head: null }).code).toBe(2)
+    for (const left of [{ owner: null }, { head: null }]) {
+      const r = run(ok, left)
+      expect(r.code).toBe(2)
+      expect(r.err).toContain('usage')
+    }
     expect(run(ok).code).toBe(0)
   })
 
@@ -332,6 +335,14 @@ describe('the script', () => {
     expect(run([first, last], { head: 'f'.repeat(40) }).code).toBe(2)
     expect(run([first, last], { head: '' }).code).toBe(2)
     expect(run([first, last], { head: '  ' }).code).toBe(2)
+    // A list that ends in a commit with no id does not match a head with none.
+    const nameless = { ...commit({ login: OWNER }), sha: '' }
+    const none = run([nameless], { head: '' })
+    expect(none.code).toBe(2)
+    expect(none.err).toContain('no head commit')
+    // Ids are compared in lower case on both sides.
+    const upper = { ...commit({ login: OWNER }), sha: 'ABCDEF0123456789abcdef0123456789abcdef01' }
+    expect(run([upper], { head: upper.sha.toLowerCase() }).code).toBe(0)
   })
 
   it('exits 2 for a list as long as the most GitHub will list', async () => {
