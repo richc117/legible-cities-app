@@ -799,6 +799,7 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     wait(REDRAW_DELAY * 2)
     unmount()
     wait(REDRAW_DELAY * 5)
+    await answered()
     expect(panel.drawn(), 'not while the export reads the page').toEqual([])
     exporter.snapshot = { state: 'idle' }
     wait(REDRAW_DELAY)
