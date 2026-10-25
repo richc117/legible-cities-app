@@ -616,6 +616,16 @@ next before it says what went wrong.
   sweep measures it from computed styles: at least 2 CSS pixels thick and
   3:1 against the ground it is drawn on (WCAG 2.4.13), the ground composed
   from the layers behind it (`tests/support/ring.ts`).
+- **The exception is a control drawn on a colour a person chose** (issue
+  436): the colour picker's area and its sliders, where no one ring colour
+  clears 3:1 on every colour. Their ring is two bands side by side - an
+  outline in `--text` and, just outside it, a band of `--surface`, each
+  `--focus-ring-width` - so the better of the two clears 3:1 on any ground
+  (the ink and the ground are further apart than the square of 3, which
+  `tests/unit/contrast.test.ts` holds in both themes). The sweep reads the
+  two as one ring: at least 2px in all, and the better band at 3:1. A chip
+  or swatch in a line's colour keeps the ordinary ring, drawn in the gap
+  outside it over the row's ground.
 - Forced colours (Windows high contrast; issue 436). The mode replaces every
   colour with the user's palette and removes every `box-shadow`, so the
   resting edges drawn as a shadow - the kit's text field, a select, a

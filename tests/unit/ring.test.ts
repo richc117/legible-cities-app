@@ -72,4 +72,78 @@ describe('the ring rule', () => {
     expect(found).toHaveLength(1)
     expect(found[0]).toMatch(/outline 1px.*; shadow 1px/)
   })
+
+  describe('a ring of two bands, for a control drawn on a colour a person chose', () => {
+    // The colour picker's area on its own hue: the interface's usual ring
+    // (cobalt) is 1.12:1 there. The two-tone ring is the theme's ink as an
+    // outline with its ground as a band just outside it. Here each band is
+    // one pixel (the outline, and a shadow of spread 2 whose first pixel
+    // lies under the outline), so neither is a ring on its own: only the two
+    // together are two pixels thick.
+    const outline = ring({ element: 0, offset: 0, width: 1, ratio: 1.3 })
+    const band = ring({ kind: 'shadow', element: 0, width: 2, ratio: 6.1 })
+
+    it('passes on the band that clears, the two together two pixels thick', () => {
+      expect(weakRings([{ control: 'div "Color"', rings: [outline, band] }])).toEqual([])
+    })
+
+    it('passes on the outline when it is the better band', () => {
+      expect(
+        weakRings([
+          {
+            control: 'a',
+            rings: [
+              { ...outline, ratio: 5 },
+              { ...band, ratio: 1.1 },
+            ],
+          },
+        ]),
+      ).toEqual([])
+    })
+
+    it('fails when neither band clears 3:1, and says it was read as two bands', () => {
+      const found = weakRings([
+        { control: 'div "Color"', rings: [outline, { ...band, ratio: 1.5 }] },
+      ])
+      expect(found).toHaveLength(1)
+      expect(found[0]).toContain('two-tone')
+      expect(found[0]).toContain('1.50:1')
+    })
+
+    it('counts the shadow only where the outline does not cover it', () => {
+      // A 1px shadow wholly under a 1px outline at no offset is no second band.
+      expect(
+        weakRings([{ control: 'a', rings: [outline, { ...band, width: 1, ratio: 6 }] }]),
+      ).toHaveLength(1)
+    })
+
+    it('counts an inset shadow whole, which no outline covers', () => {
+      expect(
+        weakRings([
+          { control: 'a', rings: [outline, { ...band, width: 1, inset: true, ratio: 6 }] },
+        ]),
+      ).toEqual([])
+    })
+
+    it('does not pair rings of two different elements', () => {
+      const good = { ...outline, ratio: 5 }
+      const weak = { ...band, ratio: 1.1 }
+      expect(weakRings([{ control: 'a', rings: [good, weak] }])).toEqual([])
+      expect(weakRings([{ control: 'a', rings: [good, { ...weak, element: 1 }] }])).toHaveLength(1)
+    })
+
+    it('needs the pair to be two pixels thick in all, as a single ring does', () => {
+      expect(
+        weakRings([
+          {
+            control: 'a',
+            rings: [
+              { ...outline, width: 0.5 },
+              { ...band, width: 1 },
+            ],
+          },
+        ]),
+      ).toHaveLength(1)
+    })
+  })
 })

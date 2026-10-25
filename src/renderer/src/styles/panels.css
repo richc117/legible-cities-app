@@ -199,14 +199,23 @@
   max-width: 100%;
 }
 
-/* The picker's two sliders take focus, and its own stylesheet removes the
-   outline and marks focus only by growing the thumb a tenth: a change a
-   person has to already know to look for. The app's ring goes back on
-   (A6-07). The picker injects its stylesheet after this one, so the rule
-   is one class stronger than its own. */
+/* The picker's colour area and its sliders take focus, and its own
+   stylesheet removes the outline and marks focus only by growing the thumb a
+   tenth: a change a person has to already know to look for. The app's ring
+   goes back on (A6-07). The picker injects its stylesheet after this one, so
+   the rule is one class stronger than its own.
+
+   These are the controls drawn on a colour a person chose, and no single ring
+   colour clears 3:1 on every colour (issue 436): the area is the hue, the
+   hue slider is all of them. So the ring is two bands side by side, an
+   outline in --text and a band of --surface just outside it, the ink and the
+   ground of the theme, which are far enough apart that one of the two clears
+   3:1 on any colour at all (the contrast test proves the bound). Each is
+   --focus-ring-width, so the ring is twice the usual thickness in total. */
 .colour-picker .react-colorful__interactive:focus-visible {
-  outline: var(--focus-ring-width) solid var(--focus);
-  outline-offset: var(--focus-ring-offset);
+  outline: var(--focus-ring-width) solid var(--text);
+  outline-offset: 0;
+  box-shadow: 0 0 0 calc(2 * var(--focus-ring-width)) var(--surface);
 }
 
 /* A line's options (issue 394, spec 036): a closed disclosure under each

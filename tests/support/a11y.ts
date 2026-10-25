@@ -342,18 +342,33 @@ export function installProbe(): void {
     width: number,
     colourText: string,
     behind: Element | null,
+    extra: { offset?: number; inset?: boolean } = {},
   ): RingReading => {
     const colour = parseColour(colourText)
     const ground = groundBehind(behind)
     if (colour === null || ground === null)
-      return { kind, width, colour: colourText, ground: ground && hex(ground), ratio: null }
+      return {
+        kind,
+        width,
+        colour: colourText,
+        ground: ground && hex(ground),
+        ratio: null,
+        ...extra,
+      }
     const a = colour[3]
     const drawn: [number, number, number] = [
       colour[0] * a + ground[0] * (1 - a),
       colour[1] * a + ground[1] * (1 - a),
       colour[2] * a + ground[2] * (1 - a),
     ]
-    return { kind, width, colour: colourText, ground: hex(ground), ratio: ratioOf(drawn, ground) }
+    return {
+      kind,
+      width,
+      colour: colourText,
+      ground: hex(ground),
+      ratio: ratioOf(drawn, ground),
+      ...extra,
+    }
   }
   /** Split at the commas outside brackets: the layers of a box-shadow. */
   const layersOf = (list: string): string[] => {
@@ -387,6 +402,7 @@ export function installProbe(): void {
             parseFloat(style.outlineWidth),
             style.outlineColor,
             (parseFloat(style.outlineOffset) || 0) >= 0 ? parentOf(el) : el,
+            { offset: parseFloat(style.outlineOffset) || 0 },
           )
     const shadows: RingReading[] = []
     if (style.boxShadow !== 'none')
@@ -397,7 +413,9 @@ export function installProbe(): void {
         // x, y, blur, spread: a ring has no offset and no blur.
         if (lengths.length < 4 || lengths[0] !== 0 || lengths[1] !== 0 || lengths[2] !== 0) continue
         shadows.push(
-          reading('shadow', lengths[3], colourText, layer.includes('inset') ? el : parentOf(el)),
+          reading('shadow', lengths[3], colourText, layer.includes('inset') ? el : parentOf(el), {
+            inset: layer.includes('inset'),
+          }),
         )
       }
     return { outline, shadows }
@@ -567,8 +585,9 @@ export function installProbe(): void {
           const focused = stop.focused[i]
           const at = stop.measured[i]
           if (focused.outline !== 'none' && focused.outline !== rest[i].outline && at.outline)
-            drawn.push(at.outline)
-          if (focused.shadow !== 'none' && rest[i].shadow === 'none') drawn.push(...at.shadows)
+            drawn.push({ ...at.outline, element: i })
+          if (focused.shadow !== 'none' && rest[i].shadow === 'none')
+            drawn.push(...at.shadows.map((shadow) => ({ ...shadow, element: i })))
         })
         const shows = stop.focused.some(
           (focused, i) =>
