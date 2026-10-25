@@ -447,7 +447,9 @@ if (!hasLock) {
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
     // Every record and every output folder lives under the engine's home, so
     // the store's writes are held while a reset is removing it (A1-04).
-    registerProjectHandlers(ipcMain, store, isTopFrame, resetInProgress)
+    registerProjectHandlers(ipcMain, store, isTopFrame, resetInProgress, (line) =>
+      log.warn('projects', line),
+    )
     // Text on the clipboard, one way: the diagnostics panel's "Copy as
     // text" (A3-03). The permission handlers below refuse Chromium's own
     // clipboard write, deliberately, so the page asks for this instead.

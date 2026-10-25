@@ -370,28 +370,67 @@ export function registerClipboardHandler(
  */
 export type StoreBlocked = () => string | null
 
+/**
+ * The six writers that end a draw, by channel: a refusal of one is a map
+ * drawn and not kept (`unkept` in the run), worth a line in the log.
+ */
+const COMPLETIONS: Readonly<Record<string, string>> = {
+  [CHANNELS.projectsCompleteLayout]: 'completeLayout',
+  [CHANNELS.projectsCompleteRebuild]: 'completeRebuild',
+  [CHANNELS.projectsCompleteColors]: 'completeColors',
+  [CHANNELS.projectsCompleteOrder]: 'completeOrder',
+  [CHANNELS.projectsCompleteStyle]: 'completeStyle',
+  [CHANNELS.projectsCompleteLines]: 'completeLines',
+}
+
+/**
+ * The line a refused completion leaves in the log: the writer, the project's
+ * id where it is one, and the refusal's own sentence, which is a person's
+ * sentence and never names a path (this module's rule, and the store's). No
+ * record contents and no project name.
+ */
+export function refusedLine(writer: string, id: unknown, error: unknown): string {
+  const project = typeof id === 'string' && validateId(id) === null ? id : 'an invalid id'
+  const sentence = error instanceof Error ? error.message : String(error)
+  return `${writer} for ${project} refused: ${sentence}`
+}
+
 export function registerProjectHandlers(
   ipcMain: IpcMain,
   store: ProjectStore,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
   blocked: StoreBlocked = () => null,
+  refused: (line: string) => void = () => undefined,
 ): void {
   const handle = (
     channel: string,
     handler: (...args: unknown[]) => Promise<unknown>,
     writes = true,
   ): void => {
+    const writer = COMPLETIONS[channel]
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
       // Only the interface's own top frame reaches the store: a project page
       // in an iframe shares the origin but must not have the bridge.
       if (!isTopFrame(event)) throw new Error('forbidden')
-      // Reading during a reset is harmless - it answers what is there, or
-      // that there is nothing - so only the writes are held.
-      if (writes) {
-        const why = blocked()
-        if (why !== null) throw new Error(why)
+      // A completion refused, here or by the store, is a map drawn and not
+      // kept: said in the log, with the writer and the sentence, then
+      // answered as the refusal it is. The store is still reached in this
+      // turn, which the record session rests on (spec 037).
+      const said = (error: unknown): never => {
+        if (writer !== undefined) refused(refusedLine(writer, args[0], error))
+        throw error
       }
-      return handler(...args)
+      try {
+        // Reading during a reset is harmless - it answers what is there, or
+        // that there is nothing - so only the writes are held.
+        if (writes) {
+          const why = blocked()
+          if (why !== null) throw new Error(why)
+        }
+        return writer === undefined ? handler(...args) : handler(...args).catch(said)
+      } catch (error) {
+        return said(error)
+      }
     })
   }
 

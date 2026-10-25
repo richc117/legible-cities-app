@@ -680,6 +680,75 @@ describe('registerProjectHandlers reaches the store in the turn it is called', (
   })
 })
 
+// A completion main refuses is a map drawn and not kept, and until now said
+// nowhere but on the screen. It is said in the log too, in one line: the
+// writer, the project's id at most, and the refusal's own sentence, which
+// names no path; no record contents and no project name.
+describe('a refused completion, in the log', () => {
+  function logged(storeRefuses: string | null = null, blocked: string | null = null) {
+    const handlers = new Map<string, Handler>()
+    const ipc = {
+      handle: (channel: string, h: Handler) => handlers.set(channel, h),
+    } as unknown as IpcMain
+    const lines: string[] = []
+    const store = new Proxy({} as ProjectStore, {
+      get: () => async () => {
+        if (storeRefuses !== null) throw new Error(storeRefuses)
+        return {}
+      },
+    })
+    registerProjectHandlers(
+      ipc,
+      store,
+      () => true,
+      () => blocked,
+      (line) => lines.push(line),
+    )
+    const call = (channel: string, ...args: unknown[]) =>
+      handlers.get(channel)!({} as IpcMainInvokeEvent, ...args)
+    return { call, lines }
+  }
+  const palette = { colors: {}, defaultColor: '#888888' }
+
+  it('says the writer, the id and the sentence when the bridge refuses one', async () => {
+    // Mutation: `refused(...)` taken out of the handlers' wrapper - the
+    // refusal is answered and nothing is logged.
+    const { call, lines } = logged()
+    await expect(
+      call(CHANNELS.projectsCompleteColors, 'abcdefghijk1', palette, { ...SENT, layout: 'abc' }),
+    ).rejects.toThrow('the layout run did not say which layout it drew from')
+    expect(lines).toEqual([
+      'completeColors for abcdefghijk1 refused: the layout run did not say which layout it drew from',
+    ])
+  })
+
+  it('and when the store refuses one, or the reset holds it', async () => {
+    const sentence = 'the order written is not the one the map was drawn in'
+    const store = logged(sentence)
+    await expect(
+      store.call(CHANNELS.projectsCompleteOrder, 'abcdefghijk1', ['A'], SENT),
+    ).rejects.toThrow(sentence)
+    expect(store.lines).toEqual([`completeOrder for abcdefghijk1 refused: ${sentence}`])
+    const reset = logged(null, 'The engine data is being reset; wait for it to finish.')
+    await expect(
+      reset.call(CHANNELS.projectsCompleteRebuild, 'abcdefghijk1', { sent: SENT }),
+    ).rejects.toThrow('being reset')
+    expect(reset.lines).toEqual([
+      'completeRebuild for abcdefghijk1 refused: The engine data is being reset; wait for it to finish.',
+    ])
+  })
+
+  it('names an id that is not one as such, and logs nothing for a completion taken or another write refused', async () => {
+    const { call, lines } = logged()
+    await expect(call(CHANNELS.projectsCompleteLayout, '../x', {})).rejects.toThrow('invalid id')
+    expect(lines).toEqual(['completeLayout for an invalid id refused: invalid id'])
+    lines.length = 0
+    await call(CHANNELS.projectsCompleteStyle, 'abcdefghijk1', {}, SENT)
+    await expect(call(CHANNELS.projectsSetTheme, 'abcdefghijk1', 'neon')).rejects.toThrow()
+    expect(lines, 'a draw kept, and a write that is not a draw').toEqual([])
+  })
+})
+
 // The clipboard's one direction (A3-03). The page can put text on it,
 // never take text off, and the handler is the only way it can: Chromium's
 // own clipboard write is a permission, and the app refuses every one.
