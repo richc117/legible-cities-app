@@ -24,6 +24,19 @@ Everything below is free for a public repository.
 - [ ] Workflow permissions: **read repository contents**. A job that needs
       more asks for it in its own `permissions:` block.
 - [ ] Do not allow GitHub Actions to create or approve pull requests.
+- [x] **Approval for running workflows from outside collaborators:
+      "Require approval for first-time contributors"** (Settings, Actions,
+      General, "Fork pull request workflows from outside collaborators"; the
+      API calls it `first_time_contributors`). Read on 2026-10-24. The
+      repository is open to outside contributors, and a workflow from a
+      stranger's fork would otherwise run on the maintainer's runners
+      unreviewed. With this setting a first pull request from a fork has its
+      checks wait until the maintainer presses "Approve and run", and
+      that stops once the person has had a pull request **merged** (approving
+      one does not do it). The weaker choice,
+      first-time contributors who are new to GitHub only, lets most strangers
+      through unreviewed; the stronger one, all outside collaborators, makes
+      every return visit wait. `CONTRIBUTING.md` tells contributors to expect the wait.
 
 ## Branch protection on `main`
 
@@ -68,16 +81,21 @@ access.
 ## Labels and milestones
 
 The issue templates and `.github/dependabot.yml` apply labels, which have to
-exist first or the label is silently dropped. `CONTRIBUTING.md` lists the
-canonical set: a phase (`phase:0` … `phase:6`), a type (`type:spike`,
-`type:spec`, `type:feature`, `type:bug`, `type:chore`, `type:docs`), an area
-(`area:engine`, `area:shell`, `area:sidecar`, `area:capture`, `area:export`,
-`area:ui`, `area:ci`, `area:release`) and a size (`size:S`, `size:M`,
-`size:L`). The milestones are the seven phases, `Phase 1.5 - First
-reel` between Engine boundary and Library and inspect, `Phase 5.5 - The
-notebook` and `Phase 5.6 - The front door` between Export and Release
-readiness, and `After 0.1.0`. `CONTRIBUTING.md` has the labels as the
-board holds them.
+exist first or the label is silently dropped, so a template names only a label
+the board holds (a defect is `bug`; there is no `type:bug`). `CONTRIBUTING.md`
+("Labels, milestones and issue codes") lists the labels and the milestones;
+read the board itself for the live set.
+
+## Merging
+
+The repository's squash setting uses the commit messages (GitHub's own
+default), which adds a `Co-authored-by:` trailer with each other author's
+commit address. A merge is therefore made with a squash message written by
+hand and read with `bin/preflight --message-file` first, and any personal
+address in a trailer is removed or rewritten to a no-reply address before
+confirming: `preflight` reads the whole history on every push and force pushes
+are blocked, so one that lands cannot be taken out. Do not use "Update
+branch", which merges `main` into the branch; rebase it.
 
 ## Checking it later
 
