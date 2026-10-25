@@ -202,15 +202,6 @@ export default function LineColours({
     }
   }, [ready, project.feed, inspect])
 
-  // Closing every open panel, through the elements: the platform owns
-  // whether a panel is open, and a press of a button elsewhere is a click
-  // that light-dismisses it, but a keyboard press is not (issue 284).
-  const closePanels = (): void => {
-    section.current
-      ?.querySelectorAll<HTMLElement>('.colour-popover:popover-open')
-      .forEach((panel) => panel.hidePopover())
-  }
-
   // Closing every open panel under the section, the lines' own and their
   // casings' under line options, through the elements: the platform owns
   // whether a panel is open (issue 284). A press with a pointer has
