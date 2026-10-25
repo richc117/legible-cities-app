@@ -2,19 +2,14 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { Theme } from '../../src/shared/project'
-import {
-  lacksTheSeam,
-  nextWrite,
-  writeThenRestyle,
-  writeThrough,
-} from '../../src/renderer/src/themeWrites'
+import { lacksTheSeam, writeThenRestyle } from '../../src/renderer/src/themeWrites'
 import { MISSING_METHOD } from '../../src/shared/viewer'
 
-// The theme switch's own logic (A4-03, specs/021-theme): what a press does
-// at this moment, and what happens to a press that arrives while the record
-// is being written. The end-to-end suite cannot make that gap on purpose -
-// the write is one hop and one small file, with no engine in the path - so
-// the deterministic version of it lives here.
+// The theme switch's own logic (A4-03, specs/021-theme): what a written
+// theme does to the map on screen. A press that arrives while the record is
+// being written is simply a second write since spec 037, whose order the
+// bridge and the store keep; what the switch keeps meanwhile is the
+// chooser's (`theme-chooser.test.ts`).
 
 /** A promise this test settles by hand, so a write can be held open. */
 function deferred(): { promise: Promise<void>; settle: () => void; fail: (why: Error) => void } {
@@ -29,111 +24,6 @@ function deferred(): { promise: Promise<void>; settle: () => void; fail: (why: E
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
-describe('nextWrite', () => {
-  it('writes a theme the project is not already in', () => {
-    expect(nextWrite('sepia', 'warm-dark', false)).toBe('write')
-  })
-
-  it('does nothing for the theme the project is already in', () => {
-    expect(nextWrite('sepia', 'sepia', false)).toBe('none')
-  })
-
-  it('keeps a press that lands while a write is in flight, whichever it is', () => {
-    expect(nextWrite('sepia', 'warm-dark', true)).toBe('keep')
-    // Kept even when it matches the record: the record is the theme of the
-    // write that has landed, not of the one still going.
-    expect(nextWrite('sepia', 'sepia', true)).toBe('keep')
-  })
-})
-
-describe('writeThrough', () => {
-  it('writes the one press when nothing else arrives', async () => {
-    const written: Theme[] = []
-    await writeThrough(
-      'sepia',
-      async (theme) => {
-        written.push(theme)
-      },
-      () => null,
-    )
-    expect(written).toEqual(['sepia'])
-  })
-
-  it('applies the press that arrived while the first was writing', async () => {
-    const written: Theme[] = []
-    const first = deferred()
-    let kept: Theme | null = null
-    const run = writeThrough(
-      'sepia',
-      async (theme) => {
-        written.push(theme)
-        if (theme === 'sepia') await first.promise
-      },
-      () => {
-        const next = kept
-        kept = null
-        return next
-      },
-    )
-    await tick()
-    expect(written, 'the first is out and the second has nowhere to be yet').toEqual(['sepia'])
-    kept = 'warm-dark'
-    first.settle()
-    await run
-    expect(written).toEqual(['sepia', 'warm-dark'])
-  })
-
-  it('ends on a press that only repeats what has just been written', async () => {
-    const written: Theme[] = []
-    let kept: Theme | null = 'sepia'
-    await writeThrough(
-      'sepia',
-      async (theme) => {
-        written.push(theme)
-      },
-      () => {
-        const next = kept
-        kept = null
-        return next
-      },
-    )
-    expect(written, 'one write, not two of the same').toEqual(['sepia'])
-  })
-
-  it('takes the last press, and everything asked for in order', async () => {
-    const written: Theme[] = []
-    const asked: Theme[] = ['warm-dark', 'sepia']
-    await writeThrough(
-      'sepia',
-      async (theme) => {
-        written.push(theme)
-      },
-      () => asked.shift() ?? null,
-    )
-    expect(written).toEqual(['sepia', 'warm-dark', 'sepia'])
-  })
-
-  it('gives up on the first failure, with the error, and writes no more', async () => {
-    const written: Theme[] = []
-    const take = vi.fn(() => 'warm-dark' as Theme)
-    await expect(
-      writeThrough(
-        'sepia',
-        async (theme) => {
-          written.push(theme)
-          throw new Error('the record could not be written')
-        },
-        take,
-      ),
-    ).rejects.toThrow('the record could not be written')
-    expect(written).toEqual(['sepia'])
-    expect(take, 'nothing kept is taken up by a run that has failed').not.toHaveBeenCalled()
-  })
-})
-
-// A written theme restyles the map's page in place instead of reloading the
-// frame (issue 349): the record first, then one call to the page, which
-// nothing waits for and nothing it says is an error.
 describe('writeThenRestyle', () => {
   it('writes the record first and then tells the page, with the same theme', async () => {
     const order: string[] = []
@@ -212,21 +102,21 @@ describe('writeThenRestyle', () => {
     ).resolves.toBeUndefined()
   })
 
-  it('sends one call for each theme written, in the order they were written', async () => {
+  it('sends one call for each theme written, in the order the writes were answered', async () => {
+    // Two presses inside one round trip: both written at once, answered in
+    // the order they were sent (spec 037), and the page told in that order.
     const told: Theme[] = []
-    const asked: Theme[] = ['warm-dark']
-    await writeThrough(
-      'sepia',
-      (theme) =>
-        writeThenRestyle(
-          theme,
-          async () => undefined,
-          async (chosen) => {
-            told.push(chosen)
-          },
-        ),
-      () => asked.shift() ?? null,
-    )
+    const first = deferred()
+    const second = deferred()
+    const restyle = async (chosen: Theme): Promise<void> => {
+      told.push(chosen)
+    }
+    const one = writeThenRestyle('sepia', () => first.promise, restyle)
+    const two = writeThenRestyle('warm-dark', () => second.promise, restyle)
+    first.settle()
+    await tick()
+    second.settle()
+    await Promise.all([one, two])
     expect(told).toEqual(['sepia', 'warm-dark'])
   })
 })

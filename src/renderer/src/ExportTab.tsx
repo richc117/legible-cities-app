@@ -381,33 +381,28 @@ export default function ExportTab({
     planner.schedule(choiceRef.current)
   }, [canPlan, key, made, planner])
 
-  // Writing: the newest choice wins, and a write is never started while
-  // another is on its way to disk. What was last sent, not the record in
+  // Writing: each change is sent the moment it is made, and nothing here
+  // orders the writes. The bridge hands main a frame's calls in the order
+  // they were sent and the store writes them in that order, answering in it
+  // too (spec 037, "The record session" in docs/ARCHITECTURE.md), so the
+  // newest choice is the record's. What was last sent, not the record in
   // hand, decides whether a change needs writing: a change back to the
   // record's value while another write is out would otherwise be skipped,
   // and the record would keep the one in between.
-  const writing = useRef(false)
-  const waiting = useRef<ExportChoice | null>(null)
   const sent = useRef<ExportChoice | null>(project.export)
+  const latest = useRef<ExportChoice | null>(null)
   const write = async (next: ExportChoice): Promise<void> => {
-    waiting.current = next
-    if (writing.current) return
-    writing.current = true
+    latest.current = next
     try {
-      while (waiting.current !== null) {
-        const take = waiting.current
-        waiting.current = null
-        await onChoice(take)
-      }
-      setWriteProblem(null)
+      await onChoice(next)
+      // The last answer is the newest choice's: it landed, and with it every
+      // write before it, so nothing is left unsaved.
+      if (latest.current === next) setWriteProblem(null)
     } catch (error) {
-      waiting.current = null
       // What is on disk is unknown now, so the next change is written
       // whatever it is.
       sent.current = null
       setWriteProblem(error instanceof Error ? error.message : String(error))
-    } finally {
-      writing.current = false
     }
   }
   const change = (next: ExportChoice): void => {
