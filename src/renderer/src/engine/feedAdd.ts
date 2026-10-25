@@ -9,7 +9,6 @@ import {
   runFailureSentence,
   LogBuffer,
   nextJobId,
-  screenPaths,
   type Job,
 } from '../../../shared/jobs'
 import type { FeedRecord, Methods } from '../../../shared/protocol'
@@ -148,7 +147,7 @@ export class FeedAdd {
       state,
       stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
       message,
-      hint: failed ? screenPaths(error) : null,
+      hint: failed ? error : null,
       detail: failed ? attempt.detail : null,
       rawDetail: failed ? attempt.rawDetail : null,
       log: attempt.log.lines,

@@ -292,6 +292,28 @@ describe("the app's own refusals", () => {
     })
   })
 
+  it('come through byte for byte in the jobs inspector’s hint, for each run', async () => {
+    const layout = await failedLayout(refused(NAMED))
+    expect(layout.job()?.hint).toBe(NAMED)
+
+    const exported = failedExport(refused(NAMED))
+    await tick()
+    expect(exported.job()?.hint).toBe(NAMED)
+
+    const add = new FeedAdd({
+      request: () =>
+        ({
+          result: Promise.reject(refused(NAMED)),
+          onProgress: () => () => {},
+          onLog: () => () => {},
+          cancel: () => {},
+        }) as never,
+    })
+    add.start({ url: 'https://agency.example/gtfs.zip' }, READY)
+    await tick()
+    expect(add.job()?.hint).toBe(NAMED)
+  })
+
   it('are the only engine error left alone: the engine’s own code is screened', () => {
     expect(layoutSentence({ code: -32602, message: NAMED })).toBe(withoutPaths(NAMED))
   })
