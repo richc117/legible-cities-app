@@ -1011,6 +1011,40 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('starts its back-off again once a read has answered', async () => {
+    // A refused read, then one that answers while the way is held again,
+    // then another refusal: the wait after it is the first step, twice the
+    // delay, not the step after the last. Mutation: the back-off not reset
+    // on an answer (`unbuilt.backoff = 0` taken out).
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    bridge.fails = [new Error("Error invoking remote method 'engine:state': Error: unavailable")]
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(bridge.reads, 'refused').toBe(1)
+    // Asked again after twice the delay, and answered - but an export has
+    // taken the page while the read was on its way.
+    wait(REDRAW_DELAY * 2)
+    exporter.snapshot = { state: 'running' }
+    await answered()
+    expect(bridge.reads, 'answered').toBe(2)
+    bridge.fails = [new Error("Error invoking remote method 'engine:state': Error: unavailable")]
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(bridge.reads, 'refused again').toBe(3)
+    wait(REDRAW_DELAY * 2 - 1)
+    await answered()
+    expect(bridge.reads, 'not before twice the delay').toBe(3)
+    wait(1)
+    await answered()
+    expect(bridge.reads, 'asked again after twice the delay, not after more').toBe(4)
+    expect(panel.drawn()).toEqual([panel.one])
+  })
+
   it('ends quietly when the project is gone', async () => {
     // Mutation: a "not found" kept waiting like any other refused read.
     await open(panel.cell)

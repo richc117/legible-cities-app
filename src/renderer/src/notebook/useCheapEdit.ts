@@ -116,7 +116,9 @@ export interface CheapEditOptions<V> {
 /**
  * Did a read fail because the project is not there? The store refuses a
  * project it has no record for with "not found" (`ProjectStore.load`), and
- * the bridge hands the refusal on inside its own words.
+ * the bridge hands the refusal on inside its own words. The store says the
+ * same of a record it cannot read, parse or place, so this answers yes for
+ * those too.
  */
 export const projectMissing = (reason: unknown): boolean =>
   reason instanceof Error && /\bnot found\b/.test(reason.message)
@@ -301,10 +303,13 @@ function editor<V>(
         done()
         drawGone(record, engine, next)
       },
-      // The project is gone (deleted since): there is nothing to draw it on,
-      // and nothing to say it to. Any other failure - a read refused for a
-      // moment, the engine's state not answered - is not the change's to end:
-      // it waits on. It is asked again after twice the last wait, up to
+      // Main answered "not found": the project is gone (deleted since), and
+      // there is nothing to draw it on and nothing to say it to. Main says
+      // that too for a record it cannot read, cannot parse or finds in the
+      // wrong folder (`ProjectStore.load`), a passing read error among them,
+      // so such a change ends quietly as well. Any other failure - of the
+      // bridge itself, or of `engine.state` - is not the change's to end: it
+      // waits on, asked again after twice the last wait, up to
       // `READ_RETRY_MAX`, so an engine that stays away is not asked five
       // times a second for as long as it does.
       (reason: unknown) => {
