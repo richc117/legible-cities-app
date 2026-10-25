@@ -21,7 +21,6 @@ import {
   type ProjectRecord,
 } from '../../shared/project'
 import { linesOf, REDRAW_DELAY, shownColour, type Line } from './colours'
-import { debounce } from './debounce'
 import { keepDismissed, keyOf, useDismissalWatch } from './dismissal'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Icon from './icons/Icon'
@@ -33,14 +32,11 @@ import {
   isAlphabetical,
   move,
   moveTo,
-  nextStep,
   positionWords,
   sameOrder,
   standAside,
 } from './order'
-import { mustWait, refusedAtStart } from './panelRelease'
-import { usePutBack } from './usePutBack'
-import { useSnapshot } from './useSnapshot'
+import { useCheapEdit } from './notebook/useCheapEdit'
 
 // The order a project's lines are drawn in (A4-02, specs/020-line-order).
 //
@@ -167,21 +163,10 @@ export default function LineOrder({
   settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const snapshot = useSnapshot(run)
-  const { state: runState, reordered } = snapshot
-  const running = runState === 'running'
-  // Nothing here disables itself because something else is going: a move
-  // made now waits and draws once the way is clear, so no control goes out
-  // from under a person's hands and no move is lost.
-  const busy = disabled || running
 
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [order, setOrder] = useState<Order>(() => orderOf(project))
   const [said, setSaid] = useState<string | null>(null)
-  // A move made while a run or an export is reading the page waits on the
-  // timer until the way is clear, which for an export is minutes. Saying so
-  // is the difference between a move waiting and a move that looks done.
-  const [waiting, setWaiting] = useState(false)
   // Which button the line that moved left focus on: the one that made the
   // move, or its opposite when the line has reached an end and that button
   // is now disabled, because Chromium blurs a disabled element and focus
@@ -213,13 +198,6 @@ export default function LineOrder({
   const [dismissed, setDismissed] = useState<readonly string[]>([])
   const hovered = useRef<string | null>(null)
 
-  const commitRef = useRef<(next: Order) => void>(() => undefined)
-  const schedule = useMemo(
-    () => debounce((next: Order) => commitRef.current(next), REDRAW_DELAY),
-    [],
-  )
-  useEffect(() => () => schedule.cancel(), [schedule])
-
   useEffect(() => {
     if (!ready) {
       setState({ status: 'waiting' })
@@ -246,76 +224,53 @@ export default function LineOrder({
     }
   }, [ready, project.feed, inspect])
 
-  // The record is what the panel shows, once there is no edit waiting on
-  // the timer: a build that finished has written it and the view has read
-  // it back, so the two agree again.
-  useEffect(() => {
-    if (schedule.pending) return
-    setOrder(project.lineOrder)
-  }, [project.id, project.lineOrder, schedule])
-
-  // A build that stopped wrote nothing, so the arrangement on screen must
-  // go back to the record's; the run's own panel says why. A move made
-  // while the build ran is waiting on the same timer, and letting it
-  // through would draw an order a person had just been told was not kept.
-  //
-  // **Only at the moment the run stops** (`usePutBack`, issue 360), not for
-  // as long as it stays stopped: the run keeps `failed` or `cancelled` until
-  // the next one starts, and a record written for another reason is a new
-  // `project.lineOrder` reference. Acting on that would cancel, and snap
-  // back, a move made afterwards and waiting for an export to let go of the
-  // page.
-  //
-  // And at the moment a start of its own is refused after a stop of its own
-  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
-  const backToRecord = (): void => {
-    schedule.cancel()
-    setWaiting(false)
-    setOrder(project.lineOrder)
-  }
-  usePutBack(runState, reordered, backToRecord)
-
-  const commit = (next: Order): void => {
+  // An order is a cheap edit (`useCheapEdit`, issue 490): drawn after the
+  // delay, held while a layout, a rebuild or an export reads the page this
+  // would rewrite - the same delay again, and again, until the way is clear
+  // - and written only once the map is drawn in it. An export is minutes,
+  // not milliseconds, so the wait is said (`edit.waiting`) rather than left
+  // to look like a move that landed.
+  const edit = useCheapEdit<Order>({
+    run,
+    project,
+    own: ownRun,
+    stored: orderOf,
+    fields: [project.lineOrder],
+    same: sameOrder,
+    draw: (record, next) => run.reorder(record, engine, next),
+    delay: REDRAW_DELAY,
+    // While an export reads the page, or the record a finished run wrote is
+    // read back: every draw carries the line options, and one drawn from the
+    // record before that run could put a line it hid back on the map (issue
+    // 399).
+    held: disabled || settling,
+    busyNow,
+    // The record is what the panel shows, once there is no move waiting and
+    // this panel's own redraw is not going: a build that finished has
+    // written it and the view has read it back, so the two agree again.
+    adopt: setOrder,
+    // A build that stopped wrote nothing, so the arrangement on screen goes
+    // back to the record's; the run's own panel says why.
+    putBack: (record) => setOrder(orderOf(record)),
     // The store's own rule, run here as well: a feed with more lines than a
     // record may hold would otherwise draw the map and then fail on the way
-    // to disk, once per move, with the panel springing back each time.
-    const refused = validateLineOrder(next)
-    if (refused !== null) {
-      // Back to the record, as a stopped build is: a panel that says the
-      // order was not kept while showing it is worse than either.
-      setWaiting(false)
-      setOrder(project.lineOrder)
+    // to disk, once per move, with the panel springing back each time. Back
+    // to the record, as a stopped build is: a panel that says the order was
+    // not kept while showing it is worse than either.
+    refuse: (next, record) => {
+      const refused = validateLineOrder(next)
+      if (refused === null) return false
+      setOrder(orderOf(record))
       setSaid(`The order was not kept: ${refused}.`)
-      return
-    }
-    // `busy` is what the last render saw; the run's own state is what is
-    // true at this moment, and a run can start between the two. Without it
-    // an arrangement would be handed to a run that refuses it, silently. A
-    // run that has moved on since this render wrote a record it has not
-    // read, and so has one whose record is still being read back
-    // (`settling`), so both wait too; and it is all asked before the move is
-    // compared with the record (issue 399).
-    const step = nextStep(
-      next,
-      orderOf(project),
-      mustWait({ held: busy || settling, rendered: snapshot, run, busyNow }),
-    )
-    // A layout, a rebuild or an export is reading the page this would
-    // rewrite. Wait rather than refuse: the same delay again, and again,
-    // until the way is clear. An export is minutes, not milliseconds, so
-    // the wait is said rather than left to look like a move that landed.
-    if (step === 'wait') {
-      setWaiting(true)
-      schedule(next)
-    } else {
-      setWaiting(false)
-      if (step === 'build' && refusedAtStart(run, ownRun, () => run.reorder(project, engine, next)))
-        backToRecord()
-    }
-  }
-  useEffect(() => {
-    commitRef.current = commit
+      return true
+    },
   })
+  const running = edit.snapshot.state === 'running'
+  // Nothing here disables itself because something else is going: a move
+  // made now waits and draws once the way is clear, so no control goes out
+  // from under a person's hands and no move is lost.
+  const busy = disabled || running
+  const waiting = edit.waiting
 
   const inspection = state.status === 'ready' ? state.inspection : null
   // The layout on screen was made with these; the record's own may have
@@ -352,7 +307,7 @@ export default function LineOrder({
     if (sameOrder(next, order)) return
     const at = arrange(lines, next).findIndex((each) => each.label === line.label)
     setOrder(next)
-    schedule(next)
+    edit.change(next)
     setSaid(`${line.label} is now ${positionWords(at, lines.length)}.`)
     // The button pressed, unless the line has just reached the end it was
     // moving towards and that button is about to be disabled. Handed over
@@ -374,7 +329,7 @@ export default function LineOrder({
     handback.current?.focus()
     const next = alphabetical()
     setOrder(next)
-    schedule(next)
+    edit.change(next)
     setSaid('The lines are in alphabetical order again.')
   }
 
@@ -485,7 +440,7 @@ export default function LineOrder({
     // cell's heading takes focus, as it does after that button's own press.
     else if (next.length === 0 && document.activeElement === back.current) handback.current?.focus()
     setOrder(next)
-    schedule(next)
+    edit.change(next)
     setSaid(`${now.label} is now ${positionWords(drawn.indexOf(now.label), lines.length)}.`)
   }
 

@@ -16,33 +16,24 @@ import {
   hasOverride,
   isReset,
   linesOf,
-  mayAdoptRecord,
-  reached,
-  released,
   resetAll,
-  retried,
+  samePalette,
   shownColour,
   sourceWords,
-  stopped,
   withDefault,
   withOverride,
   withoutOverride,
-  NOTHING_UNBUILT,
   REDRAW_DELAY,
   type Line,
-  type Outcome,
   type Shown,
-  type Unbuilt,
 } from './colours'
 import { useColourPanel, type ColourPanelProps } from './ColourChip'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
 import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
 import LineOptionsDisclosure from './LineOptionsDisclosure'
-import { mustWait, refusedAtStart } from './panelRelease'
+import { useCheapEdit } from './notebook/useCheapEdit'
 import { useLineOptions } from './useLineOptions'
-import { usePutBack } from './usePutBack'
-import { useSnapshot } from './useSnapshot'
 
 // The project's line colours: what the feed publishes, what a person chose
 // over it, and one default for the lines the feed leaves blank (A4-01,
@@ -57,7 +48,8 @@ import { useSnapshot } from './useSnapshot'
 //
 // Nothing is written until the map has been drawn, as a chosen day is not
 // (A3-04): a cancelled or failed build leaves the record alone and the
-// panel goes back to it.
+// panel goes back to it. When it is drawn, how it waits and when it goes
+// back are the cheap edits' one hook's (`useCheapEdit`, issue 490).
 //
 // The map follows the end of a gesture and not its every colour (issue
 // 262). A drag, a press and a key are all gestures, and each ends in one
@@ -130,42 +122,58 @@ export default function LineColours({
   settling = false,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const snapshot = useSnapshot(run)
-  const { state: runState, optioned } = snapshot
-  // A redraw for line options is the colours' kind of run to the run graph,
-  // but it carries none of the colours chosen and waiting here, so its stop
-  // is not this panel's: putting the palette back for it would drop a colour
-  // held until the build ended (issue 394).
-  const recoloured = snapshot.recoloured && !optioned
-  const running = runState === 'running'
-  // Something else is reading or rewriting the project's page. Nothing here
-  // is disabled for it: a change made now waits and builds once the way is
-  // clear, so no control disables itself under a person's hands and no
-  // change is lost. `aria-busy` says a build is going; `commit` does the
-  // waiting.
-  const busy = disabled || running
 
   const [state, setState] = useState<State>({ status: 'waiting' })
   const [palette, setPalette] = useState<Palette>(() => paletteOf(project))
   const section = useRef<HTMLElement>(null)
 
-  // What has been chosen and the map does not carry yet: the colours of a
-  // gesture that is going, and a release that is waiting for the page. They
-  // are refs because they decide what an event does and what a read of the
-  // record may do, and never what is drawn; `palette` is what is drawn.
-  const unbuilt = useRef<Unbuilt>(NOTHING_UNBUILT)
-  // The wait for a held release: the one timer on this path, and it is a
-  // retry, not a debounce. It asks again whether the way is clear, through
-  // a ref so that it is the latest render's project, engine and run that
-  // answer and not those of the render that held the release.
-  const retry = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const askAgain = useRef<() => void>(() => undefined)
-  useEffect(
-    () => () => {
-      if (retry.current !== null) clearTimeout(retry.current)
-    },
-    [],
-  )
+  // The colours are a cheap edit (`useCheapEdit`, issue 490) with the
+  // gesture rule of issue 262: a colour on the way is followed and not
+  // drawn, and the build goes on the gesture's end, at once - no quiet
+  // interval anywhere on the path. A release while a layout, a rebuild or an
+  // export reads the page is held, never refused, and asked again after
+  // `REDRAW_DELAY` until the way is clear: one build, when it is. A redraw
+  // for line options is the colours' kind of run to the run graph, but it
+  // carries none of the colours chosen and waiting here, so its stop is not
+  // this panel's: putting the palette back for it would drop a colour held
+  // until the build ended (issue 394).
+  const edit = useCheapEdit<Palette>({
+    run,
+    project,
+    own: ownRun,
+    stored: paletteOf,
+    fields: [project.colors, project.defaultColor],
+    same: samePalette,
+    draw: (record, next) => run.recolour(record, engine, next),
+    delay: REDRAW_DELAY,
+    atOnce: true,
+    // While an export reads the page, or the record a finished run wrote is
+    // being read back (issue 394): every draw carries the line options, and
+    // one drawn from the record before that run could put a hidden line
+    // back on the map.
+    held: disabled || settling,
+    busyNow,
+    // The record is what the panel shows: a build that finished has written
+    // it and the view has read it back. A record that arrives while a
+    // gesture is going or a release is waiting does not throw it off the
+    // screen - under a pointer that would move the picker's thumb under the
+    // person's hand - and nor does one that arrives while this panel's own
+    // redraw goes.
+    adopt: setPalette,
+    // A build that stopped wrote nothing, so the colours on screen go back
+    // to the record's, and a gesture going at that moment is dropped with
+    // the release that was waiting: the picker clears its changed flag when
+    // the colour it is given moves under it, so it would never report the
+    // end of the one that was cut off.
+    putBack: (record) => setPalette(paletteOf(record)),
+  })
+  const running = edit.snapshot.state === 'running'
+  // Something else is reading or rewriting the project's page. Nothing here
+  // is disabled for it: a change made now waits and builds once the way is
+  // clear, so no control disables itself under a person's hands and no
+  // change is lost. `aria-busy` says a build is going; the hook does the
+  // waiting.
+  const busy = disabled || running
 
   useEffect(() => {
     if (!ready) {
@@ -193,81 +201,6 @@ export default function LineColours({
     }
   }, [ready, project.feed, inspect])
 
-  // The record is what the panel shows: a build that finished has written
-  // it and the view has read it back, so the two agree again. A record that
-  // arrives while a gesture is going or a release is waiting is not allowed
-  // to throw it off the screen - the view refetches whenever any run
-  // finishes, and under a pointer that would move the picker's thumb under
-  // the person's hand.
-  useEffect(() => {
-    if (!mayAdoptRecord(unbuilt.current)) return
-    setPalette({ colors: project.colors, defaultColor: project.defaultColor })
-  }, [project.id, project.colors, project.defaultColor])
-
-  // A build that stopped wrote nothing, so the colours on screen must go
-  // back to the record's; the run's own panel says why. A stop stops
-  // everything: a release that was waiting for this build is dropped, and
-  // letting it through would build the colours a person had just been told
-  // the project did not keep. A gesture going at that moment is dropped
-  // with it, and its next colour starts it again: the picker clears its
-  // changed flag when the colour it is given moves under it, so it would
-  // never report the end of the one that was cut off.
-  //
-  // **Only at the moment the run stops** (`usePutBack`, issue 360), not for
-  // as long as it stays stopped: the run keeps `failed` or `cancelled` until
-  // the next one starts, and a record written for another reason is a new
-  // `project.colors` reference. Acting on that would drop, and snap back, a
-  // colour chosen afterwards and waiting for an export to let go of the page.
-  //
-  // And at the moment a start of its own is refused after a stop of its own
-  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
-  const backToRecord = (): void => {
-    if (retry.current !== null) clearTimeout(retry.current)
-    retry.current = null
-    unbuilt.current = stopped()
-    setPalette({ colors: project.colors, defaultColor: project.defaultColor })
-  }
-  usePutBack(runState, recoloured, backToRecord)
-
-  // What `released` or `retried` decided. A layout, a rebuild or an export
-  // is reading the page a build would rewrite, so a release then is held,
-  // never refused, and asks again after `REDRAW_DELAY` until the way is
-  // clear: one build, when it is.
-  const act = ({ step, unbuilt: after }: Outcome, next: Palette): void => {
-    unbuilt.current = after
-    if (retry.current !== null) clearTimeout(retry.current)
-    retry.current = null
-    if (step === 'wait') {
-      retry.current = setTimeout(() => {
-        retry.current = null
-        askAgain.current()
-      }, REDRAW_DELAY)
-    } else if (step === 'build') {
-      if (refusedAtStart(run, ownRun, () => run.recolour(project, engine, next))) backToRecord()
-    }
-  }
-  // `busy` is what the last render saw; the run's own state is what is true
-  // at this moment, and a run can start between the two. Without it a colour
-  // would be handed to a run that refuses it, silently.
-  // While the record a finished run wrote is being read back, too (issue
-  // 394): every draw now carries the line options, and one drawn from the
-  // record before that run could put a hidden line back on the map while
-  // the store, writing `drawn` from the record after it, said it was gone.
-  // And while the run has moved on since this render, which is the same
-  // beat before the read-back has begun (issue 399). `released` and
-  // `retried` ask this before they compare anything with the record.
-  const stillBusy = (): boolean =>
-    mustWait({ held: busy || settling, rendered: snapshot, run, busyNow })
-  // The commit point: the picker released, or the hex field's button.
-  const commit = (next: Palette): void =>
-    act(released(unbuilt.current, next, paletteOf(project), stillBusy()), next)
-  useEffect(() => {
-    askAgain.current = () => {
-      const held = unbuilt.current.held
-      if (held !== null) act(retried(unbuilt.current, paletteOf(project), stillBusy()), held)
-    }
-  })
-
   // Closing every open panel, through the elements: the platform owns
   // whether a panel is open, and a press of a button elsewhere is a click
   // that light-dismisses it, but a keyboard press is not (issue 284).
@@ -280,23 +213,20 @@ export default function LineColours({
   // A gesture reached a colour: the swatch and the hex field follow it, and
   // nothing is sent.
   const follow = (next: Palette): void => {
-    unbuilt.current = reached(unbuilt.current, next)
+    edit.follow(next)
     setPalette(next)
   }
   // A gesture ended, or a button chose a colour outright: the map follows.
   const release = (next: Palette): void => {
     setPalette(next)
-    commit(next)
+    edit.change(next)
   }
   // A panel closed with a gesture still going, which is a key or a pointer
   // that never reported its release - Escape pressed with the button down,
   // a panel light-dismissed under a held key. What the person saw on the
   // swatch is what they chose, and a swatch the map does not carry is the
   // disagreement this panel exists to prevent.
-  const panelClosed = (): void => {
-    const { live } = unbuilt.current
-    if (live !== null) release(live)
-  }
+  const panelClosed = (): void => edit.release()
   // A button that removes the last thing it had to remove disables itself,
   // and Chromium blurs a disabled element; the cell's heading is where
   // focus goes so a screen reader stays in the cell (A3-04 learned this).

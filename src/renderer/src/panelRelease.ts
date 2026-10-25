@@ -2,11 +2,13 @@ import type { RunState } from '../../shared/layout'
 
 // When a panel puts its control back to the record (issue 360).
 //
-// The colour, order and size panels each hold a control that runs ahead of
-// the record: nothing is written until the map has been drawn with the
-// change, so when that draw is cancelled or fails the control must go back
-// to what the record still says. The three share one rule for *when*, and
-// this is it.
+// The four cheap edits - the colours, the order, the sizes and the line
+// options - each hold a control that runs ahead of the record: nothing is
+// written until the map has been drawn with the change, so when that draw is
+// cancelled or fails the control must go back to what the record still
+// says. They share one rule for *when*, and this is it. These are the pure
+// rules inside the cheap edits' one hook (`notebook/useCheapEdit.ts`, issue
+// 490), which is their only caller: no panel asks them for itself.
 //
 // The run keeps its `failed` or `cancelled` state until the next run starts.
 // Read as "stopped" on every render after, it would act on everything that
@@ -16,10 +18,10 @@ import type { RunState } from '../../shared/layout'
 // the page. So the rule is the *change into* a stopped state, from the state
 // the panel last saw, and never the record's reference.
 //
-// Since issue 399 the four cheap edits (the line options with them) share
-// two more rules here: when a change must wait rather than be compared with
-// the record (`mustWait`), and the one stop the rule above cannot see, a
-// start refused at once after a stop of the same kind (`refusedAtStart`).
+// Since issue 399 the four cheap edits share two more rules here: when a
+// change must wait rather than be compared with the record (`mustWait`),
+// and the one stop the rule above cannot see, a start refused at once after
+// a stop of the same kind (`refusedAtStart`).
 
 /**
  * What a panel sees of the run at one render: its state, and whether the

@@ -6,8 +6,9 @@ import { stoppedNow, type Seen } from './panelRelease'
  * Calls `putBack` once each time the run stops for a panel whose own redraw
  * it was, and at no other time (issue 360, `stoppedNow`).
  *
- * The colour, order and size panels all use this and nothing else to go back
- * to the record after a cancelled or failed build. The effect has no
+ * The cheap edits' one hook (`notebook/useCheapEdit.ts`, issue 490) uses
+ * this and nothing else to put a panel back to the record after a cancelled
+ * or failed build, and is its only caller. The effect has no
  * dependency list on purpose: it looks at every render, remembers the state
  * and the kind of run it saw, and the rule alone decides, so there is no
  * field of the record for it to depend on and a new record reference cannot

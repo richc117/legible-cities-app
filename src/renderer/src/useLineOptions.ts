@@ -1,32 +1,31 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { EngineState } from '../../shared/engine'
 import {
   linesSent,
+  sameLines,
   type LineChoice,
   type ProjectLines,
   type ProjectRecord,
 } from '../../shared/project'
 import { REDRAW_DELAY } from './colours'
-import { debounce } from './debounce'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
-import { linesWith, nextLinesStep } from './lineOptions'
-import { mustWait, refusedAtStart } from './panelRelease'
-import { usePutBack } from './usePutBack'
-import { useSnapshot } from './useSnapshot'
+import { linesWith } from './lineOptions'
+import { useCheapEdit } from './notebook/useCheapEdit'
 
 // Cell 05's line options as the colours section holds them (issue 394,
 // spec 036, FR-010): what every row's disclosure shows, and when the map is
 // drawn with it.
 //
-// Every option is a cheap edit, the colours' kind: shown at once, drawn
-// after the redraw delay from the stored layout (`LayoutRun.redrawLines`),
-// and written to the record only once the map carries it, so a cancelled or
-// failed build leaves the record alone and the rows go back to it. Choices
-// made in quick succession are one build, as the sizes' are; a choice made
-// while a run or an export holds the page, or while the record a finished
-// run wrote is being read back, waits and is drawn once the way is clear.
-// Nothing is disabled for any of it: a control that disables itself under a
-// person's hands takes the focus with it, and a refused change is a lost one.
+// Every option is a cheap edit, the colours' kind, through the cheap edits'
+// one hook (`useCheapEdit`, issue 490): shown at once, drawn after the redraw
+// delay from the stored layout (`LayoutRun.redrawLines`), and written to the
+// record only once the map carries it, so a cancelled or failed build leaves
+// the record alone and the rows go back to it. Choices made in quick
+// succession are one build, as the sizes' are; a choice made while a run or
+// an export holds the page, or while the record a finished run wrote is
+// being read back, waits and is drawn once the way is clear. Nothing is
+// disabled for any of it: a control that disables itself under a person's
+// hands takes the focus with it, and a refused change is a lost one.
 //
 // A casing's colour follows the end of a gesture and not its every colour,
 // as a line's own does (issue 262): the chip follows each colour on the way
@@ -73,9 +72,6 @@ export function useLineOptions({
   /** The same question at this instant rather than at the last render (A4-01). */
   busyNow?: () => boolean
 }): LineOptionsState {
-  const snapshot = useSnapshot(run)
-  const { state: runState, recoloured, optioned } = snapshot
-  const running = runState === 'running'
   const [lines, setLines] = useState<ProjectLines>(() => linesSent(project.lines))
   // What is shown at this moment, for a choice to build on: two choices in
   // one beat each see the other, which a render's copy would not.
@@ -84,106 +80,46 @@ export function useLineOptions({
     shown.current = next
     setLines(next)
   }
-  // A casing's colour a gesture has reached and not released, for as long as
-  // it has not; a record read meanwhile does not take it off the chip.
-  const live = useRef<ProjectLines | null>(null)
 
-  // The debounce, made once, reading the latest render's project, engine and
-  // run through a ref, so the waiting call is never one from renders ago.
-  const commitRef = useRef<(next: ProjectLines) => void>(() => undefined)
-  const schedule = useMemo(
-    () => debounce((next: ProjectLines) => commitRef.current(next), REDRAW_DELAY),
-    [],
-  )
-  // A choice seen on screen is not lost to a screen that goes inside the
-  // delay: the build is the project's, as a run is, and carries on - if the
-  // way is clear as the screen goes. If it is not, the choice is dropped
-  // rather than left waiting on a screen that is gone, whose last render's
-  // record would be drawn from long after a run had moved it on.
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-      schedule.flush()
-    }
-  }, [schedule])
-
-  // Whether a redraw of this cell's is going, read by the effect below
-  // without being re-run when it ends: the record has not been read back
-  // yet, and still holds the options from before it.
-  const drawing = useRef(false)
-  useEffect(() => {
-    drawing.current = running && recoloured
-  })
-
-  // The record is what the rows show, once nothing is waiting, drawing or
-  // under a hand: a build that finished has written it and the screen has
-  // read it back, so the two agree again.
-  useEffect(() => {
-    if (schedule.pending || drawing.current || live.current !== null) return
-    const stored = linesSent(project.lines)
-    shown.current = stored
-    setLines(stored)
-  }, [project.id, project.lines, schedule])
-
-  // A build that stopped wrote nothing, so the rows go back to the record's
-  // at the moment it stops (`usePutBack`, issue 360), and a choice waiting
-  // on the timer is dropped with it: drawing it would show options a person
-  // had just been told the project did not keep. Only the options' own
-  // redraw is this hook's to put back for: a colours' redraw that stops
-  // carries none of the options waiting here, which are drawn once the way is
-  // clear (the run graph sees both as the colours' kind, `recoloured`).
-  // And at the moment a start of its own is refused after a stop of its own
-  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
-  const backToRecord = (): void => {
-    schedule.cancel()
-    live.current = null
-    show(linesSent(project.lines))
-  }
-  usePutBack(runState, optioned, backToRecord)
-
-  const commit = (next: ProjectLines): void => {
-    // `held` and the record are what the last render saw. The run's own
-    // state is what is true at this moment, and a run can start between the
-    // two - or end: a run that has moved on since this render (its snapshot
-    // is not the one rendered) wrote a record this render has not read, so
-    // drawing now would draw the colours, the order and the sizes from
-    // before it. A casing's colour under a hand waits for its release, as a
-    // line's own colour does.
-    const busy = mustWait({ held: held || live.current !== null, rendered: snapshot, run, busyNow })
-    const step = nextLinesStep(next, project.lines, busy)
-    // Something holds the page: wait rather than refuse, the same delay
-    // again, until the way is clear; never on a screen that has gone.
-    if (step === 'wait') {
-      if (mounted.current) schedule(next)
-    } else if (step === 'build') {
-      if (refusedAtStart(run, ownRun, () => run.redrawLines(project, engine, next))) backToRecord()
-    }
-  }
-  useEffect(() => {
-    commitRef.current = commit
+  const edit = useCheapEdit<ProjectLines>({
+    run,
+    project,
+    own: ownRun,
+    stored: (record) => linesSent(record.lines),
+    fields: [project.lines],
+    same: sameLines,
+    draw: (record, next) => run.redrawLines(record, engine, next),
+    delay: REDRAW_DELAY,
+    held,
+    busyNow,
+    // The record is what the rows show, once nothing is waiting, drawing or
+    // under a hand: a build that finished has written it and the screen has
+    // read it back, so the two agree again.
+    adopt: show,
+    // A build that stopped wrote nothing, so the rows go back to the
+    // record's. Only the options' own redraw is this hook's to put back
+    // for: a colours' redraw that stops carries none of the options waiting
+    // here, which are drawn once the way is clear (the run graph sees both
+    // as the colours' kind, `recoloured`).
+    putBack: (record) => show(linesSent(record.lines)),
   })
 
   const choose = (label: string, next: LineChoice): void => {
-    live.current = null
     const after = linesWith(shown.current, label, next)
     show(after)
-    schedule(after)
+    edit.change(after)
   }
 
+  // A casing's colour a gesture has reached and not released: shown, and
+  // held - a record read meanwhile does not take it off the chip, and a
+  // choice on another line waits for the hand to let go.
   const follow = (label: string, next: LineChoice): void => {
     const after = linesWith(shown.current, label, next)
-    live.current = after
     show(after)
+    edit.follow(after)
   }
 
-  const panelClosed = (): void => {
-    const going = live.current
-    if (going === null) return
-    live.current = null
-    schedule(going)
-  }
+  const panelClosed = (): void => edit.release()
 
   const reset = (label: string): void => choose(label, {})
 
