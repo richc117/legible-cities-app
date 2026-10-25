@@ -652,7 +652,9 @@ next before it says what went wrong.
   app: an auto popover is dismissed by a press and not by focus, and one left
   open covered the controls beside its chip - placed above a chip near the
   window's foot, the row above it, which Shift+Tab from the chip reached.
-  The sweep's walk begins at an open popover's invoker for that reason.
+  A click into the map closes it too, by intent: focus lands on the map's
+  frame, which is outside it. Because of this rule, the sweep's walk begins
+  at an open popover's invoker.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is

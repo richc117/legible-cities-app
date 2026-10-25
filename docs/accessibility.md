@@ -39,8 +39,13 @@ person's, recorded in [Reader runs](#reader-runs).
    accessibility tree has a name (`ariaSnapshot()`), and nothing in it has
    the name of something it is inside (#208, below); a Tab walk from the
    top reaches every enabled control and each shows a ring it did not have
-   at rest; with reduced motion emulated, and the emulation asserted to
-   take effect, no element or open shadow root has a running animation or
+   at rest (a walk with a popover open begins at the popover's invoker
+   instead, since the colour panel closes when focus lands anywhere but its
+   chip or inside it, and goes round the end of the document back to it;
+   since issue 436 a control reached that has left the document by the
+   walk's end is judged against its rest as read when the walk began, and
+   one that cannot be is a failure of its own); with reduced motion
+   emulated, and the emulation asserted to take effect, no element or open shadow root has a running animation or
    a transition that lasts, and no native button holds more than its box
    (`expectButtonsHoldTheirBox`, issue 273: the text of a row hanging
    below its fill is content taller than the button). **Since issue 436**
@@ -1234,7 +1239,13 @@ a table).
   the value changing. Press Escape: the picker goes and focus is back on
   the chip. Type a hex value that is not one, press **Use this colour**,
   and listen for "A colour is six hexadecimal digits, such as 0072bc." read
-  with the field when you return to it.
+  with the field when you return to it. The panel closes whenever focus
+  lands anywhere but its chip or inside it (issue 436): open it again and
+  press Shift+Tab from the chip, then open it, Tab into it and on past its
+  last control, then open it and click into the map. Each time listen for
+  the chip read as collapsed when you return to it, and check that nothing
+  of the panel is left over the control focus is on. Focus going back to
+  the chip from inside the panel leaves it open.
 - **Line options** (issue 394). After each row of "Lines", listen for the
   button "Line options for line `<label>`, Default", collapsed. Press it:
   listen for expanded and the group "Line options for line `<label>`",
