@@ -137,8 +137,15 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   rest of `drawn` as it was, and a store that has no version writes none.
   A project whose `drawn.engine` is below the running engine's version is
   redrawn as it opens (issue 465's rule, `notebook/olderPage.ts`); one with
-  none is judged by its page's seam alone. An edit that draws nothing leaves
-  it as it was, and an older build's draw writes `drawn` without it.
+  none is judged by its page's seam alone, which is every record written
+  before this field, so a page an engine drew after its last new seam is
+  known by version only once its record names an engine below the running
+  one, from the next move of the pin. An edit that draws nothing leaves it as
+  it was. An older build loses it as it loses the stations: one from before
+  issue 425 drops it at any write it makes, `markOpened` included (v0.1.0's
+  among them), and one from issue 425 on carries it through every write but
+  a draw, whose `drawn` it writes whole without it. The next draw here puts
+  it back.
 - `tuning` (added by issue 385, still version 2; spec 033) is LOOM's own
   settings a person chose for the project's layout, in the engine's names
   in camel case with the bend penalties flat: `mergeDistance` (5 to 500

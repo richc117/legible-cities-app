@@ -896,14 +896,31 @@ const drawnBy = (h: Home): unknown =>
 /**
  * Write `engine` into the record's `drawn` as the engine that drew the map,
  * as a record an earlier engine's draw left behind: the whole file renamed
- * over the record, so a read never meets half of one.
+ * over the record, so a read never meets half of one. Called only once the
+ * last opening's own write has landed (`openProject`), so nothing of the
+ * app's is written over it.
+ *
+ * Windows refuses a rename over a file a reader has open, as the store's own
+ * list may have it while the Library is shown, so a refusal of that kind is
+ * tried again until a deadline, as `keepPageWritten` tries on its next tick.
  */
-function drawnByEngine(h: Home, engine: string): void {
+async function drawnByEngine(h: Home, engine: string): Promise<void> {
   const [id] = readdirSync(join(h.engineHome, 'projects'))
   const file = join(h.engineHome, 'projects', id, 'project.json')
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { drawn: Record<string, unknown> }
   writeFileSync(`${file}.next`, JSON.stringify({ ...raw, drawn: { ...raw.drawn, engine } }))
-  renameSync(`${file}.next`, file)
+  const deadline = Date.now() + 5_000
+  for (;;) {
+    try {
+      renameSync(`${file}.next`, file)
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      const refused = code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'
+      if (!refused || Date.now() > deadline) throw error
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+  }
 }
 
 test('a page with every seam is redrawn once as its project opens where its record names an older engine', async () => {
@@ -916,7 +933,7 @@ test('a page with every seam is redrawn once as its project opens where its reco
     expect(drawnBy(h), 'the layout run named the engine that drew the map').toBe(PINNED_ENGINE)
     themedPage(h, THEMED_PAGE)
     await page.getByRole('button', { name: 'Back to Library' }).click()
-    drawnByEngine(h, OLDER_ENGINE)
+    await drawnByEngine(h, OLDER_ENGINE)
     const asked = received(h, 'map.build').length
     const day = readRecord(h).date
     expect(day, 'the layout chose a day').toBeTruthy()
@@ -925,7 +942,7 @@ test('a page with every seam is redrawn once as its project opens where its reco
     // older about the one the project opens on is the version its record names.
     const stop = keepPageWritten(h)
     try {
-      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await openProject(page, 'Los Angeles')
       await expect
         .poll(() => received(h, 'map.build').length, {
           message: 'the page an older engine drew was redrawn as the project opened',
@@ -962,7 +979,7 @@ test('a page with every seam is redrawn once as its project opens where its reco
 
     // And opened again, the record now names the running engine: not again.
     await page.getByRole('button', { name: 'Back to Library' }).click()
-    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await openProject(page, 'Los Angeles')
     await expect
       .poll(async () => (await factsOf(app))?.seen ?? null, {
         message: 'the page loaded again and was given back its theme',
@@ -989,8 +1006,8 @@ test('a page with every seam is not redrawn as its project opens where its recor
     const asked = received(h, 'map.build').length
 
     for (const engine of [PINNED_ENGINE, '99.0.0']) {
-      drawnByEngine(h, engine)
-      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await drawnByEngine(h, engine)
+      await openProject(page, 'Los Angeles')
       await expect
         .poll(async () => (await factsOf(app))?.seen ?? null, {
           message: `the page drawn by ${engine} loaded and was given back its theme`,
@@ -1242,7 +1259,7 @@ test('a page older only by its record’s engine, whose redraw on open fails, is
   expect((first.drawn as { engine?: unknown }).engine, 'the layout named the running engine').toBe(
     PINNED_ENGINE,
   )
-  drawnByEngine(h, OLDER_ENGINE)
+  await drawnByEngine(h, OLDER_ENGINE)
 
   await withApp(h, async (page, app) => {
     await openedAndRefused(page, h, drawn)

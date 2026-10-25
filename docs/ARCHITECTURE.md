@@ -1252,10 +1252,16 @@ of them (`Viewer.seams`, `viewer.seams()` on the bridge), and **a page
 lacking a seam the pinned engine's page has** (`PAGE_SEAMS` in
 `src/shared/viewer.ts`, held to the engine's template by
 `tests/unit/viewer-real.test.ts`), whichever seam it lacks, is older
-whatever version its record names. That is all a record from before issue
-494 can be judged by, and under it a page an engine drew after its last new
-seam and before the pin counts as current. The redraw's own write names the
-running engine, so it happens once. The screen then asks for the
+whatever version its record names. **A record written before issue 494
+names no engine, so it is still judged by its seam alone**, as the issue
+asks ("the seam test stays for records from before the field"): a page an
+engine drew after its last new seam and before the pin - the v0.15.0 to
+v0.18.x pages engine issue 76's label face is about, every one drawn before
+this change - still counts as current. The version starts to tell pages
+apart only once a record names an engine below the running one, which is
+from the next move of the pin: maps drawn at v0.19.0 from now on are then
+redrawn as they open. The redraw's own write names the running engine, so
+it happens once. The screen then asks for the
 rebuild cell 03 makes for a day, for the day the record holds and the map
 already shows: a `map.build` from the stored layout with the record's
 colours, order, style and line options, never a re-layout (ADR-023), shown
