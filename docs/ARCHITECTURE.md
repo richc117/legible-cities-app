@@ -860,6 +860,67 @@ has run and ringed in the accent for the one running, the line reaching as
 far as the run has got and turning onto it on a quarter-circle bend, drawn
 from the tokens and described to assistive technology as one sentence.
 
+## The record session
+
+Every read and write of a project's record goes through one queue in the
+main process, and that queue, with one property of the bridge, is the
+whole of what keeps the record and the map on screen agreeing (spec 037,
+part 1; issue 426 is the umbrella).
+
+**One queue per project, in main.** `ProjectStore.#serial` chains every
+writer of a project's record, `markOpened` and `setDestination` among
+them: each reads the record as the write before it left it, changes the
+fields it names, and writes it whole (`writeAtomic`), so two writers never
+put back each other's field. `projects.get` waits in the same queue, so a
+read answers with every write sent before it. A write that names one of two
+fields leaves the other as it found it: the inputs' writer takes the mode,
+the operator or both (`setInputs`, a patch). Every write raises the
+record's `revision` by one; absent reads as 0 (ADR-056's additive rule).
+
+**The ordering property.** For one renderer frame, Electron hands main the
+`projects:*` invokes in the order they were sent, and every handler in
+`src/main/ipc.ts` reaches the store's queue in the turn it is handed its
+message, with no `await` before it. So a write's answer is the record with
+that write and every earlier one applied, the answers come back in the
+order the calls went, and a `get` sent after a write answers with it.
+`tests/e2e/record-order.spec.ts` holds the first half under a spinning main
+process (looped with load on macOS and Windows before anything was built on
+it); `tests/unit/ipc.test.ts` holds the second, by behaviour and by a read
+of the handlers' source.
+
+**A run reads its inputs from the store, once, at its start.** A layout,
+a rebuild, Run all and the four redraws each read their record through the
+run's `read` (`projects.get`) at the press, after `beforeStart` has flushed
+the controls that hold a choice back on a timer (cell 03's day), and plan
+from that, never from the record the screen handed, which can be a render
+behind. A field committed by the very press that starts the run - a tuning
+left for "Lay out", an operator chosen a moment before - was sent before
+the read, so it is in what the run sends. The run is `running` from the
+press, so Cancel is there while it reads, and a cancel ends the read.
+
+**`drawn` is what the run sent.** Every completion carries its sent set
+(`SentSet` in `src/shared/project.ts`): the layout and its `made`, the
+day, the palette, the order, the style and the line options exactly as
+`map.build` was built from them, made once in `#draw`. The store makes
+`drawn` from that alone (`drawnFromSent`), with the theme from the record
+at the write, since no draw sends one and the page is told it in place. A
+choice written while the run went is the record's and not the map's, which
+is what lets a cell say it is not drawn yet. The set comes from the less
+trusted process, so the bridge and the store read it field by field with
+the record's own validators and sentences (`validateSent`).
+
+**The rule a new control follows.** Write the choice the moment it is
+made, through the bridge, and take the answer when it comes; do not order
+writes, queue them, or wait for one before sending the next, because the
+bridge and the store keep the order. A control that holds a choice back on
+a timer flushes it from the run's `beforeStart`, so a press sends it first.
+A write names only the fields it changes. A control that shows its own
+choice while the answer is on its way waits for the answer to its last
+write before taking the record again (`LayoutTuning`'s, the theme
+chooser's): the answers arrive in order, so the last write's answer is
+the last to arrive. A run is never handed a record to trust: it reads its
+own. The cheap edits' shared hook is part 2's (issue 490).
+
 ## The layout run
 
 One action on a project's screen produces a map. The app asks the engine

@@ -136,6 +136,18 @@ main process through Playwright's `app.evaluate`, so the app's own handler
 runs. A record is read after the Library lists it, never straight after
 Create: Windows renames it into place slowly enough to be read mid-write.
 
+## Writing the record
+
+Send a write the moment the choice is made and take the answer when it
+comes. Never order, queue or hold writes back in the renderer: the bridge
+hands main a frame's calls in send order, the store applies and answers
+them in that order, and a run reads its own record from the store at its
+start, after `beforeStart` has flushed whatever a control holds back on a
+timer. A run is never handed a record to trust, and nothing waits for a
+write before a run may start (the old `run.writing`, `#afterWrites` and
+three serialisers are gone, spec 037). docs/ARCHITECTURE.md, "The record
+session", has the rule in full.
+
 ## Accessibility is not a later pass
 
 Keyboard reachable, labelled controls, visible focus, contrast that holds in

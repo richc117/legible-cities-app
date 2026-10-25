@@ -28,15 +28,15 @@ Stories: US1 (`drawn` is true), US2 (a choice is never lost), US3 (the cheap edi
 - [x] T006 [US1] `src/main/ipc.ts` payload readers validate `sent` field by field, with the record's validators. Unit tests in `ipc.test.ts` for each field refused.
 - [x] T007 [US1] `src/main/projects.ts`: `completeLayout`, `completeRebuild` and the four redraw writers build `drawn` with `drawnFromSent`. `completeLayout` no longer writes `record.date ?? done.date` over the record's date.
 - [x] T008 [US1] `src/renderer/src/engine/layoutRun.ts`: `#draw` returns the sent set it built its `map.build` from, and every completion carries it.
-- [ ] T009 [US1] User Story 1's matrix in `tests/unit/layout-run.test.ts` and `projects-store.test.ts`: seven run kinds, each against each field written mid-run, with `drawn` equal to what was sent. Plus R3-02's probe. Mutation: `drawn` from the record again.
+- [x] T009 [US1] User Story 1's matrix in `tests/unit/layout-run.test.ts` and `projects-store.test.ts`: seven run kinds, each against each field written mid-run, with `drawn` equal to what was sent. Plus R3-02's probe. Mutation: `drawn` from the record again.
 
 ## Phase 4: Part 1, the inputs and the mechanisms removed (US2)
 
-- [ ] T010 [US2] Every run's start (`start`, `rebuild`, `runAll`, `recolour`, `reorder`, `restyle`, `redrawLines`) flushes `beforeStart`, then plans from `await api.projects.get(id)`.
-- [ ] T011 [US2] Remove `writing`, `writingFrom`, `#taken`, `#current`, `#ahead`, `#held`, `writtenAfter`, `RecordWrite`, `#writes` and `#afterWrites` from `layoutRun.ts`, and their callers in `useProjectState.ts` (about 429-432, 448, 490).
-- [ ] T012 [US2] Remove the three serialisers (research R4): `themeWrites.ts`'s `writeThrough` and `themeChooser.ts`, `ExportTab.tsx`'s writing/waiting/sent, and `LayoutTuning.tsx`'s counter. Each control sends and takes the answer.
-- [ ] T013 [US2] Re-aim `layout-run`, `project-state-writes`, `inspect-writes`, `service-day-writes`, `theme-writes`, `theme-chooser` and `run-all` at the queued read. List each removed test beside its replacement for the pull request.
-- [ ] T014 [US2] Write "The record session" in `docs/ARCHITECTURE.md`: the ordering property, the sent set, and the rule a new control follows. Update `.claude/rules/main.md` and `.claude/rules/renderer.md` where they describe the old mechanisms.
+- [x] T010 [US2] Every run's start (`start`, `rebuild`, `runAll`, `recolour`, `reorder`, `restyle`, `redrawLines`) flushes `beforeStart`, then plans from `await api.projects.get(id)`.
+- [x] T011 [US2] Remove `writing`, `writingFrom`, `#taken`, `#current`, `#ahead`, `#held`, `writtenAfter`, `RecordWrite`, `#writes` and `#afterWrites` from `layoutRun.ts`, and their callers in `useProjectState.ts` (about 429-432, 448, 490).
+- [x] T012 [US2] Remove the three serialisers (research R4): `themeWrites.ts`'s `writeThrough` and `themeChooser.ts`, `ExportTab.tsx`'s writing/waiting/sent, and `LayoutTuning.tsx`'s counter. Each control sends and takes the answer.
+- [x] T013 [US2] Re-aim `layout-run`, `project-state-writes`, `inspect-writes`, `service-day-writes`, `theme-writes`, `theme-chooser` and `run-all` at the queued read. List each removed test beside its replacement for the pull request.
+- [x] T014 [US2] Write "The record session" in `docs/ARCHITECTURE.md`: the ordering property, the sent set, and the rule a new control follows. Update `.claude/rules/main.md` and `.claude/rules/renderer.md` where they describe the old mechanisms.
 
 ## Phase 5: Part 1, verification
 

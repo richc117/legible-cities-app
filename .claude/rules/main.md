@@ -47,6 +47,18 @@ events. If the page must see events before the answer they lead up to
 (progress before a result), send the answer as an event on the same
 channel and let the preload make the promise.
 
+## The record session
+
+Every read and write of a project's record goes through the store's
+per-project queue (`ProjectStore.#serial`), `get` included, so a read
+answers with every write sent before it. A `projects:*` handler reaches the
+store in the turn it is handed its message: no `await` before the store
+call, or a call sent later can reach the queue first
+(`tests/unit/ipc.test.ts` reads the handlers for one). A writer changes the
+fields it names and no other, and `drawn` is made from what the run sent
+(`SentSet`, validated field by field), never from the record at the write.
+docs/ARCHITECTURE.md, "The record session" (spec 037).
+
 ## Where things are written
 
 Never inside the app bundle: it is read-only on macOS and it is wiped on
