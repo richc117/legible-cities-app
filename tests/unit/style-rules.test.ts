@@ -16,7 +16,6 @@ import {
   draftsOf,
   drawable,
   fieldText,
-  nextStyleStep,
   parseFigure,
   resettable,
   sizesWords,
@@ -375,30 +374,6 @@ describe('committing what was typed, before anything is sent', () => {
     )
     expect(fixed.style).toEqual({ lineWidth: 12, labelSize: 20 })
     expect(fixed.problems).toEqual({})
-  })
-})
-
-describe('what to do with a style a person has chosen', () => {
-  it('is nothing for a style that is the one drawn, whichever way it was written', () => {
-    expect(nextStyleStep({}, {}, false)).toBe('none')
-    expect(nextStyleStep({}, { lineWidth: 7 }, false)).toBe('none')
-    expect(nextStyleStep({ lineWidth: 12 }, { lineWidth: 12 }, false)).toBe('none')
-  })
-
-  it('waits before it compares, so a size put back while its build runs is not dropped (issue 399)', () => {
-    // 12 committed and its build started; the field put back to the record's
-    // while it runs. Mutation: the comparison first, as it was - this
-    // answers 'none', the build writes 12, and the field follows it back.
-    expect(nextStyleStep({ lineWidth: 12 }, { lineWidth: 12 }, true)).toBe('wait')
-    expect(nextStyleStep({}, {}, true)).toBe('wait')
-    // Once the build has written 12, the size put back is a change.
-    expect(nextStyleStep({}, { lineWidth: 12 }, false)).toBe('build')
-  })
-
-  it('is to draw it, or to wait for the page a run or an export is reading', () => {
-    expect(nextStyleStep({ lineWidth: 12 }, {}, false)).toBe('build')
-    expect(nextStyleStep({ lineWidth: 12 }, {}, true)).toBe('wait')
-    expect(nextStyleStep({}, { lineWidth: 12 }, false)).toBe('build')
   })
 })
 

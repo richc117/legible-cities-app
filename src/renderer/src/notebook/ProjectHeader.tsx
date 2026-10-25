@@ -13,7 +13,9 @@ import { useProject } from './context'
 // (the way back to the Library is in the window's header, issue 275). One
 // `role="status"` line
 // saying what the notebook is doing as a whole, no more than a sentence,
-// because it is a polite live region and each change to it is read out.
+// because it is a polite live region and each change to it is read out -
+// with one exception, a cheap edit whose panel went before it was drawn and
+// whose start was then refused, whose engine sentence follows the cell's.
 // And Run all, which brings the map up to date with cells 01 to 05 using
 // the runs those cells already have and never runs the export
 // (`runAll.ts` says how and why; the `export.plan` assertions in
@@ -40,6 +42,7 @@ export default function ProjectHeader(): JSX.Element {
     layingOut,
     settling,
     exporting,
+    refused,
   } = useProject()
   const region = useRef<HTMLDivElement>(null)
   const runAllRef = useRef<HTMLElement>(null)
@@ -74,6 +77,13 @@ export default function ProjectHeader(): JSX.Element {
         ? held.current
         : notebookSentence(project, states)
   if (!holding) held.current = sentence
+  // A cheap edit flushed as its panel went and refused at its start (spec
+  // 037, User Story 3 scenario 5): the cell has failed, which the line says,
+  // and the engine's sentence says why, here, since the control that would
+  // have gone back is gone. Said in the alert too, which is what is heard
+  // while a failure stands. It goes when the run moves on.
+  const told = (said: string | null): string | null =>
+    said === null || refused === null ? said : `${said} ${refused}`
   // Stop goes when the run ends, and Run all comes back - or does not, while
   // the record is read back or when the run left nothing to do, since it is
   // drawn only while offered. The notebook's sentence is where focus goes
@@ -127,10 +137,10 @@ export default function ProjectHeader(): JSX.Element {
               tabIndex={-1}
               ref={stateRef}
             >
-              {sentence}
+              {told(sentence)}
             </p>
             <p className="visually-hidden" role="alert">
-              {failure}
+              {told(failure)}
             </p>
             <div className="toolbar">
               {layingOut ? (

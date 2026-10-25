@@ -27,7 +27,7 @@
 // - a style source added to `stalenessOf`: 'one map build ... never stale'.
 // - `restyle` sends a `graph.build`, or `rebuild` is used in its place:
 //   'one map build ... from the stored layout'.
-// - `nextStyleStep` comparing before it waits (issue 399): 'a size put back
+// - `useCheapEdit.ts` `attempt` comparing before it waits (issue 399): 'a size put back
 //   while its build runs'.
 
 import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -440,7 +440,7 @@ test('a size put back while its build runs is drawn once that build has written'
   // build of it runs: the sizes put back equal the record still on disk,
   // which that build is about to change. They wait, and are drawn once the
   // build has written. Written, not run in the lane; the coordinator's
-  // mutation: `nextStyleStep` comparing before it waits - the reset is
+  // mutation: `useCheapEdit.ts` `attempt` comparing before it waits - the reset is
   // dropped, the build writes 12, and the field follows the record back.
   const engineHome = home({ progress_delay_ms: 300 })
   await withApp(engineHome, async (page) => {

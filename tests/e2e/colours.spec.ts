@@ -373,7 +373,7 @@ test('the picker stays open through a drag, and closes when it is dismissed', as
     // its own and so a build of its own: the test waits for each to be
     // drawn before the next begins, so none is folded into another by
     // arriving while a build holds the page (that is the wait, and
-    // `nextStep`'s unit test holds it).
+    // `cheap-edit.test.tsx` holds it against `useCheapEdit.ts` `attempt`).
     const [saturation, hue] = [
       picker.getByRole('slider').first(),
       picker.getByRole('slider').last(),
@@ -1083,7 +1083,7 @@ test('a colour put back while its build runs is drawn once that build has writte
   // build of it runs: the reset equals the record still on disk, which that
   // build is about to change. It is held, and drawn once the build has
   // written. Written, not run in the lane; the coordinator's mutation:
-  // `colours.ts` `nextStep` comparing before it waits - the reset is
+  // `useCheapEdit.ts` `attempt` comparing before it waits - the reset is
   // dropped, the build writes #ff0000, and the row follows the record back.
   const engineHome = home({ progress_delay_ms: 300 })
   await withApp(engineHome, async (page) => {

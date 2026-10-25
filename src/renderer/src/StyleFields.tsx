@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type JSX, type RefObject } from 'react'
+import { useId, useRef, useState, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
 import {
   isStyleChoice,
@@ -9,12 +9,11 @@ import {
   type ProjectStyle,
 } from '../../shared/project'
 import { REDRAW_DELAY } from './colours'
-import { debounce } from './debounce'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
-import { mustWait, refusedAtStart } from './panelRelease'
+import { useCheapEdit } from './notebook/useCheapEdit'
 import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
   chooseIn,
@@ -23,7 +22,6 @@ import {
   draftsOf,
   drawable,
   FRAME_SENTENCE,
-  nextStyleStep,
   resettable,
   STYLE_FIELDS,
   TICK_SENTENCE,
@@ -36,8 +34,6 @@ import {
   viewOf,
   type View,
 } from './styleRules'
-import { usePutBack } from './usePutBack'
-import { useSnapshot } from './useSnapshot'
 
 // The map's sizes: line width and gap, the two station radii and the
 // station's outline, the size and distance of the names, and the margin
@@ -54,10 +50,11 @@ import { useSnapshot } from './useSnapshot'
 // half-typed "1" is a line width of 1. Nothing is sent that the engine would
 // refuse: a figure outside its range, or an interchange radius below the
 // station radius, is refused beside the field in the engine's own sentence
-// (`commitDrafts`). A commit is a redraw, debounced and run through the same
-// path a colour change uses, and nothing is written to the record until the
-// map has been drawn with it (A4-01's rule), so a cancelled or failed build
-// leaves the record alone and the panel goes back to it.
+// (`commitDrafts`). A commit is a cheap edit (`useCheapEdit`, issue 490):
+// drawn after the delay, held while the page is held, and written to the
+// record only once the map has been drawn with it (A4-01's rule), so a
+// cancelled or failed build leaves the record alone and the panel goes back
+// to it.
 //
 // Since issue 391 (spec 034) the group holds the rest of how the map is
 // drawn, in this order: the engine's named looks at its head (`LookSelect`),
@@ -114,113 +111,50 @@ export default function StyleFields({
   handback,
   settling = false,
 }: Props): JSX.Element {
-  const snapshot = useSnapshot(run)
-  const { state: runState, restyled } = snapshot
-  const running = runState === 'running'
-  // Something else is reading or rewriting the project's page. Nothing here
-  // is disabled for it: a change made now waits and builds once the way is
-  // clear, so no control disables itself under a person's hands and no
-  // change is lost. `aria-busy` says a build is going; `commit` does the
-  // waiting.
-  const busy = disabled || running
   const ids = useId()
 
   const [view, setView] = useState<View>(() => viewOf(project.style))
 
-  // The debounce, made once: two fields left in quick succession are one
-  // map build. The current project, engine and run are read through a ref,
-  // so the waiting call is never the one from three renders ago.
-  const commitRef = useRef<(next: ProjectStyle) => void>(() => undefined)
-  const schedule = useMemo(
-    () => debounce((next: ProjectStyle) => commitRef.current(next), REDRAW_DELAY),
-    [],
-  )
-  // A figure committed and seen on screen is not lost to a screen that goes
-  // inside the delay: the build is the project's, as a run is, and carries
-  // on without this view - if the way is clear as the screen goes. If it is
-  // not, the size is dropped rather than left waiting on a screen that is
-  // gone, whose last render's record would be drawn from long after a run
-  // had moved it on, and nothing arms the timer again (issue 399, as
-  // `useLineOptions` does).
-  const mounted = useRef(true)
-  useEffect(() => {
-    mounted.current = true
-    return () => {
-      mounted.current = false
-      schedule.flush()
-    }
-  }, [schedule])
-
-  // Whether this panel's own redraw is going, for the effect below to read
-  // without being re-run when it ends: it must not reset the panel to a
-  // record that has not been read back yet, which still holds the old sizes.
-  const drawing = useRef(false)
-  useEffect(() => {
-    drawing.current = running && restyled
-  })
-
   // The record is what the panel shows: a build that finished has written it
-  // and the screen has read it back, so the two agree again. A record that
-  // arrives while a commit is still waiting, or while its own build goes
-  // (a rename is enough to bring one), is not allowed to throw the sizes
-  // off the screen.
-  //
-  // Nor is a choice that is waiting for a number written by hand to be
-  // mended (`viewForRecord`): it has not been drawn, so the record cannot
-  // hold it yet.
+  // and the screen has read it back, so the two agree again. The hook does
+  // not offer it while a size is waiting or this panel's own redraw goes (a
+  // rename is enough to bring one). Nor is a choice that is waiting for a
+  // number written by hand to be mended taken off the screen
+  // (`viewForRecord`): it has not been drawn, so the record cannot hold it
+  // yet.
   const shownFor = useRef(project.id)
-  useEffect(() => {
-    if (schedule.pending || drawing.current) return
-    const sameProject = shownFor.current === project.id
-    shownFor.current = project.id
-    setView((current) => viewForRecord(project.style, current, sameProject))
-  }, [project.id, project.style, schedule])
-
-  // A build that stopped wrote nothing, so the sizes on screen must go back
-  // to the record's; the run's own panel says why. A stop stops everything:
-  // a change made while the build ran is waiting on the same timer, and
-  // letting it through would build sizes a person had just been told the
-  // project did not keep.
-  //
-  // **Only at the moment the run stops** (`usePutBack`, issue 360), not for
-  // as long as it stays stopped. The run keeps its failed or cancelled state
-  // until the next one starts, and a record written for another reason - a
-  // rename, an export option - is a new `project.style` reference: acting on
-  // that would snap back, and cancel, a size committed afterwards and waiting
-  // for an export to let go of the page.
-  //
-  // And at the moment a start of its own is refused after a stop of its own
-  // (`refusedAtStart`, issue 399), which `usePutBack` cannot see.
-  const backToRecord = (): void => {
-    schedule.cancel()
-    setView(viewOf(project.style))
-  }
-  usePutBack(runState, restyled, backToRecord)
-
-  const commit = (next: ProjectStyle): void => {
-    // `busy` is what the last render saw; the run's own state is what is
-    // true at this moment, and a run can start between the two. A run that
-    // has moved on since this render wrote a record it has not read, and so
-    // has one whose record is still being read back (`settling`), so both
-    // wait too; and it is all asked before the size is compared with the
-    // record (issue 399).
-    const step = nextStyleStep(
-      next,
-      project.style,
-      mustWait({ held: busy || settling, rendered: snapshot, run, busyNow }),
-    )
-    // A layout, a rebuild or an export is reading the page this would
-    // rewrite. Wait rather than refuse: the same delay again, and again,
-    // until the way is clear; never on a screen that has gone.
-    if (step === 'wait') {
-      if (mounted.current) schedule(next)
-    } else if (step === 'build') {
-      if (refusedAtStart(run, ownRun, () => run.restyle(project, engine, next))) backToRecord()
-    }
-  }
-  useEffect(() => {
-    commitRef.current = commit
+  const edit = useCheapEdit<ProjectStyle>({
+    run,
+    project,
+    own: ownRun,
+    stored: (record) => record.style,
+    fields: [project.style],
+    same: sameStyle,
+    engine,
+    draw: (record, now, next) => run.restyle(record, now, next),
+    delay: REDRAW_DELAY,
+    // While an export reads the page, or the record a finished run wrote
+    // is read back: every draw carries the line options, and one drawn from
+    // the record before that run could put a line it hid back on the map
+    // (issue 399).
+    held: disabled || settling,
+    busyNow,
+    adopt: (style, record) => {
+      const sameProject = shownFor.current === record.id
+      shownFor.current = record.id
+      setView((current) => viewForRecord(style, current, sameProject))
+    },
+    // A build that stopped wrote nothing, so the sizes on screen go back to
+    // the record's; the run's own panel says why.
+    putBack: (record) => setView(viewOf(record.style)),
   })
+  const running = edit.snapshot.state === 'running'
+  // Something else is reading or rewriting the project's page. Nothing here
+  // is disabled for it: a change made now waits and builds once the way is
+  // clear, so no control disables itself under a person's hands and no
+  // change is lost. `aria-busy` says a build is going; the hook does the
+  // waiting.
+  const busy = disabled || running
 
   const type = (key: FigureKey, text: string): void =>
     setView((current) => ({ ...current, drafts: { ...current.drafts, [key]: text } }))
@@ -228,7 +162,7 @@ export default function StyleFields({
   const commitField = (key: FigureKey): void => {
     const done = commitDrafts(view.style, view.drafts, key)
     setView({ style: done.style, drafts: done.drafts, problems: done.problems })
-    if (!sameStyle(done.style, view.style)) schedule(done.style)
+    if (!sameStyle(done.style, view.style)) edit.change(done.style)
   }
 
   // A look, a marker or the face chosen (issue 391): shown at once and drawn
@@ -238,7 +172,7 @@ export default function StyleFields({
   // the choice waits on the screen and goes with the fix.
   const show = (next: View): void => {
     setView(next)
-    if (!sameStyle(next.style, view.style) && drawable(next.style)) schedule(next.style)
+    if (!sameStyle(next.style, view.style) && drawable(next.style)) edit.change(next.style)
   }
 
   const chooseLook = (value: string, looks: readonly Look[]): void => {
@@ -255,7 +189,7 @@ export default function StyleFields({
   // focus goes so a screen reader stays in the cell (A3-04 learned this).
   const reset = (): void => {
     setView({ style: {}, drafts: draftsOf({}), problems: {} })
-    schedule({})
+    edit.change({})
     handback.current?.focus()
   }
 

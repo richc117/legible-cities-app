@@ -30,6 +30,7 @@ import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
 import { keepFocusInCell, redrawOnOpen, redrawPageOnOpen } from './olderPage'
+import { useRefusedGone } from './useCheapEdit'
 
 // Everything the project screen holds, in one hook (A5.5-08).
 //
@@ -86,6 +87,14 @@ export interface ProjectState {
    * decide it from before the run.
    */
   settling: boolean
+  /**
+   * The engine's sentence for a cheap edit that was flushed as its panel
+   * went and refused at its start, while the run still stands where that
+   * refusal left it (spec 037, User Story 3 scenario 5); null otherwise. The
+   * header says it on the project's status line, since the control that
+   * would have gone back is gone (`useCheapEdit.ts`).
+   */
+  refused: string | null
   /** How many runs have drawn the page while this screen is open; the viewer's address carries it. */
   drawn: number
   /**
@@ -226,6 +235,7 @@ export function useProjectState(
     setRetry((n) => n + 1)
   }, [feedHere])
   const exportSnapshot = useSnapshot(exporter)
+  const refused = useRefusedGone(run, runSnapshot)
   const layingOut = runSnapshot.state === 'running'
   const exporting = exportSnapshot.state === 'running'
 
@@ -625,6 +635,7 @@ export function useProjectState(
     exportSnapshot,
     layingOut,
     settling,
+    refused,
     exporting,
     drawn,
     themeReloads,

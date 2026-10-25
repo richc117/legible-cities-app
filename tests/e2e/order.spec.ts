@@ -809,8 +809,8 @@ test('a move undone while its build runs is drawn once that build has written', 
   // Issue 399. A moved down, and moved back up while the build of the move
   // runs: the move back equals the record still on disk, which that build
   // is about to change. It waits, and is drawn once the build has written.
-  // Written, not run in the lane; the coordinator's mutation: `order.ts`
-  // `nextStep` comparing before it waits - the move back is dropped, the
+  // Written, not run in the lane; the coordinator's mutation: `useCheapEdit.ts`
+  // `attempt` comparing before it waits - the move back is dropped, the
   // build writes B first, and the list follows the record back to it.
   const engineHome = home({ progress_delay_ms: 300 })
   await withApp(engineHome, async (page) => {

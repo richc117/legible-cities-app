@@ -33,6 +33,7 @@ import { act, useRef, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
+import { sayRefusedGone } from '../../src/renderer/src/notebook/useCheapEdit'
 import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import type { Debounced } from '../../src/renderer/src/debounce'
 import { runAllPlan } from '../../src/renderer/src/runAll'
@@ -788,5 +789,28 @@ describe('a redraw the cancel reached too late', () => {
     expect(api.projects.get.mock.calls.length, 'the record is read back').toBe(reads + 2)
     expect(shown.project?.colors, 'and is the one the run wrote').toEqual(chosen.colors)
     expect(shown.drawn, 'the frame loads the page the engine wrote').toBe(loads + 1)
+  })
+})
+
+// Spec 037, User Story 3 scenario 5: a cheap edit flushed as its panel went
+// and refused at its start is said on the project's status line, which
+// reads it from this hook's `refused` (`ProjectHeader.tsx`).
+describe('a cheap edit refused after its panel went', () => {
+  it('reaches the screen as `refused`, and goes when the run next moves', async () => {
+    // Mutation: `useProjectState` returning `refused: null` - the header
+    // would never say it, though its own test, handed one, passes.
+    await opened()
+    const run = runs.layout as LayoutRun
+    expect(shown.refused).toBeNull()
+    // Refused at once, as a redraw with no engine is.
+    act(() =>
+      run.recolour(shown.project as ProjectRecord, null, { colors: {}, defaultColor: '#888888' }),
+    )
+    const refusal = run.snapshot.error as string
+    expect(run.snapshot.state).toBe('failed')
+    act(() => sayRefusedGone(run, run.snapshot, refusal))
+    expect(shown.refused).toBe(refusal)
+    act(() => run.start(shown.project as ProjectRecord, null))
+    expect(shown.refused, 'gone once the run moves').toBeNull()
   })
 })

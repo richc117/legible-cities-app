@@ -1,13 +1,17 @@
-// When the colour, order and size panels put their control back to the record
-// (issue 360): on the change of the run into `failed` or `cancelled`, and
-// never because the record was written.
+// When the cheap edits put their control back to the record (issue 360): on
+// the change of the run into `failed` or `cancelled`, and never because the
+// record was written.
 //
-// Three things are held here. The pure rule (`stoppedNow`). The hook that
-// remembers the state the rule compares with (`usePutBack`), run for real
-// through the least of React that lets a hook be called outside a component:
-// nothing in this suite renders to a DOM, and a rule that is right while the
-// hook around it forgets, or never forgets, is the defect itself. And that
-// the three panels call that one hook and keep no copy of the rule.
+// What is held here is the pure rules inside the cheap edits' one hook
+// (`notebook/useCheapEdit.ts`, issue 490): `stoppedNow`, `mustWait` and
+// `refusedAtStart`, and the hook that remembers the state the first compares
+// with (`usePutBack`), run for real through the least of React that lets a
+// hook be called outside a component. How the four panels use them - the
+// wait, the hold, the put-back, adoption and the flush as a panel goes - is
+// `cheap-edit.test.tsx`, which renders each panel through its cell. The
+// source-shape guards that stood in for that until then are gone (spec 038
+// FR-006), but for the two below that no rendered test can stand in for,
+// each with its reason.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -249,6 +253,9 @@ describe('whether a change must wait before it is compared', () => {
   })
 })
 
+// Kept as a read of the source, with its reason: it is cell 02's sentence,
+// not the cheap edits' hook's, and spec 038's T014 replaces it with cell 02's
+// own rendered tests rather than this file.
 describe('cell 02 tells a redraw whose record was refused from one that was not drawn', () => {
   it('hands `unkept` to the stopped sentence', () => {
     // Mutation: the eighth argument left out - the sentence would then say
@@ -256,104 +263,6 @@ describe('cell 02 tells a redraw whose record was refused from one that was not 
     const source = readFileSync(resolve(__dirname, '../../src/renderer/src/LayoutRun.tsx'), 'utf8')
     expect(source).toMatch(
       /stoppedSentence\(\s*state,\s*replaced,\s*rebuilt,\s*recoloured,\s*reordered,\s*restyled,\s*optioned,\s*unkept,?\s*\)/,
-    )
-  })
-})
-
-describe('the four cheap edits ask that one question', () => {
-  const read = (file: string): string =>
-    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
-
-  // Where each control uses the answer: the call that decides its step. A
-  // regex that only found the question asked would pass a control that asked
-  // and then ignored it.
-  const ASK = String.raw`mustWait\(\{ held: busy \|\| settling, rendered: snapshot, run, busyNow \}\)`
-  const uses: Record<string, RegExp[]> = {
-    'LineColours.tsx': [
-      new RegExp(String.raw`const stillBusy = \(\): boolean =>\s+${ASK}`),
-      /released\(unbuilt\.current, next, paletteOf\(project\), stillBusy\(\)\)/,
-      /retried\(unbuilt\.current, paletteOf\(project\), stillBusy\(\)\)/,
-    ],
-    'LineOrder.tsx': [
-      new RegExp(String.raw`nextStep\(\s*next,\s*orderOf\(project\),\s*${ASK},?\s*\)`),
-    ],
-    'StyleFields.tsx': [
-      new RegExp(String.raw`nextStyleStep\(\s*next,\s*project\.style,\s*${ASK},?\s*\)`),
-    ],
-    'useLineOptions.ts': [
-      /const busy = mustWait\(\{ held: held \|\| live\.current !== null, rendered: snapshot, run, busyNow \}\)\s+const step = nextLinesStep\(next, project\.lines, busy\)/,
-    ],
-  }
-  for (const file of Object.keys(uses))
-    it(`${file} asks \`mustWait\` with the snapshot it rendered, and its answer decides the step`, () => {
-      // Mutation: a control keeping its own copy of the question, or asking
-      // it and not passing the answer on (issue 399).
-      const source = read(file)
-      expect(source).toMatch(/import \{ mustWait[^}]*\} from '\.\/panelRelease'/)
-      for (const use of uses[file]) expect(source).toMatch(use)
-      expect(source.includes("run.snapshot.state === 'running'"), 'and no copy of it').toBe(false)
-      expect(/snapshot\.state === 'running'/.test(source), 'and no other copy of it').toBe(false)
-    })
-})
-
-describe('every cheap edit waits for the read-back of a finished run’s record', () => {
-  // Issue 399: a draw in the beat after a run finishes, before the record it
-  // wrote has been read, is drawn from the record before it, and every draw
-  // carries the line options - a line that run hid would be drawn again.
-  // The colours and the options waited for `settling` already; the order and
-  // the sizes now do. Read from the source, since nothing in this suite
-  // renders a panel to a DOM; `tests/unit/line-options-hook.test.tsx` holds
-  // the options' hold by rendering the hook.
-  const read = (file: string): string =>
-    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
-
-  for (const file of ['LineColours.tsx', 'LineOrder.tsx', 'StyleFields.tsx'])
-    it(`${file} holds a change while the record is read back`, () => {
-      // Mutation: `settling` left out of what the panel holds for.
-      const source = read(file)
-      expect(source.includes('settling = false,'), 'takes it, false when not given').toBe(true)
-      expect(source.includes('mustWait({ held: busy || settling,'), 'and waits for it').toBe(true)
-    })
-
-  it('the options wait for it through what the colours section holds for them', () => {
-    expect(read('LineColours.tsx').includes('held: disabled || settling,')).toBe(true)
-  })
-
-  it('the cells hand it to every panel that takes it', () => {
-    // Mutation: an adapter that does not pass it, which leaves the panel's
-    // default, false, and the panel drawing from a record about to move.
-    const lines = read('notebook/cells/LinesCell.tsx')
-    expect(lines.match(/settling=\{settling\}/g), 'the colours and the order').toHaveLength(2)
-    expect(read('notebook/cells/StyleCell.tsx').match(/settling=\{settling\}/g)).toHaveLength(1)
-  })
-})
-
-describe('a change waiting when the screen goes is dropped, and nothing waits again', () => {
-  // Issue 399. The sizes flush their debounce as the screen goes, so a size
-  // seen on screen is drawn if the way is clear; when it is not, the flush
-  // asked to wait again and armed the timer after the screen had gone, to
-  // draw later from the record that screen last saw. They now do what the
-  // options' hook does, which `tests/unit/line-options-hook.test.tsx` holds
-  // by rendering it; this holds that the sizes keep the same two lines,
-  // since nothing in this suite renders a panel to a DOM. The order and the
-  // colours cancel what is waiting as they go, and arm nothing.
-  const read = (file: string): string =>
-    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
-
-  for (const file of ['StyleFields.tsx', 'useLineOptions.ts'])
-    it(`${file} marks itself gone before it flushes, and waits only while it is there`, () => {
-      // Mutation: the wait re-armed whatever the screen, as the sizes did.
-      const source = read(file)
-      expect(source, 'set again when the effect runs, as StrictMode runs it twice').toMatch(
-        /mounted\.current = true\s+return \(\) => \{\s+mounted\.current = false\s+schedule\.flush\(\)/,
-      )
-      expect(source).toMatch(/if \(step === 'wait'\) \{\s+if \(mounted\.current\) schedule\(next\)/)
-    })
-
-  it('the order cancels what is waiting as it goes, and the colours clear their retry', () => {
-    expect(read('LineOrder.tsx')).toContain('useEffect(() => () => schedule.cancel(), [schedule])')
-    expect(read('LineColours.tsx')).toMatch(
-      /\(\) => \(\) => \{\s+if \(retry\.current !== null\) clearTimeout\(retry\.current\)/,
     )
   })
 })
@@ -415,85 +324,31 @@ describe('a start refused at once, where the next render will not see it', () =>
   })
 })
 
-describe('the four cheap edits go back to the record for it', () => {
-  const read = (file: string): string =>
-    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
-  const starts = [
-    { file: 'LineColours.tsx', start: 'run.recolour(project, engine, next)' },
-    { file: 'useLineOptions.ts', start: 'run.redrawLines(project, engine, next)' },
-    { file: 'LineOrder.tsx', start: 'run.reorder(project, engine, next)' },
-    { file: 'StyleFields.tsx', start: 'run.restyle(project, engine, next)' },
-  ]
-  for (const { file, start } of starts)
-    it(`${file} starts its redraw through it, and goes back as for a stop`, () => {
-      // Mutation: the start made bare, as it was.
-      const source = read(file)
-      expect(source).toContain(`refusedAtStart(run, ownRun, () => ${start})`)
-      expect(source.split(start)).toHaveLength(2)
-      expect(source).toMatch(
-        /\bif \((?:step === 'build' && )?refusedAtStart\(run, ownRun, \(\) => [^)]*\)\)\)?\s*backToRecord\(\)/,
-      )
-      expect(source, 'taken as it is, not negated').not.toMatch(/!refusedAtStart/)
-    })
-
-  it('each knows its own kind of run as `usePutBack` is told it', () => {
-    expect(read('LineColours.tsx')).toContain(
-      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.recoloured && !snapshot.optioned',
-    )
-    expect(read('useLineOptions.ts')).toContain(
-      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.optioned',
-    )
-    expect(read('LineOrder.tsx')).toContain(
-      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.reordered',
-    )
-    expect(read('StyleFields.tsx')).toContain(
-      'const ownRun = (snapshot: RunSnapshot): boolean => snapshot.restyled',
-    )
-  })
-})
-
-describe('a redraw for line options belongs to the options and not to the colours', () => {
-  const read = (file: string): string =>
-    readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
-
-  it('is put back by its own hook only, and the colours ignore it', () => {
-    // Mutation: either side reading `recoloured` alone - a stopped options
-    // redraw would drop a colour held until it ended, and a stopped colours
-    // redraw a waiting option (issue 394).
-    expect(read('useLineOptions.ts').includes('usePutBack(runState, optioned, backToRecord)')).toBe(
-      true,
-    )
-    expect(read('LineColours.tsx').includes('snapshot.recoloured && !optioned')).toBe(true)
-  })
-})
-
-describe('the three panels share the one shape', () => {
-  const panels = [
-    { file: 'LineColours.tsx', own: 'recoloured' },
-    { file: 'LineOrder.tsx', own: 'reordered' },
-    { file: 'StyleFields.tsx', own: 'restyled' },
-  ]
-  for (const { file, own } of panels) {
+// Kept as a read of the source, with its reason: that no panel carries a
+// copy of the machinery is an absence, and an absence is not behaviour, so
+// no rendered test can see it. A copy beside the hook would pass every row of
+// `cheap-edit.test.tsx` until it drifted, which is how issue 399 happened
+// twice. Mutation: `LineOrder.tsx` importing `debounce` and arming its own
+// timer beside the hook, as it did.
+describe('no cheap edit keeps a copy of the hook', () => {
+  const panels = ['LineColours.tsx', 'LineOrder.tsx', 'StyleFields.tsx', 'useLineOptions.ts']
+  for (const file of panels) {
     const source = readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
-
-    it(`${file} calls usePutBack with the run's state and its own kind of run`, () => {
-      expect(source.includes("import { usePutBack } from './usePutBack'"), 'imports the hook').toBe(
-        true,
-      )
-      expect(source.includes(`usePutBack(runState, ${own}, backToRecord)`), 'and calls it').toBe(
-        true,
-      )
-    })
-
-    it(`${file} keeps no reading of the run's state of its own for this`, () => {
-      // The old shape: an effect that tested the stopped states and listed
-      // the record's fields among its dependencies, so that a new record was
-      // a trigger. Any copy of the test is a way back to it.
+    it(`${file} draws through useCheapEdit and asks none of its rules for itself`, () => {
+      expect(source).toMatch(/import \{ useCheapEdit \} from '\.\/notebook\/useCheapEdit'/)
+      for (const internal of ['./panelRelease', './usePutBack', './debounce'])
+        expect(source.includes(`from '${internal}'`), `no import of ${internal}`).toBe(false)
       expect(
         /runState === '(cancelled|failed)'/.test(source),
         'no test of the stopped states',
       ).toBe(false)
-      expect(source.includes('was.current'), 'no ref of its own for the last state').toBe(false)
+      expect(/setTimeout\(/.test(source), 'no timer of its own').toBe(false)
+      // Nor the step rules each kept before issue 490: they are deleted, and a
+      // panel that brought one back would compare with the record its own way.
+      expect(
+        /\bnext(Lines|Style)?Step\b/.test(source),
+        'no step rule of its own (nextStep, nextStyleStep, nextLinesStep)',
+      ).toBe(false)
     })
   }
 })

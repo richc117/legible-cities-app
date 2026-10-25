@@ -210,6 +210,13 @@ and back; then VoiceOver over the list.
   it is waiting while it waits, so the move does not look as though it has
   landed; that it is lost on leaving is inherited from the Colours panel and
   named here so it is a decision rather than a surprise.
+  *As of 24 Oct 2026 (issue 490):* overtaken. The order goes through the
+  cheap edits' one hook (`useCheapEdit`), and a move waiting when the panel
+  goes is flushed: drawn at once if the way is clear, and otherwise once the
+  run and the export let go of the page, from the record read then. A stop
+  of its own kind meanwhile drops it, and an order panel that comes back for
+  the project takes it over. The rule is in `docs/ARCHITECTURE.md`, "The
+  record session".
 - **A build that is cancelled or fails.** Nothing is written, and the panel
   goes back to the record's order, as the Colours panel does.
 - **A read-only record**, written by a newer version of the app: the panel
