@@ -92,13 +92,13 @@ const CHOICE_DELAY = 250
  * the run draws the day. Left to its timer it landed while the run went,
  * with the control already disabled, and the run drew the day before it.
  *
- * Flushed rather than cancelled, which is the opposite of what the colour
- * and order panels do with theirs: their pending call is a redraw a person
- * will see fail to happen, and this one is a choice they have already seen
- * the control take. Leaving the screen, or starting a run, a fifth of a
- * second after choosing a day must not lose the day. `write` is read
- * through a ref, so a waiting call is never the one from three renders ago
- * - the pattern `LineColours` already uses for its map builds.
+ * Flushed rather than cancelled, as the cheap edits flush theirs since
+ * issue 490 (`notebook/useCheapEdit.ts`): this is a choice a person has
+ * already seen the control take, and leaving the screen, or starting a run,
+ * a fifth of a second after choosing a day must not lose the day. Unlike
+ * theirs it is a write and draws nothing, so it is also flushed by a run's
+ * press, where a cheap edit waits for the run to end. `write` is read
+ * through a ref, so a waiting call is never the one from three renders ago.
  */
 export function useDayChoice(
   run: Pick<Run, 'beforeStart'>,

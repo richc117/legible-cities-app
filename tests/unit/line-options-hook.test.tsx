@@ -10,6 +10,11 @@
 // things the hook reads of one: its snapshot, a way to hear it change, and
 // `redrawLines`.
 //
+// Since issue 490 the guards are the cheap edits' one hook's
+// (`notebook/useCheapEdit.ts`), and `cheap-edit.test.tsx` holds them for all
+// four panels through their cells; here they are seen through the options'
+// own hook, which is the only one with a gesture and a debounce together.
+//
 // Each test was watched failing under the mutation named in it.
 
 import { act, type JSX } from 'react'
@@ -174,8 +179,8 @@ describe('a choice is drawn after the delay, once the way is clear', () => {
 describe('the guards that act late', () => {
   it('waits while a casing’s colour is under a hand, and draws what the hand left', () => {
     // A line hidden, then a casing's colour dragged on another before the
-    // delay ends. Mutation: `useLineOptions` asking `mustWait` without
-    // `live.current !== null` - the hidden line would be drawn under the
+    // delay ends. Mutation: the cheap edits' hook asking `mustWait` without
+    // `unbuilt.live !== null` - the hidden line would be drawn under the
     // hand, without the casing on screen beside it.
     const run = new StandInRun()
     render({ run, project: record({ B: { casing: { width: 0.5, color: '#000000' } } }) })
@@ -213,8 +218,8 @@ describe('the guards that act late', () => {
 
   it('waits while the record a finished run wrote is read back, then draws', () => {
     // The colours section hands the hook `held` as `disabled || settling`.
-    // Mutation: `useLineOptions` asking `mustWait` without `held` - the draw
-    // would go during the read-back, from the record before the run.
+    // Mutation: the cheap edits' hook asking `mustWait` without `held` - the
+    // draw would go during the read-back, from the record before the run.
     const run = new StandInRun()
     render({ run, held: true })
     act(() => shown.choose('A', { hidden: true }))
@@ -249,11 +254,13 @@ describe('the guards that act late', () => {
 })
 
 describe('the screen going', () => {
-  it('drops a choice that is waiting, and arms nothing after it has gone', () => {
+  it('draws a choice held as the screen goes once the way clears, and arms nothing after', () => {
     // An export started since the last render holds the page; the screen
-    // goes, and then the export ends. Mutation: the wait re-armed whatever
-    // the screen (`if (mounted.current)` taken out) - the choice would be
-    // drawn after the screen had gone, from the record it last saw.
+    // goes, and then the export ends. The choice is flushed (spec 037, User
+    // Story 3 scenario 5): it waits on with nobody's screen behind it and is
+    // drawn once the export lets go, since the redraw reads its own record
+    // from the store. Mutation: the hook's `leave` dropping a change it
+    // finds held rather than arming its wait - the choice would be lost.
     let exporting = true
     const run = new StandInRun()
     render({ run, busyNow: () => exporting })
@@ -261,14 +268,16 @@ describe('the screen going', () => {
     wait(REDRAW_DELAY)
     expect(run.redrawLines).not.toHaveBeenCalled()
     unmount()
-    exporting = false
     wait(REDRAW_DELAY * 5)
-    expect(run.redrawLines, 'never drawn from a screen that has gone').not.toHaveBeenCalled()
+    expect(run.redrawLines, 'not while the export holds the page').not.toHaveBeenCalled()
+    exporting = false
+    wait(REDRAW_DELAY)
+    expect(run.drawn()).toEqual([{ A: { hidden: true } }])
     expect(vi.getTimerCount(), 'and nothing is left waiting').toBe(0)
   })
 
   it('draws a choice seen on screen at once if the way is clear as the screen goes', () => {
-    // Mutation: the delay cancelled as the screen goes, rather than flushed.
+    // Mutation: the hook's `leave` cancelling, rather than flushing.
     const run = new StandInRun()
     render({ run })
     act(() => shown.choose('A', { hidden: true }))
@@ -281,7 +290,7 @@ describe('a start refused after a stop of its own kind', () => {
   it('goes back to the record at once, as for any stop', () => {
     // An options redraw failed when the engine went; a choice made while it
     // restarts is refused at its start, `failed` to `failed` with the kind
-    // unmoved. Mutation: the start made bare, without `refusedAtStart` -
+    // unmoved. Mutation: the hook not acting on `refusedAtStart`'s answer -
     // the switch would stay off though the line was neither drawn nor kept.
     const run = new StandInRun()
     run.moveQuietly({ state: 'failed', recoloured: true, optioned: true })

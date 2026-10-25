@@ -923,7 +923,44 @@ choice while the answer is on its way waits for the answer to its last
 write before taking the record again (`LayoutTuning`'s, the theme
 chooser's): the answers arrive in order, so the last write's answer is
 the last to arrive. A run is never handed a record to trust: it reads its
-own. The cheap edits' shared hook is part 2's (issue 490).
+own.
+
+**A cheap edit goes through `useCheapEdit`, and nothing else.** A cheap
+edit is a choice drawn by a `map.build` from the stored layout and never by
+a re-layout - the line colours, the line order, the sizes with their looks
+and markers, the line options - and it is shown at once and written only
+once the map carries it, by the redraw's completion (part 2, issue 490;
+`src/renderer/src/notebook/useCheapEdit.ts`). A new one gives the hook its
+own kind of run, its fields as the record holds them, how two values
+compare, the redraw that draws one, its delay, and what to do to put the
+control back or take the record onto it; it keeps no timer, no reading of
+the run's state and no comparison with the record of its own. The hook then
+holds the rule for all of them, in this order. **The wait**: drawn the
+delay after the last change, or, for the colours, at a gesture's end with
+the colours on the way only shown (issue 262). **The hold**: while a run
+goes, an export reads the page, a finished run's record is being read back,
+or the run has moved on since the screen drew, the change is held and asked
+again after the delay, never refused, and it is asked before the change is
+compared with the record (`mustWait`, issue 399). **The put-back**: when the
+panel's own redraw stops, or its start is refused at once, the control goes
+back to the record and what was waiting is dropped (`stoppedNow`,
+`refusedAtStart`, issues 360 and 399). **Adoption**: a record that arrives
+is taken onto the control unless a change is waiting or under a hand, or
+the panel's own redraw is going - until it ends the record does not hold
+what it draws - while every other field is the record's at once, because
+the panel reads it from the record and holds no copy. **The panel going**:
+a change still waiting is flushed, as if its delay had run out; one the way
+is not clear for waits on with no screen behind it and is drawn once the run
+and the export let go of the page, without being compared with the record
+the panel last saw, since the redraw reads its own record from the store and
+sends the change over it; and a start refused then is said on the project's
+status line, after the cell's failure, because the control that would have
+gone back is gone (`sayRefusedGone`, read by `useProjectState` as
+`refused`). The hook neither writes the record nor orders a write, so it
+needs nothing from `beforeStart`: a cheap edit waiting when another run is
+pressed is not part of that run, and is drawn after it. Its rows are
+`tests/unit/cheap-edit.test.tsx`, one table per panel rendered through the
+panel's cell, each row watched failing under a mutation of the hook.
 
 ## The layout run
 

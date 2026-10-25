@@ -12,23 +12,15 @@ import {
   hasOverride,
   isReset,
   linesOf,
-  mayAdoptRecord,
-  nextStep,
-  reached,
   readHex,
-  released,
   resetAll,
-  retried,
   samePalette,
   shownColour,
   sourceWords,
-  stopped,
   withDefault,
   withOverride,
   withoutOverride,
-  NOTHING_UNBUILT,
   type Line,
-  type Unbuilt,
 } from '../../src/renderer/src/colours'
 import {
   DEFAULT_COLOR,
@@ -262,164 +254,11 @@ describe('editing the palette', () => {
   })
 })
 
-// FR-009: a change made while a layout, a rebuild or an export is reading
-// the project's page waits and builds once - it is never refused and never
-// dropped, so no control has to disable itself under a person's hands.
-describe('nextStep: build, wait, or nothing at all', () => {
-  const stored = palette({ colors: { A: '#0072bc' } })
-  const changed = palette({ colors: { A: '#ff0000' } })
-
-  it('builds a change when the way is clear', () => {
-    expect(nextStep(changed, stored, false)).toBe('build')
-  })
-  it('waits rather than refusing while something else reads the page', () => {
-    expect(nextStep(changed, stored, true)).toBe('wait')
-  })
-  it('does nothing for a change that is not one, once the way is clear', () => {
-    expect(nextStep(stored, stored, false)).toBe('none')
-    expect(nextStep(palette({ colors: { A: '#0072BC' } }), stored, false)).toBe('build')
-  })
-  it('waits before it compares: while the page is held, even no change waits (issue 399)', () => {
-    // Mutation: the comparison first, as it was - the record a build is
-    // about to change would answer "no change" for a colour put back while
-    // that build runs, and the colour would be dropped.
-    expect(nextStep(stored, stored, true)).toBe('wait')
-  })
-  it('sees a changed default as a change', () => {
-    expect(nextStep(withDefault(stored, '#112233'), stored, false)).toBe('build')
-  })
-})
-
-// Issue 262. The map follows the end of a gesture and not its every colour,
-// so between a gesture's first colour and the map carrying its last, the
-// screen shows colours the record does not hold. These are the rules for
-// that stretch: what a release does, what a release that could not be built
-// does, and when the record may take the screen back. No interval is in any
-// of them, which is the point: a drag of any speed, with any pause in it,
-// is the same calls in the same order.
-describe('a gesture and its release: the map follows the end, never an interval', () => {
-  const stored = palette({ colors: { A: '#0072bc' } })
-  const colour = (hex: string): Palette => palette({ colors: { A: hex } })
-  const [one, two, three] = [colour('#111111'), colour('#222222'), colour('#333333')]
-
-  it('starts with nothing unbuilt, so the record may be shown', () => {
-    expect(NOTHING_UNBUILT).toEqual({ live: null, held: null })
-    expect(mayAdoptRecord(NOTHING_UNBUILT)).toBe(true)
-  })
-
-  it('follows every colour of a gesture, and the last one is the one it holds', () => {
-    let unbuilt: Unbuilt = NOTHING_UNBUILT
-    for (const next of [one, two, three]) unbuilt = reached(unbuilt, next)
-    expect(unbuilt.live).toBe(three)
-    expect(unbuilt.held).toBeNull()
-  })
-
-  it('a gesture of fifty colours is one build, on its release, with the colour it ended on', () => {
-    // However slowly or quickly the fifty arrive, the only call that can
-    // answer with a step is the release; `reached` answers with no step at
-    // all, so there is nothing for a quiet interval to be.
-    let unbuilt: Unbuilt = NOTHING_UNBUILT
-    for (let i = 0; i < 50; i++) unbuilt = reached(unbuilt, colour(`#${String(i + 10).repeat(3)}`))
-    const outcome = released(unbuilt, three, stored, false)
-    expect(outcome.step).toBe('build')
-    expect(outcome.unbuilt).toEqual({ live: null, held: null })
-  })
-
-  it('a release while something else reads the page is held, not built and not lost', () => {
-    const outcome = released(reached(NOTHING_UNBUILT, one), one, stored, true)
-    expect(outcome.step).toBe('wait')
-    expect(outcome.unbuilt).toEqual({ live: null, held: one })
-    expect(mayAdoptRecord(outcome.unbuilt), 'the record may not throw it off the screen').toBe(
-      false,
-    )
-  })
-
-  it('a later release replaces the one that was waiting: one build when the way clears', () => {
-    const first = released(NOTHING_UNBUILT, one, stored, true)
-    const second = released(first.unbuilt, two, stored, true)
-    expect(second.unbuilt.held).toBe(two)
-    const again = retried(second.unbuilt, stored, false)
-    expect(again.step).toBe('build')
-    expect(again.unbuilt).toEqual({ live: null, held: null })
-  })
-
-  it('a release that is no change builds nothing once the way is clear, and drops an older one that was waiting', () => {
-    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
-    const back = released(waiting, stored, stored, false)
-    expect(back.step).toBe('none')
-    expect(back.unbuilt).toEqual({ live: null, held: null })
-  })
-
-  it('a colour put back while the build of the one before runs is held, and drawn from the record that build wrote (issue 399)', () => {
-    // The record says `stored`; `one` is released and its build starts; the
-    // person puts the colour back while it runs. Mutation: `nextStep`
-    // comparing before it waits - the release back would equal the record
-    // still on disk and be dropped, the build would write `one`, and the
-    // swatch would follow the record back to `one` by itself.
-    const back = released(NOTHING_UNBUILT, stored, stored, true)
-    expect(back.step, 'it waits, rather than being compared with a record about to move').toBe(
-      'wait',
-    )
-    expect(back.unbuilt).toEqual({ live: null, held: stored })
-    expect(mayAdoptRecord(back.unbuilt), 'the record the build writes does not take it away').toBe(
-      false,
-    )
-    // The build wrote `one`, and the record now says so.
-    const after = retried(back.unbuilt, one, false)
-    expect(after.step, 'drawn, from the record that build wrote').toBe('build')
-    expect(after.unbuilt).toEqual({ live: null, held: null })
-  })
-
-  it('a release back to the record while the page is held, with nothing moving it, builds nothing once clear', () => {
-    const back = released(NOTHING_UNBUILT, stored, stored, true)
-    expect(back.step).toBe('wait')
-    const after = retried(back.unbuilt, stored, false)
-    expect(after.step).toBe('none')
-    expect(after.unbuilt, 'and nothing is left waiting').toEqual({ live: null, held: null })
-  })
-
-  it('asks again: it builds once the way is clear, and waits while it is not', () => {
-    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
-    expect(retried(waiting, stored, true)).toEqual({ step: 'wait', unbuilt: waiting })
-    expect(retried(waiting, stored, false).step).toBe('build')
-    expect(retried(NOTHING_UNBUILT, stored, false).step, 'nothing held, nothing to build').toBe(
-      'none',
-    )
-  })
-
-  it('does not build an older release under a gesture that is going', () => {
-    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
-    const going = reached(waiting, two)
-    expect(retried(going, stored, false)).toEqual({ step: 'wait', unbuilt: going })
-    // That gesture's own release says what to build, and it is the one build.
-    const end = released(going, two, stored, false)
-    expect(end.step).toBe('build')
-    expect(end.unbuilt).toEqual({ live: null, held: null })
-  })
-
-  it('a build that stopped puts everything back, the release waiting for it and a gesture alike', () => {
-    const waiting = released(NOTHING_UNBUILT, one, stored, true).unbuilt
-    const going = reached(waiting, two)
-    expect(mayAdoptRecord(going), 'a gesture and a waiting release hold the record off').toBe(false)
-    expect(stopped()).toEqual(NOTHING_UNBUILT)
-    // The screen goes back to the record, and the picker clears its changed
-    // flag when the colour it is given moves under it, so a pointer or a key
-    // released without another move never reports its end. A gesture left
-    // standing here would hold the record off the screen, and hold every
-    // release back, until the panel closed. The gesture's next colour
-    // reaches it again.
-    expect(mayAdoptRecord(stopped()), 'the record may be shown again').toBe(true)
-    expect(retried(stopped(), stored, false).step, 'and nothing is left waiting').toBe('none')
-    expect(reached(stopped(), three).live, 'a gesture carries on from its next colour').toBe(three)
-  })
-
-  it('lets the record take the screen back only when nothing is going or waiting', () => {
-    expect(mayAdoptRecord({ live: one, held: null })).toBe(false)
-    expect(mayAdoptRecord({ live: null, held: one })).toBe(false)
-    expect(mayAdoptRecord({ live: one, held: two })).toBe(false)
-    expect(mayAdoptRecord({ live: null, held: null })).toBe(true)
-  })
-})
+// What a release does - built at once, held while the page is held and
+// never refused or dropped, compared with the record only once the way is
+// clear, and when the record may take the screen back - is the cheap edits'
+// one hook's since issue 490, and `cheap-edit.test.tsx` holds it through the
+// colours' cell ("the colours: the map follows the end of a gesture").
 
 // The picker has two events, and which one builds is the whole of issue 262.
 // The end-to-end spec drives it; this keeps the unit run from passing a
