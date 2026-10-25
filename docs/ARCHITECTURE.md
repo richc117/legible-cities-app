@@ -954,7 +954,8 @@ is not clear for waits on with no screen behind it and is drawn once the run
 and the export let go of the page, from the record and the engine's state
 read then through the bridge and compared with that record, never from the
 last render's, which may be behind (a project laid out since, an engine
-started since). A stop of the panel's own kind meanwhile drops it, as with
+started since); a read refused because the project is gone ends it, and any
+other refused read leaves it waiting. A stop of the panel's own kind meanwhile drops it, as with
 the panel there, and a panel of the same kind that comes back for the run
 takes it over, so two editors never hold one panel's whole value - the
 palette, the order, the style, the lines - at once. A start refused then is
