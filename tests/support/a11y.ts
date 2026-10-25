@@ -572,6 +572,9 @@ export function installProbe(): void {
   // document can say, by identity, that focus is where it was put.
   let handFrom: Element | 'top' | null = null
   let aimedAt: Element | null = null
+  // Where `begin()` put focus: the screen's heading, or an open popover's
+  // invoker; null in a dialog.
+  let start: Element | null = null
   let stops: {
     control: Element
     chain: Element[]
@@ -590,10 +593,23 @@ export function installProbe(): void {
       // From the top: a screen's heading starts the sequence, since Chromium
       // carries on from the last focused place even after a blur; a dialog
       // starts from its own first control.
+      //
+      // An open popover with an invoker starts it from that invoker instead
+      // (issue 436). The app's colour panel closes when focus lands anywhere
+      // but its chip or itself, as a person meets it, so a walk from the
+      // heading would close it before reaching it and walk a screen with no
+      // panel; from its chip, the first press goes into it, the walk goes on
+      // round the end of the document (`lapsed()`, the wrap) and ends back at
+      // the chip, with the panel shut by then.
       ;(document.activeElement as HTMLElement | null)?.blur?.()
-      const top =
-        document.querySelector('dialog[open]') === null ? document.querySelector('h1') : null
-      top?.focus()
+      const dialog = document.querySelector('dialog[open]')
+      const popover = dialog === null ? document.querySelector('[popover]:popover-open') : null
+      const invoker =
+        popover !== null && popover.id !== ''
+          ? document.querySelector(`[popovertarget="${CSS.escape(popover.id)}"]`)
+          : null
+      start = dialog !== null ? null : (invoker ?? document.querySelector('h1'))
+      ;(start as HTMLElement | null)?.focus?.()
       return want.length
     },
     step() {
@@ -672,8 +688,8 @@ export function installProbe(): void {
       // arbitrary.
       if (last !== null && !last.isConnected)
         return { detached: true, next: false, frame: null, skipped: null, topUnread }
-      // The last control read, or the screen's heading where none has been.
-      const from = last ?? document.querySelector('h1')
+      // The last control read, or where the walk began where none has been.
+      const from = last ?? start ?? document.querySelector('h1')
       const next = want.find((el) => el.isConnected && !visited.has(el) && follows(el, from))
       // Nothing wanted follows the last control read: a press from there
       // leaves the end of the document and comes back round to the top.
@@ -1209,12 +1225,23 @@ export async function expectEdgesInForcedColours(
  * themes (A5.6-09):
  * a focus ring or a control that only one theme draws is a defect the other
  * would hide. The session is left in the default theme, Night, as it began.
+ *
+ * `before` puts the screen back in the state being swept, before each theme:
+ * a walk can change it, as a colour panel the walk went through is closed
+ * when focus leaves it (issue 436), and the second theme would otherwise
+ * sweep a screen without it.
  */
-export async function sweep(page: Page, where: string, scope?: Locator): Promise<void> {
+export async function sweep(
+  page: Page,
+  where: string,
+  scope?: Locator,
+  { before }: { before?: () => Promise<void> } = {},
+): Promise<void> {
   let failure: unknown = null
   try {
     for (const theme of THEMES) {
       await inTheme(page, theme)
+      await before?.()
       const here = `${where} (${theme.name})`
       // One snapshot for both checks of it. Two would be two trees on a
       // screen that is moving - a feed being added, a sample downloading -

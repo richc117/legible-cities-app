@@ -648,8 +648,11 @@ next before it says what went wrong.
   (`--focus-ring-offset` plus `--focus-ring-width`) on whichever side it is
   placed, is brought into the window when it opens or takes focus (the chip's
   scroller moves by the least that fits both, never smoothly), and closes
-  when focus leaves it for another control: an auto popover is dismissed by a
-  press and not by Tab, and one left open covered the controls after it.
+  when focus lands anywhere but its chip or inside it, by a key or by the
+  app: an auto popover is dismissed by a press and not by focus, and one left
+  open covered the controls beside its chip - placed above a chip near the
+  window's foot, the row above it, which Shift+Tab from the chip reached.
+  The sweep's walk begins at an open popover's invoker for that reason.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is

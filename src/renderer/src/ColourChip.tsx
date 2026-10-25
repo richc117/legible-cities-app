@@ -112,6 +112,27 @@ export function useColourPanel({
     if (panelRef.current?.matches(':popover-open') === true) panelRef.current.hidePopover()
     chipRef.current?.focus()
   }
+  // While the panel is open, focus is on its chip, inside it, or out of the
+  // document (the window losing it); focus landing anywhere else closes it
+  // (issue 436). An auto popover is light-dismissed by a press outside and
+  // not by focus, and it lies over whatever is beside its chip: flipped
+  // above a chip near the window's foot, it covers the row above, so a
+  // Shift+Tab from the chip, a Tab out of the panel, or the app moving focus
+  // itself put focus on a control the panel hid. The document's `focusin`
+  // and not the panel's blur, because the first and the last of those never
+  // had focus in the panel to lose.
+  useEffect(() => {
+    if (!open) return
+    const away = (event: FocusEvent): void => {
+      const panel = panelRef.current
+      const to = event.target
+      if (panel === null || !(to instanceof Node)) return
+      if (to === chipRef.current || panel.contains(to)) return
+      if (panel.matches(':popover-open')) panel.hidePopover()
+    }
+    document.addEventListener('focusin', away)
+    return () => document.removeEventListener('focusin', away)
+  }, [open])
   const chip = (
     <button
       ref={chipRef}
@@ -153,21 +174,6 @@ export function useColourPanel({
       onFocus={() => {
         if (chipRef.current !== null && panelRef.current !== null)
           keepInWindow(chipRef.current, panelRef.current)
-      }}
-      // Focus leaving the panel for another control closes it. An auto
-      // popover is light-dismissed by a press outside and not by Tab, so a
-      // person walking on with the keyboard left it open over the rows below
-      // it, and landed on controls it covered (issue 436). Focus going back
-      // to the chip, or to nowhere (the window losing it), leaves it open.
-      onBlur={(event) => {
-        const next = event.relatedTarget
-        if (
-          next instanceof Node &&
-          next !== chipRef.current &&
-          panelRef.current?.contains(next) === false &&
-          panelRef.current.matches(':popover-open')
-        )
-          panelRef.current.hidePopover()
       }}
     >
       {open && (
