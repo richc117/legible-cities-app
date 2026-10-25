@@ -24,12 +24,24 @@ import { PAGE_SEAMS } from '../../src/shared/viewer'
  * Read from the app's own list, so a pin that adds a seam moves every stand-in
  * with it.
  */
-export const EVERY_SEAM = `(function () {
+export const EVERY_SEAM = everySeamBut([])
+
+/**
+ * The same line, for a page an engine between two seams drew: every method
+ * of `PAGE_SEAMS` but the ones named, and the page's own `__present` left as
+ * it wrote it. `everySeamBut(['setCard', 'setDrawn'])` is a page from engine
+ * v0.13.0 to v0.14.x, which has a theme and a trip and lacks only the
+ * opening's two, and is older all the same (issue 517).
+ */
+export function everySeamBut(gone: readonly string[]): string {
+  const names = PAGE_SEAMS.filter((name) => !gone.includes(name))
+  return `(function () {
   var present = window.__present;
-  ${JSON.stringify(PAGE_SEAMS)}.forEach(function (name) {
+  ${JSON.stringify(names)}.forEach(function (name) {
     if (typeof present[name] !== "function") present[name] = function () {};
   });
 })();`
+}
 
 /** What a stand-in page can be asked for beyond what every one has. */
 export interface StandInPageOptions {
