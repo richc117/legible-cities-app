@@ -224,9 +224,15 @@ export function installProbe(): void {
     return root instanceof ShadowRoot ? root.host : el
   }
   const describe = (el: Element): string => {
+    // An input by the words of its label before its id: the kit's text
+    // field takes a generated id (`useId`), which names nothing a reader of
+    // a failure, or a sweep's `judges`, can recognise.
+    const labelled =
+      el instanceof HTMLInputElement ? (el.labels?.[0]?.textContent ?? '').trim() : ''
     const label =
       el.getAttribute('aria-label') ||
       el.getAttribute('label') ||
+      labelled ||
       el.id ||
       (el.textContent ?? '').trim().slice(0, 40) ||
       el.getAttribute('title') ||

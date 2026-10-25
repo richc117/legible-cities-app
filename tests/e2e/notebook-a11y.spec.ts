@@ -264,7 +264,12 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // has left it is neither missed nor judged unless the sweep says so.
     await sweep(page, 'the project, a colour picker open', undefined, {
       before: openPicker,
-      judges: [/^div "Color"$/, /^div "Hue"$/, /^fig-button "Use this colour"$/],
+      judges: [
+        /^div "Color"$/,
+        /^div "Hue"$/,
+        /^input "Hex value"$/,
+        /^fig-button "Use this colour"$/,
+      ],
     })
     // The sweep's Tab walk went on past the picker, and an auto popover that
     // focus leaves for another control is closed (issue 436: left open it
