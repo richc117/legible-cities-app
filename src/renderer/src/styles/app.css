@@ -1008,23 +1008,26 @@ fig-button:not([icon]) > .icon {
    ours - and these rules name no other colour.
 
    A border, with the box-sizing that keeps the control's size, where the
-   control has a box of its own; an outline drawn inward where it is the
-   kit's element, which a border would resize and which never takes the focus
-   ring itself (the field inside it does). The checked checkbox's mark was a
+   control has a box of its own; an outline drawn inward where a border would
+   resize the element - the kit's text field, whose edge the kit also draws
+   under the pointer with a shadow, so the edge here is not conditional on the
+   pointer, and the carried row of the line order. The field's own focus ring
+   is an outline on the same element, so its rule is kept off the focused
+   field. The checked checkbox's mark was a
    background, which the mode turns into the canvas, so it is a system colour
    too. The highlighted option of the combobox was told apart by a shadow and
    a ground; both are gone, so it takes an outline in the mode's highlight.
    Focus rings are outlines and stay as they are. */
 @media (forced-colors: active) {
-  fig-input-text:not(:focus-within):not(:hover) {
+  fig-input-text:not(:focus-within),
+  .line-row-group[data-dragged] {
     outline: var(--border-width) solid CanvasText;
     outline-offset: calc(-1 * var(--border-width));
   }
 
   fig-dropdown > select,
   input[type='checkbox']:not(.switch),
-  .export-choices textarea,
-  .line-row-group[data-dragged] {
+  .export-choices textarea {
     box-sizing: border-box;
     border: var(--border-width) solid CanvasText;
   }

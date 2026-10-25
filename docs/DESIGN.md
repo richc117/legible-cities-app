@@ -614,30 +614,31 @@ next before it says what went wrong.
   arrow keys; every dialog trapped, Escape closes, focus returns.
 - Focus is `--focus-ring` on every focusable element, never removed. The
   sweep measures it from computed styles: at least 2 CSS pixels thick and
-  3:1 against the ground it is drawn on (WCAG 2.4.13), the ground composed
-  from the layers behind it (`tests/support/ring.ts`).
-- **The exception is a control drawn on a colour a person chose** (issue
-  436): the colour picker's area and its sliders, where no one ring colour
-  clears 3:1 on every colour. Their ring is two bands side by side - an
-  outline in `--text` and, just outside it, a band of `--surface`, each
-  `--focus-ring-width` - so the better of the two clears 3:1 on any ground
-  (the ink and the ground are further apart than the square of 3, which
-  `tests/unit/contrast.test.ts` holds in both themes). The sweep reads the
-  two as one ring: at least 2px in all, and the better band at 3:1. A chip
-  or swatch in a line's colour keeps the ordinary ring, drawn in the gap
-  outside it over the row's ground.
+  3:1 against the ground it is drawn on (WCAG 2.4.13). The ground is read
+  where the ring is drawn: for a ring outside its control, the colour the
+  page paints under the middle of the ring's band at the midpoint of each of
+  the control's four sides (`elementsFromPoint`, so stacking and clipping
+  count, with a border at that point painted in its own colour and every
+  layer's opacity applied), the worst side deciding; for a ring inside it,
+  the control's own background over its ancestors'. A ground that is an
+  image, a frame, a video or a colour it cannot parse is reported as
+  unreadable and fails, not guessed; a side off the screen is not read.
+  An outline and a hard-edged shadow on one element are read as two bands,
+  each counting towards the thickness only if it clears 3:1 itself
+  (`tests/support/ring.ts`); no control draws one today.
 - Forced colours (Windows high contrast; issue 436). The mode replaces every
   colour with the user's palette and removes every `box-shadow`, so the
   resting edges drawn as a shadow - the kit's text field, a select, a
-  checkbox, the sidecar's textarea, the carried row of the line order - are
-  given a real border or outline in `CanvasText` in one
-  `@media (forced-colors: active)` block at the end of `styles/app.css`; the
-  checked checkbox's mark and the combobox's highlighted option take
-  `CanvasText` and `Highlight` too. A system colour keyword is the user's
-  palette and not a literal of ours, which the no-literals test does not
-  flag. Not covered by the block: the switch's track, the rail's current
-  step (told by its ground) and `prefers-contrast`; they are a person's step
-  in `docs/accessibility.md`.
+  checkbox, the sidecar's textarea - are given a real border in
+  `CanvasText` in one `@media (forced-colors: active)` block at the end of
+  `styles/app.css`, the kit's text field and the carried row of the line
+  order an outline drawn inward, which changes no layout; the checked
+  checkbox's mark and the combobox's highlighted option take `CanvasText`
+  and `Highlight` too. A system colour keyword is the user's palette and not
+  a literal of ours, which the no-literals test does not flag. Not covered
+  by the block: the switch's track, the rail's current step (told by its
+  ground) and `prefers-contrast`; they are a person's step in
+  `docs/accessibility.md`.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is

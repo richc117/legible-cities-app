@@ -303,27 +303,117 @@ export function installProbe(): void {
     if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null
     return [parts[0], parts[1], parts[2], parts[3] ?? 1]
   }
+  // The composed tree: a slotted element's parent is the slot it is shown
+  // in, and the top of a shadow root's is its host.
   const parentOf = (el: Element): Element | null => {
+    if (el.assignedSlot) return el.assignedSlot
     if (el.parentElement) return el.parentElement
     const root = el.getRootNode()
     return root instanceof ShadowRoot ? root.host : null
   }
-  /** The colour behind `start`: its background and its ancestors', composed, across shadow roots. */
-  const groundBehind = (start: Element | null): [number, number, number] | null => {
+  type Rgb = [number, number, number]
+  /** What an element's own opacity and its ancestors' leave of a layer it draws. */
+  const opacityOf = (el: Element): number => {
+    let opacity = 1
+    for (let up: Element | null = el; up !== null; up = parentOf(up))
+      opacity *= parseFloat(getComputedStyle(up).opacity)
+    return opacity
+  }
+  /**
+   * The border colour at a point inside an element's border box but outside its
+   * padding box; null where the point is not in a border, false where there is
+   * one whose colour cannot be read.
+   */
+  const borderAt = (
+    el: Element,
+    style: CSSStyleDeclaration,
+    [x, y]: [number, number],
+  ): Colour | null | false => {
+    const box = el.getBoundingClientRect()
+    const sides: [boolean, 'Top' | 'Right' | 'Bottom' | 'Left'][] = [
+      [y >= box.top && y < box.top + parseFloat(style.borderTopWidth), 'Top'],
+      [x < box.right && x >= box.right - parseFloat(style.borderRightWidth), 'Right'],
+      [y < box.bottom && y >= box.bottom - parseFloat(style.borderBottomWidth), 'Bottom'],
+      [x >= box.left && x < box.left + parseFloat(style.borderLeftWidth), 'Left'],
+    ]
+    for (const [inside, side] of sides) {
+      if (!inside || style[`border${side}Style`] === 'none') continue
+      const colour = parseColour(style[`border${side}Color`])
+      return colour === null ? false : colour
+    }
+    return null
+  }
+  /**
+   * What is painted by the elements of `stack`, topmost first, over a white
+   * canvas: their background colours, down to the first opaque one. Null where
+   * the ground cannot be read, which is not a guess: a background image, a
+   * colour this does not parse, and elements whose content is not a colour
+   * (a frame, a picture, a video, a canvas).
+   */
+  const composeStack = (stack: Element[], at: [number, number] | null = null): Rgb | null => {
     const layers: Colour[] = []
-    for (let el = start; el !== null; el = parentOf(el)) {
-      const colour = parseColour(getComputedStyle(el).backgroundColor)
+    for (const el of stack) {
+      if (/^(IFRAME|IMG|VIDEO|CANVAS|OBJECT|EMBED)$/.test(el.tagName)) return null
+      const style = getComputedStyle(el)
+      if (style.backgroundImage !== 'none') return null
+      const opacity = opacityOf(el)
+      // A point that falls in an element's border is painted in the border's
+      // colour, over its background: react-colorful's colour area has a 12px
+      // black one under it.
+      const border = at === null ? null : borderAt(el, style, at)
+      if (border !== undefined && border !== null) {
+        if (border === false) return null
+        const alpha = border[3] * opacity
+        if (alpha > 0) layers.push([border[0], border[1], border[2], alpha])
+        if (alpha >= 1) break
+      }
+      const colour = parseColour(style.backgroundColor)
       if (colour === null) return null
-      if (colour[3] === 0) continue
-      layers.push(colour)
-      if (colour[3] === 1) break
+      const alpha = colour[3] * opacity
+      if (alpha === 0) continue
+      layers.push([colour[0], colour[1], colour[2], alpha])
+      if (alpha >= 1) break
     }
     // Back to front. The app paints --surface on the body, so a document
     // that reaches here without an opaque layer is a white canvas.
-    let under: [number, number, number] = [255, 255, 255]
+    let under: Rgb = [255, 255, 255]
     for (const [r, g, b, a] of layers.reverse())
       under = [r * a + under[0] * (1 - a), g * a + under[1] * (1 - a), b * a + under[2] * (1 - a)]
     return under
+  }
+  /** The ground under `start` itself: its own background and its ancestors', for a ring drawn inside it. */
+  const groundBehind = (start: Element): Rgb | null => {
+    const stack: Element[] = []
+    for (let up: Element | null = start; up !== null; up = parentOf(up)) stack.push(up)
+    return composeStack(stack)
+  }
+  /**
+   * The ground under a ring drawn outside `el`, judged where it is drawn: at
+   * the middle of the ring's band, `distance` beyond each of the four sides'
+   * midpoints, from what the page paints there (`elementsFromPoint`, which
+   * has the stacking, the clipping and the siblings that an ancestor chain
+   * does not). The ancestor chain was the first version, and it took the
+   * parent's background for the ground of a ring drawn outside a child that
+   * fills its parent exactly. A side off the screen is not read; a side whose
+   * ground cannot be read makes the ring unreadable.
+   */
+  const groundsOutside = (el: Element, distance: number): (Rgb | null)[] => {
+    const box = el.getBoundingClientRect()
+    const root = el.getRootNode()
+    const scope: Document | ShadowRoot = root instanceof ShadowRoot ? root : document
+    const sides: [number, number][] = [
+      [box.left + box.width / 2, box.top - distance],
+      [box.right + distance, box.top + box.height / 2],
+      [box.left + box.width / 2, box.bottom + distance],
+      [box.left - distance, box.top + box.height / 2],
+    ]
+    const out: (Rgb | null)[] = []
+    for (const [x, y] of sides) {
+      if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue
+      const hits = scope.elementsFromPoint(x, y).filter((hit) => hit !== el && !el.contains(hit))
+      if (hits.length > 0) out.push(composeStack(hits, [x, y]))
+    }
+    return out
   }
   const channel = (v: number): number => {
     const c = v / 255
@@ -341,32 +431,41 @@ export function installProbe(): void {
     kind: 'outline' | 'shadow',
     width: number,
     colourText: string,
-    behind: Element | null,
+    grounds: (Rgb | null)[],
     extra: { offset?: number; inset?: boolean } = {},
   ): RingReading => {
     const colour = parseColour(colourText)
-    const ground = groundBehind(behind)
-    if (colour === null || ground === null)
+    // The worst side decides; a side that could not be read decides nothing
+    // but a null, and a ring with no side to read (off the screen) has none.
+    const unreadable = colour === null || grounds.length === 0 || grounds.some((g) => g === null)
+    if (unreadable) {
+      const first = grounds.find((g): g is Rgb => g !== null)
       return {
         kind,
         width,
         colour: colourText,
-        ground: ground && hex(ground),
+        ground: first ? hex(first) : null,
         ratio: null,
         ...extra,
       }
-    const a = colour[3]
-    const drawn: [number, number, number] = [
-      colour[0] * a + ground[0] * (1 - a),
-      colour[1] * a + ground[1] * (1 - a),
-      colour[2] * a + ground[2] * (1 - a),
-    ]
+    }
+    let worst: { ground: Rgb; ratio: number } | null = null
+    for (const ground of grounds as Rgb[]) {
+      const a = colour[3]
+      const drawn: Rgb = [
+        colour[0] * a + ground[0] * (1 - a),
+        colour[1] * a + ground[1] * (1 - a),
+        colour[2] * a + ground[2] * (1 - a),
+      ]
+      const ratio = ratioOf(drawn, ground)
+      if (worst === null || ratio < worst.ratio) worst = { ground, ratio }
+    }
     return {
       kind,
       width,
       colour: colourText,
-      ground: hex(ground),
-      ratio: ratioOf(drawn, ground),
+      ground: worst && hex(worst.ground),
+      ratio: worst && worst.ratio,
       ...extra,
     }
   }
@@ -394,15 +493,18 @@ export function installProbe(): void {
    */
   const rings = (el: Element): { outline: RingReading | null; shadows: RingReading[] } => {
     const style = getComputedStyle(el)
+    const offset = parseFloat(style.outlineOffset) || 0
+    const outlineWidth = parseFloat(style.outlineWidth)
+    const own = (): (Rgb | null)[] => [groundBehind(el)]
     const outline =
-      style.outlineStyle === 'none' || parseFloat(style.outlineWidth) === 0
+      style.outlineStyle === 'none' || outlineWidth === 0
         ? null
         : reading(
             'outline',
-            parseFloat(style.outlineWidth),
+            outlineWidth,
             style.outlineColor,
-            (parseFloat(style.outlineOffset) || 0) >= 0 ? parentOf(el) : el,
-            { offset: parseFloat(style.outlineOffset) || 0 },
+            offset >= 0 ? groundsOutside(el, offset + outlineWidth / 2) : own(),
+            { offset },
           )
     const shadows: RingReading[] = []
     if (style.boxShadow !== 'none')
@@ -413,9 +515,13 @@ export function installProbe(): void {
         // x, y, blur, spread: a ring has no offset and no blur.
         if (lengths.length < 4 || lengths[0] !== 0 || lengths[1] !== 0 || lengths[2] !== 0) continue
         shadows.push(
-          reading('shadow', lengths[3], colourText, layer.includes('inset') ? el : parentOf(el), {
-            inset: layer.includes('inset'),
-          }),
+          reading(
+            'shadow',
+            lengths[3],
+            colourText,
+            layer.includes('inset') ? own() : groundsOutside(el, lengths[3] / 2),
+            { inset: layer.includes('inset') },
+          ),
         )
       }
     return { outline, shadows }

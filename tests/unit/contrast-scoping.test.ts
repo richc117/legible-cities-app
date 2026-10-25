@@ -406,6 +406,44 @@ describe('every use of a restricted colour has a stated ground', () => {
   })
 })
 
+describe('a disabled state that changes the ground changes what was drawn on it', () => {
+  // `.export-choices textarea` draws its edge in --border-strong, held on
+  // --surface and --surface-raised only; its `:disabled` rule paints
+  // --surface-sunken, where --border-strong is 2.99 in Parchment. The base
+  // rule's declaration stays in force unless the disabled rule restates it, so
+  // every restricted declaration of the base rule must be restated there.
+  const found: string[] = []
+  let checked = 0
+  for (const file of stylesheets()) {
+    const rules = rulesOf(file)
+    for (const rule of rules) {
+      if (!rule.selector.endsWith(':disabled')) continue
+      const painted = rule.declarations.find((d) => /^background(-color)?$/.test(d.property))
+      const ground = GROUNDS_ALL.find((g) => `var(${GROUND_TOKEN[g]})` === painted?.value)
+      if (ground === undefined) continue
+      const base = rules.find((r) => r.selector === rule.selector.slice(0, -':disabled'.length))
+      if (base === undefined) continue
+      for (const d of base.declarations) {
+        const tokens = RESTRICTED.filter((t) => new RegExp(`var\\(${t}\\)`).test(d.value))
+        if (!tokens.some((t) => !ALLOWED[t].includes(ground))) continue
+        checked++
+        const restated = rule.declarations.find((r) => r.property === d.property)
+        const still = RESTRICTED.filter(
+          (t) => restated !== undefined && new RegExp(`var\\(${t}\\)`).test(restated.value),
+        ).filter((t) => !ALLOWED[t].includes(ground))
+        if (restated === undefined || still.length > 0)
+          found.push(`${file} :: ${rule.selector}: ${d.property} stays ${d.value} on ${ground}`)
+      }
+    }
+  }
+  it('restates what the base rule drew in a colour the new ground forbids', () => {
+    expect(found).toEqual([])
+  })
+  it('finds the textarea (a reader that finds none would pass)', () => {
+    expect(checked).toBeGreaterThan(0)
+  })
+})
+
 describe('the rail gives the two grounds it forbids a plain colour (rail.css)', () => {
   // `--warning` and `--error` are stated on --surface for a rail step's state
   // word, which is true at rest. The step under the pointer is --surface-hover
