@@ -139,6 +139,16 @@ lines it draws, as the engine's page carries ``data.lines`` and
 ``data.names``, so a test can read them off the file. The stroke's three are
 taken and drawn by nothing.
 
+Every request's params are judged first, as engine v0.19.0 judges them (its
+issue 83; ``params_problem``, which restates the handler of each method in the
+engine's order and with its sentences): a ``null`` in a field that may be left
+out, a plan handed back with a field missing, a text that is not text, a
+number no double holds and a member a method does not take are refused with
+the ``params`` kind before the method works. What is left to the engine alone
+is whether a feed key is registered and whether a path is inside its own
+repository. tests/unit/stand-in-params.test.ts holds the table, and asks it of
+the real engine too where an engine checkout is named.
+
 It writes ``fake-engine.pid`` (its process id) and ``fake-engine.received``
 (one JSON line per message it read) into the home so a test can end it from
 outside and see what reached it. Standard library only; any Python 3 runs it.
@@ -149,6 +159,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -562,7 +573,7 @@ def lines_problem(lines) -> str | None:
 
 
 def _clock(value) -> bool:
-    return isinstance(value, str) and CLOCK.match(value) is not None
+    return isinstance(value, str) and CLOCK.fullmatch(value) is not None
 
 
 def _hms(text: str) -> float:
@@ -724,30 +735,11 @@ def reading_notes(key: str, beats: list, date, caption) -> list:
     return notes
 
 
-def caption_problem(caption) -> str | None:
-    """The sentence the engine's handler refuses a caption with over the
-    protocol (its `_caption`, in `serve.py`): one for not text, empty, over 80
-    and a line break alike. `check_caption`'s three sentences are the command
-    line's and are never reached here."""
-    if (isinstance(caption, str) and 1 <= len(caption) <= CAPTION_MAX
-            and not any(mark in caption for mark in LINE_BREAKS)):
-        return None
-    return f"caption must be text of 1 to {CAPTION_MAX} characters on one line"
-
-
-def corner_problem(options: dict) -> str | None:
-    """The handler's sentence for a corner the engine does not have."""
-    asked = options.get("clock_corner")
-    if asked is None or asked in CLOCK_CORNERS:
-        return None
-    return "clock_corner must be one of " + ", ".join(CLOCK_CORNERS)
-
-
 def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, str | None]:
     """The corner the clock takes, a note for a person, and the refusal if there
     is one: the engine's `_clock_corner`, whose refusals are the plan's own, so
     they are export errors and not params ones. The corner is one the handler
-    let through (`corner_problem`). Left out, it is bottom right, except on a
+    let through (`_export_options`). Left out, it is bottom right, except on a
     preset with safe zones, where it is top right: the platform's own
     interface covers the bottom right there."""
     zone = ZONES.get(preset["name"])
@@ -772,18 +764,550 @@ def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, 
     return corner, "", None
 
 
-def stage_date_problem(value) -> str | None:
-    """The handler's refusals of render.stage's `date`: null is not the same as
-    left out, and a day that fits the pattern may still not be on the calendar."""
+# ---- the params, judged as the engine's server judges them (v0.19.0)
+#
+# Engine issue 83 made the server judge every method's params as its schema
+# does: a null in a field that may be left out is refused, a plan missing a
+# field is refused, a text that is not text and a number no double holds are
+# refused. The server does it by hand, field by field, and each refusal is
+# that field's own sentence, so no one rule over the schema gives them: this
+# is its `serve.py` restated, helper by helper (`_object`, `_optional`,
+# `_given`, `_capture_job` and the rest), in the same order, and one place
+# judges a request before any method of the stand-in answers it (`handle`).
+# A stand-in is worth what it refuses (app issue 473);
+# tests/unit/stand-in-params.test.ts holds the table. Left to the engine
+# alone: a feed key no registry has, and a path inside the engine's own
+# repository, which the stand-in has no repository to be in.
+
+KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+URL_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*://[^\s]+$")
+STEM_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+MODE_PATTERN = re.compile(r"^[a-z0-9-]+(,[a-z0-9-]+)*$")
+LAYOUT_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+# What LOOM's -m knows (the engine's `feeds.MOTS`).
+MOTS = frozenset({"all", "tram", "streetcar", "subway", "metro", "rail", "train", "bus",
+                  "ferry", "boat", "ship", "cablecar", "gondola", "funicular", "coach",
+                  "mono-rail", "monorail", "trolley", "trolleybus", "trolley-bus"})
+QUALITIES = ("draft", "standard", "high")
+CUSTOM = "custom"
+PLAN_FIELDS = ("key", "preset", "mode", "url", "width", "height", "scale", "fps", "format",
+               "settle", "beats", "keep", "crf", "fade", "stem", "theme", "view", "storyboard",
+               "at", "notes", "caption", "clock_corner", "filename")
+
+
+class Refused(Exception):
+    """The engine's `invalid_params`: the sentence is the refusal's message,
+    its hint and its detail, kind params."""
+
+
+def _refuse(sentence: str):
+    raise Refused(sentence)
+
+
+def _double(value) -> bool:
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return abs(value) <= sys.float_info.max
+
+
+def _doubles(params: dict) -> None:
+    """`serve._doubles`: every number at any depth is one a double holds, the
+    first that is not named by its path, in the engine's walking order."""
+    stack = list(params.items())
+    while stack:
+        where, value = stack.pop()
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            if not _double(value):
+                _refuse(f"{where} must be a number a double holds: finite, and at most "
+                        "about 1.8e308 either side of zero")
+        elif isinstance(value, dict):
+            stack.extend((f"{where}.{name}", inner) for name, inner in value.items())
+        elif isinstance(value, list):
+            stack.extend((f"{where}[{i}]", inner) for i, inner in enumerate(value))
+
+
+def _object(method: str, params) -> dict:
+    if not isinstance(params, dict):
+        _refuse(f"{method} takes an object of parameters")
+    _doubles(params)
+    return dict(params)
+
+
+def _no_params(method: str, params) -> None:
+    if params not in (None, {}):
+        _refuse(f"{method} takes no parameters")
+
+
+def _no_extra(method: str, left: dict) -> None:
+    if left:
+        _refuse(f"{method} does not take {', '.join(sorted(left))}")
+
+
+def _whole(value) -> bool:
+    return _number(value) and (isinstance(value, int) or value.is_integer())
+
+
+def _feed_key(value) -> str:
+    if not isinstance(value, str) or not KEY_PATTERN.fullmatch(value):
+        _refuse("key must be a feed key: lower-case letters, digits and hyphens")
+    return value
+
+
+def _date(value, name: str = "date", *, required: bool = False) -> None:
     if value is None:
-        return ("date must be the service day as YYYY-MM-DD, or left out for a "
-                "description without minutes")
-    if not isinstance(value, str) or re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", value) is None:
-        return "date must be a calendar day as YYYY-MM-DD"
+        if required:
+            _refuse("date is required: the service day to draw, as YYYY-MM-DD. The engine "
+                    "never picks one, because its choice would depend on the day you asked.")
+        _refuse(f"{name} must be a calendar day as YYYY-MM-DD, or left out")
+    if not isinstance(value, str) or not DATE_PATTERN.fullmatch(value):
+        _refuse(f"{name} must be a calendar day as YYYY-MM-DD")
     try:
         datetime.date.fromisoformat(value)
     except ValueError:
-        return f"date: {value} is not a calendar day"
+        _refuse(f"{name}: {value} is not a calendar day")
+
+
+def _token(value) -> None:
+    if not isinstance(value, str) or not TOKEN_PATTERN.fullmatch(value):
+        _refuse("out must be a folder name: letters, digits, dot, underscore and hyphen, "
+                "not starting with a dot, never a path")
+
+
+def _layout(value) -> None:
+    if value is None:
+        _refuse("layout is required: the id graph.build answered with. A map is drawn from "
+                "a stored layout and never lays one out itself.")
+    if not isinstance(value, str) or not LAYOUT_PATTERN.fullmatch(value):
+        _refuse("layout must be a layout id: 64 hex digits, as graph.build reports")
+
+
+def _regex(value) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    try:
+        re.compile(value)
+    except re.error:
+        return False
+    return True
+
+
+def _optional(left: dict, name: str, ok, sentence: str):
+    """`serve._optional`: None when the field is left out, else its value,
+    which `ok` must take. A null is a value like any other, and refused."""
+    if name not in left:
+        return None
+    value = left.pop(name)
+    if not ok(value):
+        _refuse(f"{name} {sentence}")
+    return value
+
+
+def _given(left: dict, name: str, where: str):
+    """A field the schema requires, whose value may be null: taken out, or
+    refused as missing."""
+    if name not in left:
+        _refuse(f"{where}.{name} is missing; hand the plan back as export.plan answered it")
+    return left.pop(name)
+
+
+def _flag(left: dict, name: str) -> None:
+    if not isinstance(left.pop(name, False), bool):
+        _refuse(f"{name} must be true or false")
+
+
+def _positive(left: dict, name: str, default: float) -> None:
+    value = left.pop(name, default)
+    if not _number(value) or value <= 0:
+        _refuse(f"{name} must be a number above zero")
+
+
+def _strings(left: dict, name: str):
+    if name not in left:
+        return None
+    value = left.pop(name)
+    if not isinstance(value, list) or not all(isinstance(s, str) for s in value):
+        _refuse(f"{name} must be a list of strings")
+    return value
+
+
+def _color(left: dict, name: str) -> None:
+    if name in left:
+        value = left.pop(name)
+        if not isinstance(value, str) or not STYLE_COLOR.fullmatch(value):
+            _refuse(f"{name} must be a colour written #rrggbb")
+
+
+def _colors(left: dict, name: str) -> None:
+    if name in left:
+        value = left.pop(name)
+        if not isinstance(value, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) and STYLE_COLOR.fullmatch(v)
+                for k, v in value.items()):
+            _refuse(f"{name} must be an object of line label to a colour written #rrggbb")
+
+
+def _raise(problem: str | None) -> None:
+    """A refusal the stand-in already words, for a value that is present."""
+    if problem is not None:
+        _refuse(problem)
+
+
+def _overrides(left: dict) -> dict:
+    out = {}
+    mode = _optional(left, "mode",
+                     lambda v: isinstance(v, str) and bool(MODE_PATTERN.fullmatch(v))
+                     and bool(v) and all(p in MOTS or p.isdigit() for p in v.split(",")),
+                     "must be what gtfs2graph -m takes: names such as tram, subway or rail, "
+                     "or route_type numbers, comma-joined")
+    if mode is not None:
+        out["mode"] = mode
+    agency = _optional(left, "agency", lambda v: isinstance(v, str) and len(v) <= 64,
+                       "must be an agency_id from the feed, or empty for every operator")
+    if agency is not None:
+        out["agency"] = agency
+    for name in ("label_pattern", "label_strip"):
+        pattern = _optional(left, name, _regex, "must be a regular expression")
+        if pattern is not None:
+            out[name] = pattern
+    return out
+
+
+def _caption_ok(value) -> bool:
+    return (isinstance(value, str) and 1 <= len(value) <= CAPTION_MAX
+            and not any(mark in value for mark in LINE_BREAKS))
+
+
+def _export_options(value) -> None:
+    """`serve._export_options`: asked only when the parameter is present."""
+    if not isinstance(value, dict):
+        _refuse("options must be an object")
+    left = dict(value)
+    _optional(left, "view", lambda v: v in VIEWS, "must be one of " + ", ".join(VIEWS))
+    for flag in ("labels", "title", "clock", "safe"):
+        _optional(left, flag, lambda x: isinstance(x, bool), "must be true or false")
+    _optional(left, "theme", lambda v: v in ("dark", "light"), "must be dark or light")
+    _optional(left, "at", _clock, "must be a clock, HH:MM")
+    _strings(left, "lines")
+    if "storyboard" in left:
+        board = left.pop("storyboard")
+        if isinstance(board, list):
+            _raise(beats_problem(board))
+        elif not (isinstance(board, str) and board in STORYBOARDS):
+            _refuse("storyboard must be the name of a storyboard; export.storyboards lists "
+                    "them")
+    _optional(left, "quality", lambda v: isinstance(v, str) and v in QUALITIES,
+              "must be draft, standard or high")
+    _optional(left, "fade", lambda v: _number(v) and v >= 0, "must be seconds, 0 or more")
+    _optional(left, "tag", lambda v: isinstance(v, str) and bool(TOKEN_PATTERN.fullmatch(v)),
+              "must be a short filename suffix: letters, digits, dot, underscore, hyphen")
+    _optional(left, "caption", _caption_ok,
+              f"must be text of 1 to {CAPTION_MAX} characters on one line")
+    _optional(left, "clock_corner", lambda v: v in CLOCK_CORNERS,
+              "must be one of " + ", ".join(CLOCK_CORNERS))
+    _no_extra("export.plan options", left)
+
+
+def _beat_payload(value, where: str) -> None:
+    """A beat of a plan handed back: every field the plan writes, each of
+    them required and all but `secs` and `sweep` nullable."""
+    if not isinstance(value, dict):
+        _refuse(f"{where} is not an object")
+    left = dict(value)
+    secs = _given(left, "secs", where)
+    if not _number(secs) or secs <= 0:
+        _refuse(f"{where} lasts no time")
+    view = _given(left, "view", where)
+    if view is not None and view not in VIEWS:
+        _refuse(f"{where}.view names a view the page lacks")
+    labels = _given(left, "labels", where)
+    if labels is not None and not isinstance(labels, bool):
+        _refuse(f"{where}.labels must be true, false or null")
+    for field in ("at", "speed", "hours", "lo", "hi", "tween"):
+        number = _given(left, field, where)
+        if number is not None and not _number(number):
+            _refuse(f"{where}.{field} must be a number or null")
+    if not isinstance(_given(left, "sweep", where), bool):
+        _refuse(f"{where} has a sweep that is not true or false")
+    for flag in ("card", "draw_in"):
+        if not isinstance(left.pop(flag, False), bool):
+            _refuse(f"{where} has a {flag} that is not true or false")
+    _no_extra(where, left)
+
+
+def _capture_job(value) -> None:
+    """`serve._capture_job`: a plan handed back, field by field, every field
+    export.plan writes, `colors` alone optional."""
+    if not isinstance(value, dict):
+        _refuse("plan must be the object export.plan answered with")
+    left = dict(value)
+    for name in PLAN_FIELDS:
+        if name not in left:
+            _refuse(f"plan.{name} is missing; hand the plan back as export.plan answered it")
+    if not isinstance(left.pop("filename", None), str):
+        _refuse("plan.filename must be the file name export.plan answered with")
+    _feed_key(left.pop("key", None))
+    preset = left.pop("preset", None)
+    if not isinstance(preset, str) or preset not in PRESETS:
+        _refuse("preset must be the name of an export preset; export.presets lists them")
+    if left.pop("mode", None) not in ("still", "video"):
+        _refuse("plan.mode must be still or video")
+    url = left.pop("url", None)
+    if not isinstance(url, str) or not URL_PATTERN.fullmatch(url):
+        _refuse("plan.url must be the page's address")
+    for name, low in (("width", 1), ("height", 1), ("scale", 1), ("fps", 1), ("settle", 0),
+                      ("crf", 0)):
+        v = left.pop(name, None)
+        if not _whole(v) or v < low:
+            _refuse(f"plan.{name} must be a whole number, {low} or more")
+    if left.pop("format", None) not in ("png", "jpg", "mp4", "gif"):
+        _refuse("plan.format must be png, jpg, mp4 or gif")
+    beats = left.pop("beats", None)
+    if not isinstance(beats, list):
+        _refuse("plan.beats must be a list")
+    for i, beat in enumerate(beats):
+        _beat_payload(beat, f"plan.beats[{i}]")
+    if not isinstance(left.pop("keep", None), bool):
+        _refuse("plan.keep must be true or false")
+    fade = left.pop("fade", None)
+    if not _number(fade) or fade < 0:
+        _refuse("plan.fade must be seconds, 0 or more")
+    stem = left.pop("stem", None)
+    if not isinstance(stem, str) or not STEM_PATTERN.fullmatch(stem):
+        _refuse("plan.stem must be a file name without a path or an extension")
+    if left.pop("theme", None) not in ("dark", "light"):
+        _refuse("plan.theme must be dark or light")
+    if left.pop("view", None) not in VIEWS:
+        _refuse("plan.view must be one of " + ", ".join(VIEWS))
+    board = left.pop("storyboard", None)
+    if not isinstance(board, str) or (board and board != CUSTOM and board not in STORYBOARDS):
+        _refuse("plan.storyboard must be a storyboard's name, custom, or empty")
+    at = _given(left, "at", "plan")
+    if at is not None and not _number(at):
+        _refuse("plan.at must be seconds, or null")
+    notes = left.pop("notes", None)
+    if not isinstance(notes, list) or not all(isinstance(n, str) for n in notes):
+        _refuse("plan.notes must be a list of strings")
+    caption = _given(left, "caption", "plan")
+    if caption is not None and not _caption_ok(caption):
+        _refuse(f"plan.caption must be text of 1 to {CAPTION_MAX} characters on one line, "
+                "or null")
+    if left.pop("clock_corner", None) not in CLOCK_CORNERS:
+        _refuse("plan.clock_corner must be one of " + ", ".join(CLOCK_CORNERS))
+    colors = left.pop("colors", None)
+    if colors is not None and not (
+            isinstance(colors, list)
+            and all(isinstance(c, str) and STYLE_COLOR.fullmatch(c) for c in colors)
+            and len(set(colors)) == len(colors)):
+        _refuse("plan.colors must be a list of distinct colours written #rrggbb, or null")
+    _no_extra("plan", left)
+
+
+def _absolute(left: dict, name: str, source: Path | None = None) -> Path:
+    """A path the client owns, absolute; given the `source` it is encoded
+    from, a `dest` that would be written over it is refused too (the engine's
+    issue 79): the source is read and never written to."""
+    value = left.pop(name, None)
+    if not isinstance(value, str) or not value or not Path(value).is_absolute():
+        _refuse(f"{name} must be an absolute path")
+    path = Path(value)
+    if source is not None:
+        sidecar = path.with_name(path.name + ".json")
+        written = {p.resolve() for p in (path, path.with_name(path.name + ".part"), sidecar,
+                                         sidecar.with_name(sidecar.name + ".part"))}
+        if source.resolve() in written:
+            _refuse(f"{name} must not be the source, or put its sidecar or a .part file on "
+                    "it: the source is read and never written to")
+    return path
+
+
+def _provenance(value) -> None:
+    if not isinstance(value, dict):
+        _refuse("provenance must be an object")
+    left = dict(value)
+    if "service_date" in left:
+        _date(left.pop("service_date"), "service_date")
+    for name in ("trips", "stations", "lines"):
+        _optional(left, name, lambda x: _whole(x) and x >= 0, "must be a count")
+    _strings(left, "caveats")
+    if "alt" in left:
+        alt = left.pop("alt")
+        if not isinstance(alt, str):
+            _refuse("provenance.alt must be text")
+        if len(alt) > ALT_MAX:
+            _refuse(f"provenance.alt is {len(alt):,} characters; it may be at most "
+                    f"{ALT_MAX:,}")
+        if not alt.strip():
+            _refuse("provenance.alt is empty; omit it instead, and the sidecar keeps the "
+                    "description the engine writes")
+    _no_extra("provenance", left)
+
+
+def judge_graph_build(params) -> None:
+    left = _object("graph.build", params)
+    _feed_key(left.pop("key", None))
+    _flag(left, "force")
+    _overrides(left)
+    if "tuning" in left:
+        _raise(tuning_problem(left.pop("tuning")))
+    _no_extra("graph.build", left)
+
+
+def judge_map_build(params) -> None:
+    left = _object("map.build", params)
+    _feed_key(left.pop("key", None))
+    _layout(left.pop("layout", None))
+    _date(left.pop("date", None), required=True)
+    if "out" in left:
+        _token(left.pop("out"))
+    _positive(left, "width", 1800.0)
+    _colors(left, "colors")
+    _color(left, "default_color")
+    _strings(left, "line_order")
+    if "style" in left:
+        _raise(style_problem(left.pop("style")))
+    _raise(animation_problem(left))
+    left.pop("dot_radius", None)
+    left.pop("trail", None)
+    if "lines" in left:
+        _raise(lines_problem(left.pop("lines")))
+    _no_extra("map.build", left)
+
+
+def judge_feeds_service(params) -> None:
+    left = _object("feeds.service", params)
+    _feed_key(left.pop("key", None))
+    if "anchor" in left:
+        _date(left.pop("anchor"), "anchor")
+    _strings(left, "lines")
+    _no_extra("feeds.service", left)
+
+
+def judge_feeds_add(params) -> None:
+    left = _object("feeds.add", params)
+    source = left.pop("source", None)
+    if not isinstance(source, str) or not source or (
+            not source.startswith(("http://", "https://")) and not os.path.isabs(source)):
+        _refuse("source must be a URL with its scheme, or an absolute path to a zip the "
+                "client owns")
+    _optional(left, "key", lambda v: isinstance(v, str) and bool(KEY_PATTERN.fullmatch(v)),
+              "must be a feed key: lower-case letters, digits and hyphens")
+    _optional(left, "name", lambda v: isinstance(v, str) and len(v) <= 120 and bool(v.strip()),
+              "must be text, up to 120 characters")
+    overrides = _overrides(left)
+    for extra in ("label_pattern", "label_strip"):
+        if extra in overrides:
+            _refuse(f"feeds.add does not take {extra}")
+    if overrides.get("agency") == "":
+        _refuse("agency must be an agency_id from the feed, or left out")
+    _no_extra("feeds.add", left)
+
+
+def judge_feeds_remove(params) -> None:
+    left = _object("feeds.remove", params)
+    _feed_key(left.pop("key", None))
+    _no_extra("feeds.remove", left)
+
+
+def judge_feeds_inspect(params) -> None:
+    left = _object("feeds.inspect", params)
+    _feed_key(left.pop("key", None))
+    if "anchor" in left:
+        _date(left.pop("anchor"), "anchor")
+    _no_extra("feeds.inspect", left)
+
+
+def judge_render_stage(params) -> None:
+    left = _object("render.stage", params)
+    _feed_key(left.pop("key", None))
+    _layout(left.pop("layout", None))
+    stage = left.pop("stage", None)
+    if not isinstance(stage, str) or stage not in ("gtfs2graph", "topo", "loom", "octi"):
+        _refuse("stage must be one of gtfs2graph, topo, loom, octi")
+    _positive(left, "width", 1200.0)
+    _flag(left, "labels")
+    if "date" in left:
+        value = left.pop("date")
+        if value is None:
+            _refuse("date must be the service day as YYYY-MM-DD, or left out for a "
+                    "description without minutes")
+        _date(value)
+    _no_extra("render.stage", left)
+
+
+def judge_export_plan(params) -> None:
+    left = _object("export.plan", params)
+    _feed_key(left.pop("key", None))
+    preset = left.pop("preset", None)
+    if not isinstance(preset, str) or preset not in PRESETS:
+        _refuse("preset must be the name of an export preset; export.presets lists them")
+    _optional(left, "page", lambda v: isinstance(v, str) and bool(URL_PATTERN.fullmatch(v)),
+              "must be the page's address, with its scheme")
+    if "date" in left:
+        _date(left.pop("date"))
+    if "out" in left:
+        _token(left.pop("out"))
+    options = {}
+    if "options" in left:
+        options = left["options"]
+        _export_options(left.pop("options"))
+    _no_extra("export.plan", left)
+    # Refused here rather than by the plan, so it is the caller's mistake
+    # (params) and not the export's; a still ignores a list.
+    if (PRESETS[preset]["kind"] == "video"
+            and not isinstance(options.get("storyboard", ""), str)
+            and (options.get("view") or options.get("at"))):
+        _refuse(BESIDE_A_LIST)
+
+
+def judge_export_encode(params) -> None:
+    left = _object("export.encode", params)
+    _capture_job(left.pop("plan", None))
+    source = _absolute(left, "source")
+    _absolute(left, "dest", source)
+    if "provenance" in left:
+        _provenance(left.pop("provenance"))
+    _no_extra("export.encode", left)
+
+
+def _judge_without_params(method: str):
+    return lambda params: _no_params(method, params)
+
+
+# Each method the stand-in answers, and the judgement of its params: the
+# engine's own methods table, with the sentence its handler would refuse with.
+JUDGES = {
+    "engine.info": _judge_without_params("engine.info"),
+    "engine.shutdown": _judge_without_params("engine.shutdown"),
+    "graph.build": judge_graph_build,
+    "map.build": judge_map_build,
+    "style.presets": _judge_without_params("style.presets"),
+    "export.presets": _judge_without_params("export.presets"),
+    "export.storyboards": _judge_without_params("export.storyboards"),
+    "export.plan": judge_export_plan,
+    "export.encode": judge_export_encode,
+    "feeds.service": judge_feeds_service,
+    "feeds.list": _judge_without_params("feeds.list"),
+    "feeds.add": judge_feeds_add,
+    "feeds.remove": judge_feeds_remove,
+    "feeds.inspect": judge_feeds_inspect,
+    "render.stage": judge_render_stage,
+}
+
+
+def params_problem(method, params) -> str | None:
+    """The sentence the engine refuses a request's params with, or None when
+    it takes them (or does not know the method, which is not a params error)."""
+    judge = JUDGES.get(method)
+    if judge is None:
+        return None
+    try:
+        judge(params)
+    except Refused as refusal:
+        return str(refusal)
     return None
 
 
@@ -948,6 +1472,13 @@ class Engine:
             return True
         if msg_id is None or self.control.get("mute"):
             return True
+        # Every request's params are judged first, as the engine judges them
+        # before any method works (`params_problem`); what a method refuses
+        # after that is the method's own.
+        problem = params_problem(method, message.get("params"))
+        if problem is not None:
+            error(msg_id, -32602, problem, "params")
+            return True
         if method == "engine.info":
             write({"jsonrpc": "2.0", "id": msg_id, "result": self.info()})
             if self.control.get("exit") == "after-handshake":
@@ -972,22 +1503,8 @@ class Engine:
             return True
         if method == "map.build":
             params = message.get("params") or {}
-            layout = params.get("layout")
-            if not isinstance(layout, str) or not re.fullmatch(r"[0-9a-f]{64}", layout):
-                error(msg_id, -32602, "layout is required: the id graph.build answered with. "
-                      "A map is drawn from a stored layout and never lays one out itself.",
-                      "params")
-            elif "date" not in params:
-                error(msg_id, -32602, "date is required: the service day to draw, as "
-                      "YYYY-MM-DD. The engine never picks one, because its choice "
-                      "would depend on the day you asked.", "params")
-            elif "style" in params and style_problem(params["style"]) is not None:
-                error(msg_id, -32602, style_problem(params["style"]), "params")
-            elif animation_problem(params) is not None:
-                error(msg_id, -32602, animation_problem(params), "params")
-            elif "lines" in params and lines_problem(params["lines"]) is not None:
-                error(msg_id, -32602, lines_problem(params["lines"]), "params")
-            elif layout not in self.layouts:
+            layout = params["layout"]
+            if layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
@@ -1033,12 +1550,7 @@ class Engine:
             params = message.get("params") or {}
             layout = params.get("layout")
             stage = params.get("stage")
-            if stage not in ("gtfs2graph", "topo", "loom", "octi"):
-                error(msg_id, -32602, "stage must be one of gtfs2graph, topo, loom, octi", "params")
-            elif "date" in params and stage_date_problem(params["date"]) is not None:
-                error(msg_id, -32602, stage_date_problem(params["date"]), "params")
-            elif not isinstance(layout, str) or (layout not in self.layouts
-                                                 and layout not in self.building):
+            if layout not in self.layouts and layout not in self.building:
                 error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
                       "lay the feed out first (graph.build)", "layout")
             elif self.control.get("stage_refuses"):
@@ -1071,11 +1583,8 @@ class Engine:
             return True
         if method == "style.presets":
             # The engine's looks (v0.15.0, its issue 73), a method with no
-            # parameters, as `serve._no_params` refuses one sent some.
-            if message.get("params") not in (None, {}):
-                error(msg_id, -32602, "style.presets takes no parameters", "params")
-            else:
-                write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": STYLE_PRESETS}})
+            # parameters, which `params_problem` has seen it sent none.
+            write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": STYLE_PRESETS}})
             return True
         if method == "export.presets":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"presets": EXPORT_PRESETS}})
@@ -1175,13 +1684,8 @@ class Engine:
     def build(self, msg_id, params: dict) -> None:
         if self.control.get("silent"):
             return
-        # The tuning is judged before any tool starts, as the engine judges
-        # it (v0.14.0); its flags then name the layout with the rest.
-        if "tuning" in params:
-            problem = tuning_problem(params["tuning"])
-            if problem is not None:
-                error(msg_id, -32602, problem, "params")
-                return
+        # The tuning was judged before any tool starts (`params_problem`); its
+        # flags name the layout with the rest.
         flags = tuning_flags(params.get("tuning"))
         delay = self.control.get("progress_delay_ms", 30) / 1000
         # The lines follow the mode, so a narrower choice draws fewer: the
@@ -1763,11 +2267,7 @@ class Engine:
         sentences; the record is kept in the home."""
         import shutil
         import zipfile
-        source = params.get("source")
-        if not isinstance(source, str) or not source:
-            error(msg_id, -32602, "source must be a URL with its scheme, or an absolute path "
-                  "to a zip the client owns", "params")
-            return
+        source = params["source"]
         folder = HOME / "data" / "feeds"
         folder.mkdir(parents=True, exist_ok=True)
         staging = folder / ".adding.zip"
@@ -1858,14 +2358,7 @@ class Engine:
         the anchor, which is echoed. A long request in the real engine, so
         it waits and honours a cancel; it sends no progress, as the engine
         does not."""
-        key = params.get("key")
-        if not isinstance(key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", key):
-            error(msg_id, -32602, "key must be a feed key", "params")
-            return
         anchor = params.get("anchor", "2026-06-15")
-        if not isinstance(anchor, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", anchor):
-            error(msg_id, -32602, "anchor must be a day, YYYY-MM-DD", "params")
-            return
         time.sleep(self.control.get("service_delay_ms", 30) / 1000)
         if msg_id in self.cancelled:
             write({"jsonrpc": "2.0", "id": msg_id,
@@ -1897,53 +2390,13 @@ class Engine:
 
     @staticmethod
     def plan_problem(params: dict) -> tuple[str, str] | None:
-        """The real server's refusals, in shape, as (kind, sentence). In the
-        engine's order: its handler first judges the options' shape (params),
-        a list of beats on any preset, then refuses view and at beside a list
-        on a video; then the plan refuses what it cannot take (export), here
-        the clock's corner."""
-        if not isinstance(params.get("key"), str) or not params["key"]:
-            return "params", "key must be a feed key"
-        if params.get("preset") not in PRESETS:
-            return "params", "preset must be the name of an export preset; export.presets lists them"
-        page = params.get("page")
-        if page is not None and (not isinstance(page, str) or "://" not in page):
-            return "params", "page must be the page's address, with its scheme"
-        out = params.get("out")
-        if out is not None and (not isinstance(out, str)
-                                or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", out)):
-            return "params", ("out must be a folder name: letters, digits, dot, underscore and "
-                              "hyphen, not starting with a dot, never a path")
-        options = params.get("options") or {}
-        if not isinstance(options, dict):
-            return "params", "options must be an object"
-        known = {"view", "labels", "title", "clock", "theme", "at", "lines", "storyboard",
-                 "quality", "fade", "tag", "safe", "caption", "clock_corner"}
-        extra = sorted(set(options) - known)
-        if extra:
-            return "params", f"export.plan options does not take {', '.join(extra)}"
+        """What the plan itself refuses, as (kind, sentence), once the params
+        are judged (`params_problem`, which the engine's handler does first,
+        the options' shape and a view or a clock beside a list included): the
+        clock's corner, which the plan cannot take (export)."""
+        options = params.get("options", {})
         preset = PRESETS[params["preset"]]
         video = preset["kind"] == "video"
-        board = options.get("storyboard")
-        if isinstance(board, list):
-            # The handler runs `authored_beats` on any list, before it looks at
-            # the preset; a still then ignores a good one.
-            problem = beats_problem(board)
-            if problem is not None:
-                return "params", problem
-        elif board is not None and (not isinstance(board, str) or board not in STORYBOARDS):
-            return "params", "storyboard must be the name of a storyboard; export.storyboards lists them"
-        if options.get("caption") is not None:
-            problem = caption_problem(options["caption"])
-            if problem is not None:
-                return "params", problem
-        problem = corner_problem(options)
-        if problem is not None:
-            return "params", problem
-        # Only a video's first beat is where it opens, so only there are a
-        # view and a clock beside a list the caller's mistake.
-        if video and isinstance(board, list) and (options.get("view") or options.get("at")):
-            return "params", BESIDE_A_LIST
         # A vector preset is refused by the plan before its corner is judged.
         if preset["kind"] != "vector":
             problem = resolve_corner(preset, options, options.get("clock", video))[2]
@@ -1953,7 +2406,7 @@ class Engine:
 
     @staticmethod
     def wants_geographic(params: dict) -> bool:
-        options = params.get("options") or {}
+        options = params.get("options", {})
         preset = PRESETS[params["preset"]]
         if (options.get("view") or preset["view"]) == "geographic":
             return True
@@ -1986,7 +2439,7 @@ class Engine:
         key, name = params["key"], params["preset"]
         preset = PRESETS[name]
         page = params.get("page") or f"file:///maps/{key}.html"
-        options = params.get("options") or {}
+        options = params.get("options", {})
         theme = "dark" if options.get("theme", "dark") == "dark" else "light"
         video = preset["kind"] == "video"
         listed = video and isinstance(options.get("storyboard"), list)
@@ -2084,54 +2537,19 @@ class Engine:
         plan = params.get("plan") or {}
         source = Path(params.get("source") or "")
         dest = Path(params.get("dest") or "")
-        # The plan's beats come back as the plan wrote them: a title card and
-        # a draw-in only where true, and refused when they are not true or
-        # false, as the engine's handler refuses them (`_beat_payload`).
-        for i, beat in enumerate(plan.get("beats") or []):
-            for flag in ("card", "draw_in"):
-                if isinstance(beat, dict) and not isinstance(beat.get(flag, False), bool):
-                    error(msg_id, -32602,
-                          f"plan.beats[{i}] has a {flag} that is not true or false", "params")
-                    return
-        # The source and the destination are paths the client owns, judged as
-        # the engine's `_absolute` judges them, after the plan and before the
-        # provenance: each absolute, or a params error in the engine's words.
-        # Refused here, so nothing below is asked of a path that is missing,
-        # which would raise on this thread and leave the request unanswered.
-        for name in ("source", "dest"):
-            value = params.get(name)
-            if not isinstance(value, str) or not value or not Path(value).is_absolute():
-                error(msg_id, -32602, f"{name} must be an absolute path", "params")
-                return
-        # The source is read and never written to (engine v0.18.0, its issue
-        # 79), so a destination that is the source, or whose sidecar or
-        # either .part name is, is refused before anything is written.
+        # The plan, the paths and the provenance are judged before the work
+        # (`params_problem`, in the engine's order): a plan whole, a source
+        # and a destination absolute, and a destination that is not the source
+        # nor puts its sidecar or a .part file on it.
         sidecar = dest.with_name(dest.name + ".json")
         part = dest.with_name(dest.name + ".part")
         sidecar_part = sidecar.with_name(sidecar.name + ".part")
-        written = {path.resolve() for path in (dest, part, sidecar, sidecar_part)}
-        if source.resolve() in written:
-            error(msg_id, -32602, "dest must not be the source, or put its sidecar or a .part "
-                  "file on it: the source is read and never written to", "params")
-            return
         # Since engine v0.12.0 a person's own alt text goes into the sidecar
-        # in place of the sentence the engine writes, trimmed and otherwise
-        # as given; the engine refuses one that is not text, one over 1,000
-        # code points and one that is blank, before any work.
+        # in place of the sentence the engine writes, trimmed and otherwise as
+        # given (judged first: text, at most 1,000 code points, not blank).
         alt = (params.get("provenance") or {}).get("alt")
         if alt is not None:
-            if not isinstance(alt, str):
-                error(msg_id, -32602, "provenance.alt must be text", "params")
-                return
-            if len(alt) > ALT_MAX:
-                error(msg_id, -32602, f"provenance.alt is {len(alt):,} characters; "
-                      f"it may be at most {ALT_MAX:,}", "params")
-                return
             alt = alt.strip()
-            if not alt:
-                error(msg_id, -32602, "provenance.alt is empty; omit it instead, and the "
-                      "sidecar keeps the description the engine writes", "params")
-                return
         # A video is encoded from a folder of frames, a still from its one
         # captured image, as the engine's encode takes them.
         if plan.get("mode") == "still":
