@@ -115,7 +115,9 @@ it looks like and why.
 Outside contributions are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md),
 which says how to set up a checkout (with or without the engine), what a
 pull request carries and what to expect from review. Issues are the unit of
-work; every feature starts as a spec with acceptance criteria. Please read the
+work; every feature starts as a spec with acceptance criteria. Every commit
+carries a `Signed-off-by` line (`git commit -s`), the Developer Certificate of
+Origin. Please read the
 [code of conduct](CODE_OF_CONDUCT.md), and run `pre-commit install` once in
 your checkout so that `gitleaks` and `bin/preflight` see every commit: this
 is a public repository, and they refuse keys, personal paths and addresses

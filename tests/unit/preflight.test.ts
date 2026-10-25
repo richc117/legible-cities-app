@@ -1206,6 +1206,18 @@ describe.skipIf(onWindows)('a commit message being written', () => {
     }
   })
 
+  it('passes a sign-off with a no-reply address and refuses one with a personal address', () => {
+    // The contribution guide asks for a Signed-off-by line (ADR-058), and a
+    // sign-off is public for good, so the line must be writable with the
+    // GitHub no-reply address and must not be with a personal one. Nothing in
+    // the script treats the trailer by name; this pins that it stays so.
+    const noreply = 'Do a thing\n\nSigned-off-by: Ada <1234+ada@users.noreply.github.com>\n'
+    expect(message(noreply).code).toBe(0)
+    const r = message(`Do a thing\n\nSigned-off-by: Ada <${ADDRESS}>\n`)
+    expect(r.code).toBe(1)
+    expect(r.out).toContain('must not be public')
+  })
+
   it('passes a clean message', () => {
     const r = message('Do a thing\n\nWhy it was done.\n')
     expect(r.code).toBe(0)

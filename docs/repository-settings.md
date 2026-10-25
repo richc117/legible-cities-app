@@ -94,7 +94,10 @@ commit address. A merge is therefore made with a squash message written by
 hand and read with `bin/preflight --message-file` first, and any personal
 address in a trailer is removed or rewritten to a no-reply address before
 confirming: `preflight` reads the whole history on every push and force pushes
-are blocked, so one that lands cannot be taken out. Do not use "Update
+are blocked, so one that lands cannot be taken out. The message also keeps
+each contributor's `Signed-off-by:` lines as they were written (ADR-058): a
+squash that dropped them would leave `main` with a contribution and no record
+of the certificate it came under. Do not use "Update
 branch", which merges `main` into the branch; rebase it.
 
 ## Checking it later

@@ -203,8 +203,8 @@ These go into every brief verbatim; the template carries them.
 5. Never read or write a `.env*` file (the deny rule does not reach a
    sibling worktree, so this rests on the agent); the `*-real` tests skip
    here by design.
-6. `Co-Authored-By` only; no session trailer; no closing keyword; never
-   `--no-verify`.
+6. `Co-Authored-By` only; no session trailer; no `Signed-off-by` (only a
+   person certifies the DCO); no closing keyword; never `--no-verify`.
 7. No colour, size or duration literal outside the four token stylesheets;
    no invented palette or typeface; new text or control pairs into the
    contrast test; new components into `docs/DESIGN.md` section 8.2.

@@ -8,7 +8,9 @@
 #
 # On a pull request it also reads the commits the branch adds, for what the
 # passes above do not cover: a keyword that closes an issue, and a symbolic
-# link that one commit added and a later one took out again.
+# link that one commit added and a later one took out again. It reads them
+# once more for a sign-off, which is a different kind of check from the
+# scans and sits in the last step.
 name: preflight
 
 on:
@@ -28,6 +30,12 @@ jobs:
     name: preflight
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # A job's own block replaces the workflow's, so contents stays. The
+    # pull request's commits are read from the API (the last step), and
+    # GitHub documents pull requests: read for that endpoint.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -120,3 +128,37 @@ jobs:
         run: >-
           bin/preflight --commit-range
           "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+
+      # Every commit this pull request adds carries a Developer Certificate
+      # of Origin sign-off (issue 516, ADR-058): a `Signed-off-by:` line whose
+      # name or address is the commit author's. Merge commits, bots' commits
+      # and the repository owner's own are exempt, since none of them has
+      # anyone to certify to. The rule is scripts/dco-check.mjs, which the
+      # unit tests run; it is here and not a third-party GitHub App so that
+      # no new app gets access to the repository and the rule is one a
+      # contributor can read. The step fails with how to fix a branch.
+      #
+      # The commits come from the API, not from the checkout, because the
+      # API says which GitHub account authored each one and whether it is a
+      # bot, which the commit alone does not. The list is public data, so the
+      # read-only token a pull request from a fork gets reads it as well as
+      # the maintainer's does; the job asks for `pull-requests: read` because
+      # that is the scope GitHub documents for the endpoint. The pull
+      # request's number and head go in through the environment, never into
+      # the shell's text. The script refuses a list that does not contain
+      # the head the event names (the API does not promise graph order, so
+      # it is looked for and not expected last), so the verdict covers the
+      # commit it is reported on. A listing that cannot be read fails the step.
+      - name: Sign-off in the commits this pull request adds
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          commits="$RUNNER_TEMP/pull-request-commits.json"
+          gh api --paginate --slurp "repos/${REPO}/pulls/${PR_NUMBER}/commits" > "$commits"
+          node scripts/dco-check.mjs --owner "$OWNER" --head "$HEAD_SHA" --commits "$commits"
