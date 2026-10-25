@@ -223,7 +223,10 @@ function container(): StandInNode {
       projects: {
         get: () => {
           bridge.reads += 1
-          return Promise.resolve(bridge.record ?? screen.project)
+          const failing = bridge.fails.shift()
+          return failing === undefined
+            ? Promise.resolve(bridge.record ?? screen.project)
+            : Promise.reject(failing)
         },
       },
       engine: { state: () => Promise.resolve(bridge.engine) },
@@ -363,9 +366,16 @@ const inspected = Promise.resolve(INSPECTION)
 const inspect = (): Promise<Inspection> => inspected
 
 /** What the bridge answers for the store's record (the screen's, unless a test moves it) and the engine. */
-const bridge: { record: ProjectRecord | null; engine: EngineState; reads: number } = {
+const bridge: {
+  record: ProjectRecord | null
+  engine: EngineState
+  reads: number
+  /** Errors the next reads are refused with, one each, in order. */
+  fails: Error[]
+} = {
   record: null,
   reads: 0,
+  fails: [],
   engine: { state: 'ready', version: '0.19.0', protocol: 1 },
 }
 
@@ -619,6 +629,7 @@ beforeEach(() => {
   exporter.snapshot = { state: 'idle' }
   bridge.record = null
   bridge.reads = 0
+  bridge.fails = []
   bridge.engine = { state: 'ready', version: '0.19.0', protocol: 1 }
   for (const map of Object.values(leaves)) map.clear()
 })
@@ -722,6 +733,9 @@ describe.each(PANELS)('$name: the control goes back to the record when its draw 
     firstTry(panel)
     expect(panel.drawn(), 'the start was asked for').toEqual([panel.one])
     expect(panel.shown(), 'and the control is back to the record').toEqual(panel.base)
+    // The panel is there to go back, and cell 02 says why: the project's
+    // status line is not told (it is for a panel that has gone).
+    expect(heard()).toBeNull()
   })
 
   it('goes back once when its own redraw stops, and not for a record that arrives while it stays stopped', async () => {
@@ -918,6 +932,62 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     expect(heard(), 'the engine’s sentence, for the status line').toBe(REFUSAL)
     // The next start moves the run on, and the sentence goes with it.
     run.move(snap('running', panel.own))
+    expect(heard()).toBeNull()
+  })
+
+  it('does not say the refusal again when Run all puts the very snapshot back', async () => {
+    // Run all with nothing left to run goes back to the snapshot it started
+    // from (`LayoutRun.#withdraw`), the same object. Mutation:
+    // `sayRefusedGone` keeping the sentence by the snapshot alone, with no
+    // listener to forget it at the run's first move.
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    run.starts = 'refuse'
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    const refused = run.snapshot
+    expect(heard()).toBe(REFUSAL)
+    run.move(snap('running'))
+    run.move(refused)
+    expect(heard(), 'not again, for the same snapshot put back').toBeNull()
+  })
+
+  it('waits on when the record cannot be read for a moment, and draws it after', async () => {
+    // Mutation: any refused read ending the change, as one for a project
+    // that is gone does.
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    bridge.fails = [new Error("Error invoking remote method 'projects:get': Error: busy")]
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(panel.drawn(), 'not on the refused read').toEqual([])
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(bridge.reads).toBe(2)
+    expect(panel.drawn()).toEqual([panel.one])
+  })
+
+  it('ends quietly when the project is gone', async () => {
+    // Mutation: a "not found" kept waiting like any other refused read.
+    await open(panel.cell)
+    exporting(true)
+    panel.make(panel.one)
+    unmount()
+    bridge.fails = [new Error("Error invoking remote method 'projects:get': Error: not found")]
+    exporter.snapshot = { state: 'idle' }
+    wait(REDRAW_DELAY)
+    await answered()
+    expect(bridge.reads).toBe(1)
+    expect(vi.getTimerCount(), 'nothing waits').toBe(0)
+    wait(REDRAW_DELAY * 3)
+    await answered()
+    expect(panel.drawn()).toEqual([])
     expect(heard()).toBeNull()
   })
 })

@@ -113,6 +113,14 @@ export interface CheapEditOptions<V> {
   readNow?: (id: string) => Promise<[ProjectRecord, EngineState | null]>
 }
 
+/**
+ * Did a read fail because the project is not there? The store refuses a
+ * project it has no record for with "not found" (`ProjectStore.load`), and
+ * the bridge hands the refusal on inside its own words.
+ */
+export const projectMissing = (reason: unknown): boolean =>
+  reason instanceof Error && /\bnot found\b/.test(reason.message)
+
 /** The record and the engine's state, asked of main now. */
 const readThroughBridge = (id: string): Promise<[ProjectRecord, EngineState | null]> =>
   Promise.all([window.api.projects.get(id), window.api.engine.state()])
@@ -280,9 +288,14 @@ function editor<V>(
         done()
         drawGone(record, engine, next)
       },
-      // The record cannot be read (the project is gone): there is nothing to draw it on.
-      () => {
-        if (unbuilt.held === next) done()
+      // The project is gone (deleted since): there is nothing to draw it on,
+      // and nothing to say it to. Any other failure - a read refused for a
+      // moment, the engine's state not answered - is not the change's to end:
+      // it waits on, and is asked again after the delay.
+      (reason: unknown) => {
+        if (unbuilt.held !== next) return
+        if (projectMissing(reason)) done()
+        else arm()
       },
     )
   }
@@ -436,17 +449,35 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
 }
 
 // What a cheap edit's flush was refused with after its panel had gone
-// (scenario 5), by the run it was refused on, for as long as that run stands
-// where the refusal left it: the next start moves its snapshot on, and the
-// sentence goes with it. Kept by the run rather than by a screen, because
+// (scenario 5), by the run it was refused on, until that run next moves. Kept by the run rather than by a screen, because
 // the screen that would say it is usually the one that has just gone, and
 // the project's own run outlives it (`runs.ts`).
 const refusedGone = new WeakMap<LayoutRun, { snapshot: RunSnapshot; sentence: string }>()
 const refusalListeners = new Set<() => void>()
 
-/** Say on the project's status line that a flush was refused, with the engine's sentence. */
+/** Hears the sentence's run move on, for the one sentence kept for each run. */
+const forgetting = new WeakMap<LayoutRun, () => void>()
+
+/**
+ * Say on the project's status line that a flush was refused, with the
+ * engine's sentence. It is forgotten the first time the run moves, whatever
+ * it moves to: Run all with nothing left to run puts back the very snapshot
+ * it started from (`#withdraw`), and a sentence kept by that object alone
+ * would come back with it.
+ */
 export function sayRefusedGone(run: LayoutRun, snapshot: RunSnapshot, sentence: string): void {
+  forgetting.get(run)?.()
   refusedGone.set(run, { snapshot, sentence })
+  const unhear = run.subscribe(() => {
+    stop()
+    if (refusedGone.get(run)?.snapshot === snapshot) refusedGone.delete(run)
+    for (const listener of refusalListeners) listener()
+  })
+  const stop = (): void => {
+    unhear()
+    if (forgetting.get(run) === stop) forgetting.delete(run)
+  }
+  forgetting.set(run, stop)
   for (const listener of refusalListeners) listener()
 }
 
