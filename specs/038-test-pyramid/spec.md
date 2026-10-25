@@ -116,7 +116,7 @@ As the maintainer, I want the mutations the specs and tests list to be run by a 
 **Part 1, mechanical (before 1.0)**
 
 - **FR-001**: The shape checks MUST cover `engine.info`, `engine.shutdown`, `feeds.inspect` and `feeds.service`.
-- **FR-002**: The five `*-real` suites that hard-code `enginePython: null` MUST honour `LEGIBLE_ENGINE_PYTHON` as `determinism-real` does. `determinism.yml` MUST run all seven real suites against its vendored engine on its three platforms. A step makes the cached layout `layout-real` needs and the page `viewer-real` needs.
+- **FR-002**: The five `*-real` suites that hard-code `enginePython: null` MUST honour `LEGIBLE_ENGINE_PYTHON` as `determinism-real` does. `determinism.yml` MUST run all seven real suites against its vendored engine on its three platforms. The suites make the stored layout `layout-real` needs and the page `viewer-real` needs themselves, from the committed BART fixture, where no engine checkout supplies them (research R5).
 - **FR-003**: `ci.yml` MUST be split into a fast layer and a long layer, as User Story 3 says:
   - the fast layer runs on Ubuntu, macOS and Windows and is required;
   - the long layer, the end-to-end suite, runs on macOS and Windows and is required there, for a pull request that touches the app;
