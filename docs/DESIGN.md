@@ -618,11 +618,15 @@ next before it says what went wrong.
   where the ring is drawn: for a ring outside its control, the colour the
   page paints under the middle of the ring's band at the midpoint of each of
   the control's four sides (`elementsFromPoint`, so stacking and clipping
-  count, with a border at that point painted in its own colour and every
-  layer's opacity applied), the worst side deciding; for a ring inside it,
+  count; a border that is opaque at that point hides its element's
+  background there, image or not, as the colour picker's black border hides
+  the gradient of its colour area; every layer's opacity is applied), the
+  worst side deciding; for a ring inside it,
   the control's own background over its ancestors'. A ground that is an
-  image, a frame, a video or a colour it cannot parse is reported as
-  unreadable and fails, not guessed; a side off the screen is not read.
+  image showing, a frame, a video or a colour it cannot parse is reported
+  as unreadable and fails, not guessed, and the report names each side with
+  its ground or why it could not be read; a side off the screen is not
+  read.
   An outline and a hard-edged shadow on one element are read as two bands,
   each counting towards the thickness only if it clears 3:1 itself
   (`tests/support/ring.ts`); no control draws one today.

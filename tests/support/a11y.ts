@@ -294,14 +294,20 @@ export function installProbe(): void {
   // is `ring.ts`.
   type Colour = [number, number, number, number]
   const parseColour = (text: string): Colour | null => {
-    const m = /^rgba?\(([^)]+)\)$/.exec(text.trim())
+    // `rgb()` and `rgba()`, and `color(srgb r g b / a)` with the channels from
+    // 0 to 1, which is how Chromium reports a colour a `color-mix()` made.
+    const m = /^(rgba?|color)\(([^)]+)\)$/.exec(text.trim())
     if (!m) return null
-    const parts = m[1]
+    const srgb = m[1] === 'color'
+    const body = srgb ? m[2].replace(/^\s*srgb\s+/, '') : m[2]
+    if (srgb && body === m[2]) return null
+    const parts = body
       .split(/[\s,/]+/)
       .filter(Boolean)
       .map(Number)
     if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null
-    return [parts[0], parts[1], parts[2], parts[3] ?? 1]
+    const scale = srgb ? 255 : 1
+    return [parts[0] * scale, parts[1] * scale, parts[2] * scale, parts[3] ?? 1]
   }
   // The composed tree: a slotted element's parent is the slot it is shown
   // in, and the top of a shadow root's is its host.
@@ -345,30 +351,34 @@ export function installProbe(): void {
   }
   /**
    * What is painted by the elements of `stack`, topmost first, over a white
-   * canvas: their background colours, down to the first opaque one. Null where
-   * the ground cannot be read, which is not a guess: a background image, a
-   * colour this does not parse, and elements whose content is not a colour
-   * (a frame, a picture, a video, a canvas).
+   * canvas: their background colours, down to the first opaque one. A string,
+   * naming the element and why, where the ground cannot be read, which is not
+   * a guess: a background image showing, a colour this does not parse, and
+   * elements whose content is not a colour (a frame, a picture, a video, a
+   * canvas). A border that is opaque at the point hides the element's
+   * background there, image or not.
    */
-  const composeStack = (stack: Element[], at: [number, number] | null = null): Rgb | null => {
+  const composeStack = (stack: Element[], at: [number, number] | null = null): Rgb | string => {
     const layers: Colour[] = []
     for (const el of stack) {
-      if (/^(IFRAME|IMG|VIDEO|CANVAS|OBJECT|EMBED)$/.test(el.tagName)) return null
+      if (/^(IFRAME|IMG|VIDEO|CANVAS|OBJECT|EMBED)$/.test(el.tagName))
+        return `${describe(el)} is not a colour`
       const style = getComputedStyle(el)
-      if (style.backgroundImage !== 'none') return null
       const opacity = opacityOf(el)
       // A point that falls in an element's border is painted in the border's
       // colour, over its background: react-colorful's colour area has a 12px
-      // black one under it.
+      // black one under it, and a gradient behind it.
       const border = at === null ? null : borderAt(el, style, at)
-      if (border !== undefined && border !== null) {
-        if (border === false) return null
+      if (border === false) return `${describe(el)} has a border colour that cannot be read`
+      if (border !== null) {
         const alpha = border[3] * opacity
         if (alpha > 0) layers.push([border[0], border[1], border[2], alpha])
         if (alpha >= 1) break
       }
+      if (style.backgroundImage !== 'none') return `${describe(el)} has a background image`
       const colour = parseColour(style.backgroundColor)
-      if (colour === null) return null
+      if (colour === null)
+        return `${describe(el)} has a background it cannot read: ${style.backgroundColor}`
       const alpha = colour[3] * opacity
       if (alpha === 0) continue
       layers.push([colour[0], colour[1], colour[2], alpha])
@@ -382,7 +392,7 @@ export function installProbe(): void {
     return under
   }
   /** The ground under `start` itself: its own background and its ancestors', for a ring drawn inside it. */
-  const groundBehind = (start: Element): Rgb | null => {
+  const groundBehind = (start: Element): Rgb | string => {
     const stack: Element[] = []
     for (let up: Element | null = start; up !== null; up = parentOf(up)) stack.push(up)
     return composeStack(stack)
@@ -397,21 +407,21 @@ export function installProbe(): void {
    * fills its parent exactly. A side off the screen is not read; a side whose
    * ground cannot be read makes the ring unreadable.
    */
-  const groundsOutside = (el: Element, distance: number): (Rgb | null)[] => {
+  const groundsOutside = (el: Element, distance: number): [string, Rgb | string][] => {
     const box = el.getBoundingClientRect()
     const root = el.getRootNode()
     const scope: Document | ShadowRoot = root instanceof ShadowRoot ? root : document
-    const sides: [number, number][] = [
-      [box.left + box.width / 2, box.top - distance],
-      [box.right + distance, box.top + box.height / 2],
-      [box.left + box.width / 2, box.bottom + distance],
-      [box.left - distance, box.top + box.height / 2],
+    const sides: [string, number, number][] = [
+      ['top', box.left + box.width / 2, box.top - distance],
+      ['right', box.right + distance, box.top + box.height / 2],
+      ['bottom', box.left + box.width / 2, box.bottom + distance],
+      ['left', box.left - distance, box.top + box.height / 2],
     ]
-    const out: (Rgb | null)[] = []
-    for (const [x, y] of sides) {
+    const out: [string, Rgb | string][] = []
+    for (const [side, x, y] of sides) {
       if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue
       const hits = scope.elementsFromPoint(x, y).filter((hit) => hit !== el && !el.contains(hit))
-      if (hits.length > 0) out.push(composeStack(hits, [x, y]))
+      if (hits.length > 0) out.push([side, composeStack(hits, [x, y])])
     }
     return out
   }
@@ -431,26 +441,30 @@ export function installProbe(): void {
     kind: 'outline' | 'shadow',
     width: number,
     colourText: string,
-    grounds: (Rgb | null)[],
+    grounds: [string, Rgb | string][],
     extra: { offset?: number; inset?: boolean; opaque?: boolean } = {},
   ): RingReading => {
     const colour = parseColour(colourText)
-    // The worst side decides; a side that could not be read decides nothing
-    // but a null, and a ring with no side to read (off the screen) has none.
-    const unreadable = colour === null || grounds.length === 0 || grounds.some((g) => g === null)
-    if (unreadable) {
-      const first = grounds.find((g): g is Rgb => g !== null)
+    // The worst side decides. A side that could not be read makes the ring
+    // unreadable, and the reading names every side: its ground, or why not.
+    if (colour === null || grounds.length === 0 || grounds.some(([, g]) => typeof g === 'string')) {
+      const sides =
+        grounds.length === 0
+          ? 'not on the screen'
+          : grounds
+              .map(([side, g]) => (typeof g === 'string' ? `${side}: ${g}` : `${side} ${hex(g)}`))
+              .join('; ')
       return {
         kind,
         width,
         colour: colourText,
-        ground: first ? hex(first) : null,
+        ground: colour === null ? `the ring’s colour cannot be read (${sides})` : sides,
         ratio: null,
         ...extra,
       }
     }
     let worst: { ground: Rgb; ratio: number } | null = null
-    for (const ground of grounds as Rgb[]) {
+    for (const [, ground] of grounds as [string, Rgb][]) {
       const a = colour[3]
       const drawn: Rgb = [
         colour[0] * a + ground[0] * (1 - a),
@@ -495,7 +509,7 @@ export function installProbe(): void {
     const style = getComputedStyle(el)
     const offset = parseFloat(style.outlineOffset) || 0
     const outlineWidth = parseFloat(style.outlineWidth)
-    const own = (): (Rgb | null)[] => [groundBehind(el)]
+    const own = (): [string, Rgb | string][] => [['inside', groundBehind(el)]]
     const outline =
       style.outlineStyle === 'none' || outlineWidth === 0
         ? null
