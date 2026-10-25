@@ -880,6 +880,137 @@ test('a page the pinned engine drew is not redrawn as its project opens', async 
   })
 })
 
+// Issue 494: a page with every seam the pinned page has is older still where
+// its record says an engine below the running one drew it - a page engine
+// v0.15.0 to v0.18.x drew has every seam - and the redraw's own write names
+// the running engine, so it happens once. "Running" is the stand-in's
+// `engine.info` here, which answers the pinned version or is refused.
+
+/** An engine version below any pin this app has had since `drawn.engine` was kept. */
+const OLDER_ENGINE = '0.18.1'
+
+/** What the record's `drawn` says of the engine that drew the map. */
+const drawnBy = (h: Home): unknown =>
+  (readRecord(h).drawn as { engine?: unknown } | null | undefined)?.engine
+
+/**
+ * Write `engine` into the record's `drawn` as the engine that drew the map,
+ * as a record an earlier engine's draw left behind: the whole file renamed
+ * over the record, so a read never meets half of one.
+ */
+function drawnByEngine(h: Home, engine: string): void {
+  const [id] = readdirSync(join(h.engineHome, 'projects'))
+  const file = join(h.engineHome, 'projects', id, 'project.json')
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as { drawn: Record<string, unknown> }
+  writeFileSync(`${file}.next`, JSON.stringify({ ...raw, drawn: { ...raw.drawn, engine } }))
+  renameSync(`${file}.next`, file)
+}
+
+test('a page with every seam is redrawn once as its project opens where its record names an older engine', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    expect(drawnBy(h), 'the layout run named the engine that drew the map').toBe(PINNED_ENGINE)
+    themedPage(h, THEMED_PAGE)
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    drawnByEngine(h, OLDER_ENGINE)
+    const asked = received(h, 'map.build').length
+    const day = readRecord(h).date
+    expect(day, 'the layout chose a day').toBeTruthy()
+
+    // The page every redraw arrives at keeps every seam, so the only thing
+    // older about the one the project opens on is the version its record names.
+    const stop = keepPageWritten(h)
+    try {
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await expect
+        .poll(() => received(h, 'map.build').length, {
+          message: 'the page an older engine drew was redrawn as the project opened',
+          timeout: 20_000,
+        })
+        .toBe(asked + 1)
+      const sent = JSON.parse(received(h, 'map.build')[asked]) as {
+        params?: { date?: unknown; layout?: unknown }
+      }
+      expect(sent.params?.date, 'for the day the map already showed').toBe(day)
+      expect(sent.params?.layout, 'from the stored layout').toBe(readRecord(h).layout)
+      await expect(
+        frame(page),
+        'and the frame was sent to the page the redraw wrote',
+      ).toHaveAttribute('src', /redraw=1/)
+      await expect
+        .poll(() => drawnBy(h), { message: 'the redraw’s write names the running engine' })
+        .toBe(PINNED_ENGINE)
+      await expect
+        .poll(async () => (await factsOf(app))?.seen ?? null, {
+          message: 'the page that arrived was given back its theme in place',
+          timeout: 20_000,
+        })
+        .toContainEqual(['setTheme', 'warm-dark'])
+    } finally {
+      stop()
+    }
+
+    // Once: nothing redraws it again, and nothing was laid out.
+    await page.waitForTimeout(1500)
+    expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+    expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+
+    // And opened again, the record now names the running engine: not again.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect
+      .poll(async () => (await factsOf(app))?.seen ?? null, {
+        message: 'the page loaded again and was given back its theme',
+        timeout: 20_000,
+      })
+      .toContainEqual(['setTheme', 'warm-dark'])
+    await page.waitForTimeout(2000)
+    expect(received(h, 'map.build'), 'nothing was redrawn on the second opening').toHaveLength(
+      asked + 1,
+    )
+  })
+})
+
+test('a page with every seam is not redrawn as its project opens where its record names the running engine, or a later one', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page, app) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    themedPage(h, THEMED_PAGE)
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    expect(drawnBy(h), 'the record names the running engine').toBe(PINNED_ENGINE)
+    const asked = received(h, 'map.build').length
+
+    for (const engine of [PINNED_ENGINE, '99.0.0']) {
+      drawnByEngine(h, engine)
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      await expect
+        .poll(async () => (await factsOf(app))?.seen ?? null, {
+          message: `the page drawn by ${engine} loaded and was given back its theme`,
+          timeout: 20_000,
+        })
+        .toContainEqual(['setTheme', 'warm-dark'])
+      // Longer than a redraw takes to be asked for: the seam is asked after
+      // the restore, and the stand-in answers a map.build in well under this.
+      await page.waitForTimeout(2000)
+      expect(received(h, 'map.build'), `nothing was redrawn for ${engine}`).toHaveLength(asked)
+      await expect(frame(page), 'and the frame is on the page as it stood').toHaveAttribute(
+        'src',
+        /redraw=0/,
+      )
+      expect(drawnBy(h), 'and the record still names it').toBe(engine)
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+    }
+  })
+})
+
 // Issue 517, decided 25 Oct 2026: a redraw on open that fails says so as an
 // error in cell 03, in words for a person who pressed nothing, and the
 // fallback issue 465 kept still holds - the page as it stands, a theme taken
@@ -1096,6 +1227,56 @@ test('a page lacking only the opening’s seams is told nothing of a theme or a 
     const address = await frame(page).getAttribute('src')
     expect(address, 'the frame was not loaded again for it').not.toContain('reload=')
     expect(address, 'and is on the address it opened on').toContain('theme=warm-dark')
+    expect(received(h, 'map.build'), 'and nothing was drawn for it').toHaveLength(drawn + 1)
+  })
+})
+
+// Issue 494 with 517: a page older only by the version its record names has
+// every seam, so where its redraw fails cell 03 says the opening's words and
+// the engine's reason, then only that the map stays as it was - neither the
+// theme's sentence nor the trip's is true of it - and it takes a theme in place.
+test('a page older only by its record’s engine, whose redraw on open fails, is told nothing of a theme or a trip', async () => {
+  test.setTimeout(180_000)
+  const h = home()
+  const { first, drawn } = await laidOutWithPage(h, THEMED_PAGE)
+  expect((first.drawn as { engine?: unknown }).engine, 'the layout named the running engine').toBe(
+    PINNED_ENGINE,
+  )
+  drawnByEngine(h, OLDER_ENGINE)
+
+  await withApp(h, async (page, app) => {
+    await openedAndRefused(page, h, drawn)
+    await openCell(page, 'frame')
+    const body = page.locator('.cell[data-cell="03"] .cell-body')
+    await expect(body.locator('p.message.error', { hasText: OPENING_REDRAW_FAILED })).toHaveText(
+      `${OPENING_REDRAW_FAILED} ${noLayoutReason(first.layout)}`,
+    )
+    await expect(body.locator('p.prose', { hasText: ON_SCREEN_AS_IT_WAS })).toHaveText(
+      ON_SCREEN_AS_IT_WAS,
+    )
+    await expect(body).not.toContainText(THEME_BY_RELOAD)
+    await expect(body).not.toContainText(NO_TRIP_ON_IT)
+    expect(drawnBy(h), 'nothing was drawn, so the record still names the older engine').toBe(
+      OLDER_ENGINE,
+    )
+
+    // And a theme is taken in place, as the cell did not say otherwise.
+    await expect
+      .poll(async () => (await factsOf(app))?.seen ?? null, {
+        message: 'the page on screen was given back its theme',
+        timeout: 20_000,
+      })
+      .toContainEqual(['setTheme', 'warm-dark'])
+    await openCell(page, 'style')
+    await card(page, 'Sepia').click()
+    await expect
+      .poll(async () => (await factsOf(app))?.seen ?? null, {
+        message: 'the page was told the theme in place',
+        timeout: 20_000,
+      })
+      .toContainEqual(['setTheme', 'sepia'])
+    const address = await frame(page).getAttribute('src')
+    expect(address, 'the frame was not loaded again for it').not.toContain('reload=')
     expect(received(h, 'map.build'), 'and nothing was drawn for it').toHaveLength(drawn + 1)
   })
 })

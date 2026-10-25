@@ -13,6 +13,7 @@ import {
   frameFailure,
   frameFailureWords,
   keepFocusInCell,
+  openPlanOf,
   openingFallback,
   pageLacks,
   processStoppedSentence,
@@ -21,7 +22,7 @@ import {
   type FrameFailureFacts,
   type OnOpenFacts,
 } from '../../src/renderer/src/notebook/olderPage'
-import type { DrawnFrom, ServiceWindow } from '../../src/shared/project'
+import type { DrawnFrom, ProjectRecord, ServiceWindow } from '../../src/shared/project'
 import {
   PAGE_SEAMS,
   SEAMS_MAX,
@@ -121,6 +122,7 @@ const DRAWN: DrawnFrom = {
 const facts = (over: Partial<OnOpenFacts> = {}, project: Partial<OnOpenFacts['project']> = {}) =>
   ({
     older: true,
+    running: '0.19.0',
     engineReady: true,
     busy: false,
     drawnHere: 0,
@@ -186,6 +188,90 @@ describe('redrawing the page a project opened on', () => {
 
   it('never redraws a record from before `drawn` existed, which keeps today’s fallback', () => {
     expect(redrawOnOpen(facts({}, { drawn: null }))).toEqual({ kind: 'never' })
+  })
+})
+
+// Issue 494: a page with every seam the pinned page has is older still where
+// its record says an engine below the running one drew it (`drawn.engine`).
+// The seam's judgement stays for a record from before the field, and either
+// test saying older is enough.
+describe('redrawing the page a project opened on, by the engine that drew it', () => {
+  /** A page with every seam, its record naming the engine that drew it. */
+  const by = (engine: string | undefined, over: Partial<OnOpenFacts> = {}) =>
+    facts({ older: false, ...over }, { drawn: engine === undefined ? DRAWN : { ...DRAWN, engine } })
+
+  it('redraws a page with every seam that an engine below the running one drew', () => {
+    // Mutation: the version not read (`byVersion` left out) - the page
+    // v0.15.0 to v0.18.x drew, with every seam, is kept as current.
+    expect(redrawOnOpen(by('0.18.1'))).toEqual({ kind: 'redraw', date: '2026-06-16' })
+    expect(redrawOnOpen(by('0.15.0'))).toEqual({ kind: 'redraw', date: '2026-06-16' })
+    // And where its page did not say what its seam has.
+    expect(redrawOnOpen(by('0.18.1', { older: null }))).toEqual({
+      kind: 'redraw',
+      date: '2026-06-16',
+    })
+  })
+
+  it('never redraws one drawn at the running engine’s version, or above it', () => {
+    // Mutation: the comparison `<=` - every page the pin drew is redrawn on
+    // every opening.
+    expect(redrawOnOpen(by('0.19.0'))).toEqual({ kind: 'never' })
+    expect(redrawOnOpen(by('0.20.0'))).toEqual({ kind: 'never' })
+  })
+
+  it('still redraws one lacking a seam, whatever version its record names', () => {
+    // Mutation: the version made to override the seam - a page that cannot
+    // take a theme in place kept because its record says the pin drew it.
+    expect(redrawOnOpen(by('0.19.0', { older: true }))).toEqual({
+      kind: 'redraw',
+      date: '2026-06-16',
+    })
+    expect(redrawOnOpen(by('0.20.0', { older: true }))).toEqual({
+      kind: 'redraw',
+      date: '2026-06-16',
+    })
+  })
+
+  it('judges by the seam alone where the record names no engine, or the running one is not a version', () => {
+    expect(redrawOnOpen(by(undefined))).toEqual({ kind: 'never' })
+    expect(redrawOnOpen(by('0.18.1', { running: '0.19.0rc1' }))).toEqual({ kind: 'never' })
+    expect(redrawOnOpen(by('0.18.1', { running: '0.19.0rc1', older: true }))).toEqual({
+      kind: 'redraw',
+      date: '2026-06-16',
+    })
+  })
+
+  it('waits for the engine’s handshake before judging a record that names its engine', () => {
+    // Mutation: the wait removed - a page whose seam is current, opened
+    // before the engine is ready, is settled as current for the screen and
+    // never redrawn, though its record says an older engine drew it.
+    const away = { running: null, engineReady: false }
+    expect(redrawOnOpen(by('0.18.1', away))).toEqual({ kind: 'wait' })
+    // A record that names none has nothing to wait for: its seam has spoken.
+    expect(redrawOnOpen(by(undefined, away))).toEqual({ kind: 'never' })
+    // And the rest of the rule still comes first.
+    expect(redrawOnOpen(by('0.18.1', { ...away, drawnHere: 1 }))).toEqual({ kind: 'never' })
+    expect(
+      redrawOnOpen(
+        facts({ older: false, ...away }, { drawn: { ...DRAWN, engine: '0.18.1' }, readOnly: true }),
+      ),
+    ).toEqual({ kind: 'never' })
+  })
+
+  it('withdraws once the store’s record names the running engine, as the redraw’s own write does', () => {
+    // The redraw happens once (issue 465): its rebuild's write names the
+    // engine that drew it, so a record read after it asks for nothing.
+    const record = (engine: string) =>
+      ({
+        layout: 'abc123',
+        made: '2026-09-10T00:00:01+00:00',
+        date: '2026-06-16',
+        drawn: { ...DRAWN, engine },
+        service: WINDOW,
+      }) as unknown as ProjectRecord
+    const plan = openPlanOf({ older: false, running: '0.19.0', drawnHere: 0 }, false)
+    expect(plan(record('0.18.1'))).toEqual({ kind: 'rebuild', date: '2026-06-16' })
+    expect(plan(record('0.19.0'))).toEqual({ kind: 'none' })
   })
 })
 
@@ -272,6 +358,19 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
     // Mutation: the reason handed on as `run.error`, unscreened.
     const said = failure({}, { error: 'could not read /var/folders/x/out/la-metro-rail.html' })
     expect(said?.reason).toBe('could not read a file')
+  })
+
+  it('tells a page older only by version, which has every seam, neither the theme’s nor the trip’s sentence', () => {
+    // Issue 494: such a page takes a theme and a trip in place, so what
+    // still holds of it is only that the map stays as it was. Mutation: the
+    // lacks built from "older" - the page told it cannot take either.
+    const opening = failure({ seams: CURRENT })
+    expect(opening).toEqual({ kind: 'opening', reason: HINT, lacks: { theme: false, trip: false } })
+    expect(frameFailureWords(opening!)).toEqual({
+      error: OPENING_REDRAW_FAILED,
+      reason: 'la-metro-rail has no stored layout cccccccc.',
+      fallback: ON_SCREEN_AS_IT_WAS,
+    })
   })
 
   it('lacks, of the theme and the trip, only what the page’s seam does not have', () => {

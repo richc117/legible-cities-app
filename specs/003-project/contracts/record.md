@@ -126,6 +126,19 @@ The on-disk form of `ProjectRecord` (`data-model.md`), version 2:
   and nothing else. An older build that writes the record
   drops it, which the next draw puts back. The front door's summaries carry
   `drawn` without it. A trip is never in the record.
+- `drawn.engine` (added by issue 494, still version 2) is the version of the
+  engine that drew the map now on disk, as its handshake answered it
+  (`engine.info`'s `engine`): written by the main process at every draw - the
+  six handlers above - from the supervisor's own record of the last engine
+  to pass the handshake (`Sidecar.readyVersion`), never from anything the
+  renderer sends, and never carried from the block before. It is three whole
+  numbers with no leading zero (`isEngineVersion`, as `vendor/pins.json`
+  names every pin); missing, or anything else, reads as none and leaves the
+  rest of `drawn` as it was, and a store that has no version writes none.
+  A project whose `drawn.engine` is below the running engine's version is
+  redrawn as it opens (issue 465's rule, `notebook/olderPage.ts`); one with
+  none is judged by its page's seam alone. An edit that draws nothing leaves
+  it as it was, and an older build's draw writes `drawn` without it.
 - `tuning` (added by issue 385, still version 2; spec 033) is LOOM's own
   settings a person chose for the project's layout, in the engine's names
   in camel case with the bend penalties flat: `mergeDistance` (5 to 500

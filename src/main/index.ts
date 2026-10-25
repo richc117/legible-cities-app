@@ -448,7 +448,16 @@ if (!hasLock) {
     // (issue 491), and which also refuses while the engine reports a request
     // it was stopped from answering.
     const activity = new ProjectActivity(() => engine.abandoned)
-    const store = new ProjectStore(config.home, (m) => log.warn('projects', m), {}, activity)
+    // Every draw's `drawn` names the engine that answered it (issue 494): the
+    // version its handshake gave, kept through a restart between the build
+    // and the write.
+    const store = new ProjectStore(
+      config.home,
+      (m) => log.warn('projects', m),
+      {},
+      activity,
+      () => engine.readyVersion,
+    )
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
     // Every record and every output folder lives under the engine's home, so

@@ -3282,7 +3282,9 @@ describe('the redraw of an older page as its project opens', () => {
     })
     return { ...laid, drawn: drawnOf(laid) }
   }
-  const OLDER = { older: true, drawnHere: 0 }
+  // Older by its seam; the record names no engine, so the running one's
+  // version (issue 494) says nothing either way.
+  const OLDER = { older: true, running: '0.19.0', drawnHere: 0 }
   const screen = (record: ProjectRecord) => ({ ...record, readOnly: false })
 
   it('is cell 03’s rebuild for the day the map shows, its job, its line and its sentence', async () => {

@@ -63,10 +63,11 @@ export function isViewerMethod(value: unknown): value is ViewerMethod {
  * engine v0.19.0, `page/page.html`'s seam object, in its order.
  *
  * It is how a page an older engine drew is told from a current one (issue
- * 465). Neither the page nor the record carries the version of the engine
- * that drew it - the page's HTML has no version in it, `state()` answers
- * none, and `drawn` names the layout and the choices and never the engine -
- * but every seam the engine has added has been a method on this object
+ * 465). The page carries no version of the engine that drew it - its HTML
+ * has none, and `state()` answers none - and until issue 494 neither did the
+ * record, whose `drawn` now names it (`drawn.engine`) for every map drawn
+ * since; for a record drawn before that, this is all there is to go on. Every
+ * seam the engine has added has been a method on this object
  * (`setTheme` at v0.11.0, `setTrip` at v0.13.0, `setCard` and `setDrawn` at
  * v0.15.0), so **a page lacking any of these is older than the pin**,
  * whatever else it has. A gated test holds this list to the engine's own

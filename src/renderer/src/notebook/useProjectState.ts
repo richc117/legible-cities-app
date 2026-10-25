@@ -361,7 +361,8 @@ export function useProjectState(
   }, [project, engine?.state])
 
   // A page an older engine drew is redrawn when the project opens (issue
-  // 465): a rebuild for the day the map already shows, from the stored
+  // 465; known by its seam, or since issue 494 by the engine version its
+  // record names): a rebuild for the day the map already shows, from the stored
   // layout, with the record's own choices, as `olderPage.ts` decides, started
   // through Run all so the day is the record's once the writes on their way
   // have landed (issue 407). The
@@ -387,8 +388,12 @@ export function useProjectState(
   const [redrawAsked, setRedrawAsked] = useState<string | null>(null)
   useEffect(() => {
     if (redrawSettled.current || opened === null || project === null) return
+    // The engine's own version, which the record's `drawn.engine` is judged
+    // against (issue 494): the engine a redraw would ask.
+    const running = engine?.state === 'ready' ? engine.version : null
     const now = redrawOnOpen({
       older: opened.older,
+      running,
       project,
       engineReady: engine?.state === 'ready',
       busy: layingOut || exporting || settling,
@@ -400,7 +405,7 @@ export function useProjectState(
       // Out of the control a run is about to disable, before it does.
       keepFocusInCell(document.activeElement)
       setRedrawAsked(
-        redrawPageOnOpen(run, project, engine, { older: opened.older, drawnHere: drawn }),
+        redrawPageOnOpen(run, project, engine, { older: opened.older, running, drawnHere: drawn }),
       )
     }
     // The record, the engine, the runs and the redraw count are what move this.
