@@ -253,8 +253,61 @@ export async function createProject(page: Page, feed: string, name: string): Pro
 
 /** Open a project that the Library already lists, and wait for its screen. */
 export async function openProject(page: Page, name: string): Promise<void> {
+  const since = await openings(page, name)
   await control(page, `Open ${name}`).click()
   await expect(projectHeading(page)).toHaveText(name)
+  await openingLanded(page, name, since)
+}
+
+/** What the store holds of one project's opening: the part `openingLanded` reads. */
+export type Opening = { id: string; opened: string | null; readOnly: boolean }
+
+/**
+ * The stored `opened` of every project called `name`, read through the
+ * bridge the screen itself uses. `list` reads the record files, which are
+ * replaced whole and never written in place, so each answer is one record
+ * as it stood on disk, never half of a write; it needs no engine home, so
+ * every caller of `openProject` gets the wait without a new argument.
+ */
+export function openings(page: Page, name: string): Promise<Opening[]> {
+  return page.evaluate(async (wanted) => {
+    const { api } = window as unknown as {
+      api: {
+        projects: {
+          list(): Promise<{ id: string; name: string; opened?: string | null; readOnly: boolean }[]>
+        }
+      }
+    }
+    return (await api.projects.list())
+      .filter((project) => project.name === wanted)
+      .map(({ id, opened, readOnly }) => ({ id, opened: opened ?? null, readOnly }))
+  }, name)
+}
+
+/**
+ * Wait, to a deadline and never a number of turns, until the opening's
+ * write has landed: the project screen marks a project opened a moment
+ * after it appears (A5.6-04, `ProjectStore.markOpened`), that write raises
+ * the record's `revision` like any other since spec 037, and a "before"
+ * snapshot taken straight after an open races it. `withoutOpened` sets the
+ * field aside, and cannot set aside the count the same write raises, which
+ * is kept in comparisons as the evidence that an action wrote nothing
+ * (issue 512). So `openProject` returns only once `opened` has moved from
+ * what `since` held, which also closes the race for a project opened a
+ * second time, whose `opened` is already set. A read-only project is never
+ * written (the screen skips it), so it is not waited for.
+ */
+export async function openingLanded(page: Page, name: string, since: Opening[]): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        (await openings(page, name)).some(
+          (now) =>
+            now.readOnly || now.opened !== (since.find((was) => was.id === now.id)?.opened ?? null),
+        ),
+      { message: `the opening of ${name} reaches its record`, timeout: 15_000 },
+    )
+    .toBe(true)
 }
 
 /** Lay out the open project and wait for the run to finish. */
