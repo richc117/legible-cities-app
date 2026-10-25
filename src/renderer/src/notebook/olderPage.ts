@@ -1,7 +1,9 @@
 import type { EngineState } from '../../../shared/engine'
+import { screenPaths } from '../../../shared/jobs'
 import { drawnDate, serviceDayRefusal, type ProjectRecord } from '../../../shared/project'
-import type { LayoutRun } from '../engine/layoutRun'
+import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import type { RunAllPlan } from '../runAll'
+import { cellOfRun, type RunFacts } from '../runGraph'
 
 // A project whose stored page an older engine drew is redrawn when it opens
 // (issue 465, decided 24 Oct 2026): a `map.build` from the stored layout,
@@ -16,7 +18,23 @@ import type { RunAllPlan } from '../runAll'
 // as that rebuild always is - cell 03 running, then cell 02's "Drawn for
 // <day> from the stored layout", or cell 03's own failure where it fails -
 // and its write is the rebuild's own, which moves the day to the day it
-// already was. Nothing new is written and no new sentence is said.
+// already was. Nothing new is written.
+//
+// Where the redraw fails, cell 03 says so (issue 517, decided 25 Oct 2026).
+// The person pressed nothing, so the words a rebuild they asked for gets do
+// not fit: cell 03 says the map was drawn by an older engine and could not be
+// redrawn as the project opened, the engine's reason, and what still holds of
+// the map on screen - built from the seams that page lacks, since a page
+// lacking only the opening's two can take a theme and a trip like any other
+// (`frameFailure`, `frameFailureWords`), and cell 02's run panel points at
+// cell 03 rather than saying a day was not drawn (`processStoppedSentence`).
+// Every other failed rebuild of cell 03's own - a Run all after it, a
+// person's "Draw for this day", the same failure seen again after the screen
+// was left - gets one plain sentence and its reason, in cell 03 too.
+//
+// Which failure is the opening's is derived, as a cell's state is: the
+// screen knows which job its redraw started (`redrawPageOnOpen` answers it),
+// and the run says which job its latest attempt is.
 //
 // It is started through Run all's machinery and not by a press on cell 03's
 // rebuild (`redrawPageOnOpen`), because the day it draws has to be decided
@@ -132,14 +150,166 @@ export function openPlanOf(
  * this file). Where that record still answers a redraw it is cell 03's
  * rebuild for that day, going from this turn, with its job, its progress line
  * and its sentences.
+ *
+ * Answers the id of the job the press opened, which is how cell 03 later
+ * knows a failure is the opening's (`frameFailure`); null where the press
+ * opened no job of its own, as Run all does not while a run is going. A
+ * press that withdraws once the record is read (`openPlanOf` answering
+ * nothing) puts the run's attempt back as it was, after this has answered:
+ * the id answered is then one the run never reports again, and since a job's
+ * id is never reused it can match no failure later. That is read here only
+ * as far as it can be at the press; the withdrawal comes after the read, so
+ * it is `frameFailure`'s comparison with the run's latest job, made at every
+ * render, that decides.
  */
 export function redrawPageOnOpen(
-  run: Pick<LayoutRun, 'runAll'>,
+  run: Pick<LayoutRun, 'runAll' | 'job'>,
   project: ProjectRecord & { readOnly: boolean },
   engine: EngineState | null,
   facts: Pick<OnOpenFacts, 'older' | 'drawnHere'>,
-): void {
+): string | null {
+  const before = run.job()?.id ?? null
   run.runAll(project, engine, openPlanOf(facts, project.readOnly))
+  const after = run.job()?.id ?? null
+  return after === before ? null : after
+}
+
+/** Which of the seams a person reaches through cell 03 and cell 04 a page lacks. */
+export interface PageLacks {
+  /** No `setTheme` (before engine v0.11.0): a theme reaches it only by loading it again. */
+  theme: boolean
+  /** No `setTrip` (before engine v0.13.0): it cannot show a trip. */
+  trip: boolean
+}
+
+/** What a page's seam lacks of the two, from the names it answered; nothing where it did not say. */
+export function pageLacks(seams: readonly string[] | null): PageLacks {
+  if (seams === null) return { theme: false, trip: false }
+  return { theme: !seams.includes('setTheme'), trip: !seams.includes('setTrip') }
+}
+
+/**
+ * A failed rebuild of cell 03's own, as cell 03 says it: the opening's
+ * redraw, with what the page it opened on lacks, or any other, with the day
+ * it was for. The reason is the engine's hint with its paths taken out, as
+ * the jobs inspector shows it.
+ */
+export type FrameFailure =
+  | { kind: 'opening'; reason: string | null; lacks: PageLacks }
+  | { kind: 'rebuild'; reason: string | null; day: string | null }
+
+/** What `frameFailure` reads: the job the opening started, the run as it stands, the page's seam. */
+export interface FrameFailureFacts {
+  /** The job the screen's redraw on open started (`redrawPageOnOpen`); null where it started none. */
+  asked: string | null
+  /** The id of the run's latest attempt (`LayoutRun.job()`); null where it has none. */
+  job: string | null
+  run: RunFacts & Pick<RunSnapshot, 'error' | 'unkept' | 'day'>
+  /** The seam the first page the screen loaded answered; null where it did not say. */
+  seams: readonly string[] | null
+}
+
+/**
+ * What cell 03 says about a failed run of its own, or null while there is
+ * none: the run failed, and as cell 03's (a rebuild - Run all can make a
+ * layout of a press, under the same job, where the record it read has no
+ * layout, and that failure is cell 02's).
+ *
+ * Nothing, too, where the map was drawn and the record then refused to keep
+ * it (`unkept`, issue 399): that map *was* drawn, so neither "could not be
+ * redrawn" nor "did not finish" is true, and cell 02's own sentence for it
+ * is the one that is.
+ *
+ * It is the opening's only while the run's latest attempt is the job the
+ * opening started. Derived each time, never stored as a flag, so a later Run
+ * all, a person's own rebuild and the same failure met again after the
+ * screen was left all take the plain words.
+ */
+export function frameFailure(facts: FrameFailureFacts): FrameFailure | null {
+  const { asked, job, run, seams } = facts
+  if (run.state !== 'failed') return null
+  if (cellOfRun(run) !== 'frame') return null
+  if (run.unkept) return null
+  const reason = screenPaths(run.error)
+  if (asked !== null && job === asked) return { kind: 'opening', reason, lacks: pageLacks(seams) }
+  return { kind: 'rebuild', reason, day: run.day }
+}
+
+/**
+ * What cell 03 says first where the redraw a project's opening asked for
+ * failed (issue 517), before the engine's reason. A person pressed nothing,
+ * so it says what was tried and why, not that a day they chose was not drawn.
+ */
+export const OPENING_REDRAW_FAILED =
+  'This map was drawn by an older version of the engine and could not be redrawn as the project opened.'
+
+/**
+ * What it says after the reason, always. The map on screen and not the map:
+ * a run that stopped at its deadline cannot know what the engine left on disk.
+ */
+export const ON_SCREEN_AS_IT_WAS = 'The map on screen stays as it was.'
+
+/** Said after it for a page with no `setTheme`, which a theme reaches only by loading it again. */
+export const THEME_BY_RELOAD =
+  'It cannot change its theme where it stands, so choosing a theme loads the map again in that theme.'
+
+/**
+ * Said after it for a page with no `setTrip`: the condition, not a remedy.
+ * What would draw the map again depends on the engine's reason - after "no
+ * stored layout" only a layout does, and Run all would fail the same way - so
+ * the reason before it is what a person acts on.
+ */
+export const NO_TRIP_ON_IT = 'It cannot show a trip until the map is drawn again.'
+
+/** What still holds of the map on screen, for the seams the page lacks and no others. */
+export function openingFallback(lacks: PageLacks): string {
+  return [
+    ON_SCREEN_AS_IT_WAS,
+    ...(lacks.theme ? [THEME_BY_RELOAD] : []),
+    ...(lacks.trip ? [NO_TRIP_ON_IT] : []),
+  ].join(' ')
+}
+
+/** What cell 03 says first of any other failed rebuild of its own. */
+export const rebuildFailed = (day: string | null): string =>
+  day === null ? 'The rebuild did not finish.' : `The rebuild for ${day} did not finish.`
+
+/**
+ * The engine's hint as cell 03 says it: its words exactly as the jobs
+ * inspector shows them, first character included - a hint that starts with a
+ * feed's key starts with it as the engine spells it - and only a closing full
+ * stop the app's, where the hint has none, so it ends as the sentences around
+ * it do.
+ */
+export function engineReason(reason: string | null): string {
+  const said = (reason ?? '').trim()
+  if (said === '') return ''
+  return /[.!?]$/.test(said) ? said : `${said}.`
+}
+
+/** The words cell 03 draws for a failure: the error, and what still holds where there is that to say. */
+export function frameFailureWords(failure: FrameFailure): {
+  error: string
+  reason: string
+  fallback: string | null
+} {
+  const reason = engineReason(failure.reason)
+  return failure.kind === 'opening'
+    ? { error: OPENING_REDRAW_FAILED, reason, fallback: openingFallback(failure.lacks) }
+    : { error: rebuildFailed(failure.day), reason, fallback: null }
+}
+
+/**
+ * What cell 02's run panel says once a run stopped (`LayoutRun.tsx`): its own
+ * sentence, except for the opening's failed redraw, whose "The map was not
+ * drawn for that day" was written for a day a person asked to draw. That one
+ * points at cell 03, where its why is.
+ */
+export const OPENING_REDRAW_STOPPED =
+  'The map was not redrawn as the project opened; cell 03 says why.'
+
+export function processStoppedSentence(failure: FrameFailure | null, ordinary: string): string {
+  return failure?.kind === 'opening' ? OPENING_REDRAW_STOPPED : ordinary
 }
 
 /** What `keepFocusInCell` reads of the focused element: where it sits. */

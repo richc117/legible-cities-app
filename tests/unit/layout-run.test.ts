@@ -36,7 +36,12 @@ import {
 import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
 import { linesParams } from '../../src/renderer/src/lineOptions'
 import { runAllPlan } from '../../src/renderer/src/runAll'
-import { redrawPageOnOpen } from '../../src/renderer/src/notebook/olderPage'
+import {
+  OPENING_REDRAW_STOPPED,
+  frameFailure,
+  processStoppedSentence,
+  redrawPageOnOpen,
+} from '../../src/renderer/src/notebook/olderPage'
 import { styleParams } from '../../src/renderer/src/styleRules'
 import { cellOfRun, runGraph } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
@@ -3345,11 +3350,35 @@ describe('the redraw of an older page as its project opens', () => {
     expect(run.job(), 'and no job is left').toBeNull()
   })
 
+  it('answers the job it started, so cell 03 can tell its failure later', async () => {
+    // Mutation: `redrawPageOnOpen` answers null - cell 03 never learns which
+    // job was the opening's, and says nothing of the failure.
+    const { run, calls } = setup(drawnFor15())
+    const asked = redrawPageOnOpen(run, screen(drawnFor15()), READY, OLDER)
+    expect(asked, 'a job was started').not.toBeNull()
+    expect(asked, 'and it is the run’s latest').toBe(run.job()?.id)
+    await tick()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.job()?.id, 'the same job, done').toBe(asked)
+  })
+
+  it('answers no job where the press started none of its own', async () => {
+    // Mutation: the job read only after the press, not compared with the one
+    // before it - a run already going is answered as the opening's.
+    const { run, record } = setup(drawnFor15())
+    run.rebuild(record, READY, '2026-09-15')
+    const going = run.job()?.id
+    expect(going).toBeTruthy()
+    expect(redrawPageOnOpen(run, screen(record), READY, OLDER)).toBeNull()
+    expect(run.job()?.id, 'the run going is untouched').toBe(going)
+  })
+
   it('that fails is cell 03’s own failure, the cells under it behind it', async () => {
-    // What a failed redraw on open shows (the maintainer's question on it is
-    // open; this pins the answer as built): a failed rebuild, in cell 03.
+    // What a failed redraw on open shows: a failed rebuild, in cell 03, which
+    // since issue 517 says it was the opening's in words of its own.
     const { run, calls, record, completeRebuild } = setup(drawnFor15())
-    redrawPageOnOpen(run, screen(record), READY, OLDER)
+    const asked = redrawPageOnOpen(run, screen(record), READY, OLDER)
     await tick()
     calls[0].reject(new Error('la-metro-rail has no stored layout cccccccc'))
     await tick()
@@ -3362,15 +3391,92 @@ describe('the redraw of an older page as its project opens', () => {
     expect(run.job()).toMatchObject({ kind: 'rebuild', state: 'failed' })
     expect(completeRebuild).not.toHaveBeenCalled()
     expect(cellOfRun(run.snapshot)).toBe('frame')
-    // The sentence cell 03 says for any rebuild that failed.
-    expect(stoppedSentence(run.snapshot.state, run.snapshot.replaced, run.snapshot.rebuilt)).toBe(
-      'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.',
-    )
+    // Cell 03's words for it, with the engine's reason (issue 517).
+    const failure = frameFailure({
+      asked,
+      job: run.job()?.id ?? null,
+      run: run.snapshot,
+      seams: [],
+    })
+    expect(failure).toEqual({
+      kind: 'opening',
+      reason: 'la-metro-rail has no stored layout cccccccc',
+      lacks: { theme: true, trip: true },
+    })
+    // Cell 02's run panel points at cell 03 instead of the stopped sentence a
+    // rebuild a person pressed for gets, which was written for a press.
+    expect(
+      processStoppedSentence(
+        failure,
+        stoppedSentence(run.snapshot.state, run.snapshot.replaced, run.snapshot.rebuilt),
+      ),
+    ).toBe(OPENING_REDRAW_STOPPED)
     const cells = runGraph({ record, run: run.snapshot, exportRun: null })
     expect(cells.frame).toEqual({ state: 'error', because: 'failed' })
     for (const cell of ['style', 'lines', 'export'] as const)
       expect(cells[cell], cell).toEqual({ state: 'stale', because: 'upstream' })
     for (const cell of ['data', 'process'] as const)
       expect(cells[cell], cell).toEqual({ state: 'ready', because: null })
+  })
+
+  it('that fails and is tried again by Run all is said plainly, and cell 02 keeps its own words', async () => {
+    // Mutation: `frameFailure` not comparing the job - the retry, a press of
+    // a person's, is told it was the opening's, and cell 02 says the map was
+    // not redrawn as the project opened.
+    const { run, calls, record } = setup(drawnFor15())
+    const asked = redrawPageOnOpen(run, screen(record), READY, OLDER)
+    await tick()
+    calls[0].reject(new Error('la-metro-rail has no stored layout cccccccc'))
+    await tick()
+    // Cell 03 is in error, so Run all offers the rebuild again.
+    run.runAll(record, READY, runAllPlan)
+    await tick()
+    expect(calls).toHaveLength(2)
+    calls[1].reject(new Error('la-metro-rail has no stored layout cccccccc'))
+    await tick()
+    expect(run.job()?.id, 'a job of its own').not.toBe(asked)
+    const failure = frameFailure({
+      asked,
+      job: run.job()?.id ?? null,
+      run: run.snapshot,
+      seams: [],
+    })
+    expect(failure).toEqual({
+      kind: 'rebuild',
+      reason: 'la-metro-rail has no stored layout cccccccc',
+      day: '2026-09-15',
+    })
+    const ordinary = stoppedSentence(
+      run.snapshot.state,
+      run.snapshot.replaced,
+      run.snapshot.rebuilt,
+    )
+    expect(processStoppedSentence(failure, ordinary)).toBe(
+      'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.',
+    )
+  })
+
+  it('that withdraws answers a job no failure is ever told it was', async () => {
+    // A press that withdraws puts the run's attempt back after the press has
+    // answered its id (`redrawPageOnOpen`'s doc). Mutation: `frameFailure`
+    // taking any failure under a screen that asked for a redraw as the
+    // opening's - the person's own rebuild after the withdrawal is told so.
+    const { run, calls, record, store } = setup(drawnFor15())
+    run.beforeStart(() => store({ ...record, date: '2026-09-20' }))
+    const asked = redrawPageOnOpen(run, screen(record), READY, OLDER)
+    expect(asked, 'the press opened a job').not.toBeNull()
+    await tick()
+    await tick()
+    expect(calls, 'and withdrew: nothing was drawn').toHaveLength(0)
+    expect(run.job(), 'the attempt is put back as it was').toBeNull()
+    // The person draws the day they chose, and it fails.
+    run.rebuild({ ...record, date: '2026-09-20' }, READY, '2026-09-20')
+    await tick()
+    calls[0].reject(new Error('la-metro-rail has no stored layout cccccccc'))
+    await tick()
+    expect(run.job()?.id).not.toBe(asked)
+    expect(
+      frameFailure({ asked, job: run.job()?.id ?? null, run: run.snapshot, seams: [] }),
+    ).toMatchObject({ kind: 'rebuild', day: '2026-09-20' })
   })
 })

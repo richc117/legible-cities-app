@@ -294,3 +294,65 @@ describe('cell 02, Process, and its layout tuning', () => {
     )
   })
 })
+
+// Issue 517: the opening's failed redraw is said in cell 03, so cell 02's run
+// panel points there rather than saying a day a person chose was not drawn;
+// any other failed rebuild keeps the panel's own sentence.
+describe('cell 02, Process, after a rebuild of cell 03’s failed', () => {
+  const failed = {
+    job: () => ({ id: 'job-1', state: 'failed', log: [], dropped: 0 }),
+    subscribe: () => () => undefined,
+    snapshot: {
+      ...idle.snapshot,
+      state: 'failed',
+      error: 'la-metro-rail has no stored layout cccccccc',
+      rebuilt: true,
+      day: '2026-09-12',
+      unkept: false,
+      download: null,
+      feedMissing: false,
+    },
+  } as unknown as LayoutRun
+  const drawFailed = (redrawAsked: string | null): string =>
+    renderToStaticMarkup(
+      <ProjectProvider
+        value={
+          {
+            project: { ...record, readOnly: false },
+            engine: READY,
+            run: failed,
+            runSnapshot: failed.snapshot,
+            exporting: false,
+            layingOut: false,
+            redrawAsked,
+            openedSeams: [],
+          } as unknown as ProjectState
+        }
+      >
+        <ProcessCell cell={CELL} state="ready" open={true} onToggle={() => {}} />
+      </ProjectProvider>,
+    )
+  const ORDINARY =
+    'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.'
+
+  it('points at cell 03 for the opening’s redraw, and keeps its buttons', () => {
+    // Mutation: `frameFailed` not handed to the run panel - it says the day
+    // was not drawn to a person who pressed nothing.
+    const html = drawFailed('job-1')
+    expect(html).toContain(
+      '<p class="prose" role="status">The map was not redrawn as the project opened; cell 03 says why.</p>',
+    )
+    expect(html).not.toContain(ORDINARY)
+    expect(html).toContain('Lay out')
+    expect(html).toContain('Re-layout')
+  })
+
+  it('keeps its own sentence for a rebuild the opening did not start', () => {
+    // Mutation: the neutral sentence said for every failure of cell 03's.
+    for (const redrawAsked of [null, 'job-0']) {
+      const html = drawFailed(redrawAsked)
+      expect(html, String(redrawAsked)).toContain(`<p class="prose" role="status">${ORDINARY}</p>`)
+      expect(html, String(redrawAsked)).not.toContain('cell 03 says why')
+    }
+  })
+})

@@ -5,9 +5,20 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  NO_TRIP_ON_IT,
+  ON_SCREEN_AS_IT_WAS,
+  OPENING_REDRAW_FAILED,
+  OPENING_REDRAW_STOPPED,
+  THEME_BY_RELOAD,
+  frameFailure,
+  frameFailureWords,
   keepFocusInCell,
+  openingFallback,
+  pageLacks,
+  processStoppedSentence,
   redrawOnOpen,
   type FocusedElement,
+  type FrameFailureFacts,
   type OnOpenFacts,
 } from '../../src/renderer/src/notebook/olderPage'
 import type { DrawnFrom, ServiceWindow } from '../../src/shared/project'
@@ -175,6 +186,162 @@ describe('redrawing the page a project opened on', () => {
 
   it('never redraws a record from before `drawn` existed, which keeps today’s fallback', () => {
     expect(redrawOnOpen(facts({}, { drawn: null }))).toEqual({ kind: 'never' })
+  })
+})
+
+// Issue 517, decided 25 Oct 2026: a redraw on open that fails says so as an
+// error in cell 03, in words for a person who pressed nothing; every other
+// failed rebuild of cell 03's own says so there plainly. Which failure is the
+// opening's is derived from the run's latest job against the job the opening
+// started, never stored as a flag, and what still holds of the map on screen
+// from the seams its page lacks. Each clause below is shown red by the
+// mutation its comment names.
+describe('what cell 03 says when a rebuild of its own failed', () => {
+  const HINT = 'la-metro-rail has no stored layout cccccccc'
+  /** A failed rebuild for the 16th: what the run's snapshot says of it. */
+  const FAILED: FrameFailureFacts['run'] = {
+    state: 'failed',
+    rebuilt: true,
+    recoloured: false,
+    reordered: false,
+    restyled: false,
+    replaced: false,
+    download: null,
+    feedMissing: false,
+    error: HINT,
+    unkept: false,
+    day: '2026-06-16',
+  }
+  const failure = (over: Partial<FrameFailureFacts> = {}, run: Partial<typeof FAILED> = {}) =>
+    frameFailure({
+      asked: 'job-1',
+      job: 'job-1',
+      seams: V0_10,
+      ...over,
+      run: { ...FAILED, ...run },
+    })
+  const PLAIN = { kind: 'rebuild', reason: HINT, day: '2026-06-16' }
+
+  it('is the opening’s, with its reason and what its page lacks, for the job the opening started', () => {
+    expect(failure()).toEqual({ kind: 'opening', reason: HINT, lacks: { theme: true, trip: true } })
+  })
+
+  it('is plain where the screen started no redraw: the failure met again after a remount', () => {
+    // Mutation: the `asked !== null` clause removed - a run whose job cannot
+    // be read (null) matches a screen that asked for none (null).
+    expect(failure({ asked: null, job: null })).toEqual(PLAIN)
+    expect(failure({ asked: null, job: 'job-1' })).toEqual(PLAIN)
+  })
+
+  it('is plain for a later job, such as Run all pressed after the failure', () => {
+    // Mutation: the job's id not compared - a rebuild a person asked for is
+    // told it was the opening's.
+    expect(failure({ job: 'job-2' })).toEqual(PLAIN)
+  })
+
+  it('is plain for a rebuild a person asked for, with no day where the run has none', () => {
+    // Mutation: the run's day not carried - the plain words name no day.
+    expect(failure({ asked: null }, { day: null })).toEqual({ ...PLAIN, day: null })
+  })
+
+  it('is nothing while the rebuild goes, or once it was stopped or drew', () => {
+    // Mutation: the state clause removed - cell 03 says a rebuild failed
+    // while it is still running.
+    for (const state of ['running', 'cancelled', 'done', 'idle'] as const)
+      expect(failure({}, { state, error: null }), state).toBeNull()
+  })
+
+  it('is nothing where the failed run is another cell’s, under the same job or not', () => {
+    // Mutation: the cell clause removed - Run all makes a layout of the press
+    // where the record it read has no layout, under the same job, and that
+    // layout's failure is cell 02's.
+    expect(failure({}, { rebuilt: false }), 'a layout').toBeNull()
+    expect(failure({}, { rebuilt: false, recoloured: true }), 'a recolour').toBeNull()
+    expect(failure({}, { feedMissing: true }), 'at the feed').toBeNull()
+  })
+
+  it('is nothing where the map was drawn and the record then would not keep it', () => {
+    // Mutation: the `unkept` clause removed - cell 03 says the map could not
+    // be redrawn, or that the rebuild did not finish, of a map that was drawn
+    // (issue 399); cell 02's own sentence for it is the true one.
+    expect(failure({}, { unkept: true }), 'the opening’s job').toBeNull()
+    expect(failure({ job: 'job-2' }, { unkept: true }), 'any other').toBeNull()
+  })
+
+  it('gives the reason as the jobs inspector does, with no path in it', () => {
+    // Mutation: the reason handed on as `run.error`, unscreened.
+    const said = failure({}, { error: 'could not read /var/folders/x/out/la-metro-rail.html' })
+    expect(said?.reason).toBe('could not read a file')
+  })
+
+  it('lacks, of the theme and the trip, only what the page’s seam does not have', () => {
+    // Mutation: the lacks built from "older" - every older page told both.
+    expect(pageLacks(V0_14), 'only the opening’s two').toEqual({ theme: false, trip: false })
+    expect(pageLacks(before('setTrip')), 'only setTrip').toEqual({ theme: false, trip: true })
+    expect(pageLacks(V0_12), 'no trip and no opening').toEqual({ theme: false, trip: true })
+    expect(pageLacks(V0_10), 'none of them').toEqual({ theme: true, trip: true })
+    expect(pageLacks(before('setTheme')), 'only setTheme').toEqual({ theme: true, trip: false })
+    expect(pageLacks(null), 'a page that did not say').toEqual({ theme: false, trip: false })
+    expect(failure({ seams: V0_14 })).toMatchObject({ lacks: { theme: false, trip: false } })
+  })
+
+  it('says what still holds for the seams the page lacks and no others', () => {
+    // Mutation: either clause said whatever the page lacks.
+    expect(openingFallback({ theme: false, trip: false })).toBe(ON_SCREEN_AS_IT_WAS)
+    expect(openingFallback({ theme: false, trip: true })).toBe(
+      `${ON_SCREEN_AS_IT_WAS} ${NO_TRIP_ON_IT}`,
+    )
+    expect(openingFallback({ theme: true, trip: false })).toBe(
+      `${ON_SCREEN_AS_IT_WAS} ${THEME_BY_RELOAD}`,
+    )
+    expect(openingFallback({ theme: true, trip: true })).toBe(
+      `${ON_SCREEN_AS_IT_WAS} ${THEME_BY_RELOAD} ${NO_TRIP_ON_IT}`,
+    )
+    // The condition, not a remedy: the engine's reason before it says what
+    // would draw the map again.
+    expect(NO_TRIP_ON_IT).toBe('It cannot show a trip until the map is drawn again.')
+    expect(ON_SCREEN_AS_IT_WAS).toBe('The map on screen stays as it was.')
+  })
+
+  it('says the opening’s words, the reason as a sentence, then what still holds', () => {
+    // Mutation: the reason handed on with no closing stop, or with its first
+    // letter raised - the feed's key then spelled as neither the engine nor the
+    // jobs inspector spells it.
+    const opening = failure()
+    expect(opening).not.toBeNull()
+    expect(frameFailureWords(opening!)).toEqual({
+      error: OPENING_REDRAW_FAILED,
+      reason: 'la-metro-rail has no stored layout cccccccc.',
+      fallback: `${ON_SCREEN_AS_IT_WAS} ${THEME_BY_RELOAD} ${NO_TRIP_ON_IT}`,
+    })
+    expect(OPENING_REDRAW_FAILED).toMatch(/older version of the engine/)
+    expect(OPENING_REDRAW_FAILED).toMatch(/could not be redrawn as the project opened/)
+    // A reason already a sentence is left as it is; none is nothing.
+    expect(frameFailureWords({ ...opening!, reason: 'The engine stopped.' }).reason).toBe(
+      'The engine stopped.',
+    )
+    expect(frameFailureWords({ ...opening!, reason: null }).reason).toBe('')
+  })
+
+  it('says a plain failure with its day and reason, and nothing of what holds', () => {
+    // Mutation: the plain kind given the opening's words.
+    expect(frameFailureWords(failure({ job: 'job-2' })!)).toEqual({
+      error: 'The rebuild for 2026-06-16 did not finish.',
+      reason: 'la-metro-rail has no stored layout cccccccc.',
+      fallback: null,
+    })
+    expect(frameFailureWords(failure({ job: 'job-2' }, { day: null })!).error).toBe(
+      'The rebuild did not finish.',
+    )
+  })
+
+  it('has cell 02 point at cell 03 for the opening’s failure, and keep its own sentence otherwise', () => {
+    // Mutation: `processStoppedSentence` answering the ordinary sentence
+    // always, or the neutral one for any failure of cell 03's.
+    const ordinary = 'The map was not drawn for that day.'
+    expect(processStoppedSentence(failure(), ordinary)).toBe(OPENING_REDRAW_STOPPED)
+    expect(processStoppedSentence(failure({ job: 'job-2' }), ordinary)).toBe(ordinary)
+    expect(processStoppedSentence(null, ordinary)).toBe(ordinary)
   })
 })
 

@@ -10,6 +10,7 @@ import { shortLayoutId } from '../../shared/layout'
 import { drawnDate, type ProjectRecord } from '../../shared/project'
 import { downloading, kindOfRun, type LayoutRun as Run, type RunKindOf } from './engine/layoutRun'
 import { NOT_LAID_OUT, WAITING_FOR_FEED } from './DownloadLine'
+import { processStoppedSentence, type FrameFailure } from './notebook/olderPage'
 import { tuningNotice } from './tuningRules'
 import { useSnapshot } from './useSnapshot'
 
@@ -32,6 +33,7 @@ export default function LayoutRun({
   engine,
   disabled = false,
   after,
+  frameFailed = null,
 }: {
   run: Run
   project: ProjectRecord
@@ -47,6 +49,12 @@ export default function LayoutRun({
    * the region itself, which draws no box of its own (`display: contents`).
    */
   after?: ReactNode
+  /**
+   * Cell 03's failure, where the run's is one (`frameFailure`): the opening's
+   * failed redraw is said there, so the stopped sentence here points at it
+   * rather than saying a day a person chose was not drawn (issue 517).
+   */
+  frameFailed?: FrameFailure | null
 }): JSX.Element {
   const {
     state,
@@ -205,15 +213,18 @@ export default function LayoutRun({
         {(state === 'cancelled' || state === 'failed') && (
           <>
             <p className="prose" role="status">
-              {stoppedSentence(
-                state,
-                replaced,
-                rebuilt,
-                recoloured,
-                reordered,
-                restyled,
-                optioned,
-                unkept,
+              {processStoppedSentence(
+                frameFailed,
+                stoppedSentence(
+                  state,
+                  replaced,
+                  rebuilt,
+                  recoloured,
+                  reordered,
+                  restyled,
+                  optioned,
+                  unkept,
+                ),
               )}
             </p>
             <div className="toolbar">

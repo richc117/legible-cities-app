@@ -21,6 +21,13 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import {
+  NO_TRIP_ON_IT,
+  ON_SCREEN_AS_IT_WAS,
+  OPENING_REDRAW_FAILED,
+  THEME_BY_RELOAD,
+} from '../../src/renderer/src/notebook/olderPage'
+import { PAGE_SEAMS } from '../../src/shared/viewer'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'frame') as Cell
 
@@ -86,17 +93,29 @@ const idle = {
  */
 function draw(
   project: ProjectRecord,
-  { readOnly = false }: { readOnly?: boolean } = {},
+  {
+    readOnly = false,
+    run = idle,
+    redrawAsked = null,
+    openedSeams = null,
+  }: {
+    readOnly?: boolean
+    run?: LayoutRun
+    redrawAsked?: string | null
+    openedSeams?: readonly string[] | null
+  } = {},
 ): { above: string; strip: string } {
   const state = {
     project: { ...project, readOnly },
     engine: null,
-    run: idle,
-    runSnapshot: idle.snapshot,
+    run,
+    runSnapshot: run.snapshot,
     setDate: async () => {},
     exporting: false,
     layingOut: false,
     drawn: 0,
+    redrawAsked,
+    openedSeams,
   } as unknown as ProjectState
   const html = renderToStaticMarkup(
     <ProjectProvider value={state}>
@@ -224,5 +243,86 @@ describe('cell 03, open, for a read-only project with a day and no strip', () =>
     }
     // And the first of them does say its day, in the control's own words.
     expect(draw(noWindow).above).toContain('Drawn for 2026-09-12. Lay the project out again')
+  })
+})
+
+// Issue 517: a rebuild of cell 03's own failed. For the redraw a project's
+// opening asked for, cell 03 says so first, as an error, in words for a
+// person who pressed nothing, and then what still holds of the map on screen
+// for the seams its page lacks; any other says so plainly. Neither is a live
+// region: the header's alert is the one announcement (FR-017).
+describe('cell 03, open, after a rebuild of its own failed', () => {
+  const HINT = 'la-metro-rail has no stored layout cccccccc'
+  const REASON = 'la-metro-rail has no stored layout cccccccc.'
+  /** A page from before engine v0.11.0: none of the seams added since. */
+  const OLDEST = PAGE_SEAMS.filter(
+    (name) => !['setTheme', 'setTrip', 'setCard', 'setDrawn'].includes(name),
+  )
+  /** A page from v0.13.0 to v0.14.x: everything but the opening's two. */
+  const NO_OPENING = PAGE_SEAMS.filter((name) => !['setCard', 'setDrawn'].includes(name))
+  /** The opening's rebuild, failed, as job `job-1`. */
+  const failed = {
+    job: () => ({ id: 'job-1' }),
+    subscribe: () => () => undefined,
+    snapshot: {
+      ...idle.snapshot,
+      state: 'failed',
+      error: HINT,
+      rebuilt: true,
+      day: '2026-09-12',
+      unkept: false,
+      download: null,
+      feedMissing: false,
+    },
+  } as unknown as LayoutRun
+  const ERROR = `<p class="message error">${OPENING_REDRAW_FAILED} ${REASON}</p>`
+  const prose = (text: string) => `<p class="prose">${text}</p>`
+
+  it('says what was tried and why first, then what still holds of the oldest page', () => {
+    // Mutation: the block removed from `FrameCell` - the cell reads failed
+    // and says nothing of why.
+    const { above } = draw(record, { run: failed, redrawAsked: 'job-1', openedSeams: OLDEST })
+    expect(above).toContain(
+      `<div class="cell-body">${ERROR}${prose(`${ON_SCREEN_AS_IT_WAS} ${THEME_BY_RELOAD} ${NO_TRIP_ON_IT}`)}`,
+    )
+    expect(count(above, OPENING_REDRAW_FAILED), 'said once').toBe(1)
+  })
+
+  it('tells a page lacking only the opening’s seams nothing of a theme or a trip', () => {
+    // Mutation: `openedSeams` not read from the screen's state - the
+    // fallback is built from no seams at all, or from "older".
+    const { above } = draw(record, { run: failed, redrawAsked: 'job-1', openedSeams: NO_OPENING })
+    expect(above).toContain(`<div class="cell-body">${ERROR}${prose(ON_SCREEN_AS_IT_WAS)}`)
+    expect(above).not.toContain(THEME_BY_RELOAD)
+    expect(above).not.toContain(NO_TRIP_ON_IT)
+  })
+
+  it('is not a live region beside the header’s alert', () => {
+    // Mutation: `role="alert"` on the error - the failure is announced twice.
+    const { above } = draw(record, { run: failed, redrawAsked: 'job-1', openedSeams: OLDEST })
+    const at = above.indexOf(OPENING_REDRAW_FAILED)
+    const tag = above.slice(above.lastIndexOf('<p', at), at)
+    expect(tag).toBe('<p class="message error">')
+  })
+
+  it('says a failed rebuild the opening did not start plainly, with its reason', () => {
+    // Mutation: `redrawAsked` not read from the screen's state - every
+    // failure is told it was the opening's.
+    for (const redrawAsked of [null, 'job-0']) {
+      const { above } = draw(record, { run: failed, redrawAsked, openedSeams: OLDEST })
+      expect(above, String(redrawAsked)).toContain(
+        `<div class="cell-body"><p class="message error">The rebuild for 2026-09-12 did not finish. ${REASON}</p>`,
+      )
+      expect(above, String(redrawAsked)).not.toContain(OPENING_REDRAW_FAILED)
+      expect(above, String(redrawAsked)).not.toContain(ON_SCREEN_AS_IT_WAS)
+      // The control is there, so the half checked is the cell's own.
+      expect(above).toContain('Draw for another day')
+    }
+  })
+
+  it('says nothing of a failure on a run that has not failed', () => {
+    const { above } = draw(record, { redrawAsked: 'job-1', openedSeams: OLDEST })
+    expect(above).not.toContain('message error">The')
+    expect(above).not.toContain(OPENING_REDRAW_FAILED)
   })
 })
