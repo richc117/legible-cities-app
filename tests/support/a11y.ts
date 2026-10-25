@@ -588,6 +588,14 @@ export function installProbe(): void {
   let atRest = new Map<Element, { outline: string; shadow: string }>()
   let stops: {
     control: Element
+    /**
+     * What the control is called, taken at the stop while it holds focus and
+     * is in the document. Not at `finish()`: a control that has left the
+     * document by then is named by what is left of it, and an input's
+     * `labels` are looked up in the document it was taken out of, so the
+     * picker's hex field read as its generated id (issue 436).
+     */
+    name: string
     chain: Element[]
     focused: { outline: string; shadow: string }[]
     measured: ReturnType<typeof rings>[]
@@ -664,7 +672,13 @@ export function installProbe(): void {
       last = control
       visited.add(control)
       const chain = chainOf(deep)
-      stops.push({ control, chain, focused: chain.map(ring), measured: chain.map(rings) })
+      stops.push({
+        control,
+        name: describe(control),
+        chain,
+        focused: chain.map(ring),
+        measured: chain.map(rings),
+      })
       return { state: 'stop', complete: complete(), at: where(), onAimed }
     },
     past(again = false, explicit) {
@@ -753,7 +767,7 @@ export function installProbe(): void {
       const readings: StopReading[] = stops.map((stop) => {
         const rest = stop.chain.map((el) => (el.isConnected ? ring(el) : (atRest.get(el) ?? null)))
         return {
-          control: describe(stop.control),
+          control: stop.name,
           // A frame's page is its own; the engine draws its focus.
           frame: stop.control.tagName === 'IFRAME',
           focused: stop.focused,
