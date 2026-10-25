@@ -117,6 +117,12 @@ export interface ProjectState {
    * (`openingRedrawFailure`).
    */
   redrawAsked: string | null
+  /**
+   * The seam the first page the screen loaded answered, or null until it
+   * has, or where it did not say: what cell 03 says still holds of a page
+   * whose redraw failed is built from what it lacks (issue 517).
+   */
+  openedSeams: readonly string[] | null
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -367,12 +373,15 @@ export function useProjectState(
   // it, since that page is the pinned engine's. The job a redraw started is
   // kept, so cell 03 can tell its failure from a rebuild a person asked for
   // and say it in words for a person who pressed nothing (issue 517).
-  const [opened, setOpened] = useState<{ older: boolean | null } | null>(null)
+  const [opened, setOpened] = useState<{
+    older: boolean | null
+    seams: readonly string[] | null
+  } | null>(null)
   const seamsHeard = useRef(false)
   const pageSeams = useCallback((seams: string[] | null): void => {
     if (seamsHeard.current) return
     seamsHeard.current = true
-    setOpened({ older: isOlderPage(seams) })
+    setOpened({ older: isOlderPage(seams), seams })
   }, [])
   const redrawSettled = useRef(false)
   const [redrawAsked, setRedrawAsked] = useState<string | null>(null)
@@ -660,6 +669,7 @@ export function useProjectState(
     themeReloads,
     pageSeams,
     redrawAsked,
+    openedSeams: opened?.seams ?? null,
     registry,
     inspect,
     readStage,

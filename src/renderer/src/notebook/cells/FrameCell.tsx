@@ -7,11 +7,7 @@ import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
-import {
-  OPENING_REDRAW_FALLBACK,
-  openingRedrawFailedSentence,
-  openingRedrawFailure,
-} from '../olderPage'
+import { frameFailure, frameFailureWords } from '../olderPage'
 import { runRowStatus } from '../runRow'
 
 // Cell 03, Frame and service day: the day the map is drawn for (ADR-045).
@@ -98,16 +94,29 @@ export function frameSummary(
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, setDate, exporting, layingOut, drawn, redrawAsked } =
-    useProject()
+  const {
+    project,
+    engine,
+    run,
+    runSnapshot,
+    setDate,
+    exporting,
+    layingOut,
+    drawn,
+    redrawAsked,
+    openedSeams,
+  } = useProject()
   const heading = useRef<HTMLHeadingElement>(null)
-  // The redraw a project's opening asked for, failed (issue 517): derived
-  // from the run's latest job against the one the opening started.
-  const openingFailed = openingRedrawFailure({
+  // A failed rebuild of this cell's own, the opening's redraw among them
+  // (issue 517): derived from the run's latest job against the one the
+  // opening started, and from the seams of the page it opened on.
+  const failure = frameFailure({
     asked: redrawAsked,
     job: run.job()?.id ?? null,
     run: runSnapshot,
+    seams: openedSeams,
   })
+  const failed = failure === null ? null : frameFailureWords(failure)
   // Whether there is a strip under this cell, asked of the builder that
   // draws it and not restated here: the two would otherwise have to be kept
   // in step, and the day below is said exactly where the strip is not.
@@ -126,17 +135,21 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
     >
       {project !== null && (
         <>
-          {/* The redraw on open failed (issue 517): an error, first in the
-              cell, in words for a person who pressed nothing - what was
-              tried, the engine's reason, and what still holds. It is not a
-              live region: the header's alert says "03 Frame and service day
-              failed." once, assertively, and a second announcement of the
-              same failure here would say it twice (FR-017). The cell's own
-              state reads failed and its row says so. */}
-          {openingFailed !== null && (
+          {/* A rebuild of this cell's own failed (issue 517): an error,
+              first in the cell, with the engine's reason. For the redraw a
+              project's opening asked for, in words for a person who pressed
+              nothing, and then what still holds of the map on screen. It is
+              not a live region: the header's alert says "03 Frame and
+              service day failed." once, assertively, and a second
+              announcement of the same failure here would say it twice
+              (FR-017). The cell's own state reads failed and its row says
+              so. */}
+          {failed !== null && (
             <>
-              <p className="message error">{openingRedrawFailedSentence(openingFailed.reason)}</p>
-              <p className="prose">{OPENING_REDRAW_FALLBACK}</p>
+              <p className="message error">
+                {failed.reason === '' ? failed.error : `${failed.error} ${failed.reason}`}
+              </p>
+              {failed.fallback !== null && <p className="prose">{failed.fallback}</p>}
             </>
           )}
           {project.readOnly ? (
