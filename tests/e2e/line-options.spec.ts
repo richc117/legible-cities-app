@@ -38,7 +38,7 @@
 // - `CasingColour` drawn whatever the casing: 'the casing’s colour'.
 // - `redrawLines` leaving `optioned` false (cell 02 says the colours were
 //   drawn): 'each option reaches'.
-// - `nextLinesStep` comparing before it waits (issue 399): 'a line shown
+// - `useCheapEdit.ts` `attempt` comparing before it waits (issue 399): 'a line shown
 //   again while the build that hid it runs'.
 
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
@@ -534,7 +534,7 @@ test('a line shown again while the build that hid it runs is drawn shown once th
   // build that hides it runs: shown equals the record still on disk, which
   // that build is about to change. It waits, and is drawn once the build
   // has written. Written, not run in the lane; the coordinator's mutation:
-  // `nextLinesStep` comparing before it waits - the switch turned back on
+  // `useCheapEdit.ts` `attempt` comparing before it waits - the switch turned back on
   // is dropped, the build writes B hidden, and the switch goes back off.
   // (`tests/unit/line-options-hook.test.tsx` holds the same in the hook.)
   const engineHome = home({ progress_delay_ms: 300 })

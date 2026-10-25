@@ -343,6 +343,12 @@ describe('no cheap edit keeps a copy of the hook', () => {
         'no test of the stopped states',
       ).toBe(false)
       expect(/setTimeout\(/.test(source), 'no timer of its own').toBe(false)
+      // Nor the step rules each kept before issue 490: they are deleted, and a
+      // panel that brought one back would compare with the record its own way.
+      expect(
+        /\bnext(Lines|Style)?Step\b/.test(source),
+        'no step rule of its own (nextStep, nextStyleStep, nextLinesStep)',
+      ).toBe(false)
     })
   }
 })

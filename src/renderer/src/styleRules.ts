@@ -5,7 +5,6 @@ import {
   FIGURE_KEYS,
   inStyleRange,
   radiiRefusal,
-  sameStyle,
   settledStyle,
   sizesAreSet,
   STYLE_CHOICES,
@@ -376,27 +375,6 @@ export const drawable = (style: ProjectStyle): boolean =>
  */
 export const resettable = (view: View): boolean =>
   styleIsSet(view.style) || FIGURE_KEYS.some((key) => isPending(view.style, view.drafts, key))
-
-/**
- * What to do with a style a person has chosen, at this moment: draw it, wait
- * for the page a layout, a rebuild or an export is reading, or nothing
- * because it is not a change. A change made during a run waits rather than
- * being refused, so no control has to disable itself under a person's hands
- * (A4-01's rule, `nextStep` in `colours.ts`).
- *
- * It waits before it is compared (issue 399, `mustWait`): a size put back
- * while the build of the one before runs equals the record that build is
- * about to change, and comparing then would drop it. Compared once the way
- * is clear, it is compared with the record that build wrote.
- */
-export function nextStyleStep(
-  next: ProjectStyle,
-  stored: ProjectStyle,
-  busy: boolean,
-): 'build' | 'wait' | 'none' {
-  if (busy) return 'wait'
-  return sameStyle(next, stored) ? 'none' : 'build'
-}
 
 /**
  * What cell 04's summary adds to the theme when any of the eight sizes has

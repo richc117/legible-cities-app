@@ -240,8 +240,8 @@ describe('the guards that act late', () => {
 
   it('draws a choice undone while its build ran, once that build has written', () => {
     // The issue's own case: a line hidden, its build running, and the
-    // switch turned back on before it ends. Mutation: `nextLinesStep`
-    // comparing before it waits - the line shown again equals the record
+    // switch turned back on before it ends. Mutation: `useCheapEdit.ts`
+    // `attempt` comparing before it waits - the line shown again equals the record
     // still on disk and is dropped, the build writes the line hidden, and
     // the switch goes back off by itself.
     const run = new StandInRun()

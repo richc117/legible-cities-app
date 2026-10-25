@@ -6,7 +6,6 @@ import {
   LINE_NAME_MAX,
   lineNameSentence,
   linesSent,
-  sameLines,
   settledLine,
   type LineChoice,
   type LineDash,
@@ -246,30 +245,6 @@ export function hidesEveryLine(
   label: string,
 ): boolean {
   return listed.every((each) => each === label || isHidden(lines, each))
-}
-
-/**
- * What a change should do at this moment (FR-010): build it, wait for the
- * way to clear, or nothing because it is not a change from what the record
- * holds. A change made while a run, an export or the reading-back of a
- * finished run holds the page waits rather than being refused.
- *
- * **It waits before it is compared.** While something holds the page the
- * record is about to move - a redraw of these very options may be about to
- * write - so "the same as the record" is a question about a record that is
- * not the one the person will come back to. A switch turned off and on
- * again while the first build runs equals the record still on disk, and
- * comparing then would drop it; the build would write the line hidden and
- * the switch would go back off under the person's hand. Asked again once
- * the way is clear, it is compared with the record that build wrote.
- */
-export function nextLinesStep(
-  next: ProjectLines,
-  stored: ProjectLines | undefined,
-  busy: boolean,
-): 'build' | 'wait' | 'none' {
-  if (busy) return 'wait'
-  return sameLines(next, stored) ? 'none' : 'build'
 }
 
 /**
