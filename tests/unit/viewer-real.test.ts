@@ -96,28 +96,6 @@ async function fixturePage(): Promise<string> {
   return readFileSync(pagePath(home), 'utf8')
 }
 
-/**
- * The page template of the engine the seam is held to: the installed
- * engine's, found through the interpreter, which is the engine that actually
- * ran (under an editable install, the checkout's own file); the checkout's
- * where only a checkout is named. The determinism workflow has no checkout,
- * so this is how a check of the template runs there too.
- */
-const ENGINE_TEMPLATE = enginePageTemplate(CHECKOUT, INTERPRETER)
-
-describe.skipIf(CHECKOUT === null && INTERPRETER === null)(
-  `the engine's page template${CHECKOUT === null && INTERPRETER === null ? NO_ENGINE : ''}`,
-  () => {
-    it('is found where the engine keeps it, and writes the seam as one object', () => {
-      expect(ENGINE_TEMPLATE.path, ENGINE_TEMPLATE.why ?? '').not.toBeNull()
-      const html = readFileSync(ENGINE_TEMPLATE.path as string, 'utf8')
-      expect(html, 'the template no longer writes window.__present as one object').toContain(
-        'window.__present = {',
-      )
-    })
-  },
-)
-
 describe.skipIf(SOURCE === null)(`the real generated page${WHY}`, () => {
   let html = ''
 
@@ -221,24 +199,16 @@ describe.skipIf(SOURCE === null)(`the real generated page${WHY}`, () => {
 })
 
 /**
- * The engine's own page template at the checkout, which every page it draws
- * is made from. The pages under `out` may be from any engine the checkout
- * has been since they were drawn, which is the very thing the next test is
+ * The engine's own page template, which every page it draws is made from:
+ * the installed engine's, found through the interpreter, which is the engine
+ * that actually ran (under an editable install, the checkout's own file);
+ * the checkout's where only a checkout is named. The determinism workflow
+ * has no checkout, so this is how the gate runs there too (spec 038,
+ * FR-002). The pages under `out` may be from any engine the checkout has
+ * been since they were drawn, which is the very thing the next test is
  * about, so the template is read rather than a page.
  */
-function pageTemplate(): string | null {
-  if (CHECKOUT === null) return null
-  const path = join(CHECKOUT, 'src', 'schematic', 'page', 'page.html')
-  return existsSync(path) ? path : null
-}
-
-const TEMPLATE = pageTemplate()
-const TEMPLATE_WHY =
-  CHECKOUT === null
-    ? ' (skipped: LEGIBLE_ENGINE_CHECKOUT names no engine)'
-    : TEMPLATE === null
-      ? ' (skipped: the checkout has no page template where the engine keeps it)'
-      : ''
+const TEMPLATE = enginePageTemplate(CHECKOUT, INTERPRETER)
 
 // A page lacking any seam the pinned engine's page has is one an older engine
 // drew, and is redrawn when its project opens (issue 465). That rests on
@@ -246,25 +216,30 @@ const TEMPLATE_WHY =
 // and the list does not name would leave every page drawn before it judged
 // current, and a method the list names and the engine has dropped would have
 // every page redrawn on every open. So the two are held method for method, in
-// both directions, against the template at the checkout, which is the pin's
-// when `LEGIBLE_ENGINE_CHECKOUT` names the worktree `scripts/pin-engine.sh`
-// makes.
-describe.skipIf(TEMPLATE === null)(`the pinned engine's page template${TEMPLATE_WHY}`, () => {
-  const html = TEMPLATE === null ? '' : readFileSync(TEMPLATE, 'utf8')
-
-  it('has exactly the seam PAGE_SEAMS names', () => {
-    const start = html.indexOf('window.__present = {')
-    expect(start, 'the template no longer writes window.__present as one object').toBeGreaterThan(
-      -1,
-    )
-    const end = html.indexOf('\n  };', start)
-    expect(end, 'the seam object no longer closes where it did').toBeGreaterThan(start)
-    // Each method of the object literal is a line at its first indentation,
-    // a name and its parameters; everything inside a method is deeper.
-    const methods = [...html.slice(start, end).matchAll(/^ {4}([A-Za-z_$][\w$]*)\s*\(/gm)].map(
-      (m) => m[1],
-    )
-    expect(methods.length, 'the seam was read').toBeGreaterThan(10)
-    expect([...methods].sort()).toEqual([...PAGE_SEAMS].sort())
-  })
-})
+// both directions, against the template of the engine that ran: the
+// installed engine's wherever an interpreter is named, which under an
+// editable install is the checkout's own file, and is the pin's when
+// `LEGIBLE_ENGINE_CHECKOUT` names the worktree `scripts/pin-engine.sh` makes;
+// the checkout's where only a checkout is named.
+describe.skipIf(CHECKOUT === null && INTERPRETER === null)(
+  `the pinned engine's page template${CHECKOUT === null && INTERPRETER === null ? NO_ENGINE : ''}`,
+  () => {
+    it('has exactly the seam PAGE_SEAMS names', () => {
+      expect(TEMPLATE.path, TEMPLATE.why ?? '').not.toBeNull()
+      const html = readFileSync(TEMPLATE.path as string, 'utf8')
+      const start = html.indexOf('window.__present = {')
+      expect(start, 'the template no longer writes window.__present as one object').toBeGreaterThan(
+        -1,
+      )
+      const end = html.indexOf('\n  };', start)
+      expect(end, 'the seam object no longer closes where it did').toBeGreaterThan(start)
+      // Each method of the object literal is a line at its first indentation,
+      // a name and its parameters; everything inside a method is deeper.
+      const methods = [...html.slice(start, end).matchAll(/^ {4}([A-Za-z_$][\w$]*)\s*\(/gm)].map(
+        (m) => m[1],
+      )
+      expect(methods.length, 'the seam was read').toBeGreaterThan(10)
+      expect([...methods].sort()).toEqual([...PAGE_SEAMS].sort())
+    })
+  },
+)
