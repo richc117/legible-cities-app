@@ -18,6 +18,11 @@
 // renames on, git lists only the new name of a moved file, and moving
 // `src/a.ts` to `docs/a.md` would read as documentation only.
 //
+// The step's later gates read `run != 'false'`, not `== 'true'`: only this
+// script saying false skips the suite, and an output that never arrived runs
+// it. Paths are printed as JSON strings, so a file named like a workflow
+// command (`::set-output`, or with a newline in it) cannot issue one.
+//
 // Every decision is a function the unit test calls
 // (tests/unit/ci-decide.test.ts); nothing here talks to GitHub.
 
@@ -60,7 +65,10 @@ export function decide({ event, changed, denylist = DENYLIST }) {
   if (changed.length === 0) return verdict(true, 'no changed paths: the suite runs')
   const outside = judged.find((entry) => entry.rule === null)
   if (outside !== undefined) {
-    return verdict(true, `${outside.path} is on no documentation entry: the suite runs`)
+    return verdict(
+      true,
+      `${JSON.stringify(outside.path)} is on no documentation entry: the suite runs`,
+    )
   }
   return verdict(false, 'every changed path is on the documentation list: the suite is skipped')
 }
@@ -83,7 +91,8 @@ export function report(decision) {
     `event: ${decision.event || '(none)'}`,
     `changed paths: ${decision.changed.length}`,
     ...decision.judged.map(
-      (entry) => `  ${entry.path}  ->  ${entry.rule ?? 'not on the documentation list'}`,
+      (entry) =>
+        `  ${JSON.stringify(entry.path)}  ->  ${entry.rule ?? 'not on the documentation list'}`,
     ),
     `rule: ${decision.rule}`,
     `docsOnly: ${!decision.run}`,
@@ -108,6 +117,12 @@ export function main(args, env = process.env) {
     process.stdout.write(
       `::warning::git could not list the paths between ${base} and ${head}; the suite will run\n`,
     )
+  }
+  // On a runner the verdict has nowhere to go without this file, and the
+  // job's later steps are gated on it: say so, loudly, rather than let a
+  // missing output read as an answer.
+  if (env.GITHUB_ACTIONS && !env.GITHUB_OUTPUT) {
+    throw new Error('GITHUB_ACTIONS is set but GITHUB_OUTPUT is not: nowhere to write the verdict')
   }
   const decision = decide({ event, changed })
   process.stdout.write(report(decision))

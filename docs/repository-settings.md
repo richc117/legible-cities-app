@@ -27,9 +27,11 @@ Everything below is free for a public repository.
 
 ## Branch protection on `main`
 
-Applied 2026-09-07, when A0-09 landed the `ci` check; the `e2e` checks
-joined when the layers were split (issue 500). Direct commits to
-`main` ended with the commit that ticked these boxes; see `CONTRIBUTING.md`.
+Applied 2026-09-07, when A0-09 landed the `ci` check. The two `e2e` checks
+are required from the merge that split the layers (issue 500), and the
+setting is changed within the hour of that merge (task T011 of spec 038).
+Direct commits to `main` ended with the commit that ticked these boxes; see
+`CONTRIBUTING.md`.
 
 - [x] Require a pull request before merging.
 - [x] Require status checks to pass, seven of them: `gitleaks`,

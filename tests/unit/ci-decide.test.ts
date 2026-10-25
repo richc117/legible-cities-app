@@ -5,7 +5,16 @@
 // Nothing here talks to GitHub or launches anything.
 
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -65,6 +74,12 @@ describe('the documentation-only rule', () => {
       ['.claude/hooks/guard-git.sh', '.github/workflows/ci.yml'],
       true,
     ],
+    [
+      'a file named like a workflow command',
+      'pull_request',
+      ['docs/a.md', '::set-output name=run::false'],
+      true,
+    ],
     ['a workflow alone', 'pull_request', ['.github/workflows/ci.yml'], true],
     ['a test file', 'pull_request', ['tests/e2e/rail.spec.ts'], true],
     [
@@ -107,8 +122,8 @@ describe('the documentation-only rule', () => {
       { path: 'src/main/export.ts', rule: null },
     ])
     const text = report(decision)
-    expect(text).toContain('src/main/export.ts  ->  not on the documentation list')
-    expect(text).toContain('rule: src/main/export.ts is on no documentation entry')
+    expect(text).toContain('"src/main/export.ts"  ->  not on the documentation list')
+    expect(text).toContain('rule: "src/main/export.ts" is on no documentation entry')
     expect(text).toContain('ran: true')
     expect(text).not.toContain('::notice')
   })
@@ -117,10 +132,24 @@ describe('the documentation-only rule', () => {
     const { decide, report, SKIP_NOTICE } = await load()
     const text = report(decide({ event: 'pull_request', changed: ['README.md'] }))
     expect(SKIP_NOTICE).toBe('documentation only; the end-to-end suite did not run')
-    expect(text).toContain('README.md  ->  *.md anywhere')
+    expect(text).toContain('"README.md"  ->  *.md anywhere')
     expect(text).toContain('docsOnly: true')
     expect(text).toContain('ran: false')
     expect(text).toContain(`::notice title=e2e::${SKIP_NOTICE}`)
+  })
+
+  it('prints a path named like a workflow command as a quoted string, on one line', async () => {
+    const { decide, report } = await load()
+    const hostile = ['::set-output name=run::false.ts', 'src/a\n::error::injected.ts']
+    const text = report(decide({ event: 'pull_request', changed: hostile }))
+    for (const line of text.split('\n')) expect(line.startsWith('::')).toBe(false)
+    expect(text).toContain('"::set-output name=run::false.ts"  ->  not on the documentation list')
+    expect(text).toContain('"src/a\\n::error::injected.ts"')
+    // Even a path docs excuses cannot start a line.
+    const docs = report(decide({ event: 'pull_request', changed: ['docs/x\n::notice::y.md'] }))
+    expect(docs.split('\n').filter((line) => line.startsWith('::'))).toEqual([
+      '::notice title=e2e::documentation only; the end-to-end suite did not run',
+    ])
   })
 
   // One path that only its own entry excuses, per entry. Taking the entry
@@ -152,7 +181,7 @@ describe('the documentation-only rule', () => {
       const without = DENYLIST.filter((entry) => entry.name !== name)
       const decision = decide({ ...input, denylist: without })
       expect(decision.run).toBe(true)
-      expect(decision.rule).toContain(`${path} is on no documentation entry`)
+      expect(decision.rule).toContain(`${JSON.stringify(path)} is on no documentation entry`)
     },
   )
 })
@@ -163,8 +192,23 @@ describe('the script over a repository', () => {
     for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true })
   })
 
+  /**
+   * The environment of every git this file starts, and of the script, which
+   * starts one: whatever git exports to what it runs (GIT_DIR, GIT_WORK_TREE,
+   * GIT_INDEX_FILE under `git rebase --exec`, or a hook) is dropped, or the
+   * throwaway repository would be the real one. The ceiling stops git
+   * looking above the temporary folder (tests/unit/preflight.test.ts).
+   */
+  function env(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+    const kept: NodeJS.ProcessEnv = {}
+    for (const [name, value] of Object.entries(process.env)) {
+      if (!name.startsWith('GIT_')) kept[name] = value
+    }
+    return { ...kept, GIT_CEILING_DIRECTORIES: tmpdir(), ...extra }
+  }
+
   function git(cwd: string, ...args: string[]): string {
-    const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000 })
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000, env: env() })
     if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`)
     return result.stdout.trim()
   }
@@ -178,6 +222,11 @@ describe('the script over a repository', () => {
     mkdirSync(dir)
     mkdirSync(hooks)
     git(dir, 'init', '--quiet', '--initial-branch=main')
+    // The script is copied in, uncommitted, and run as the workflow runs it:
+    // `node scripts/ci-decide.mjs` from the repository's top.
+    mkdirSync(join(dir, 'scripts'))
+    copyFileSync(SCRIPT, join(dir, 'scripts', 'ci-decide.mjs'))
+    appendFileSync(join(dir, '.git', 'info', 'exclude'), '/scripts/\n')
     git(dir, 'config', 'user.name', 'Test')
     git(dir, 'config', 'user.email', 'test@example.invalid')
     git(dir, 'config', 'commit.gpgsign', 'false')
@@ -202,16 +251,21 @@ describe('the script over a repository', () => {
     }
   }
 
-  function run(dir: string, args: string[]) {
+  function run(dir: string, args: string[], extra: NodeJS.ProcessEnv = {}) {
     const output = join(dirname(dir), 'github-output')
     writeFileSync(output, '')
-    const result = spawnSync(process.execPath, [SCRIPT, ...args], {
+    const result = spawnSync(process.execPath, ['scripts/ci-decide.mjs', ...args], {
       cwd: dir,
       encoding: 'utf8',
       timeout: 30_000,
-      env: { ...process.env, GITHUB_OUTPUT: output },
+      env: env({ GITHUB_OUTPUT: output, ...extra }),
     })
-    return { status: result.status, stdout: result.stdout, output: readFileSync(output, 'utf8') }
+    return {
+      status: result.status,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      output: readFileSync(output, 'utf8'),
+    }
   }
 
   const BASE = { 'README.md': 'a\n', 'src/a.ts': 'export {}\n', 'docs/x.md': 'x\n' }
@@ -224,8 +278,8 @@ describe('the script over a repository', () => {
     const out = run(r.dir, ['--event', 'pull_request', '--base', r.base, '--head', head])
     expect(out.status).toBe(0)
     expect(out.output).toBe('run=false\n')
-    expect(out.stdout).toContain('README.md  ->  *.md anywhere')
-    expect(out.stdout).toContain('docs/new.md')
+    expect(out.stdout).toContain('"README.md"  ->  *.md anywhere')
+    expect(out.stdout).toContain('"docs/new.md"')
     expect(out.stdout).toContain(
       '::notice title=e2e::documentation only; the end-to-end suite did not run',
     )
@@ -238,7 +292,7 @@ describe('the script over a repository', () => {
     const head = r.commit()
     const out = run(r.dir, ['--event', 'pull_request', '--base', r.base, '--head', head])
     expect(out.output).toBe('run=true\n')
-    expect(out.stdout).toContain('src/a.ts  ->  not on the documentation list')
+    expect(out.stdout).toContain('"src/a.ts"  ->  not on the documentation list')
   })
 
   it('runs for an empty diff', () => {
@@ -254,17 +308,17 @@ describe('the script over a repository', () => {
     const head = r.commit()
     const out = run(r.dir, ['--event', 'pull_request', '--base', r.base, '--head', head])
     expect(out.output).toBe('run=true\n')
-    expect(out.stdout).toContain('src/a.ts  ->  not on the documentation list')
-    expect(out.stdout).toContain('docs/a.md  ->  *.md anywhere')
+    expect(out.stdout).toContain('"src/a.ts"  ->  not on the documentation list')
+    expect(out.stdout).toContain('"docs/a.md"  ->  *.md anywhere')
   })
 
-  it('reads a path with spaces and quotes whole', () => {
+  it('reads a path with spaces and a non-ASCII letter whole (git quotes it without -z)', () => {
     const r = repository(BASE)
-    r.put('docs/a "quoted" name.png', 'p\n')
+    r.put('docs/a café name.png', 'p\n')
     const head = r.commit()
     const out = run(r.dir, ['--event', 'pull_request', '--base', r.base, '--head', head])
     expect(out.output).toBe('run=false\n')
-    expect(out.stdout).toContain('docs/a "quoted" name.png  ->  docs/**')
+    expect(out.stdout).toContain('"docs/a café name.png"  ->  docs/**')
   })
 
   it('runs, with a warning, when git cannot list the paths', () => {
@@ -274,6 +328,42 @@ describe('the script over a repository', () => {
     expect(out.status).toBe(0)
     expect(out.output).toBe('run=true\n')
     expect(out.stdout).toContain('::warning::')
+  })
+
+  it('refuses to answer on a runner that gave it nowhere to write', () => {
+    const r = repository(BASE)
+    const out = run(r.dir, ['--event', 'push'], { GITHUB_ACTIONS: 'true', GITHUB_OUTPUT: '' })
+    expect(out.status).not.toBe(0)
+    expect(out.stderr).toContain('GITHUB_OUTPUT')
+    expect(out.output).toBe('')
+  })
+
+  it('does not follow what git exports to what it runs', () => {
+    // As under `git rebase --exec 'npm test'` or a hook. Were these followed,
+    // the throwaway repository, its config and its commits would land where
+    // they say, and the script's own git would diff that repository.
+    const told = mkdtempSync(join(tmpdir(), 'lc-ci-decide-told-'))
+    made.push(told)
+    const before = { ...process.env }
+    process.env.GIT_DIR = join(told, 'named.git')
+    process.env.GIT_WORK_TREE = told
+    process.env.GIT_INDEX_FILE = join(told, 'named-index')
+    try {
+      const r = repository(BASE)
+      r.put('README.md', 'b\n')
+      const head = r.commit()
+      expect(existsSync(join(r.dir, '.git', 'HEAD'))).toBe(true)
+      expect(existsSync(join(told, 'named.git'))).toBe(false)
+      expect(existsSync(join(told, 'named-index'))).toBe(false)
+      expect(git(r.dir, 'rev-list', '--count', 'HEAD')).toBe('2')
+      const out = run(r.dir, ['--event', 'pull_request', '--base', r.base, '--head', head])
+      expect(out.output).toBe('run=false\n')
+    } finally {
+      for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) {
+        if (before[name] === undefined) delete process.env[name]
+        else process.env[name] = before[name]
+      }
+    }
   })
 
   it('runs for a push without asking git anything', () => {

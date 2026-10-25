@@ -94,7 +94,8 @@ jobs:
           cache: npm
 
       # Prints the changed paths and the rule that judged them, and sets
-      # `run`. Every step after it is gated on that output.
+      # `run`. Every step after it is gated on that output being anything
+      # but 'false', so a step that failed to set it runs the suite.
       - name: Decide whether the suite runs
         id: decide
         shell: bash
@@ -105,28 +106,28 @@ jobs:
         run: node scripts/ci-decide.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
 
       - name: Install
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run != 'false'
         run: npm ci
 
       # Since Electron 42 the npm package fetches no binary; without this
       # step the first electron.launch() in the end-to-end suite would download
       # it against the launch timeout (specs/001, research.md section 3).
       - name: Fetch the Electron binary
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run != 'false'
         run: npx install-electron --no
 
       - name: Build
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run != 'false'
         run: npm run build
 
       - name: End-to-end suite
-        if: steps.decide.outputs.run == 'true'
+        if: steps.decide.outputs.run != 'false'
         run: npm run test:e2e
         env:
           CI: 'true'
 
       - name: Keep the failure evidence
-        if: failure() && steps.decide.outputs.run == 'true'
+        if: failure() && steps.decide.outputs.run != 'false'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-${{ matrix.os }}

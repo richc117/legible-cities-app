@@ -408,9 +408,11 @@ npm run dist:check <target>           # are the vendored components for a target
 npm run test:acceptance               # the acceptance checklist over an installed app named by LEGIBLE_ACCEPTANCE_APP (A6-04)
 ```
 
-`.github/workflows/ci.yml` runs lint, typecheck, test, build and the smoke
-test on Ubuntu (under xvfb), macOS and Windows for every pull request and
-every push to `main`. A branch with no pull request runs none of it. Add a script here, and a permission rule if it is a check, at the
+`.github/workflows/ci.yml` has two layers for every pull request and every
+push to `main`: `ci (<os>)` runs lint, typecheck, test and build on Ubuntu,
+macOS and Windows, and `e2e (<os>)` runs the Playwright suite over the built
+app on macOS and Windows (a pull request that changes only documentation
+passes it without running the suite). A branch with no pull request runs none of it. Add a script here, and a permission rule if it is a check, at the
 same time.
 
 `gitleaks` and `pre-commit` are development tools, not dependencies; install
