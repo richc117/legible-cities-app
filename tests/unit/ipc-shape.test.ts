@@ -320,7 +320,7 @@ describe('a field the paths cannot be looked for in', () => {
       () => {},
       undefined,
       broken,
-      new ProjectActivity(),
+      new ProjectActivity(() => 0),
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
     await tick()
@@ -374,7 +374,7 @@ describe('both bridges hand the door their folders', () => {
       () => {},
       async (method) => (method === 'feeds.remove' ? `the zip at ${HOME} is not yours` : null),
       ROOTS,
-      new ProjectActivity(),
+      new ProjectActivity(() => 0),
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
     await tick()

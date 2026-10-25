@@ -179,9 +179,14 @@ deletion runs. What main refuses: an export may not start while the map is
 being written, with nothing planned or written; a deletion may not run while
 a request names the project or it exports, with the record and `out/<id>`
 untouched; and a `map.build` is refused while the project's deletion runs.
-All three also refuse while the engine reports a request it stopped
-answering (`Sidecar.abandoned`), since the mark follows the engine's answer
-and not its work. The sentences are `src/shared/activity.ts`. **The screen
+Of those, the export and the deletion also refuse for a project whose
+`map.build` a bound ended (`inactive`, from `Sidecar.expire`) while the
+engine still reports a request it stopped answering (`Sidecar.abandoned`),
+since a mark follows the engine's answer and not its work; the bridge calls
+`activity.abandon(project)`, only that project is held, and the hold ends
+when the count reads 0. `requestRefusal` checks the delete mark alone. A
+stop's failed requests are not counted, so for at most `shutdownMs` they
+leave no mark (a known limit, `projectActivity.ts`). The sentences are `src/shared/activity.ts`. **The screen
 alone still holds** a `map.build` sent during an export, and a layout's
 earlier steps: `graph.build` names a feed, not a project, so main cannot tell
 whose it is.

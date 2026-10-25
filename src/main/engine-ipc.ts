@@ -56,7 +56,7 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
-import type { EngineState, JobLog, JobProgress } from '../shared/engine'
+import { ERROR_CODES, type EngineState, type JobLog, type JobProgress } from '../shared/engine'
 import type { Method } from '../shared/protocol'
 import { badCall, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { ProjectActivity, projectNamedBy } from './projectActivity'
@@ -229,6 +229,11 @@ export function registerEngineHandlers(
         send(CHANNELS.engineSettled, settled)
       },
       (error: unknown) => {
+        // A bound gave up on this request: the engine may still be writing
+        // into the project's folder, so the project stays held, before the
+        // request's own mark is released below.
+        if (named !== null && (error as { code?: unknown } | null)?.code === ERROR_CODES.inactive)
+          activity.abandon(named)
         const settled: EngineSettled = { id: token, ok: false, error: toShape(error, roots) }
         send(CHANNELS.engineSettled, settled)
       },

@@ -432,7 +432,7 @@ function exporter(choice: ExportChoice, storyboards: unknown[] = TABLES.storyboa
     readOnly: false,
   }
   const run = new Exporter({
-    activity: new ProjectActivity(),
+    activity: new ProjectActivity(() => 0),
     engine,
     projects: { get: async () => record },
     capture: async (job: CaptureJob, options: CaptureOptions): Promise<CaptureResult> => {

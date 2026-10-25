@@ -183,6 +183,8 @@ As a contributor reading or changing the record, I want its types, its parsing, 
   - a project's deletion while its export runs;
   - a project's deletion while an engine request addressing the project is in flight.
 
+  A fourth refusal the spec did not foresee: a `map.build` for a project is refused with "This project is being deleted." while its deletion runs, so it cannot write into the folder being removed (issue 491).
+
   Each refusal uses User Story 4's sentence, and nothing changes on disk. The renderer's disabled states stay as the first line, and `remove.confirm` re-reads the run state at the moment of confirming.
 
 **The split**

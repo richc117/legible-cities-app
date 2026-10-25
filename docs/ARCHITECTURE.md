@@ -1704,9 +1704,13 @@ planning and writing nothing; a deletion may not run while a request names
 the project or it exports, leaving the record and `out/<id>` as they were;
 and a `map.build` is refused while the deletion runs. Each says why in a
 sentence (`src/shared/activity.ts`), the screen's confirm re-reads its runs
-and says the same, and all three also refuse while the engine reports a
-request it stopped answering, because a mark follows the engine's answer and
-not its work. A `map.build` sent during an export, and a layout's earlier
+and says the same. A mark follows the engine's answer, not its work, so when
+a bound ends a project's `map.build` (`inactive`) while the engine still
+reports a request it stopped answering (`Sidecar.abandoned`), the bridge
+calls `abandon(project)` and an export or deletion of that project alone is
+refused until the count reads 0; the deletion mark is checked by itself for
+a `map.build`. Requests a stop fails are not counted, so for at most
+`shutdownMs` they leave no mark. A `map.build` sent during an export, and a layout's earlier
 steps (`graph.build` names a feed, which projects share, not a project), are
 the screen's alone.
 

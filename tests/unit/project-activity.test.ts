@@ -69,7 +69,7 @@ describe('which request names a project', () => {
 
 describe('the marks', () => {
   it('hold a deletion against requests and exports of that project only', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const done = activity.beginDelete('p')
     expect(activity.requestRefusal('p')).toBe(REQUEST_WHILE_DELETING)
     expect(activity.exportRefusal('p')).toBe(REQUEST_WHILE_DELETING)
@@ -79,17 +79,30 @@ describe('the marks', () => {
     expect(activity.requestRefusal('p')).toBeNull()
     expect(activity.exportRefusal('p')).toBeNull()
   })
-  it('refuse an export and a deletion while the engine has abandoned a request', () => {
+  it('hold an abandoned project, and only it, while the engine has work unanswered', () => {
     let abandoned = 2
     const activity = new ProjectActivity(() => abandoned)
+    // Nothing stuck is named yet: a count alone refuses no project.
+    expect(activity.exportRefusal('p')).toBeNull()
+    activity.abandon('p')
     expect(activity.exportRefusal('p')).toBe(EXPORT_WHILE_DRAWING)
     expect(activity.deleteRefusal('p')).toBe(DELETE_WHILE_DRAWING)
+    expect(activity.exportRefusal('q')).toBeNull()
+    expect(activity.deleteRefusal('q')).toBeNull()
     abandoned = 0
     expect(activity.exportRefusal('p')).toBeNull()
     expect(activity.deleteRefusal('p')).toBeNull()
+    // Emptied when the count read 0: a later count does not bring it back.
+    abandoned = 1
+    expect(activity.exportRefusal('p')).toBeNull()
+  })
+  it('do not hold a project for an abandon the engine has already answered', () => {
+    const activity = new ProjectActivity(() => 0)
+    activity.abandon('p')
+    expect(activity.deleteRefusal('p')).toBeNull()
   })
   it('count, and a release is safe to repeat', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const first = activity.beginRequest('p')
     const second = activity.beginRequest('p')
     first()
@@ -101,14 +114,14 @@ describe('the marks', () => {
     expect(activity.exportRefusal('p')).toBeNull()
   })
   it('keep one project from refusing another', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     activity.beginRequest('p')
     activity.beginExport('p')
     expect(activity.deleteRefusal('q')).toBeNull()
     expect(activity.exportRefusal('q')).toBeNull()
   })
   it('say the export first when both are going', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     activity.beginRequest('p')
     activity.beginExport('p')
     expect(activity.deleteRefusal('p')).toBe(DELETE_WHILE_EXPORTING)
@@ -179,7 +192,7 @@ function bridge(
 
 describe('the engine bridge marks a project while a request names it', () => {
   it('from the request to its answer', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const b = bridge(activity)
     await b.request('t1', 'map.build', { out: 'abcdefghijk1' })
     expect(activity.deleteRefusal('abcdefghijk1')).toBe(DELETE_WHILE_DRAWING)
@@ -190,7 +203,7 @@ describe('the engine bridge marks a project while a request names it', () => {
     expect(activity.exportRefusal('abcdefghijk1')).toBeNull()
   })
   it('and clears the mark when the request fails', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const b = bridge(activity)
     await b.request('t1', 'map.build', { out: 'abcdefghijk1' })
     b.held[0].reject(new EngineError(ERROR_CODES.badCall, 'no such layout'))
@@ -198,7 +211,7 @@ describe('the engine bridge marks a project while a request names it', () => {
     expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
   })
   it('and clears the mark when the request is cancelled', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const b = bridge(activity)
     await b.request('t1', 'map.build', { out: 'abcdefghijk1' })
     expect(activity.deleteRefusal('abcdefghijk1')).not.toBeNull()
@@ -207,8 +220,33 @@ describe('the engine bridge marks a project while a request names it', () => {
     expect(b.cancelled).toEqual([1])
     expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
   })
+  it('holds the project, and only it, when a bound ends its request while the engine still works', async () => {
+    let abandoned = 1
+    const activity = new ProjectActivity(() => abandoned)
+    const b = bridge(activity)
+    await b.request('t1', 'map.build', { out: 'abcdefghijk1' })
+    b.held[0].reject(new EngineError(ERROR_CODES.inactive, 'no word from the engine'))
+    await tick()
+    // The request is over, the engine is not: still refused, with the
+    // existing sentences, which are true.
+    expect(activity.deleteRefusal('abcdefghijk1')).toBe(DELETE_WHILE_DRAWING)
+    expect(activity.exportRefusal('abcdefghijk1')).toBe(EXPORT_WHILE_DRAWING)
+    expect(activity.deleteRefusal('zzzzzzzzzzzz')).toBeNull()
+    expect(activity.exportRefusal('zzzzzzzzzzzz')).toBeNull()
+    abandoned = 0
+    expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
+    expect(activity.exportRefusal('abcdefghijk1')).toBeNull()
+  })
+  it('does not hold the project for a failure that is not a bound, whatever the engine owes', async () => {
+    const activity = new ProjectActivity(() => 1)
+    const b = bridge(activity)
+    await b.request('t1', 'map.build', { out: 'abcdefghijk1' })
+    b.held[0].reject(new EngineError(ERROR_CODES.badCall, 'no such layout'))
+    await tick()
+    expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
+  })
   it('and clears the mark when the guard refuses or fails', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const refusing = bridge(activity, { guard: async () => 'not now' })
     await refusing.request('t1', 'map.build', { out: 'abcdefghijk1' })
     expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
@@ -221,13 +259,13 @@ describe('the engine bridge marks a project while a request names it', () => {
     expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
   })
   it('and clears the mark when the supervisor refuses to send it', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const b = bridge(activity, { throwOnRequest: true })
     await b.request('t1', 'map.build', { out: 'abcdefghijk1' })
     expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
   })
   it('already marks while the guard is still thinking', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     let open!: (v: string | null) => void
     const b = bridge(activity, { guard: () => new Promise((r) => (open = r)) })
     const asked = b.request('t1', 'map.build', { out: 'abcdefghijk1' })
@@ -240,7 +278,7 @@ describe('the engine bridge marks a project while a request names it', () => {
     expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
   })
   it('does not mark a request that names no project', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const b = bridge(activity)
     await b.request('t1', 'map.build', { key: 'bart' })
     await b.request('t2', 'graph.build', { key: 'bart' })
@@ -306,7 +344,7 @@ function exporterOver(activity: ProjectActivity, presets: unknown = { presets: [
 
 describe('Exporter.start', () => {
   it('is refused while a request is writing the project’s map, and plans and writes nothing', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { exporter, asked, gets } = exporterOver(activity)
     activity.beginRequest('abcdefghijk1')
     expect(() => exporter.start('tok-1', 'abcdefghijk1', REEL)).toThrow(EXPORT_WHILE_DRAWING)
@@ -317,7 +355,7 @@ describe('Exporter.start', () => {
     expect(existsSync(join(home, 'exports'))).toBe(false)
   })
   it('is not refused for another project’s map', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { exporter } = exporterOver(activity)
     activity.beginRequest('zzzzzzzzzzzz')
     const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
@@ -325,7 +363,7 @@ describe('Exporter.start', () => {
     expect(exporter.live).toBe(1)
   })
   it('is not refused once the request has ended', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { exporter } = exporterOver(activity)
     activity.beginRequest('abcdefghijk1')()
     const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
@@ -335,6 +373,7 @@ describe('Exporter.start', () => {
   it('is refused while the engine reports a request it stopped answering', () => {
     let abandoned = 1
     const activity = new ProjectActivity(() => abandoned)
+    activity.abandon('abcdefghijk1')
     const { exporter, asked } = exporterOver(activity)
     expect(() => exporter.start('tok-1', 'abcdefghijk1', REEL)).toThrow(EXPORT_WHILE_DRAWING)
     expect(asked).toEqual([])
@@ -344,7 +383,7 @@ describe('Exporter.start', () => {
     expect(exporter.live).toBe(1)
   })
   it('is refused while the project is being deleted', () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { exporter, asked } = exporterOver(activity)
     const done = activity.beginDelete('abcdefghijk1')
     expect(() => exporter.start('tok-1', 'abcdefghijk1', REEL)).toThrow(REQUEST_WHILE_DELETING)
@@ -352,7 +391,7 @@ describe('Exporter.start', () => {
     done()
   })
   it('clears the mark when a running export is cancelled', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const presets = JSON.parse(
       readFileSync(join(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
     ) as { presets: unknown[] }
@@ -371,7 +410,7 @@ describe('Exporter.start', () => {
     expect(exporter.live).toBe(0)
   })
   it('marks the project while it runs and clears it when the export fails', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     // The empty preset table makes the export fail on its own, after it began.
     const { exporter } = exporterOver(activity)
     const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
@@ -395,7 +434,7 @@ describe('ProjectStore.delete', () => {
   }
 
   it('is refused while the project’s export runs, and the record and out folder stay', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { store, project } = await made(activity)
     const release = activity.beginExport(project.id)
     await expect(store.delete(project.id)).rejects.toThrow(DELETE_WHILE_EXPORTING)
@@ -405,7 +444,7 @@ describe('ProjectStore.delete', () => {
     expect(await store.delete(project.id)).toEqual({ removed: ['project', 'output'], failed: [] })
   })
   it('is refused while a request naming the project is in flight', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { store, project } = await made(activity)
     const release = activity.beginRequest(project.id)
     await expect(store.delete(project.id)).rejects.toThrow(DELETE_WHILE_DRAWING)
@@ -414,7 +453,7 @@ describe('ProjectStore.delete', () => {
     expect(await store.delete(project.id)).toEqual({ removed: ['project', 'output'], failed: [] })
   })
   it('asks at the moment the deletion runs, after the writes queued before it', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { store, project } = await made(activity)
     const rename = store.rename(project.id, 'Renamed')
     const deletion = store.delete(project.id)
@@ -428,6 +467,7 @@ describe('ProjectStore.delete', () => {
     let abandoned = 1
     const activity = new ProjectActivity(() => abandoned)
     const { store, project } = await made(activity)
+    activity.abandon(project.id)
     await expect(store.delete(project.id)).rejects.toThrow(DELETE_WHILE_DRAWING)
     await untouched(project.id)
     abandoned = 0
@@ -438,15 +478,27 @@ describe('ProjectStore.delete', () => {
     // can fire in it. The mark is raised at the check's own turn, so a
     // request sent at that instant is already refused by the bridge.
     const seen: unknown[] = []
+    const atRelease: { second: unknown; folders: boolean[] }[] = []
     const later: { b?: ReturnType<typeof bridge> } = {}
     class Watching extends ProjectActivity {
       override beginDelete(projectId: string): () => void {
         const release = super.beginDelete(projectId)
         seen.push(later.b!.request('t-late', 'map.build', { out: projectId }))
-        return release
+        // The mark must also hold across the removals: just before it is
+        // released, a second request is sent, and the folders must be gone.
+        return () => {
+          atRelease.push({
+            second: later.b!.request('t-second', 'map.build', { out: projectId }),
+            folders: [
+              existsSync(join(home, 'projects', projectId)),
+              existsSync(join(home, 'out', projectId)),
+            ],
+          })
+          release()
+        }
       }
     }
-    const activity = new Watching()
+    const activity = new Watching(() => 0)
     const b = bridge(activity)
     later.b = b
     const { store, project } = await made(activity)
@@ -455,19 +507,24 @@ describe('ProjectStore.delete', () => {
     const answer = JSON.stringify(await seen[0])
     expect(answer).toContain(REQUEST_WHILE_DELETING)
     expect(answer).toContain('"accepted":false')
+    expect(atRelease, 'the mark was released once').toHaveLength(1)
+    expect(atRelease[0].folders, 'released only after both removals').toEqual([false, false])
+    const second = JSON.stringify(await atRelease[0].second)
+    expect(second).toContain(REQUEST_WHILE_DELETING)
+    expect(second).toContain('"accepted":false')
     expect(b.held, 'nothing reached the engine').toEqual([])
     // Released at the end of the removals, so a later project is not held.
     await b.request('t-after', 'map.build', { out: project.id })
     expect(b.held).toHaveLength(1)
   })
   it('releases its mark when it fails', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const store = new ProjectStore(home, () => {}, {}, activity)
     await expect(store.delete('aaaaaaaaaaaa')).rejects.toThrow('not found')
     expect(activity.requestRefusal('aaaaaaaaaaaa')).toBeNull()
   })
   it('leaves another project alone', async () => {
-    const activity = new ProjectActivity()
+    const activity = new ProjectActivity(() => 0)
     const { store, project } = await made(activity)
     activity.beginExport('zzzzzzzzzzzz')
     activity.beginRequest('zzzzzzzzzzzz')

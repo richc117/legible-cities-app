@@ -229,7 +229,7 @@ export class ProjectStore {
     home: string,
     private readonly log: (message: string) => void,
     private readonly replace: ReplaceOptions = {},
-    private readonly activity: ProjectActivity = new ProjectActivity(),
+    private readonly activity: ProjectActivity = new ProjectActivity(() => 0),
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')

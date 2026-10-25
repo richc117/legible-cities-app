@@ -320,7 +320,7 @@ function harness(
     // without a restart (A1-04).
     exportFolder: () => folder.now,
     blocked: () => over.blocked ?? null,
-    activity: new ProjectActivity(),
+    activity: new ProjectActivity(() => 0),
     destinationRefusal: over.destinationRefusal,
     keepFrames: over.keepFrames ?? null,
     log: (m) => log.push(m),
@@ -1334,7 +1334,7 @@ describe('what the export tab chooses', () => {
     })
     const eng = fakeEngine()
     const exporter = new Exporter({
-      activity: new ProjectActivity(),
+      activity: new ProjectActivity(() => 0),
       engine: eng.engine,
       projects: {
         get: async (id) => {

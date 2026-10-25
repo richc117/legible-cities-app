@@ -15,13 +15,25 @@
 // here for as long as it writes.
 //
 // **A mark follows the engine's answer, not its work.** A request the
-// supervisor's inactivity bound expired, or a stop, fails the request while
-// the engine may still be writing; the mark is then cleared though the
-// folder is not safe. So both refusals below also hold while the engine
-// reports a request it stopped answering (`abandoned`, the reset's own
-// `engineWorkRefusal` signal), with the same sentences. That is wider than
-// the project: any abandoned request, a feed download included, refuses an
-// export and a deletion until the engine answers it or the app is quit.
+// supervisor's inactivity bound expired (`Sidecar.expire`, the `inactive`
+// error) fails the request while the engine may still be writing; the mark
+// would be cleared though the folder is not safe. So the bridge calls
+// `abandon(project)` for such a request, and while the engine still reports
+// a request it stopped answering (`abandoned`, the reset's own
+// `engineWorkRefusal` signal) that one project is held like one with a
+// request in flight, with the same sentences. Other projects are not: one
+// stalled feed download must not refuse every export and delete until quit.
+// The set is emptied lazily, when the count is read as 0.
+//
+// Known limits, to be closed by one follow-up: the exact form is a
+// per-request "the engine's work has ended" promise from the supervisor,
+// which this count only approximates.
+//   - The count is engine-wide, so a stuck request of any kind keeps an
+//     abandoned project held until the count reaches 0, though its own
+//     write may have ended.
+//   - A stop fails its requests too, and they are not counted as abandoned;
+//     for at most `shutdownMs` the engine may still be at the work with no
+//     mark held.
 //
 // A deletion is marked too, from the moment it is allowed to run to the end
 // of its removals, so a `map.build` sent in that window is refused rather
@@ -53,12 +65,32 @@ export class ProjectActivity {
   readonly #requests = new Map<string, number>()
   readonly #exports = new Map<string, number>()
   readonly #deleting = new Map<string, number>()
+  /** Projects whose request a bound ended; held only while `abandoned()` is above 0. */
+  readonly #stuck = new Set<string>()
 
   /**
    * @param abandoned how many requests the engine was stopped from
-   * answering and has not answered since (`Sidecar.abandoned`).
+   * answering and has not answered since (`Sidecar.abandoned`). Required: a
+   * wiring that forgot it would hold nothing.
    */
-  constructor(private readonly abandoned: () => number = () => 0) {}
+  constructor(private readonly abandoned: () => number) {}
+
+  /**
+   * A request naming the project was ended by a bound while the engine may
+   * still be writing. Call it before the request's own mark is released.
+   */
+  abandon(projectId: string): void {
+    if (this.abandoned() > 0) this.#stuck.add(projectId)
+  }
+
+  /** Has a request for the project been given up on that the engine has not answered? */
+  #held(projectId: string): boolean {
+    if (this.abandoned() <= 0) {
+      this.#stuck.clear()
+      return false
+    }
+    return this.#stuck.has(projectId)
+  }
 
   /** A request naming the project is in flight; call the answer when it ends. */
   beginRequest(projectId: string): () => void {
@@ -83,14 +115,14 @@ export class ProjectActivity {
   /** Why an export of the project may not start, or null. */
   exportRefusal(projectId: string): string | null {
     if (this.#deleting.has(projectId)) return REQUEST_WHILE_DELETING
-    if (this.#requests.has(projectId) || this.abandoned() > 0) return EXPORT_WHILE_DRAWING
+    if (this.#requests.has(projectId) || this.#held(projectId)) return EXPORT_WHILE_DRAWING
     return null
   }
 
   /** Why the project may not be deleted, or null. */
   deleteRefusal(projectId: string): string | null {
     if (this.#exports.has(projectId)) return DELETE_WHILE_EXPORTING
-    if (this.#requests.has(projectId) || this.abandoned() > 0) return DELETE_WHILE_DRAWING
+    if (this.#requests.has(projectId) || this.#held(projectId)) return DELETE_WHILE_DRAWING
     return null
   }
 
