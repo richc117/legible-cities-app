@@ -228,7 +228,7 @@ As a contributor reading or changing the record, I want its types, its parsing, 
 ### Measurable Outcomes
 
 - **SC-001**: In User Story 1's matrix (seven run kinds against every field a run sends, each written mid-run), `drawn` equals what the run sent in 100% of cases. Today it does not, for the day and for every cheap-edit field during a layout.
-- **SC-002**: The five renderer mechanisms are gone. A search of `src/` finds no `writing`, `writingFrom`, `#taken`, `mustWait` or `#afterWrites`, and no serialiser of record writes outside the session.
+- **SC-002**: The five renderer mechanisms are gone. A search of `src/` finds no `writing`, `writingFrom`, `#taken`, `mustWait` or `#afterWrites`, and no serialiser of record writes outside the session. *As of 24 Oct 2026 (issue 490):* `mustWait`, with `stoppedNow` and `refusedAtStart` in `panelRelease.ts` and the `usePutBack` hook, remains as the cheap edits' hook's internals (`useCheapEdit.ts`, its only caller); what is gone is every panel's own use of them (research R5, "Part 2 design").
 - **SC-003**: The four panels' copies, about 340 lines of debounce, hold, put-back and adoption code (research-426.md section 4), are replaced by one hook. No panel carries more than a few lines of its own for these behaviours.
 - **SC-004**: The end-to-end suites for 388, 399 and 407 pass 10 loaded loops on each of the three platforms (the `e2e-loop` workflow), as the flakes of the 23 Oct wave were closed.
 - **SC-005**: Each of the three invariants has a main-side test that fails when main's check is removed, and passes with the renderer's guard removed.
