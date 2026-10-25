@@ -5,10 +5,15 @@
 
 import { describe, expect, it } from 'vitest'
 import {
+  OPENING_REDRAW_FAILED,
+  OPENING_REDRAW_FALLBACK,
   keepFocusInCell,
+  openingRedrawFailedSentence,
+  openingRedrawFailure,
   redrawOnOpen,
   type FocusedElement,
   type OnOpenFacts,
+  type OpeningFailureFacts,
 } from '../../src/renderer/src/notebook/olderPage'
 import type { DrawnFrom, ServiceWindow } from '../../src/shared/project'
 import {
@@ -175,6 +180,87 @@ describe('redrawing the page a project opened on', () => {
 
   it('never redraws a record from before `drawn` existed, which keeps today’s fallback', () => {
     expect(redrawOnOpen(facts({}, { drawn: null }))).toEqual({ kind: 'never' })
+  })
+})
+
+// Issue 517, decided 25 Oct 2026: a redraw on open that fails says so as an
+// error in cell 03, in words for a person who pressed nothing. Which failure
+// is the opening's is derived from the run's latest job against the job the
+// opening started, never stored as a flag. Each clause below is shown red by
+// the mutation its comment names.
+describe('what cell 03 says when the redraw on open failed', () => {
+  const HINT = 'la-metro-rail has no stored layout cccccccc'
+  /** The opening's redraw, failed as a rebuild: what the run's snapshot says of it. */
+  const FAILED: OpeningFailureFacts['run'] = {
+    state: 'failed',
+    rebuilt: true,
+    recoloured: false,
+    reordered: false,
+    restyled: false,
+    replaced: false,
+    download: null,
+    feedMissing: false,
+    error: HINT,
+    unkept: false,
+  }
+  const failure = (over: Partial<OpeningFailureFacts> = {}, run: Partial<typeof FAILED> = {}) =>
+    openingRedrawFailure({ asked: 'job-1', job: 'job-1', ...over, run: { ...FAILED, ...run } })
+
+  it('is said, with the engine’s reason, where the opening’s own job failed as cell 03’s', () => {
+    expect(failure()).toEqual({ reason: HINT })
+  })
+
+  it('is not said where the screen started no redraw', () => {
+    // Mutation: the `asked === null` clause removed - a run whose job cannot
+    // be read (null) matches a screen that asked for none (null).
+    expect(failure({ asked: null, job: null })).toBeNull()
+    expect(failure({ asked: null, job: 'job-1' })).toBeNull()
+  })
+
+  it('is not said of a later job, such as Run all pressed after the failure', () => {
+    // Mutation: the job's id not compared - a rebuild a person asked for is
+    // told it was the opening's.
+    expect(failure({ job: 'job-2' })).toBeNull()
+  })
+
+  it('is not said while the redraw goes, or once it was stopped or drew', () => {
+    // Mutation: the state clause removed - cell 03 says the redraw failed
+    // while it is still running.
+    for (const state of ['running', 'cancelled', 'done', 'idle'] as const)
+      expect(failure({}, { state, error: null }), state).toBeNull()
+  })
+
+  it('is not said where the press became another cell’s run under the same job', () => {
+    // Mutation: the cell clause removed - Run all makes a layout of the press
+    // where the record it read has no layout, under the same job, and that
+    // layout's failure is cell 02's.
+    expect(failure({}, { rebuilt: false }), 'a layout').toBeNull()
+    expect(failure({}, { rebuilt: false, recoloured: true }), 'a recolour').toBeNull()
+    expect(failure({}, { feedMissing: true }), 'at the feed').toBeNull()
+  })
+
+  it('is not said where the map was redrawn and the record then would not keep it', () => {
+    // Mutation: the `unkept` clause removed - cell 03 says the map could not
+    // be redrawn of a map that was (issue 399).
+    expect(failure({}, { unkept: true })).toBeNull()
+  })
+
+  it('says the reason as the jobs inspector does, with no path in it', () => {
+    // Mutation: the reason handed on as `run.error`, unscreened.
+    const said = failure({}, { error: 'could not read /var/folders/x/out/la-metro-rail.html' })
+    expect(said?.reason).toBe('could not read a file')
+  })
+
+  it('says what was tried, then the reason, then what still holds', () => {
+    // Mutation: the reason left out of the sentence.
+    expect(openingRedrawFailedSentence(HINT)).toBe(`${OPENING_REDRAW_FAILED} ${HINT}`)
+    expect(openingRedrawFailedSentence(null)).toBe(OPENING_REDRAW_FAILED)
+    expect(openingRedrawFailedSentence('')).toBe(OPENING_REDRAW_FAILED)
+    expect(OPENING_REDRAW_FAILED).toMatch(/older version of the engine/)
+    expect(OPENING_REDRAW_FAILED).toMatch(/could not be redrawn as the project opened/)
+    expect(OPENING_REDRAW_FALLBACK).toMatch(/stays as it was/)
+    expect(OPENING_REDRAW_FALLBACK).toMatch(/theme/)
+    expect(OPENING_REDRAW_FALLBACK).toMatch(/trip cannot be shown/)
   })
 })
 

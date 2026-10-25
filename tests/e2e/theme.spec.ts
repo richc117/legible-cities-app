@@ -30,8 +30,14 @@ import {
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test'
+import {
+  OPENING_REDRAW_FAILED,
+  OPENING_REDRAW_FALLBACK,
+} from '../../src/renderer/src/notebook/olderPage'
+import { END, OLD_PAGE, START, TRIP } from '../../src/renderer/src/tripWords'
 import { isTheme, type Theme } from '../../src/shared/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
@@ -863,6 +869,155 @@ test('a page the pinned engine drew is not redrawn as its project opens', async 
     )
   })
 })
+
+// Issue 517, decided 25 Oct 2026: a redraw on open that fails says so as an
+// error in cell 03, in words for a person who pressed nothing, and the
+// fallback issue 465 kept still holds - the page as it stands, a theme taken
+// by loading it again at an address carrying the theme, a trip refused with
+// the old page's sentence.
+//
+// The refusal is the stand-in's own, with no control written for it. The
+// layout has to be drawn first, so `map_draws` cannot be off from the start,
+// and the control file is read once, at start, so it cannot be turned off
+// for the redraw alone. But the stand-in keeps its layouts in memory, so one
+// started again holds none, and refuses the redraw's `map.build` with its
+// "no stored layout" hint - as an engine whose data was reset refuses one.
+test('a redraw on open the engine refuses says so in cell 03, and the fallback still holds', async () => {
+  test.setTimeout(180_000)
+  const h = home()
+  // Laid out with the engine there, and the older page written over the map.
+  await withApp(h, async (page) => {
+    await project(page, 'Los Angeles')
+    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+    themedPage(h, OLDER_PAGE)
+  })
+  const before = readRecord(h)
+  expect(before.drawn, 'the layout drew the map, so the opening asks to redraw it').toBeTruthy()
+  const asked = received(h, 'map.build').length
+  const laidOut = received(h, 'graph.build').length
+  // What the stand-in answers a map.build for a layout it does not hold.
+  const hint = `la-metro-rail has no stored layout ${String(before.layout).slice(0, 8)}; lay the feed out first (graph.build)`
+
+  await withApp(h, async (page, app) => {
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect
+      .poll(() => received(h, 'map.build').length, {
+        message: 'the older page was asked to be redrawn as the project opened',
+        timeout: 20_000,
+      })
+      .toBe(asked + 1)
+
+    // Cell 03's failed state.
+    const frameCell = page.locator('.cell[data-cell="03"]')
+    await expect(frameCell, 'the run is cell 03’s, failed').toHaveAttribute('data-state', 'error', {
+      timeout: 20_000,
+    })
+    await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
+      /^03 Frame and service day failed/,
+    )
+
+    // Its error, first in the cell: what was tried, the engine's reason, what
+    // still holds.
+    await openCell(page, 'frame')
+    const body = frameCell.locator('.cell-body')
+    const error = body.locator('p.message.error', { hasText: OPENING_REDRAW_FAILED })
+    await expect(error, 'cell 03 says the redraw on open failed, and why').toHaveText(
+      `${OPENING_REDRAW_FAILED} ${hint}`,
+    )
+    await expect(body.locator('p.prose', { hasText: OPENING_REDRAW_FALLBACK })).toBeVisible()
+    expect(
+      await body.evaluate((element) => element.firstElementChild?.textContent ?? null),
+      'and it is the first thing the cell says',
+    ).toContain(OPENING_REDRAW_FAILED)
+
+    // Announced once: the header's alert, and nothing in the cell beside it.
+    const alerts = page.getByRole('alert')
+    const failure = alerts.filter({ hasText: 'Frame and service day failed' })
+    await expect(failure, 'one alert says the cell failed').toHaveCount(1)
+    await expect(failure).toHaveText('03 Frame and service day failed.')
+    await expect(
+      alerts.filter({ hasText: OPENING_REDRAW_FAILED }),
+      'the cell’s words are not a second announcement of it',
+    ).toHaveCount(0)
+
+    // Its job is listed, failed, with the engine's reason.
+    const toggle = page.getByRole('button', { name: /^Jobs, / })
+    await toggle.click()
+    const inspector = page.getByRole('complementary', { name: 'Inspector' })
+    const job = inspector.getByRole('listitem', { name: /Rebuild for / })
+    await expect(job, 'the redraw is the one job').toHaveCount(1)
+    await expect(job).toHaveAttribute('data-state', 'failed')
+    await expect(job.locator('.message.error')).toHaveText(hint)
+    await toggle.click()
+    await expect(inspector).toHaveCount(0)
+
+    // Once: nothing redraws it again, nothing was laid out, and nothing was
+    // written to the record.
+    await page.waitForTimeout(1500)
+    expect(received(h, 'map.build'), 'the redraw was asked once').toHaveLength(asked + 1)
+    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(laidOut)
+    expect(readRecord(h), 'and nothing was written to the record').toEqual(before)
+    await expect(failure, 'and the alert still says it, unchanged').toHaveText(
+      '03 Frame and service day failed.',
+    )
+
+    // The map stays as it was: the older page, on the address it opened on.
+    await expect
+      .poll(async () => (await factsOf(app))?.document ?? null, {
+        message: 'the older page is in the map’s frame',
+        timeout: 20_000,
+      })
+      .not.toBeNull()
+    await expect(frame(page), 'the frame was not sent to a new page').toHaveAttribute(
+      'src',
+      /redraw=0/,
+    )
+
+    // A trip is refused with the old page's sentence.
+    const trip = page.getByRole('region', { name: TRIP, exact: true })
+    await chooseStation(trip, START, 'alp')
+    await chooseStation(trip, END, 'bra')
+    await expect(trip.locator('.trip-instead'), 'a trip has the old page’s sentence').toHaveText(
+      OLD_PAGE,
+    )
+    expect(readRecord(h), 'a trip writes nothing').toEqual(before)
+
+    // A theme goes by the address: the page cannot be told one.
+    await openCell(page, 'style')
+    await card(page, 'Sepia').click()
+    await expect
+      .poll(() => readRecord(h).theme, { message: 'the record holds the theme' })
+      .toBe('sepia')
+    await expect(
+      frame(page),
+      'the page could not be told, so the frame was sent to the address with the new theme',
+    ).toHaveAttribute('src', /theme=sepia/)
+    await expect
+      .poll(async () => (await factsOf(app))?.boot ?? null, {
+        message: 'the page that arrived booted in sepia: its address said so',
+        timeout: 20_000,
+      })
+      .toBe('sepia')
+    expect(received(h, 'map.build'), 'and nothing was drawn for it').toHaveLength(asked + 1)
+  })
+})
+
+/**
+ * Choose a station from the keyboard, as `trip.spec.ts` does: focus the
+ * picker, type part of its name, Down to the first match, Enter.
+ */
+async function chooseStation(trip: Locator, name: string, typed: string): Promise<void> {
+  const field = trip.getByRole('combobox', { name, exact: true })
+  await field.focus()
+  await field.fill('')
+  await field.pressSequentially(typed)
+  await field.press('ArrowDown')
+  await field.press('Enter')
+}
 
 test('a page a run has rewritten arrives in the theme chosen before the run', async () => {
   const h = home()

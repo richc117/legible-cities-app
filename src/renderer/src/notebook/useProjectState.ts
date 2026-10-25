@@ -110,6 +110,13 @@ export interface ProjectState {
    * on is redrawn, once, because an older engine drew it (issue 465).
    */
   pageSeams: (seams: string[] | null) => void
+  /**
+   * The job the redraw on open started on this screen, or null where it
+   * started none (issue 517): cell 03 compares it with the run's latest job
+   * to tell the opening's failure from a rebuild a person asked for
+   * (`openingRedrawFailure`).
+   */
+  redrawAsked: string | null
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -357,7 +364,9 @@ export function useProjectState(
   // again for this screen, so a redraw that fails, or one that leaves a page
   // no newer, is not asked for again. While the engine is away or the page is
   // held by a run or an export it waits; a run that draws meanwhile settles
-  // it, since that page is the pinned engine's.
+  // it, since that page is the pinned engine's. The job a redraw started is
+  // kept, so cell 03 can tell its failure from a rebuild a person asked for
+  // and say it in words for a person who pressed nothing (issue 517).
   const [opened, setOpened] = useState<{ older: boolean | null } | null>(null)
   const seamsHeard = useRef(false)
   const pageSeams = useCallback((seams: string[] | null): void => {
@@ -366,6 +375,7 @@ export function useProjectState(
     setOpened({ older: isOlderPage(seams) })
   }, [])
   const redrawSettled = useRef(false)
+  const [redrawAsked, setRedrawAsked] = useState<string | null>(null)
   useEffect(() => {
     if (redrawSettled.current || opened === null || project === null) return
     const now = redrawOnOpen({
@@ -380,7 +390,9 @@ export function useProjectState(
     if (now.kind === 'redraw') {
       // Out of the control a run is about to disable, before it does.
       keepFocusInCell(document.activeElement)
-      redrawPageOnOpen(run, project, engine, { older: opened.older, drawnHere: drawn })
+      setRedrawAsked(
+        redrawPageOnOpen(run, project, engine, { older: opened.older, drawnHere: drawn }),
+      )
     }
     // The record, the engine, the runs and the redraw count are what move this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -647,6 +659,7 @@ export function useProjectState(
     drawn,
     themeReloads,
     pageSeams,
+    redrawAsked,
     registry,
     inspect,
     readStage,

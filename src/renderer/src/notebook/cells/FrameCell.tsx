@@ -7,6 +7,11 @@ import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
+import {
+  OPENING_REDRAW_FALLBACK,
+  openingRedrawFailedSentence,
+  openingRedrawFailure,
+} from '../olderPage'
 import { runRowStatus } from '../runRow'
 
 // Cell 03, Frame and service day: the day the map is drawn for (ADR-045).
@@ -93,8 +98,16 @@ export function frameSummary(
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, setDate, exporting, layingOut, drawn } = useProject()
+  const { project, engine, run, runSnapshot, setDate, exporting, layingOut, drawn, redrawAsked } =
+    useProject()
   const heading = useRef<HTMLHeadingElement>(null)
+  // The redraw a project's opening asked for, failed (issue 517): derived
+  // from the run's latest job against the one the opening started.
+  const openingFailed = openingRedrawFailure({
+    asked: redrawAsked,
+    job: run.job()?.id ?? null,
+    run: runSnapshot,
+  })
   // Whether there is a strip under this cell, asked of the builder that
   // draws it and not restated here: the two would otherwise have to be kept
   // in step, and the day below is said exactly where the strip is not.
@@ -113,6 +126,19 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
     >
       {project !== null && (
         <>
+          {/* The redraw on open failed (issue 517): an error, first in the
+              cell, in words for a person who pressed nothing - what was
+              tried, the engine's reason, and what still holds. It is not a
+              live region: the header's alert says "03 Frame and service day
+              failed." once, assertively, and a second announcement of the
+              same failure here would say it twice (FR-017). The cell's own
+              state reads failed and its row says so. */}
+          {openingFailed !== null && (
+            <>
+              <p className="message error">{openingRedrawFailedSentence(openingFailed.reason)}</p>
+              <p className="prose">{OPENING_REDRAW_FALLBACK}</p>
+            </>
+          )}
           {project.readOnly ? (
             <>
               {/* The day of a read-only project whose record holds a day

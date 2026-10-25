@@ -36,7 +36,7 @@ import {
 import { refusedAtStart, stoppedNow, type Seen } from '../../src/renderer/src/panelRelease'
 import { linesParams } from '../../src/renderer/src/lineOptions'
 import { runAllPlan } from '../../src/renderer/src/runAll'
-import { redrawPageOnOpen } from '../../src/renderer/src/notebook/olderPage'
+import { openingRedrawFailure, redrawPageOnOpen } from '../../src/renderer/src/notebook/olderPage'
 import { styleParams } from '../../src/renderer/src/styleRules'
 import { cellOfRun, runGraph } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
@@ -3345,11 +3345,35 @@ describe('the redraw of an older page as its project opens', () => {
     expect(run.job(), 'and no job is left').toBeNull()
   })
 
+  it('answers the job it started, so cell 03 can tell its failure later', async () => {
+    // Mutation: `redrawPageOnOpen` answers null - cell 03 never learns which
+    // job was the opening's, and says nothing of the failure.
+    const { run, calls } = setup(drawnFor15())
+    const asked = redrawPageOnOpen(run, screen(drawnFor15()), READY, OLDER)
+    expect(asked, 'a job was started').not.toBeNull()
+    expect(asked, 'and it is the run’s latest').toBe(run.job()?.id)
+    await tick()
+    calls[0].resolve({ files: {} })
+    await tick()
+    expect(run.job()?.id, 'the same job, done').toBe(asked)
+  })
+
+  it('answers no job where the press started none of its own', async () => {
+    // Mutation: the job read only after the press, not compared with the one
+    // before it - a run already going is answered as the opening's.
+    const { run, record } = setup(drawnFor15())
+    run.rebuild(record, READY, '2026-09-15')
+    const going = run.job()?.id
+    expect(going).toBeTruthy()
+    expect(redrawPageOnOpen(run, screen(record), READY, OLDER)).toBeNull()
+    expect(run.job()?.id, 'the run going is untouched').toBe(going)
+  })
+
   it('that fails is cell 03’s own failure, the cells under it behind it', async () => {
-    // What a failed redraw on open shows (the maintainer's question on it is
-    // open; this pins the answer as built): a failed rebuild, in cell 03.
+    // What a failed redraw on open shows: a failed rebuild, in cell 03, which
+    // since issue 517 says it was the opening's in words of its own.
     const { run, calls, record, completeRebuild } = setup(drawnFor15())
-    redrawPageOnOpen(run, screen(record), READY, OLDER)
+    const asked = redrawPageOnOpen(run, screen(record), READY, OLDER)
     await tick()
     calls[0].reject(new Error('la-metro-rail has no stored layout cccccccc'))
     await tick()
@@ -3362,7 +3386,13 @@ describe('the redraw of an older page as its project opens', () => {
     expect(run.job()).toMatchObject({ kind: 'rebuild', state: 'failed' })
     expect(completeRebuild).not.toHaveBeenCalled()
     expect(cellOfRun(run.snapshot)).toBe('frame')
-    // The sentence cell 03 says for any rebuild that failed.
+    // Cell 03's words for it, with the engine's reason (issue 517).
+    expect(openingRedrawFailure({ asked, job: run.job()?.id ?? null, run: run.snapshot })).toEqual({
+      reason: 'la-metro-rail has no stored layout cccccccc',
+    })
+    // Cell 02's run panel still says what it says for any rebuild that
+    // failed; it was written for a press, and cell 03 is where the opening's
+    // failure is said.
     expect(stoppedSentence(run.snapshot.state, run.snapshot.replaced, run.snapshot.rebuilt)).toBe(
       'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.',
     )

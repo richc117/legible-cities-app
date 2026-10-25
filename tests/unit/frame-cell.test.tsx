@@ -21,6 +21,10 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import {
+  OPENING_REDRAW_FAILED,
+  OPENING_REDRAW_FALLBACK,
+} from '../../src/renderer/src/notebook/olderPage'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'frame') as Cell
 
@@ -86,17 +90,22 @@ const idle = {
  */
 function draw(
   project: ProjectRecord,
-  { readOnly = false }: { readOnly?: boolean } = {},
+  {
+    readOnly = false,
+    run = idle,
+    redrawAsked = null,
+  }: { readOnly?: boolean; run?: LayoutRun; redrawAsked?: string | null } = {},
 ): { above: string; strip: string } {
   const state = {
     project: { ...project, readOnly },
     engine: null,
-    run: idle,
-    runSnapshot: idle.snapshot,
+    run,
+    runSnapshot: run.snapshot,
     setDate: async () => {},
     exporting: false,
     layingOut: false,
     drawn: 0,
+    redrawAsked,
   } as unknown as ProjectState
   const html = renderToStaticMarkup(
     <ProjectProvider value={state}>
@@ -224,5 +233,56 @@ describe('cell 03, open, for a read-only project with a day and no strip', () =>
     }
     // And the first of them does say its day, in the control's own words.
     expect(draw(noWindow).above).toContain('Drawn for 2026-09-12. Lay the project out again')
+  })
+})
+
+// Issue 517: the redraw a project's opening asked for, failed. Cell 03 says
+// so first, as an error, in words for a person who pressed nothing, and not
+// as a live region: the header's alert is the one announcement (FR-017).
+describe('cell 03, open, after the redraw on open failed', () => {
+  const HINT = 'la-metro-rail has no stored layout cccccccc'
+  /** The opening's rebuild, failed, as job `job-1`. */
+  const failed = {
+    job: () => ({ id: 'job-1' }),
+    subscribe: () => () => undefined,
+    snapshot: {
+      ...idle.snapshot,
+      state: 'failed',
+      error: HINT,
+      rebuilt: true,
+      day: '2026-09-12',
+      unkept: false,
+      download: null,
+      feedMissing: false,
+    },
+  } as unknown as LayoutRun
+  const ERROR = `<p class="message error">${OPENING_REDRAW_FAILED} ${HINT}</p>`
+  const FALLBACK = `<p class="prose">${OPENING_REDRAW_FALLBACK}</p>`
+
+  it('says what was tried and why first, then what still holds', () => {
+    // Mutation: the block removed from `FrameCell` - the cell reads failed
+    // and says nothing of why.
+    const { above } = draw(record, { run: failed, redrawAsked: 'job-1' })
+    expect(above).toContain(`<div class="cell-body">${ERROR}${FALLBACK}`)
+    expect(count(above, OPENING_REDRAW_FAILED), 'said once').toBe(1)
+  })
+
+  it('is not a live region beside the header’s alert', () => {
+    // Mutation: `role="alert"` on the error - the failure is announced twice.
+    const { above } = draw(record, { run: failed, redrawAsked: 'job-1' })
+    const at = above.indexOf(OPENING_REDRAW_FAILED)
+    const tag = above.slice(above.lastIndexOf('<p', at), at)
+    expect(tag).toBe('<p class="message error">')
+  })
+
+  it('is not said of a failed rebuild the opening did not start', () => {
+    // Mutation: `redrawAsked` not read from the screen's state.
+    for (const redrawAsked of [null, 'job-0']) {
+      const { above } = draw(record, { run: failed, redrawAsked })
+      expect(above, String(redrawAsked)).not.toContain(OPENING_REDRAW_FAILED)
+      expect(above, String(redrawAsked)).not.toContain(OPENING_REDRAW_FALLBACK)
+      // The control is there, so the half checked is the cell's own.
+      expect(above).toContain('Draw for another day')
+    }
   })
 })
