@@ -882,9 +882,11 @@ test('a page the pinned engine drew is not redrawn as its project opens', async 
 
 // Issue 494: a page with every seam the pinned page has is older still where
 // its record says an engine below the running one drew it - a page engine
-// v0.15.0 to v0.18.x drew has every seam - and the redraw's own write names
-// the running engine, so it happens once. "Running" is the stand-in's
-// `engine.info` here, which answers the pinned version or is refused.
+// v0.15.0 to v0.18.x drew has every seam - or names no engine at all, as
+// every record drawn before the field does (decided by the maintainer, 25 Oct
+// 2026); and the redraw's own write names the running engine, so it happens
+// once. "Running" is the stand-in's `engine.info` here, which answers the
+// pinned version or is refused.
 
 /** An engine version below any pin this app has had since `drawn.engine` was kept. */
 const OLDER_ENGINE = '0.18.1'
@@ -895,7 +897,8 @@ const drawnBy = (h: Home): unknown =>
 
 /**
  * Write `engine` into the record's `drawn` as the engine that drew the map,
- * as a record an earlier engine's draw left behind: the whole file renamed
+ * or, for null, take the field out, as a record an earlier engine's draw (or
+ * a build from before the field) left behind: the whole file renamed
  * over the record, so a read never meets half of one. Called only once the
  * last opening's own write has landed (`openProject`), so nothing of the
  * app's is written over it.
@@ -904,11 +907,14 @@ const drawnBy = (h: Home): unknown =>
  * list may have it while the Library is shown, so a refusal of that kind is
  * tried again until a deadline, as `keepPageWritten` tries on its next tick.
  */
-async function drawnByEngine(h: Home, engine: string): Promise<void> {
+async function drawnByEngine(h: Home, engine: string | null): Promise<void> {
   const [id] = readdirSync(join(h.engineHome, 'projects'))
   const file = join(h.engineHome, 'projects', id, 'project.json')
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { drawn: Record<string, unknown> }
-  writeFileSync(`${file}.next`, JSON.stringify({ ...raw, drawn: { ...raw.drawn, engine } }))
+  const drawn = { ...raw.drawn }
+  if (engine === null) delete drawn.engine
+  else drawn.engine = engine
+  writeFileSync(`${file}.next`, JSON.stringify({ ...raw, drawn }))
   const deadline = Date.now() + 5_000
   for (;;) {
     try {
@@ -923,75 +929,80 @@ async function drawnByEngine(h: Home, engine: string): Promise<void> {
   }
 }
 
-test('a page with every seam is redrawn once as its project opens where its record names an older engine', async () => {
-  test.setTimeout(120_000)
-  const h = home()
-  await withApp(h, async (page, app) => {
-    await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
-    await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    expect(drawnBy(h), 'the layout run named the engine that drew the map').toBe(PINNED_ENGINE)
-    themedPage(h, THEMED_PAGE)
-    await page.getByRole('button', { name: 'Back to Library' }).click()
-    await drawnByEngine(h, OLDER_ENGINE)
-    const asked = received(h, 'map.build').length
-    const day = readRecord(h).date
-    expect(day, 'the layout chose a day').toBeTruthy()
+for (const [names, engine] of [
+  ['names an older engine', OLDER_ENGINE],
+  ['names no engine, as one drawn before the field', null],
+] as const)
+  test(`a page with every seam is redrawn once as its project opens where its record ${names}`, async () => {
+    test.setTimeout(120_000)
+    const h = home()
+    await withApp(h, async (page, app) => {
+      await project(page, 'Los Angeles')
+      await page.getByRole('button', { name: /lay out/i }).click()
+      await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
+      expect(drawnBy(h), 'the layout run named the engine that drew the map').toBe(PINNED_ENGINE)
+      themedPage(h, THEMED_PAGE)
+      await page.getByRole('button', { name: 'Back to Library' }).click()
+      await drawnByEngine(h, engine)
+      expect(drawnBy(h), 'the record names what the test wrote').toBe(engine ?? undefined)
+      const asked = received(h, 'map.build').length
+      const day = readRecord(h).date
+      expect(day, 'the layout chose a day').toBeTruthy()
 
-    // The page every redraw arrives at keeps every seam, so the only thing
-    // older about the one the project opens on is the version its record names.
-    const stop = keepPageWritten(h)
-    try {
+      // The page every redraw arrives at keeps every seam, so the only thing
+      // older about the one the project opens on is the version its record names.
+      const stop = keepPageWritten(h)
+      try {
+        await openProject(page, 'Los Angeles')
+        await expect
+          .poll(() => received(h, 'map.build').length, {
+            message: 'the page an older engine drew was redrawn as the project opened',
+            timeout: 20_000,
+          })
+          .toBe(asked + 1)
+        const sent = JSON.parse(received(h, 'map.build')[asked]) as {
+          params?: { date?: unknown; layout?: unknown }
+        }
+        expect(sent.params?.date, 'for the day the map already showed').toBe(day)
+        expect(sent.params?.layout, 'from the stored layout').toBe(readRecord(h).layout)
+        await expect(
+          frame(page),
+          'and the frame was sent to the page the redraw wrote',
+        ).toHaveAttribute('src', /redraw=1/)
+        await expect
+          .poll(() => drawnBy(h), { message: 'the redraw’s write names the running engine' })
+          .toBe(PINNED_ENGINE)
+        await expect
+          .poll(async () => (await factsOf(app))?.seen ?? null, {
+            message: 'the page that arrived was given back its theme in place',
+            timeout: 20_000,
+          })
+          .toContainEqual(['setTheme', 'warm-dark'])
+      } finally {
+        stop()
+      }
+
+      // Once: nothing redraws it again, and nothing was laid out.
+      await page.waitForTimeout(1500)
+      expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+      expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+      expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+
+      // And opened again, the record now names the running engine: not again.
+      await page.getByRole('button', { name: 'Back to Library' }).click()
       await openProject(page, 'Los Angeles')
       await expect
-        .poll(() => received(h, 'map.build').length, {
-          message: 'the page an older engine drew was redrawn as the project opened',
-          timeout: 20_000,
-        })
-        .toBe(asked + 1)
-      const sent = JSON.parse(received(h, 'map.build')[asked]) as {
-        params?: { date?: unknown; layout?: unknown }
-      }
-      expect(sent.params?.date, 'for the day the map already showed').toBe(day)
-      expect(sent.params?.layout, 'from the stored layout').toBe(readRecord(h).layout)
-      await expect(
-        frame(page),
-        'and the frame was sent to the page the redraw wrote',
-      ).toHaveAttribute('src', /redraw=1/)
-      await expect
-        .poll(() => drawnBy(h), { message: 'the redraw’s write names the running engine' })
-        .toBe(PINNED_ENGINE)
-      await expect
         .poll(async () => (await factsOf(app))?.seen ?? null, {
-          message: 'the page that arrived was given back its theme in place',
+          message: 'the page loaded again and was given back its theme',
           timeout: 20_000,
         })
         .toContainEqual(['setTheme', 'warm-dark'])
-    } finally {
-      stop()
-    }
-
-    // Once: nothing redraws it again, and nothing was laid out.
-    await page.waitForTimeout(1500)
-    expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
-    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
-    expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
-
-    // And opened again, the record now names the running engine: not again.
-    await page.getByRole('button', { name: 'Back to Library' }).click()
-    await openProject(page, 'Los Angeles')
-    await expect
-      .poll(async () => (await factsOf(app))?.seen ?? null, {
-        message: 'the page loaded again and was given back its theme',
-        timeout: 20_000,
-      })
-      .toContainEqual(['setTheme', 'warm-dark'])
-    await page.waitForTimeout(2000)
-    expect(received(h, 'map.build'), 'nothing was redrawn on the second opening').toHaveLength(
-      asked + 1,
-    )
+      await page.waitForTimeout(2000)
+      expect(received(h, 'map.build'), 'nothing was redrawn on the second opening').toHaveLength(
+        asked + 1,
+      )
+    })
   })
-})
 
 test('a page with every seam is not redrawn as its project opens where its record names the running engine, or a later one', async () => {
   test.setTimeout(120_000)

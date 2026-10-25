@@ -102,12 +102,11 @@ carries no version. Like the theme it describes the draw and raises no
 source. It is three whole numbers (`isEngineVersion`): a value that is not
 one is dropped on read and leaves the rest of the block as it was, as the
 stations are, and is never written. Absent - a map drawn before the field,
-or by an older build - means unknown, and the page is judged by its seam:
-so every record written before this change, the pages engine v0.15.0 to
-v0.18.x drew among them, is judged as it was under issue 465 alone. An
-older build loses the field as it loses the stations: one from before issue
-425 drops it at any write, `markOpened` included, and one from issue 425 on
-carries it through every write but its own draws.
+or by an older build - means the engine is unknown, and **a page whose
+`drawn` names no engine counts as older** (decided by the maintainer, 25 Oct
+2026; below). An older build loses the field as it loses the stations: one
+from before issue 425 drops it at any write, `markOpened` included, and one
+from issue 425 on carries it through every write but its own draws.
 It is inside `drawn` because it is a fact of the draw and is renewed with
 it (below, "Inside a fact a writer renews").
 
@@ -429,19 +428,21 @@ has no Revert (above).
 seam the pinned engine's page has starts cell 03's rebuild with no press.**
 *As of 25 Oct 2026* (issue 494) **so does one whose `drawn.engine` is below
 the running engine's version**, the ready state's `version`, which the
-supervisor holds equal to the pin's: either test saying older is enough
-(`redrawOnOpen`). The two are compared as three whole numbers
-(`engineBefore`); a version either side that is not one, or a record that
-names none, says nothing, and the seam decides alone. A version the same or
-above is not older by version, and a page lacking a seam is older whatever
-version its record names. A record that names its engine is not judged
-until the engine has answered its handshake, so a page opened while the
-engine starts is not settled as current by its seam. The redraw's write
-names the running engine, so it happens once. **A record written before
-issue 494 names no engine and is judged by its seam alone**, so the pages
-engine v0.15.0 to v0.18.x drew before this change, which have every seam,
-are still current; the version tells pages apart only once a record names
-an engine below the running one, which is from the next move of the pin.
+supervisor holds equal to the pin's, **and one whose `drawn` names no engine
+at all** (decided by the maintainer, 25 Oct 2026): any one test saying
+older is enough (`redrawOnOpen`). The versions are compared as three whole
+numbers (`engineBefore`). A running version that is not one says nothing,
+and the seam decides alone; a record's own value that is not one is dropped
+as it is read (`readDrawn`), so it cannot be told from none and is judged as
+none. A version the same or above is not older by version, and a page
+lacking a seam is older whatever version its record names. No page is
+judged by version until the engine has answered its handshake, so a page
+opened while the engine starts is not settled as current by its seam. Every
+record drawn before issue 494 names no engine, so every existing project
+with a `drawn` is redrawn once, the first time it opens after the update -
+which is what reaches the pages engine v0.15.0 to v0.18.x drew, with every
+seam (engine issue 76's label face); `drawn: null` has nothing to redraw.
+The redraw's write names the running engine, so it happens once.
 It is the rebuild for the day the record holds and the map already shows,
 from the stored layout, so it raises no source: cell 03 reads `running`
 while it goes and `ready` after, and where it fails it is cell 03's own

@@ -66,7 +66,7 @@ export function isViewerMethod(value: unknown): value is ViewerMethod {
  * 465). The page carries no version of the engine that drew it - its HTML
  * has none, and `state()` answers none - and until issue 494 neither did the
  * record, whose `drawn` now names it (`drawn.engine`) for every map drawn
- * since; for a record drawn before that, this is all there is to go on. Every
+ * since, and a `drawn` that names none is older by that alone. Every
  * seam the engine has added has been a method on this object
  * (`setTheme` at v0.11.0, `setTrip` at v0.13.0, `setCard` and `setDrawn` at
  * v0.15.0), so **a page lacking any of these is older than the pin**,

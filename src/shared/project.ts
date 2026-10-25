@@ -302,8 +302,9 @@ export interface DrawnFrom {
    *
    * Absent for a map drawn before it was kept, and for a value that is not
    * the engine's version as `isEngineVersion` reads it, which is dropped and
-   * leaves the rest of the block as it was: such a page is judged by its
-   * seam alone. Like the theme it describes the draw and raises no
+   * leaves the rest of the block as it was. A page whose `drawn` names no
+   * engine counts as older (decided by the maintainer, 25 Oct 2026), so it is
+   * redrawn once as its project opens and named then (`redrawOnOpen`). Like the theme it describes the draw and raises no
    * staleness. Added without moving `RECORD_VERSION`
    * (specs/028-the-notebook/contracts/run-graph.md, "Adding a field"),
    * inside `drawn` because it is a fact of the draw and is renewed with it.
@@ -316,9 +317,10 @@ export interface DrawnFrom {
  * names it: three whole numbers with no leading zero, each of at most nine
  * digits. The supervisor refuses any engine whose version is not the pin's
  * exactly, and every pin has been of this form; anything else - a
- * pre-release, a local build's suffix - is not read as a version here, so a
- * page it drew is judged by its seam alone rather than by a guess at how
- * the suffix orders.
+ * pre-release, a local build's suffix - is not read as a version here, and
+ * is never ordered by a guess at how the suffix orders: a running version
+ * of that kind leaves the judgement to the page's seam, and a recorded one
+ * is dropped as the record is read, as if none had been written.
  */
 const ENGINE_VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/
 
@@ -331,8 +333,8 @@ export function isEngineVersion(value: unknown): value is string {
  * Whether a map drawn by engine `drawn` was drawn by an engine older than
  * `running` (issue 494): true where its version is below, false where it is
  * the same or above, and null where either is not a version this build
- * reads (`isEngineVersion`), absent included - which says nothing, and
- * leaves the judgement to the page's seam.
+ * reads (`isEngineVersion`), absent included. What a record that names no
+ * engine means is its caller's to say (`redrawOnOpen` counts it as older).
  */
 export function engineBefore(drawn: unknown, running: unknown): boolean | null {
   if (!isEngineVersion(drawn) || !isEngineVersion(running)) return null

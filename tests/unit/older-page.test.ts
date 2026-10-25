@@ -116,7 +116,14 @@ const DRAWN: DrawnFrom = {
   lineOrder: [],
   theme: 'warm-dark',
   style: {},
+  // Drawn by the running engine, so older or not by its seam alone unless a
+  // test says otherwise (issue 494).
+  engine: '0.19.0',
 }
+
+/** A `drawn` block that names no engine: every block written before issue 494. */
+const UNNAMED: DrawnFrom = { ...DRAWN }
+delete UNNAMED.engine
 
 /** A laid-out project whose page an older engine drew, with everything else in order. */
 const facts = (over: Partial<OnOpenFacts> = {}, project: Partial<OnOpenFacts['project']> = {}) =>
@@ -198,7 +205,10 @@ describe('redrawing the page a project opened on', () => {
 describe('redrawing the page a project opened on, by the engine that drew it', () => {
   /** A page with every seam, its record naming the engine that drew it. */
   const by = (engine: string | undefined, over: Partial<OnOpenFacts> = {}) =>
-    facts({ older: false, ...over }, { drawn: engine === undefined ? DRAWN : { ...DRAWN, engine } })
+    facts(
+      { older: false, ...over },
+      { drawn: engine === undefined ? UNNAMED : { ...DRAWN, engine } },
+    )
 
   it('redraws a page with every seam that an engine below the running one drew', () => {
     // Mutation: the version not read (`byVersion` left out) - the page
@@ -232,8 +242,25 @@ describe('redrawing the page a project opened on, by the engine that drew it', (
     })
   })
 
-  it('judges by the seam alone where the record names no engine, or the running one is not a version', () => {
-    expect(redrawOnOpen(by(undefined))).toEqual({ kind: 'never' })
+  it('redraws a page with every seam whose record names no engine, once its engine has answered', () => {
+    // Decided by the maintainer, 25 Oct 2026: every record drawn before the
+    // field counts as older, so the v0.15.0 to v0.18.x pages are redrawn once.
+    // Mutation: a record naming none judged by its seam alone (the old rule) -
+    // it is kept as current.
+    expect(redrawOnOpen(by(undefined))).toEqual({ kind: 'redraw', date: '2026-06-16' })
+    expect(redrawOnOpen(by(undefined, { older: null }))).toEqual({
+      kind: 'redraw',
+      date: '2026-06-16',
+    })
+    // A value the reader would not take is dropped as it is read; were one to
+    // reach here, it is judged as none.
+    expect(redrawOnOpen(by('0.18', {}))).toEqual({ kind: 'redraw', date: '2026-06-16' })
+    // A record never drawn has nothing to redraw, whatever it names.
+    expect(redrawOnOpen(facts({ older: false }, { drawn: null }))).toEqual({ kind: 'never' })
+  })
+
+  it('judges by the seam alone where the running engine’s version is not one it reads', () => {
+    expect(redrawOnOpen(by(undefined, { running: '0.19.0rc1' }))).toEqual({ kind: 'never' })
     expect(redrawOnOpen(by('0.18.1', { running: '0.19.0rc1' }))).toEqual({ kind: 'never' })
     expect(redrawOnOpen(by('0.18.1', { running: '0.19.0rc1', older: true }))).toEqual({
       kind: 'redraw',
@@ -241,14 +268,16 @@ describe('redrawing the page a project opened on, by the engine that drew it', (
     })
   })
 
-  it('waits for the engine’s handshake before judging a record that names its engine', () => {
+  it('waits for the engine’s handshake before judging a page by version', () => {
     // Mutation: the wait removed - a page whose seam is current, opened
     // before the engine is ready, is settled as current for the screen and
-    // never redrawn, though its record says an older engine drew it.
+    // never redrawn, though its record says an older engine drew it, or none.
     const away = { running: null, engineReady: false }
     expect(redrawOnOpen(by('0.18.1', away))).toEqual({ kind: 'wait' })
-    // A record that names none has nothing to wait for: its seam has spoken.
-    expect(redrawOnOpen(by(undefined, away))).toEqual({ kind: 'never' })
+    expect(redrawOnOpen(by(undefined, away)), 'a record naming none').toEqual({ kind: 'wait' })
+    expect(redrawOnOpen(by('0.19.0', away)), 'one the running engine may yet match').toEqual({
+      kind: 'wait',
+    })
     // And the rest of the rule still comes first.
     expect(redrawOnOpen(by('0.18.1', { ...away, drawnHere: 1 }))).toEqual({ kind: 'never' })
     expect(
@@ -261,16 +290,20 @@ describe('redrawing the page a project opened on, by the engine that drew it', (
   it('withdraws once the store’s record names the running engine, as the redraw’s own write does', () => {
     // The redraw happens once (issue 465): its rebuild's write names the
     // engine that drew it, so a record read after it asks for nothing.
-    const record = (engine: string) =>
+    const record = (engine: string | undefined) =>
       ({
         layout: 'abc123',
         made: '2026-09-10T00:00:01+00:00',
         date: '2026-06-16',
-        drawn: { ...DRAWN, engine },
+        drawn: engine === undefined ? UNNAMED : { ...DRAWN, engine },
         service: WINDOW,
       }) as unknown as ProjectRecord
     const plan = openPlanOf({ older: false, running: '0.19.0', drawnHere: 0 }, false)
     expect(plan(record('0.18.1'))).toEqual({ kind: 'rebuild', date: '2026-06-16' })
+    expect(plan(record(undefined)), 'one naming none').toEqual({
+      kind: 'rebuild',
+      date: '2026-06-16',
+    })
     expect(plan(record('0.19.0'))).toEqual({ kind: 'none' })
   })
 })

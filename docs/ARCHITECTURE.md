@@ -1232,8 +1232,8 @@ sent, is never lost.
 
 A page an older engine drew is redrawn when its project opens (issue 465).
 **Older means drawn by an engine below the running one, by the version the
-record names, or lacking a seam the pinned engine's page has**; either is
-enough. Since issue 494 every draw's `drawn` names the engine that answered
+record names, or by an engine the record does not name, or lacking a seam
+the pinned engine's page has**; any one is enough. Since issue 494 every draw's `drawn` names the engine that answered
 it (`drawn.engine`): the store asks the supervisor at each draw's write for
 the version the last engine to pass the handshake answered
 (`Sidecar.readyVersion`), which is kept through a restart and a stop, since
@@ -1242,26 +1242,26 @@ may have gone between; and every process that passes the handshake answered
 the pin's version exactly, so it is the version of whichever engine answered
 the build. The renderer compares it with the running engine's, from the
 ready state's `version` (`engineBefore` in `src/shared/project.ts`): three
-whole numbers, and anything else either side - a pre-release, a local
-suffix, a record drawn before the field - says nothing, and the seam
-decides. A record that names its engine waits for the engine's handshake
-before it is judged. The seam is asked of every page: once the first page
+whole numbers. A running version that is not one - a pre-release, a local
+suffix - says nothing, and the seam decides. A record's own value that is
+not one is dropped as the record is read, so it is the same as none. Every
+page waits for the engine's handshake before it is judged by version. The seam is asked of every page: once the first page
 the map's frame loads has been given back its state, the main process lists
 the functions on its `window.__present` by a fixed script that calls none
 of them (`Viewer.seams`, `viewer.seams()` on the bridge), and **a page
 lacking a seam the pinned engine's page has** (`PAGE_SEAMS` in
 `src/shared/viewer.ts`, held to the engine's template by
 `tests/unit/viewer-real.test.ts`), whichever seam it lacks, is older
-whatever version its record names. **A record written before issue 494
-names no engine, so it is still judged by its seam alone**, as the issue
-asks ("the seam test stays for records from before the field"): a page an
-engine drew after its last new seam and before the pin - the v0.15.0 to
-v0.18.x pages engine issue 76's label face is about, every one drawn before
-this change - still counts as current. The version starts to tell pages
-apart only once a record names an engine below the running one, which is
-from the next move of the pin: maps drawn at v0.19.0 from now on are then
-redrawn as they open. The redraw's own write names the running engine, so
-it happens once. The screen then asks for the
+whatever version its record names. **A `drawn` that names no engine counts
+as older** (decided by the maintainer, 25 Oct 2026): every record drawn
+before issue 494 is one, so every existing project is redrawn once, the
+first time it opens after the update. That is what reaches the pages engine
+v0.15.0 to v0.18.x drew, which have every seam and draw what the engine has
+since changed (engine issue 76's label face). A record with no `drawn` at
+all has drawn nothing and is never redrawn. The redraw's own write names
+the running engine, so it happens once; a build from before issue 425 that
+writes the record afterwards drops the field again, and the next opening
+here redraws it once more. The screen then asks for the
 rebuild cell 03 makes for a day, for the day the record holds and the map
 already shows: a `map.build` from the stored layout with the record's
 colours, order, style and line options, never a re-layout (ADR-023), shown
