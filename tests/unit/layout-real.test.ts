@@ -46,9 +46,12 @@ const INTERPRETER = realInterpreter(CONFIG)
 
 // The engine's own home is its checkout, so that is where a developer's
 // stored layouts are: one folder per layout id under the feed's, each with
-// its four stage graphs and a .meta.json (engine v0.5.0).
+// its four stage graphs and a .meta.json (engine v0.5.0). The feed's zip is
+// required too: without it the engine would download it before finding the
+// layout, which no run of this suite may do.
 const CACHED =
   CHECKOUT !== null &&
+  existsSync(join(CHECKOUT, 'data', 'feeds', `${LA}.zip`)) &&
   existsSync(join(CHECKOUT, 'data', 'graphs', LA)) &&
   readdirSync(join(CHECKOUT, 'data', 'graphs', LA)).some(
     (name) =>
@@ -280,22 +283,22 @@ describe.skipIf(INTERPRETER === null)(`the real engine's layout, on the BART fix
     'reports exactly the stages the app draws, in that order',
     async () => {
       const home = bartHome('lc-layout-real-')
-      let sidecar: Sidecar | undefined
       try {
-        sidecar = await startRealEngine(INTERPRETER as string, home, { loomBin: noLoom(home) })
-        // What a layout run sends: the record's mode, and every operator. Those
-        // are the inputs the fixture's layout is addressed with.
-        const layout = await layoutChecks(sidecar, {
-          feed: BART,
-          inputs: { mode: 'all', agency: '' },
-          name: 'BART',
-          home,
-        })
-        expect(layout, "the fixture's layout, found").toBe(fixtureLayoutId())
-      } finally {
-        await sidecar?.stop()
-      }
-      try {
+        let sidecar: Sidecar | undefined
+        try {
+          sidecar = await startRealEngine(INTERPRETER as string, home, { loomBin: noLoom(home) })
+          // What a layout run sends: the record's mode, and every operator.
+          // Those are the inputs the fixture's layout is addressed with.
+          const layout = await layoutChecks(sidecar, {
+            feed: BART,
+            inputs: { mode: 'all', agency: '' },
+            name: 'BART',
+            home,
+          })
+          expect(layout, "the fixture's layout, found").toBe(fixtureLayoutId())
+        } finally {
+          await sidecar?.stop()
+        }
         // Found, never made: the one stored layout is the fixture's, so
         // nothing was laid out, and nothing was downloaded.
         expect(readdirSync(join(home, 'data', 'graphs', BART))).toEqual([fixtureLayoutId()])
@@ -327,7 +330,9 @@ if (CACHED || !REQUIRED) {
           const home = laHome()
           let sidecar: Sidecar | undefined
           try {
-            sidecar = await startRealEngine(INTERPRETER as string, home)
+            // A LOOM folder that does not exist, so a layout not found in the
+            // copied store fails at once rather than starting Docker.
+            sidecar = await startRealEngine(INTERPRETER as string, home, { loomBin: noLoom(home) })
             await layoutChecks(sidecar, { feed: LA, inputs: {}, name: 'Los Angeles', home })
           } finally {
             await sidecar?.stop()

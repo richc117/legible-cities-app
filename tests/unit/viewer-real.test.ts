@@ -97,20 +97,20 @@ async function fixturePage(): Promise<string> {
 }
 
 /**
- * The page template of the engine the seam is held to: the checkout's where
- * one is named, else the installed engine's, found through the interpreter.
- * The determinism workflow has no checkout, so this is how a check of the
- * template runs there too.
+ * The page template of the engine the seam is held to: the installed
+ * engine's, found through the interpreter, which is the engine that actually
+ * ran (under an editable install, the checkout's own file); the checkout's
+ * where only a checkout is named. The determinism workflow has no checkout,
+ * so this is how a check of the template runs there too.
  */
-const ENGINE_TEMPLATE =
-  CHECKOUT === null && INTERPRETER === null ? null : enginePageTemplate(CHECKOUT, INTERPRETER)
+const ENGINE_TEMPLATE = enginePageTemplate(CHECKOUT, INTERPRETER)
 
 describe.skipIf(CHECKOUT === null && INTERPRETER === null)(
   `the engine's page template${CHECKOUT === null && INTERPRETER === null ? NO_ENGINE : ''}`,
   () => {
     it('is found where the engine keeps it, and writes the seam as one object', () => {
-      expect(ENGINE_TEMPLATE, 'no page.html in the checkout or the installed engine').not.toBeNull()
-      const html = readFileSync(ENGINE_TEMPLATE as string, 'utf8')
+      expect(ENGINE_TEMPLATE.path, ENGINE_TEMPLATE.why ?? '').not.toBeNull()
+      const html = readFileSync(ENGINE_TEMPLATE.path as string, 'utf8')
       expect(html, 'the template no longer writes window.__present as one object').toContain(
         'window.__present = {',
       )

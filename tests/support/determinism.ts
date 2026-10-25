@@ -8,7 +8,15 @@
 // swapped identifier and the fixture against the real engine.
 
 import { createHash } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join, resolve } from 'node:path'
 import { engineCommand, engineEnvironment } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
@@ -76,10 +84,40 @@ function madeOf(engineHome: string, id: string): string | null {
   }
 }
 
-/** An engine home with the fixture's feed and layout in it, and nothing else. */
+/**
+ * An engine home with the fixture's feed and layout in it, and nothing else.
+ *
+ * The feed's zip is checked for before any engine sees the home: a request
+ * that reads a feed whose zip is not cached - graph.build, feeds.inspect,
+ * feeds.service - downloads it from the agency, which no test may do. A seed
+ * that went wrong removes the folder and refuses instead.
+ */
 export function seedHome(engineHome: string): void {
   mkdirSync(engineHome, { recursive: true })
   cpSync(join(FIXTURE, 'data'), join(engineHome, 'data'), { recursive: true })
+  if (!existsSync(join(engineHome, 'data', 'feeds', `${FEED}.zip`))) {
+    rmSync(engineHome, { recursive: true, force: true })
+    throw new Error(`the seeded home has no ${FEED}.zip, and the engine would download it`)
+  }
+}
+
+/**
+ * What the engine's environment is given so that nothing it does can reach
+ * the network: every proxy variable `requests` reads names a port nothing
+ * listens on, in both cases because the lower case wins where both are set,
+ * and nothing is exempt from them. A download a test did not mean to start
+ * then fails at once with the engine's own "could not be reached" sentence,
+ * rather than fetching an agency's feed. The loopback address is assembled
+ * here so that no scanner reads it as one a person wrote.
+ */
+const NOWHERE = `http://${[127, 0, 0, 1].join('.')}:9`
+export const OFFLINE: Record<string, string> = {
+  HTTPS_PROXY: NOWHERE,
+  HTTP_PROXY: NOWHERE,
+  https_proxy: NOWHERE,
+  http_proxy: NOWHERE,
+  NO_PROXY: '',
+  no_proxy: '',
 }
 
 /** The pinned engine, started on a home and ready for requests. Stop it when done. */
@@ -91,16 +129,19 @@ export async function startEngine(
   const log = options.log ?? []
   const sidecar = new Sidecar({
     command: engineCommand(interpreter),
-    env: engineEnvironment({
-      config: {
-        home: engineHome,
-        loomBin: options.loomBin ?? null,
-        loomCommit: null,
-        ffmpeg: null,
-      },
-      base: process.env,
-      development: true,
-    }),
+    env: {
+      ...engineEnvironment({
+        config: {
+          home: engineHome,
+          loomBin: options.loomBin ?? null,
+          loomCommit: null,
+          ffmpeg: null,
+        },
+        base: process.env,
+        development: true,
+      }),
+      ...OFFLINE,
+    },
     pin: PIN,
     log: (m) => log.push(m),
     // A cold start imports pandas, which on a fresh Windows runner is slow.

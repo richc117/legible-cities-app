@@ -21,6 +21,7 @@ import {
   failIfRequired,
   realInterpreter,
 } from '../support/real-engine'
+import { OFFLINE } from '../support/determinism'
 
 const INTERPRETER = realInterpreter()
 const WHY = INTERPRETER === null ? NO_ENGINE : ''
@@ -35,11 +36,15 @@ describe.skipIf(INTERPRETER === null)(`Sidecar against the real engine${WHY}`, (
       const log: string[] = []
       const sidecar = new Sidecar({
         command: engineCommand(INTERPRETER as string),
-        env: engineEnvironment({
-          config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
-          base: process.env,
-          development: true,
-        }),
+        env: {
+          ...engineEnvironment({
+            config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+            base: process.env,
+            development: true,
+          }),
+          // Nothing it is asked reaches the network, and this keeps it so.
+          ...OFFLINE,
+        },
         pin: PINS.engine,
         log: (m) => log.push(m),
         bounds: { handshakeMs: HANDSHAKE_MS },

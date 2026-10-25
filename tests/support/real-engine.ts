@@ -20,7 +20,7 @@ import { resolveConfig, type Config } from '../../src/main/config'
 import { engineCommand, engineEnvironment, resolveInterpreter } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
 import type { EnginePin } from '../../src/shared/engine'
-import { seedHome } from './determinism'
+import { OFFLINE, seedHome } from './determinism'
 
 const repo = resolve(__dirname, '../..')
 
@@ -87,25 +87,19 @@ export const BART = 'bart'
 
 /**
  * A temporary engine home holding the BART fixture's feed and stored layout
- * and nothing else. The caller removes the folder it answers.
- *
- * The feed's zip is checked for before any engine sees the home: a request
- * that reads a feed whose zip is not cached - graph.build, feeds.inspect,
- * feeds.service - downloads it from the agency, which no run of these
- * suites may do. A seed that went wrong fails here instead.
+ * and nothing else; `seedHome` refuses one without the feed's zip. The
+ * caller removes the folder it answers.
  */
 export function bartHome(prefix: string): string {
   const home = mkdtempSync(join(tmpdir(), prefix))
   seedHome(home)
-  if (!existsSync(join(home, 'data', 'feeds', `${BART}.zip`)))
-    throw new Error(`the seeded home has no ${BART}.zip, and the engine would download it`)
   return home
 }
 
 /**
- * A LOOM folder that does not exist, for a home the fixture seeded: a layout
- * the engine did not find in the store then fails at once, instead of being
- * made through Docker, which the workflow does not have.
+ * A LOOM folder that does not exist: a layout the engine did not find in the
+ * store then fails at once, instead of being made through Docker, which the
+ * workflow does not have and a developer's run should not start.
  */
 export const noLoom = (home: string): string => join(home, 'no-loom-here')
 
@@ -120,6 +114,7 @@ export const READY_MS = 150_000
 export const ENGINE_TEST_MS = 200_000
 
 export interface StartOptions {
+  /** The LOOM folder; a folder that does not exist (`noLoom`) unless one is named. */
   loomBin?: string | null
   loomCommit?: string | null
   /** Added to the engine's environment, after the app's own. */
@@ -127,7 +122,12 @@ export interface StartOptions {
   log?: string[]
 }
 
-/** The real engine, started on a home and ready for requests. Stop it when done. */
+/**
+ * The real engine, started on a home and ready for requests. Stop it when
+ * done. It cannot reach the network (`OFFLINE`), and unless the caller names
+ * one its LOOM folder does not exist, so nothing it is asked can download a
+ * feed or lay one out.
+ */
 export async function startRealEngine(
   interpreter: string,
   home: string,
@@ -140,13 +140,14 @@ export async function startRealEngine(
       ...engineEnvironment({
         config: {
           home,
-          loomBin: options.loomBin ?? null,
+          loomBin: options.loomBin === undefined ? noLoom(home) : options.loomBin,
           loomCommit: options.loomCommit ?? null,
           ffmpeg: null,
         },
         base: process.env,
         development: true,
       }),
+      ...OFFLINE,
       ...options.env,
     },
     pin: PINS.engine,
@@ -176,15 +177,18 @@ export async function startRealEngine(
   return sidecar
 }
 
+/** Where an engine's page template is, or why it was not found. */
+export type TemplateLookup = { path: string; why: null } | { path: null; why: string }
+
 /**
  * The page template of the engine an interpreter runs, which every page that
  * engine draws is made from: `schematic/page/page.html` inside the installed
  * package, found by asking the interpreter where the package is. That is the
  * checkout's own file under an editable install and the wheel's copy under
- * the runtime the determinism workflow vendors. Null when the interpreter
- * cannot say or the file is not there.
+ * the runtime the determinism workflow vendors. When the interpreter cannot
+ * say, the answer carries what it printed on stderr.
  */
-export function installedPageTemplate(interpreter: string): string | null {
+export function installedPageTemplate(interpreter: string): TemplateLookup {
   const run = spawnSync(
     interpreter,
     [
@@ -194,23 +198,38 @@ export function installedPageTemplate(interpreter: string): string | null {
     ],
     { encoding: 'utf8', timeout: 60_000, windowsHide: true },
   )
-  if (run.status !== 0) return null
+  if (run.status !== 0) {
+    const said = `${run.error?.message ?? ''}\n${run.stderr ?? ''}`.trim()
+    return {
+      path: null,
+      why: `${interpreter} could not say where the engine's page template is (${
+        run.status === null ? `ended by ${run.signal ?? 'its timeout'}` : `exit ${run.status}`
+      })${said === '' ? '' : `:\n${said}`}`,
+    }
+  }
   const path = run.stdout.trim()
-  return path !== '' && existsSync(path) ? path : null
+  return path !== '' && existsSync(path)
+    ? { path, why: null }
+    : {
+        path: null,
+        why: `the engine names its page template as ${path || 'nothing'}, which is not there`,
+      }
 }
 
 /**
- * The page template for a seam check: the checkout's, where one is named,
- * which is the pin's when LEGIBLE_ENGINE_CHECKOUT names the worktree
- * `scripts/pin-engine.sh` makes; else the installed engine's.
+ * The page template for a seam check: the installed engine's, which is the
+ * engine that actually ran, wherever an interpreter is named - under an
+ * editable install that is the checkout's own file anyway; else, with only a
+ * checkout named, the checkout's.
  */
 export function enginePageTemplate(
   checkout: string | null,
   interpreter: string | null,
-): string | null {
-  if (checkout !== null) {
-    const path = join(checkout, 'src', 'schematic', 'page', 'page.html')
-    return existsSync(path) ? path : null
-  }
-  return interpreter === null ? null : installedPageTemplate(interpreter)
+): TemplateLookup {
+  if (interpreter !== null) return installedPageTemplate(interpreter)
+  if (checkout === null) return { path: null, why: 'no engine is named' }
+  const path = join(checkout, 'src', 'schematic', 'page', 'page.html')
+  return existsSync(path)
+    ? { path, why: null }
+    : { path: null, why: `the checkout has no page template at ${path}` }
 }
