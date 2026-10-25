@@ -142,12 +142,12 @@ describe('the documentation-only rule', () => {
     const { decide, report } = await load()
     const hostile = ['::set-output name=run::false.ts', 'src/a\n::error::injected.ts']
     const text = report(decide({ event: 'pull_request', changed: hostile }))
-    for (const line of text.split('\n')) expect(line.startsWith('::')).toBe(false)
+    for (const line of text.split('\n')) expect(line.trimStart().startsWith('::')).toBe(false)
     expect(text).toContain('"::set-output name=run::false.ts"  ->  not on the documentation list')
     expect(text).toContain('"src/a\\n::error::injected.ts"')
     // Even a path docs excuses cannot start a line.
     const docs = report(decide({ event: 'pull_request', changed: ['docs/x\n::notice::y.md'] }))
-    expect(docs.split('\n').filter((line) => line.startsWith('::'))).toEqual([
+    expect(docs.split('\n').filter((line) => line.trimStart().startsWith('::'))).toEqual([
       '::notice title=e2e::documentation only; the end-to-end suite did not run',
     ])
   })
@@ -226,6 +226,7 @@ describe('the script over a repository', () => {
     // `node scripts/ci-decide.mjs` from the repository's top.
     mkdirSync(join(dir, 'scripts'))
     copyFileSync(SCRIPT, join(dir, 'scripts', 'ci-decide.mjs'))
+    mkdirSync(join(dir, '.git', 'info'), { recursive: true })
     appendFileSync(join(dir, '.git', 'info', 'exclude'), '/scripts/\n')
     git(dir, 'config', 'user.name', 'Test')
     git(dir, 'config', 'user.email', 'test@example.invalid')
