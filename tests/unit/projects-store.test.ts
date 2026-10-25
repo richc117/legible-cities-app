@@ -157,6 +157,8 @@ describe('create', () => {
       opened: null,
       created: created.created,
       modified: created.modified,
+      // The record's first write (spec 037, FR-001).
+      revision: 1,
     }
     expect(text).toBe(JSON.stringify(expected, null, 2) + '\n')
     expect(text.endsWith('\n')).toBe(true)
@@ -396,7 +398,10 @@ describe('markOpened', () => {
     const written = await readRecord(A)
     expect(written.opened).toBe(after.opened)
     expect(written.modified, 'an opening is not an edit').toBe('2026-09-01T00:00:00.000Z')
-    expect({ ...written, opened: null }).toEqual(before)
+    // Though it is a write, which the record's count says (spec 037).
+    expect(written.revision, 'a write raises the revision').toBe(1)
+    expect(after.revision, 'and the answer carries it').toBe(1)
+    expect({ ...written, opened: null, revision: undefined }).toEqual(before)
   })
 
   it('writes onto the record as stored, not as this build reads it', async () => {
@@ -414,8 +419,10 @@ describe('markOpened', () => {
     expect(written.export).toEqual(stored.export)
     expect(written.somethingNewer).toEqual({ kept: true })
     expect(typeof written.opened).toBe('string')
+    expect(written.revision, 'a write, counted').toBe(1)
     const rest: Record<string, unknown> = { ...written }
     delete rest.opened
+    delete rest.revision
     const before: Record<string, unknown> = { ...stored }
     delete before.opened
     expect(rest, 'everything but the opening, as stored').toEqual(before)
@@ -491,12 +498,16 @@ describe('rename', () => {
     expect(after.modified).not.toBe(before.modified)
     expect(String(after.modified) > String(before.modified)).toBe(true)
     expect(after.created).toBe(before.created)
-    // The same keys in the same order, and every other value untouched.
-    expect(Object.keys(after)).toEqual(Object.keys(before))
+    // The same keys in the same order, the revision a record from before it
+    // was kept gains at its first write after them (spec 037), and every
+    // other value untouched.
+    expect(Object.keys(after)).toEqual([...Object.keys(before), 'revision'])
+    expect(after.revision).toBe(1)
     const rest = (r: Record<string, unknown>): Record<string, unknown> => {
       const copy = { ...r }
       delete copy.name
       delete copy.modified
+      delete copy.revision
       return copy
     }
     expect(rest(after)).toEqual(rest(before))
@@ -891,7 +902,13 @@ describe('setDate', () => {
     expect(after.date).toBe('2026-09-12')
     // Field by field against what was there, so "nothing else" is checked
     // rather than asserted about the three fields that came to mind.
-    expect({ ...after, date: before.date, modified: before.modified }).toEqual({
+    expect(after.revision, 'a write, counted').toBe((before.revision ?? 0) + 1)
+    expect({
+      ...after,
+      date: before.date,
+      modified: before.modified,
+      revision: before.revision,
+    }).toEqual({
       ...before,
       readOnly: undefined,
     })
@@ -1952,9 +1969,12 @@ describe('a record the platform holds', () => {
     const held: ReturnType<typeof heldStore> = heldStore(
       () => (refusals-- > 0 ? 'EBUSY' : null),
       async () => {
-        // Mid-write: the new record is on disk under its temporary name.
-        const reading = await held.store.get(project.id)
-        const listed = await held.store.list()
+        // Mid-write: the new record is on disk under its temporary name. Read
+        // by another store over the same home, since this store's own read
+        // waits behind its writes (spec 037, FR-006) and would wait for this
+        // one: what is held here is the file, read whole while it is renamed.
+        const reading = await store.get(project.id)
+        const listed = await store.list()
         seen.push({
           export: reading.export,
           tmp: (await leftovers(project.id)).filter((name) => name.endsWith('.tmp')),
@@ -2020,5 +2040,115 @@ describe('a folder that cannot be flushed after the rename (issue 432)', () => {
     expect(said[0]).toContain('EMFILE')
     expect(said[0]).not.toContain('/private')
     expect(lines.some((l) => l.includes('write failed'))).toBe(false)
+  })
+})
+
+// The record session (spec 037, part 1): a read waits behind the writes
+// already queued for its project, so a run that reads its inputs after the
+// press sees every write sent before it; and every write raises the record's
+// revision by one.
+describe('the record session', () => {
+  /** A store whose renames of project.json wait until `open()` is called. */
+  function gatedStore() {
+    let open!: () => void
+    const gate = new Promise<void>((resolve) => {
+      open = resolve
+    })
+    let waiting = 0
+    const gated = new ProjectStore(home, (message) => lines.push(message), {
+      rename: async (from, to) => {
+        waiting += 1
+        await gate
+        await rename(from, to)
+      },
+    })
+    return { store: gated, open: () => open(), waiting: () => waiting }
+  }
+
+  it('answers a read sent after a write with the write, however long the write takes', async () => {
+    // Mutation: `get` outside the queue again - the read answers from the
+    // file before the held rename lands, with the theme it had.
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const gated = gatedStore()
+    const write = gated.store.setTheme(project.id, 'sepia')
+    const read = gated.store.get(project.id)
+    let answered = false
+    void read.then(() => {
+      answered = true
+    })
+    await expect.poll(() => gated.waiting(), { timeout: 5_000 }).toBe(1)
+    // The write is held at its rename; the read has had every chance to
+    // answer from the file, and has not.
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(answered, 'the read waits behind the write').toBe(false)
+    gated.open()
+    await write
+    expect((await read).theme, 'and answers with it').toBe('sepia')
+  })
+
+  it('does not hold a read of another project behind this one’s write', async () => {
+    const one = await store.create({ name: 'One', feed: 'la-metro-rail' })
+    const two = await store.create({ name: 'Two', feed: 'la-metro-rail' })
+    const gated = gatedStore()
+    const write = gated.store.setTheme(one.id, 'sepia')
+    await expect.poll(() => gated.waiting(), { timeout: 5_000 }).toBe(1)
+    expect((await gated.store.get(two.id)).name).toBe('Two')
+    gated.open()
+    await write
+  })
+
+  it('answers writes and reads in the order they were asked, each with every write before it', async () => {
+    const project = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    const answered: number[] = []
+    const asks = [
+      store.rename(project.id, 'One'),
+      store.get(project.id),
+      store.setTheme(project.id, 'sepia'),
+      store.get(project.id),
+      store.rename(project.id, 'Two'),
+      store.get(project.id),
+    ].map((ask, i) => ask.then((record) => (answered.push(i), record)))
+    const records = await Promise.all(asks)
+    expect(answered).toEqual([0, 1, 2, 3, 4, 5])
+    expect(records.map((r) => [r.name, r.theme])).toEqual([
+      ['One', 'warm-dark'],
+      ['One', 'warm-dark'],
+      ['One', 'sepia'],
+      ['One', 'sepia'],
+      ['Two', 'sepia'],
+      ['Two', 'sepia'],
+    ])
+  })
+
+  it('raises the revision by one on every write, and a read raises nothing', async () => {
+    // Mutation: `#save` writes the record's own revision back - every write
+    // after the first then answers and stores 1.
+    const created = await store.create({ name: 'LA', feed: 'la-metro-rail' })
+    expect(created.revision, 'a new record is its first write').toBe(1)
+    const renamed = await store.rename(created.id, 'Los Angeles')
+    expect(renamed.revision).toBe(2)
+    const themed = await store.setTheme(created.id, 'sepia')
+    expect(themed.revision).toBe(3)
+    const opened = await store.markOpened(created.id)
+    expect(opened.revision, 'an opening is a write too').toBe(4)
+    expect((await store.get(created.id)).revision, 'a read raises nothing').toBe(4)
+    expect((await readRecord(created.id)).revision, 'and the file says so').toBe(4)
+    // A write that changes nothing writes nothing, and counts nothing.
+    expect((await store.setInputs(created.id, { mode: 'all', agency: null })).revision).toBe(4)
+  })
+
+  it('reads a record without one, or with one that is not a count, as 0, and its first write makes it 1', async () => {
+    // Mutation: `isRevision` takes any number - the record holding 1.5 then
+    // answers 2.5.
+    await seed(A, record(A))
+    expect((await store.get(A)).revision, 'absent is absent').toBeUndefined()
+    expect((await store.rename(A, 'First')).revision).toBe(1)
+    for (const bad of [-1, 1.5, '7', null, Number.MAX_SAFE_INTEGER + 2]) {
+      await seed(A, { ...record(A), revision: bad })
+      expect((await store.get(A)).revision, JSON.stringify(bad)).toBeUndefined()
+      expect((await store.rename(A, 'Again')).revision, JSON.stringify(bad)).toBe(1)
+    }
+    await seed(A, { ...record(A), revision: 41 })
+    expect((await store.rename(A, 'Later')).revision, 'raised from what was stored').toBe(42)
   })
 })

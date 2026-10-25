@@ -304,10 +304,9 @@ test('invokes from one frame reach main in the order they were sent, under load'
 
 // The contract the record session gives a run (contracts/bridge.md): a read
 // answers with every write sent before it, and the answers come back in the
-// order the calls went. It needs `get` inside the store's queue, which is
-// part 1's T003; until then a read can answer from the file before a write
-// already in main has landed, so the test is declared and not run.
-test.fixme('a read answers with every write sent before it, and every answer comes back in send order, under load', async () => {
+// order the calls went. It rests on the property above and on `get` waiting
+// in the store's queue behind the project's writes (T003).
+test('a read answers with every write sent before it, and every answer comes back in send order, under load', async () => {
   test.setTimeout(120_000)
   await withApp(async (page, app) => {
     const result = await underLoad(page, app)

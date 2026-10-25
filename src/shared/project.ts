@@ -416,6 +416,16 @@ export interface ProjectRecord {
   opened: string | null
   created: string
   modified: string
+  /**
+   * How many times the store has written this record (spec 037, FR-001): a
+   * whole number the store raises by one on every write, never the
+   * renderer, so two answers about one project can be told apart by which
+   * is the later. Absent reads as 0, which is every record written before it
+   * was kept, and the first write makes it 1. Added without moving
+   * `RECORD_VERSION` (ADR-056's additive rule): an older build that does not
+   * know it carries it back as written, and this build raises it from there.
+   */
+  revision?: number
 }
 
 /**
@@ -1633,6 +1643,9 @@ export const RECORD_FACTS = [
   'service',
   'built',
   'laidOutWith',
+  // The store's own count of its writes (spec 037): a fact about the file,
+  // never a choice, which every write renews.
+  'revision',
 ] as const satisfies readonly (keyof ProjectRecord)[]
 
 export type RecordFact = (typeof RECORD_FACTS)[number]
@@ -1707,6 +1720,7 @@ function shapeOfRecord(): Shape {
       opened: true,
       created: true,
       modified: true,
+      revision: true,
     }),
     inner: {
       style,
@@ -1891,6 +1905,14 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
 const isString = (v: unknown): v is string => typeof v === 'string'
 const isColor = isHexColor
 
+/** A record's `revision`: a whole number, 0 or more, that a number can hold exactly. */
+export const isRevision = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
+
+/** The revision a write after this record carries: one more than it, absent read as 0. */
+export const nextRevision = (record: Pick<ProjectRecord, 'revision'>): number =>
+  (isRevision(record.revision) ? record.revision : 0) + 1
+
 /**
  * Read a record from parsed JSON. Missing optional fields take their
  * defaults; a missing identity field is an error; a version above ours
@@ -1987,6 +2009,9 @@ function readRecord(json: unknown): Parsed {
   // left of them once read.
   const lines = readLines(json.lines)
   if (lines !== undefined) record.lines = lines
+  // The store's count of its writes (spec 037), when it is one; anything
+  // else is a record from before it was kept, which reads as 0.
+  if (isRevision(json.revision)) record.revision = json.revision
   return { record, readOnly: version > RECORD_VERSION, carried: Carried.of(json) }
 }
 

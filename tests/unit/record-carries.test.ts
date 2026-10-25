@@ -484,6 +484,17 @@ describe('every writer carries what it does not know', () => {
     })
   })
 
+  it('raises a later build’s revision rather than carrying it beside its own', async () => {
+    // `revision` is a field this build knows (spec 037, FR-001): read, raised
+    // by one at the write, and never carried as a later build's key.
+    // Mutation: `revision: true` taken out of the record's shape - the
+    // parser then carries the stored 7 and writes it back over this build's 8.
+    await seed({ ...later(), revision: 7 })
+    const renamed = await store.rename(A, 'Renamed')
+    expect(renamed.revision).toBe(8)
+    expect((await onDisk()).revision).toBe(8)
+  })
+
   it('carries them through every writer in turn', async () => {
     // Mutation: as for the rows above; this is the composition - what one
     // writer wrote, the next reads as unknown again and carries.

@@ -20,6 +20,7 @@ import {
   openedOrder,
   ID_PATTERN,
   RECORD_VERSION,
+  nextRevision,
   parseRecord,
   summarise,
   validateAgency,
@@ -338,8 +339,13 @@ export class ProjectStore {
     record: ProjectRecord,
     carried: Carried,
     renewed: readonly RecordFact[] = [],
-  ): Promise<void> {
-    await this.writeAtomic(id, carried.onto(record, renewed))
+  ): Promise<ProjectRecord> {
+    // Every write raises the record's revision by one (spec 037, FR-001),
+    // from the record the writer read, which inside the queue is the one the
+    // write before it left. The answer is the record as written.
+    const written: ProjectRecord = { ...record, revision: nextRevision(record) }
+    await this.writeAtomic(id, carried.onto(written, renewed))
+    return written
   }
 
   private async writeAtomic(id: string, json: Record<string, unknown>): Promise<void> {
@@ -517,8 +523,13 @@ export class ProjectStore {
    * what an export plans from, so a key a later build wrote reaches neither.
    */
   async get(id: string): Promise<ProjectRecord & { readOnly: boolean }> {
-    const { record, readOnly } = await this.load(id)
-    return { ...record, readOnly }
+    // Queued behind the project's writes (spec 037, FR-006): a read answers
+    // with every write sent before it, which is what a run reads its inputs
+    // by. Not counted as a write, so a reset is not held by a read.
+    return this.#serial(id, async () => {
+      const { record, readOnly } = await this.load(id)
+      return { ...record, readOnly }
+    })
   }
 
   async create(input: CreateProjectInput): Promise<ProjectRecord> {
@@ -569,13 +580,12 @@ export class ProjectStore {
       modified: now,
     }
     try {
-      await this.#save(id, record, Carried.NONE)
+      return await this.#save(id, record, Carried.NONE)
     } catch (error) {
       // An empty folder would be logged as a broken project on every listing.
       await rm(this.dir(id), { recursive: true, force: true }).catch(() => undefined)
       throw error
     }
-    return record
   }
 
   async rename(id: string, name: string): Promise<ProjectRecord> {
@@ -596,8 +606,7 @@ export class ProjectStore {
       name: trimmed,
       modified: new Date().toISOString(),
     }
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   /**
@@ -625,8 +634,7 @@ export class ProjectStore {
       agency,
       modified: new Date().toISOString(),
     }
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   /**
@@ -681,7 +689,7 @@ export class ProjectStore {
       ),
       done.stations,
     )
-    await this.#save(id, updated, carried, A_LAYOUT)
+    const written = await this.#save(id, updated, carried, A_LAYOUT)
     // A different id is a different layout. The same id with a different
     // `made` is the same inputs laid out again since this project last drew
     // from them, by another project sharing the set (A3-06). A record with
@@ -689,7 +697,7 @@ export class ProjectStore {
     const changed = record.layout !== null && record.layout !== layout
     const relaid =
       !changed && record.layout === layout && record.made !== null && record.made !== done.made
-    return { record: updated, changed, relaid }
+    return { record: written, changed, relaid }
   }
 
   /**
@@ -716,8 +724,7 @@ export class ProjectStore {
       },
       done.stations,
     )
-    await this.#save(id, updated, carried, A_DRAW)
-    return updated
+    return this.#save(id, updated, carried, A_DRAW)
   }
 
   /**
@@ -752,8 +759,7 @@ export class ProjectStore {
       date,
       modified: new Date().toISOString(),
     }
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   /**
@@ -789,8 +795,7 @@ export class ProjectStore {
       },
       stations,
     )
-    await this.#save(id, updated, carried, A_DRAW)
-    return updated
+    return this.#save(id, updated, carried, A_DRAW)
   }
 
   /**
@@ -824,8 +829,7 @@ export class ProjectStore {
       },
       stations,
     )
-    await this.#save(id, updated, carried, A_DRAW)
-    return updated
+    return this.#save(id, updated, carried, A_DRAW)
   }
 
   /**
@@ -870,8 +874,7 @@ export class ProjectStore {
       },
       stations,
     )
-    await this.#save(id, updated, carried, A_DRAW)
-    return updated
+    return this.#save(id, updated, carried, A_DRAW)
   }
 
   /**
@@ -910,8 +913,7 @@ export class ProjectStore {
       withLines({ ...record, version: RECORD_VERSION, modified: new Date().toISOString() }, lines),
       stations,
     )
-    await this.#save(id, updated, carried, A_DRAW)
-    return updated
+    return this.#save(id, updated, carried, A_DRAW)
   }
 
   /**
@@ -949,8 +951,12 @@ export class ProjectStore {
       written[key] = key === 'opened' ? opened : value
     }
     if (!('opened' in written)) written.opened = opened
+    // A write like any other for the record's count (spec 037): raised from
+    // the revision the parser read, in its place where the file has one.
+    const revision = nextRevision(record)
+    written.revision = revision
     await this.writeAtomic(id, written)
-    return { ...record, opened }
+    return { ...record, opened, revision }
   }
 
   /**
@@ -980,8 +986,7 @@ export class ProjectStore {
       'tuning',
       tuning,
     )
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   /**
@@ -1007,8 +1012,7 @@ export class ProjectStore {
       theme,
       modified: new Date().toISOString(),
     }
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   /**
@@ -1031,8 +1035,7 @@ export class ProjectStore {
       export: copyChoice(choice),
       modified: new Date().toISOString(),
     }
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   /**
@@ -1062,8 +1065,7 @@ export class ProjectStore {
       destination,
       modified: new Date().toISOString(),
     }
-    await this.#save(id, updated, carried)
-    return updated
+    return this.#save(id, updated, carried)
   }
 
   async delete(id: string): Promise<DeleteResult> {
