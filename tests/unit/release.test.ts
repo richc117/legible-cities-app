@@ -1080,8 +1080,8 @@ describe("the source of Electron's FFmpeg library", () => {
     ]) {
       expect(files).toContain(required)
     }
-    // Electron's patches to Chromium's build/, eight at Electron 44.2.0, 44.3.0, 44.5.1, 44.7.0
-    // and 44.7.1.
+    // Electron's patches to Chromium's build/, eight at Electron 44.2.0, 44.3.0, 44.5.1, 44.7.0,
+    // 44.7.1 and 44.9.1.
     expect(files.filter((file) => /^patches\/chromium\/.+\.patch$/.test(file))).toHaveLength(8)
   })
 
