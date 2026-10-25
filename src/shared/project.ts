@@ -304,8 +304,9 @@ export interface DrawnFrom {
    * the engine's version as `isEngineVersion` reads it, which is dropped and
    * leaves the rest of the block as it was. A page whose `drawn` names no
    * engine counts as older (decided by the maintainer, 25 Oct 2026), so it is
-   * redrawn once as its project opens and named then (`redrawOnOpen`). Like the theme it describes the draw and raises no
-   * staleness. Added without moving `RECORD_VERSION`
+   * redrawn once as its project opens and named then (`redrawOnOpen`).
+   * Like the theme it describes the draw and raises no staleness. Added
+   * without moving `RECORD_VERSION`
    * (specs/028-the-notebook/contracts/run-graph.md, "Adding a field"),
    * inside `drawn` because it is a fact of the draw and is renewed with it.
    */

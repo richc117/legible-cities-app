@@ -27,7 +27,7 @@ import SampleCities, {
   sampleStatus,
 } from '../../src/renderer/src/SampleCities'
 import { samplePicture } from '../../src/renderer/src/samplePictures'
-import { summarise, type ProjectRecord } from '../../src/shared/project'
+import { summarise, type DrawnFrom, type ProjectRecord } from '../../src/shared/project'
 import { drawnOf } from '../support/sent'
 import type { FeedRecord } from '../../src/shared/protocol'
 
@@ -474,6 +474,31 @@ describe('the pictures on the project cards', () => {
     expect(at({ lines: { A: { dash: 'dotted' }, B: { hidden: true } } })).toBe(
       at({ lines: { B: { hidden: true }, A: { dash: 'dotted' } } }),
     )
+  })
+
+  // Issue 494: a page an older engine drew is redrawn as its project opens,
+  // with the layout, the day and every choice as they were; the thumbnails
+  // the newer engine writes must not be kept off the card by the old address.
+  it('changes with the engine that drew the map, and with whether one is named', () => {
+    // Mutation: `drawn.engine` left out of the fingerprint - all three alike.
+    const drawn: DrawnFrom = {
+      layout: 'a'.repeat(64),
+      made: '2026-09-10T12:00:00+00:00',
+      date: '2026-09-15',
+      colors: { A: '#112233' },
+      defaultColor: '#888888',
+      lineOrder: ['A', 'B'],
+      theme: 'warm-dark',
+      style: {},
+    }
+    const at = (engine: string | undefined): string | null =>
+      projectPictureAddress(
+        { id: 'a', feed: 'b', drawn: engine === undefined ? drawn : { ...drawn, engine } },
+        'dark',
+      )
+    expect(at('0.18.1')).not.toBe(at('0.19.0'))
+    expect(at(undefined)).not.toBe(at('0.19.0'))
+    expect(at('0.19.0')).toBe(at('0.19.0'))
   })
 
   it('shows the empty area for a project nothing was drawn for', () => {
