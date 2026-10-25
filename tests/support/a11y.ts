@@ -432,7 +432,7 @@ export function installProbe(): void {
     width: number,
     colourText: string,
     grounds: (Rgb | null)[],
-    extra: { offset?: number; inset?: boolean } = {},
+    extra: { offset?: number; inset?: boolean; opaque?: boolean } = {},
   ): RingReading => {
     const colour = parseColour(colourText)
     // The worst side decides; a side that could not be read decides nothing
@@ -520,7 +520,7 @@ export function installProbe(): void {
             lengths[3],
             colourText,
             layer.includes('inset') ? own() : groundsOutside(el, lengths[3] / 2),
-            { inset: layer.includes('inset') },
+            { inset: layer.includes('inset'), opaque: parseColour(colourText)?.[3] === 1 },
           ),
         )
       }

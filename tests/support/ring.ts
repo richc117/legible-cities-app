@@ -34,6 +34,8 @@ export interface RingReading {
   offset?: number
   /** A shadow drawn inside the border box rather than outside it. */
   inset?: boolean
+  /** A shadow whose colour is fully opaque. */
+  opaque?: boolean
 }
 
 /** A control and every ring it draws on taking focus. */
@@ -61,23 +63,80 @@ function shown(shadow: RingReading, outline: RingReading | undefined): number {
  * not overlap - an outline is painted over the shadow beneath it - and its
  * ratio is the better band's. Only a band that itself clears the contrast
  * counts towards the thickness. A shadow wholly hidden under the outline is
- * no second band, and no pair.
+ * no second band, and no pair - unless the outline lies wholly over an opaque
+ * band of its own (see `covers`), where it is still judged against that band.
  */
+/** The channels of `rgb(r, g, b)` or `rgba(r, g, b, a)`, as the page reports them. */
+function channels(text: string): [number, number, number, number] | null {
+  const m = /^rgba?\(([^)]+)\)$/.exec(text.trim())
+  if (m === null) return null
+  const parts = m[1]
+    .split(/[\s,/]+/)
+    .filter(Boolean)
+    .map(Number)
+  if (parts.length < 3 || parts.some((n) => Number.isNaN(n))) return null
+  return [parts[0], parts[1], parts[2], parts[3] ?? 1]
+}
+
+const luminance = ([r, g, b]: number[]): number => {
+  const c = (v: number): number => {
+    const x = v / 255
+    return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * c(r) + 0.7152 * c(g) + 0.0722 * c(b)
+}
+
+/** An outline colour against an opaque colour it is drawn over; null if either cannot be read. */
+function against(ink: string, ground: string): number | null {
+  const fg = channels(ink)
+  const bg = channels(ground)
+  if (fg === null || bg === null) return null
+  const a = fg[3]
+  const drawn = [0, 1, 2].map((i) => fg[i] * a + bg[i] * (1 - a))
+  const l1 = luminance(drawn)
+  const l2 = luminance(bg)
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+}
+
+/**
+ * Whether an outline lies wholly over the same element's outer, opaque,
+ * hard-edged shadow: from its offset out to its offset and its width is within
+ * the shadow's spread. Then what the outline is drawn on is that shadow, and
+ * it is known whatever the page is behind it (a control laid over a frame,
+ * like "Skip past the map", carries its own ground for exactly this).
+ */
+function covers(outline: RingReading, shadow: RingReading): boolean {
+  const offset = outline.offset ?? 0
+  return (
+    shadow.inset !== true &&
+    shadow.opaque === true &&
+    offset >= 0 &&
+    offset + outline.width <= shadow.width
+  )
+}
+
 export function twoTone(outline: RingReading, shadow: RingReading): RingReading | null {
   if (outline.kind !== 'outline' || shadow.kind !== 'shadow') return null
   if (outline.element === undefined || outline.element !== shadow.element) return null
+  const covered = covers(outline, shadow)
   const visible = shown(shadow, outline)
-  if (visible <= 0) return null
-  const better = [outline, shadow]
-    .filter((band) => band.ratio !== null)
-    .sort((a, b) => (b.ratio as number) - (a.ratio as number))[0]
+  if (visible <= 0 && !covered) return null
+  // Over its own band the outline's ground is the band, wherever the page
+  // behind is unreadable. The band itself, on a ground that is unreadable, has
+  // no ratio of its own and contributes no width.
+  const outlineRatio = covered ? against(outline.colour, shadow.colour) : outline.ratio
   // Only a band that is itself visible against the ground is part of the ring:
   // a 1px band at 5:1 beside a 1px band at 1.1:1 is a 1px ring at 5:1, not a
   // 2px one.
   const seen = (ratio: number | null): boolean => ratio !== null && ratio >= MIN_RING_CONTRAST
+  const bands = [
+    { ratio: outlineRatio, ground: covered ? shadow.colour : outline.ground },
+    { ratio: shadow.ratio, ground: shadow.ground },
+  ].filter((band): band is { ratio: number; ground: string | null } => band.ratio !== null)
+  const better = bands.sort((a, b) => b.ratio - a.ratio)[0]
   return {
     kind: 'two-tone',
-    width: (seen(outline.ratio) ? outline.width : 0) + (seen(shadow.ratio) ? visible : 0),
+    width: (seen(outlineRatio) ? outline.width : 0) + (seen(shadow.ratio) ? visible : 0),
     colour: `${outline.colour} then ${shadow.colour}`,
     ground: better?.ground ?? null,
     ratio: better?.ratio ?? null,

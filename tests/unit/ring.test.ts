@@ -140,4 +140,67 @@ describe('the ring rule', () => {
       ).toHaveLength(1)
     })
   })
+
+  describe('an outline over the same element’s own opaque band', () => {
+    // "Skip past the map" lies over the engine's frame, whose ground cannot be
+    // read, and carries its own: a 2px --focus outline at offset 2 over a
+    // --surface shadow band out to 4px. The outline is judged against the band.
+    const outline = ring({
+      element: 0,
+      offset: 2,
+      width: 2,
+      colour: 'rgb(111, 155, 255)',
+      ground: 'rgb(26, 20, 16)',
+      ratio: null,
+    })
+    const band = ring({
+      kind: 'shadow',
+      element: 0,
+      width: 4,
+      colour: 'rgb(26, 20, 16)',
+      opaque: true,
+      inset: false,
+      ground: null,
+      ratio: null,
+    })
+
+    it('passes on the outline against the band, whatever is behind', () => {
+      expect(
+        weakRings([{ control: 'button "Skip past the map"', rings: [outline, band] }]),
+      ).toEqual([])
+    })
+
+    it('still fails an outline too like the band to be seen against it', () => {
+      const found = weakRings([
+        { control: 'a', rings: [{ ...outline, colour: 'rgb(34, 28, 24)' }, band] },
+      ])
+      expect(found).toHaveLength(1)
+    })
+
+    it('still fails a single ring on an unreadable ground', () => {
+      expect(weakRings([{ control: 'a', rings: [outline] }])).toHaveLength(1)
+    })
+
+    it('needs the band to be opaque', () => {
+      expect(
+        weakRings([{ control: 'a', rings: [outline, { ...band, opaque: false }] }]),
+      ).toHaveLength(1)
+    })
+
+    it('needs the outline to lie wholly within the band', () => {
+      expect(weakRings([{ control: 'a', rings: [{ ...outline, offset: 3 }, band] }])).toHaveLength(
+        1,
+      )
+    })
+
+    it('needs the outline to be two pixels, as any ring does', () => {
+      expect(weakRings([{ control: 'a', rings: [{ ...outline, width: 1 }, band] }])).toHaveLength(1)
+    })
+
+    it('does not borrow the band of another element', () => {
+      expect(weakRings([{ control: 'a', rings: [outline, { ...band, element: 1 }] }])).toHaveLength(
+        1,
+      )
+    })
+  })
 })
