@@ -178,18 +178,28 @@ or cancelled request clears it), while its export runs, and while its
 deletion runs. What main refuses: an export may not start while the map is
 being written, with nothing planned or written; a deletion may not run while
 a request names the project or it exports, with the record and `out/<id>`
-untouched; and a `map.build` is refused while the project's deletion runs.
-Of those, the export and the deletion also refuse for a project whose
-`map.build` a bound ended (`inactive`, from `Sidecar.expire`) while the
-engine still reports a request it stopped answering (`Sidecar.abandoned`),
-since a mark follows the engine's answer and not its work; the bridge calls
-`activity.abandon(project)`, only that project is held, and the hold ends
-when the count reads 0. `requestRefusal` checks the delete mark alone. A
+untouched; and a `map.build` is refused while the project's deletion runs,
+while its export runs, and for an `out` that names no project record (issue
+505), so a layout's closing `map.build` cannot make `out/<id>` again for a
+project deleted while its `graph.build` ran. That last question is the
+store's (`ProjectStore.recordGone`, queued behind the project's writes),
+asked within `FOLDERS_TIMEOUT_MS`, and a lapse refuses too; a record that is
+there but cannot be read is let through. **The bridge marks first, then
+asks**: `requestRefusal` and `beginRequest` in one turn, then the lookup's
+await, then the guard's, whose sentence wins and whose last look at the
+reset comes after every await. An export or a deletion begun while the
+bridge awaits meets the mark. Of those, the export and the deletion also
+refuse for a project whose `map.build` a bound ended (`inactive`, from
+`Sidecar.expire`) while the engine still reports a request it stopped
+answering (`Sidecar.abandoned`), since a mark follows the engine's answer
+and not its work; the bridge calls `activity.abandon(project)`, only that
+project is held, and the hold ends when the count reads 0.
+`requestRefusal` checks the delete and export marks, not that hold. A
 stop's failed requests are not counted, so for at most `shutdownMs` they
-leave no mark (a known limit, `projectActivity.ts`). The sentences are `src/shared/activity.ts`. **The screen
-alone still holds** a `map.build` sent during an export, and a layout's
+leave no mark (a known limit, `projectActivity.ts`). The sentences are
+`src/shared/activity.ts`. **The screen alone still holds** a layout's
 earlier steps: `graph.build` names a feed, not a project, so main cannot tell
-whose it is.
+whose it is, and it writes only `data/graphs/<key>/`.
 
 ## The hygiene hook and a commit
 

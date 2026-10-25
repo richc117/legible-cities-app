@@ -62,7 +62,11 @@
 // stopped, so a disk that stalls keeps one of the threads files are read
 // with until it answers. Only one per project: the lookup waits in the
 // project's queue in the store, so a second waits behind the first rather
-// than asking the disk again.
+// than asking the disk again. That queue is also what a stalled stat holds:
+// the project's later writes and its deletion wait behind it, and a write
+// waiting there counts in the store's `writing`, so the reset refuses with
+// "A project is being saved" until the disk answers. The lookup itself is
+// not counted.
 //
 // A deletion is marked too, from the moment it is allowed to run to the end
 // of its removals, so a `map.build` sent in that window is refused rather

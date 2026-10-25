@@ -1726,7 +1726,9 @@ deleted while its `graph.build` ran. A record that is there but cannot be
 read is let through, since its folder is still there for a deletion to
 remove `out/<id>` with. The bridge raises the request's mark in the same
 turn as its check and before the lookup's await, so an export or a deletion
-begun while it waits meets the mark and is refused. Each says why in a
+begun while it waits meets the mark and is refused; the guard is asked after
+the lookup, so its last look at the reset comes after every await and its
+sentence wins over the lookup's. Each says why in a
 sentence (`src/shared/activity.ts`), the screen's confirm re-reads its runs
 and says the same. A mark follows the engine's answer, not its work, so when
 a bound ends a project's `map.build` (`inactive`) while the engine still

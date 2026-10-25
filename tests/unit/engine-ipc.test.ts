@@ -3,8 +3,15 @@
 // the page's id, and only the top frame allowed through.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { PAGE_METHODS, registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
+import {
+  NOT_SENT,
+  PAGE_METHODS,
+  registerEngineHandlers,
+  type EngineSource,
+} from '../../src/main/engine-ipc'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
 import { ProjectActivity } from '../../src/main/projectActivity'
 import type { Notification } from '../../src/main/sidecar'
@@ -637,14 +644,36 @@ describe('a request has no deadline of its own (issue 351)', () => {
     expect(answer.accepted).toBe(false)
     expect(answer.error?.code).toBe(ERROR_CODES.badCall)
     expect(answer.error?.data?.kind).toBe('params')
-    expect(answer.error?.data?.hint).toMatch(/could not be sent: the supervisor would not send it/)
-    expect(h.log.some((l) => l.startsWith('refused feeds.remove before sending it'))).toBe(true)
+    expect(answer.error?.data?.hint).toBe(NOT_SENT)
+    expect(h.log).toContain(
+      'refused feeds.remove before sending it: the supervisor would not send it',
+    )
     // The token is free: the same token sends the next request.
     const again = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.list')) as {
       accepted: boolean
     }
     expect(again.accepted).toBe(true)
     expect(h.requests.map((r) => r.method)).toEqual(['feeds.list'])
+  })
+
+  it('keeps what the supervisor threw out of the answer, which the page shows as it is', async () => {
+    // Mutation: the answer interpolating the thrown message again - the
+    // path below reaches the page in all three fields.
+    const h = harness()
+    // Built at run time, so no machine's path is written into the file.
+    const where = join(tmpdir(), 'lane-505-secret', 'engine.sock')
+    h.setEngineRequest(() => {
+      throw new Error(`cannot write ${where}`)
+    })
+    const answer = (await h.call(CHANNELS.engineRequest, 'tok1', 'feeds.list')) as {
+      accepted: boolean
+      error?: unknown
+    }
+    expect(answer.accepted).toBe(false)
+    expect(JSON.stringify(answer.error)).not.toContain('lane-505-secret')
+    expect(JSON.stringify(answer.error)).toContain(NOT_SENT)
+    // The log keeps it, for the person who sends it to us.
+    expect(h.log.some((l) => l.includes('lane-505-secret'))).toBe(true)
   })
 
   it('settles a request the inactivity bound ended to the page as an error with the inactive kind, then frees the token', async () => {

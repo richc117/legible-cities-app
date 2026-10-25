@@ -93,6 +93,9 @@ export interface RecordLookup {
   recordGone(id: string): Promise<boolean>
 }
 
+/** A request the supervisor would not send; why is in the log. */
+export const NOT_SENT = 'The request could not be sent to the engine.'
+
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 /** A layout's id as the engine writes one: 64 hex digits (`LayoutId`). */
@@ -198,20 +201,19 @@ export function registerEngineHandlers(
     let refused: string | null
     try {
       // Not for a project that has no record (issue 505): a run whose
-      // project was deleted under it would make `out/<id>` again. Asked
-      // before the guard, so the guard's own last look at the reset still
-      // comes after every await. A lookup the disk did not answer in time is
-      // a refusal; nothing has been sent.
+      // project was deleted under it would make `out/<id>` again. A lookup
+      // the disk did not answer in time is a refusal; nothing has been sent.
       const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)
+      const lookup = gone === LAPSED ? REQUEST_UNCHECKED : gone ? REQUEST_FOR_NO_PROJECT : null
       // The gate: what may be asked of the registry on a person's behalf is
       // decided here, with what the main process knows (the paths its own
       // chooser answered, the feeds its projects name), never on the page.
-      refused =
-        gone === LAPSED
-          ? REQUEST_UNCHECKED
-          : gone
-            ? REQUEST_FOR_NO_PROJECT
-            : await guard(method, params as Record<string, unknown> | undefined)
+      // Asked after the lookup and whatever it answered, so the guard's own
+      // last look at the reset comes after every await, and its sentence
+      // wins: a reset that has removed `projects/` is said as the reset, not
+      // as a deletion. Asking it for a gone project costs nothing: for a
+      // map.build the registry's gate answers null and spends nothing.
+      refused = (await guard(method, params as Record<string, unknown> | undefined)) ?? lookup
     } catch (error) {
       // A guard or a lookup that fails answers nothing, so neither the held
       // token nor a cancel made meanwhile may outlive the request; the
@@ -240,9 +242,11 @@ export function registerEngineHandlers(
       idOf.delete(token)
       cancelledEarly.delete(token)
       release()
+      // The thrown message goes to the log and not to the page: it is
+      // whatever the supervisor threw, and a refusal is shown as it is.
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)
-      return badCall(`the request could not be sent: ${what}`, roots)
+      return badCall(NOT_SENT, roots)
     }
     const { id, result } = sent
     if (id !== 0) {

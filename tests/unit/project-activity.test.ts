@@ -755,6 +755,73 @@ describe('the bridge marks before it asks (issue 505)', () => {
   })
 })
 
+describe('the guard is asked after the record lookup (issue 505)', () => {
+  /** A lookup held open until the test lets it answer `gone`. */
+  function heldLookup(gone: boolean) {
+    let open!: () => void
+    const opened = new Promise<void>((r) => (open = r))
+    return { records: { recordGone: () => opened.then(() => gone) }, open }
+  }
+  it('so a reset begun while the lookup waits is still the guard’s to refuse', async () => {
+    // Mutation: the guard asked before the lookup - it answers null before
+    // the flag goes up, and the map.build is sent.
+    const activity = new ProjectActivity(() => 0)
+    let resetting = false
+    const { records, open } = heldLookup(false)
+    const b = bridge(activity, {
+      records,
+      guard: async () => (resetting ? 'The engine data is being reset.' : null),
+    })
+    const asked = b.request('t1', 'map.build', { out: 'abcdefghijk1' })
+    await tick()
+    resetting = true
+    open()
+    const answer = await said(asked)
+    expect(answer).toContain('The engine data is being reset.')
+    expect(b.held, 'nothing sent').toEqual([])
+    expect(drawnInto('abcdefghijk1')).toBe(false)
+  })
+  it('and its sentence wins over the lookup’s', async () => {
+    // A reset that has removed projects/ finds no record: the person is
+    // told about the reset, not about a deletion.
+    // Mutation: the lookup's refusal taken first (`lookup ?? guard`) - the
+    // answer says the project has been deleted.
+    const activity = new ProjectActivity(() => 0)
+    const { records, open } = heldLookup(true)
+    const b = bridge(activity, { records, guard: async () => 'The engine data is being reset.' })
+    const asked = b.request('t1', 'map.build', { out: 'abcdefghijk1' })
+    open()
+    const answer = await said(asked)
+    expect(answer).toContain('The engine data is being reset.')
+    expect(answer).not.toContain(REQUEST_FOR_NO_PROJECT)
+    expect(b.held).toEqual([])
+  })
+  it('a lookup that fails rejects the invoke and leaves no mark behind', async () => {
+    // Mutation: `release()` removed from the bridge's catch - the project
+    // stays marked as being drawn after the failed request.
+    const activity = new ProjectActivity(() => 0)
+    let fails = true
+    const b = bridge(activity, {
+      records: {
+        recordGone: async () => {
+          if (fails) throw new Error('the disk broke')
+          return false
+        },
+      },
+    })
+    await expect(b.request('t1', 'map.build', { out: 'abcdefghijk1' })).rejects.toThrow(
+      'the disk broke',
+    )
+    expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
+    expect(activity.exportRefusal('abcdefghijk1')).toBeNull()
+    expect(b.held).toEqual([])
+    // The token is free and the project can be marked again.
+    fails = false
+    expect(await b.request('t1', 'map.build', { out: 'abcdefghijk1' })).toEqual({ accepted: true })
+    expect(activity.deleteRefusal('abcdefghijk1')).toBe(DELETE_WHILE_DRAWING)
+  })
+})
+
 describe('ProjectStore.recordGone', () => {
   it('is true only when the store knows there is no record', async () => {
     // Mutation: `recordGone` answers false for ENOENT - the deleted and the

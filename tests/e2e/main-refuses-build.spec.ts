@@ -1,9 +1,13 @@
 // Main refuses a map.build for a project with no record (issue 505), in the
 // built app, over the bridge the page really has: what the unit tests cannot
 // show is the wiring in `index.ts`, that the store handed to the bridge is the
-// store the records are in. A layout's closing map.build for a project
-// deleted while its graph.build ran is refused with the sentence and makes
-// no `out/<id>`; one for a project that is still there draws as before.
+// store the records are in. The project is deleted between the layout's
+// graph.build and its closing map.build, where nothing in main holds the
+// deletion back; that map.build is refused with the sentence and makes no
+// `out/<id>`, and one for a project that is still there draws as before.
+// The stand-in takes a graph.build with only a key and draws a map.build
+// into `out/<out>` under its home (`tests/fake-engine/schematic/serve.py`,
+// `judge_graph_build`, `draw`).
 // Needs a Python 3 on the PATH for the stand-in; skips, saying so, without
 // one.
 
@@ -24,7 +28,7 @@ const PYTHON = findPython()
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
-test('refuses the closing map.build of a project deleted mid-layout, and draws a kept one', async () => {
+test('refuses the closing map.build of a layout whose project was deleted, and draws a kept one', async () => {
   const home = mkdtempSync(join(tmpdir(), 'legible-cities-505-e2e-'))
   writeFileSync(
     join(home, 'fake-engine.json'),
