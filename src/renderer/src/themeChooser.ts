@@ -79,8 +79,9 @@ export function createThemeChooser({ initial, write, asked, failed }: Options): 
       try {
         await write(theme)
         // Answered in the order they were sent, so the last to land is the
-        // record's.
+        // record's; and the latest choice landing is nothing left unsaved.
         recorded = theme
+        if (latest === mine) failed(null)
       } catch (error) {
         // What the record holds is what the writes before this one left,
         // which the screen's own record says (`sync`).

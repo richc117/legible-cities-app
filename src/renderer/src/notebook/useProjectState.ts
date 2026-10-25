@@ -255,7 +255,7 @@ export function useProjectState(
   // the screen on the record it had, which is what it showed before.
   //
   // A run that is put back as it stood - Run all that found nothing left to
-  // run once the writes it waited for had landed (issue 407) - goes back to
+  // run in the record it read (issue 407) - goes back to
   // the very snapshot it had, which may be a `done` already seen here, and
   // nothing was drawn since: read back again, the page would load anew for
   // a map nobody drew.

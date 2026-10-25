@@ -53,7 +53,7 @@ describe('one choice', () => {
     started[0].land()
     await done
     expect(asked).toEqual(['sepia', null])
-    expect(failed).toEqual([null])
+    expect(failed, 'cleared as it starts, and again as it lands').toEqual([null, null])
   })
 
   it('writes nothing for the theme the project is already in', async () => {
@@ -217,7 +217,9 @@ describe('a write that fails', () => {
 
   it('an earlier one that fails under a later one that lands: the later is the record, and nothing is unsaved', async () => {
     // Mutation: the cards let go at the earlier failure - the later choice is
-    // taken off the cards while it is still on its way.
+    // taken off the cards while it is still on its way; or the later landing
+    // leaves the earlier failure said - the switch says a theme was not saved
+    // over a record that holds the last choice.
     const { chooser, started, asked, failed } = harness()
     const first = chooser.choose('sepia')
     await settle()
@@ -229,9 +231,12 @@ describe('a write that fails', () => {
     started[1].land()
     await second
     expect(asked.at(-1)).toBeNull()
-    expect(failed.at(-1), 'the earlier failure is still said').toBe(
+    expect(failed, 'said, and taken back once the last choice landed').toEqual([
+      null,
+      null,
       'the record could not be written',
-    )
+      null,
+    ])
   })
 })
 

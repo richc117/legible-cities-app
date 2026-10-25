@@ -2392,6 +2392,25 @@ describe('a sent set the store refuses', () => {
     ]
     for (const [i, refusal] of refusals.entries())
       await expect(refusal, String(i)).rejects.toThrow('must be written #rrggbb')
+    // And a layout run whose set is of another draw than the run says it made.
+    // Mutation: the check after `validateSent` in `completeLayout` taken out -
+    // `drawn` names a layout, a time or a day the record does not.
+    for (const other of [
+      { layout: 'b'.repeat(64) },
+      { made: '2026-10-01T00:00:00+00:00' },
+      { date: '2026-09-16' },
+    ])
+      await expect(
+        store.completeLayout(project.id, {
+          date: '2026-09-15',
+          layout: 'a'.repeat(64),
+          service: WINDOW,
+          made: MADE,
+          built: BUILT,
+          sent: { ...good, ...other },
+        }),
+        JSON.stringify(other),
+      ).rejects.toThrow('the layout run did not say which layout it drew from')
     expect(await readFile(join(root, project.id, 'project.json'), 'utf8')).toBe(before)
   })
 })

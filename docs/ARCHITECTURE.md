@@ -882,7 +882,11 @@ record's `revision` by one; absent reads as 0 (ADR-056's additive rule).
 `src/main/ipc.ts` reaches the store's queue in the turn it is handed its
 message, with no `await` before it. So a write's answer is the record with
 that write and every earlier one applied, the answers come back in the
-order the calls went, and a `get` sent after a write answers with it.
+order the calls went, and a `get` sent after a write answers with it. A
+call the handler refuses before the store - a shape it will not take, the
+reset's flag, a frame that is not the interface's - is answered at once,
+ahead of the queue; a control that takes "the last answer is the latest"
+validates its choice before it sends it, as every one does.
 `tests/e2e/record-order.spec.ts` holds the first half under a spinning main
 process (looped with load on macOS and Windows before anything was built on
 it); `tests/unit/ipc.test.ts` holds the second, by behaviour and by a read

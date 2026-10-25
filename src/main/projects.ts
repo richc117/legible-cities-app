@@ -653,6 +653,15 @@ export class ProjectStore {
     check(validateAgency(done.built?.agency ?? null))
     check(validateTuning(done.tuning ?? {}))
     check(validateSent(done.sent))
+    // What the run sent and what it says it laid out are one draw: a set of
+    // another layout, time or day would make `drawn` say the map came from
+    // somewhere the record does not.
+    if (
+      done.sent.layout !== done.layout ||
+      done.sent.made !== done.made ||
+      done.sent.date !== done.date
+    )
+      throw new Error('the layout run did not say which layout it drew from')
     const { record, readOnly, carried } = await this.load(id)
     if (readOnly) throw new Error('read-only')
     if (!isLayoutId(done.layout))

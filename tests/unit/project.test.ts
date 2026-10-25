@@ -26,7 +26,6 @@ import {
   MODE_PATTERN,
   uniqueName,
   sentSet,
-  styleSent,
   validateLines,
   validateMade,
   validatePalette,
@@ -563,7 +562,7 @@ describe('drawn', () => {
       colors: { A: '#0072bc' },
       defaultColor: '#888888',
       lineOrder: ['A'],
-      style: styleSent({ lineWidth: 12 }),
+      style: { lineWidth: 12 },
     })
     expect(sent, 'no line options for none').not.toHaveProperty('lines')
   })

@@ -1629,7 +1629,10 @@ export function drawnFromSent(
     defaultColor: sent.defaultColor,
     lineOrder: [...sent.lineOrder],
     theme,
-    style: { ...sent.style },
+    // As `map.build` was sent it, which `sentSet` already made it; made so
+    // again here, where the record is written, since the set came from the
+    // renderer.
+    style: styleSent(sent.style),
   }
   // The line options as they were sent (issue 394), and no key for none, so
   // a block drawn without any is the block it always was.
@@ -1702,10 +1705,11 @@ export function serviceDayRefusal(
 // ---- What a record holds that this build does not read (issue 425, ADR-056)
 
 /**
- * The four blocks that record a fact rather than a choice: what a draw drew
+ * The blocks that record a fact rather than a choice: what a draw drew
  * from, and what the engine answered at a layout run - the window, the
- * inputs and the tuning the layout was asked with. A writer that records a
- * new one (`drew`, `redrew`, `completeLayout`) renews its block whole, and
+ * inputs and the tuning the layout was asked with - and the store's count
+ * of its writes. A writer that records a new block (`drew` in the store,
+ * for every draw and the layout run) renews it whole, and
  * the keys a later build kept inside the old block are not carried onto the
  * new one: they described a draw or an answer that is no longer the one on
  * disk, and this build's draw did not send what they say it did.
