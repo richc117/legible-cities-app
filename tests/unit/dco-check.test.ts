@@ -323,18 +323,22 @@ describe('the script', () => {
     expect(run(ok).code).toBe(0)
   })
 
-  it('exits 2 unless the last commit listed is the pull request head', () => {
+  it('exits 2 unless the pull request head is among the commits listed', () => {
     const first = commit({ login: OWNER })
     const last = commit({ login: OWNER })
     // The head matches, in any case.
     expect(run([first, last], { head: last.sha.toUpperCase() }).code).toBe(0)
-    // A push landed after the event: the list ends at a commit the event was not about.
-    const moved = run([first, last], { head: first.sha })
+    // The API does not promise graph order: the head may be listed first.
+    expect(run([first, last], { head: first.sha }).code).toBe(0)
+    // A push replaced the head after the event: it is not in the list.
+    const moved = run([first, last], { head: 'f'.repeat(40) })
     expect(moved.code).toBe(2)
-    expect(moved.err).toContain('not the pull request')
-    expect(run([first, last], { head: 'f'.repeat(40) }).code).toBe(2)
+    expect(moved.err).toContain('not among the commits listed')
     expect(run([first, last], { head: '' }).code).toBe(2)
-    expect(run([first, last], { head: '  ' }).code).toBe(2)
+    // Padding alone is no head, and is told so rather than as a head not found.
+    const padded = run([first, last], { head: '  ' })
+    expect(padded.code).toBe(2)
+    expect(padded.err).toContain('no head commit')
     // A list that ends in a commit with no id does not match a head with none.
     const nameless = { ...commit({ login: OWNER }), sha: '' }
     const none = run([nameless], { head: '' })

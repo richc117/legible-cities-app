@@ -150,8 +150,8 @@ owner clause and carry none.
 The maintainer writes the squash message by hand and keeps each
 contributor's `Signed-off-by:` lines as they were written, so that `main`
 records the certificate each contribution came under although the commits
-are gone. A line whose address is a personal one never gets this far: the
-`preflight` check refuses it in the commit that carries it.
+are gone. A line with an address at a domain `bin/preflight` names never gets this
+far: the `preflight` check refuses it in the commit that carries it.
 
 ## Consequences
 
@@ -168,9 +168,11 @@ are gone. A line whose address is a personal one never gets this far: the
   `pull-requests: read` in its own `permissions:` block, beside
   `contents: read`, because that is the scope GitHub documents for the
   endpoint, and a job's block replaces the workflow's. The script is given
-  the head commit the event names and refuses a list that does not end
-  there, so a push between the event and the read cannot give a verdict
-  about other commits. The API lists at most 250 commits and does not say
+  the head commit the event names and refuses a list that does not
+  contain it, so a push that replaced the head between the event and the read
+  cannot give a verdict about other commits. It looks for the head and does
+  not expect it last, since the API does not promise graph order; a run that
+  is late at worst judges a superset. The API lists at most 250 commits and does not say
   when it stopped, so a pull request of 250 or more fails the step with that
   sentence rather than pass on a list that may be short.
 - The check tells an honest mistake from none and nothing else. It cannot

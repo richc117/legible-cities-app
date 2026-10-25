@@ -8,9 +8,11 @@
 // `gh api --paginate --slurp repos/{owner}/{repo}/pulls/{n}/commits` writes:
 // the pull request's commits as GitHub's REST API returns them, in a list of
 // pages. A single page (one plain list) is read as well. `--head` is the
-// pull request's head commit, which the last commit listed must be: the
-// list is read some time after the event, and a push in between would
-// otherwise give a verdict about commits the event was not about.
+// pull request's head commit, which must be in the list: the list is read
+// some time after the event, and a push that replaced the head in between
+// would otherwise give a verdict about commits the event was not about. The
+// API does not promise graph order, so the head is looked for, not expected
+// last; a run that is late at worst judges a superset.
 //
 // A commit passes when it is one of these, and fails otherwise:
 //   - a merge commit (more than one parent);
@@ -157,12 +159,14 @@ export function parseCommits(text) {
   return commits
 }
 
-// Null when the last commit listed is the pull request's head, else why not.
+// Null when the pull request's head is among the commits listed, else why not.
 export function headProblem(commits, head) {
-  const last = String(commits[commits.length - 1]?.sha ?? '').toLowerCase()
-  if (String(head ?? '').trim() === '') return 'no head commit was given'
-  if (last !== String(head).trim().toLowerCase()) {
-    return `the last commit listed (${last.slice(0, 7) || 'none'}) is not the pull request's head (${String(head).slice(0, 7)}); it moved while this ran, so run it again`
+  const wanted = String(head ?? '')
+    .trim()
+    .toLowerCase()
+  if (wanted === '') return 'no head commit was given'
+  if (!commits.some((commit) => String(commit.sha ?? '').toLowerCase() === wanted)) {
+    return `the pull request's head (${wanted.slice(0, 7)}) is not among the commits listed; the branch moved while this ran, so run it again`
   }
   return null
 }

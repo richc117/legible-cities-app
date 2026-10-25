@@ -215,7 +215,9 @@ changing these in the same pull request.
    meanwhile, so approval finds them green.
    **`main` must be up to date.** When GitHub says your branch is behind
    `main`, rebase it onto `main` (`git fetch origin && git rebase
-   origin/main`) and push with `git push --force-with-lease`. Do not use
+   origin/main`; `origin` is the remote that is this repository, which for a
+   fork is usually called `upstream`, as under **Commits**, below) and push
+   with `git push --force-with-lease`. Do not use
    GitHub's "Update branch" button, which merges `main` into your branch.
    The checks run again, after approval if you are new.
    **A failed check is re-run once before it is believed**

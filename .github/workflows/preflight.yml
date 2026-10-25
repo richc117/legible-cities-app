@@ -145,9 +145,10 @@ jobs:
       # the maintainer's does; the job asks for `pull-requests: read` because
       # that is the scope GitHub documents for the endpoint. The pull
       # request's number and head go in through the environment, never into
-      # the shell's text. The script refuses a list whose last commit is not
-      # the head the event names, so the verdict is about the commit it is
-      # reported on. A listing that cannot be read fails the step.
+      # the shell's text. The script refuses a list that does not contain
+      # the head the event names (the API does not promise graph order, so
+      # it is looked for and not expected last), so the verdict covers the
+      # commit it is reported on. A listing that cannot be read fails the step.
       - name: Sign-off in the commits this pull request adds
         if: github.event_name == 'pull_request'
         env:
