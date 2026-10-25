@@ -358,27 +358,29 @@ export function installProbe(): void {
    * canvas). A border that is opaque at the point hides the element's
    * background there, image or not.
    */
+  const named = (el: Element): string =>
+    `${describe(el)}${el.className && typeof el.className === 'string' ? ` .${el.className.trim().split(/\s+/).join('.')}` : ''}`
   const composeStack = (stack: Element[], at: [number, number] | null = null): Rgb | string => {
     const layers: Colour[] = []
     for (const el of stack) {
       if (/^(IFRAME|IMG|VIDEO|CANVAS|OBJECT|EMBED)$/.test(el.tagName))
-        return `${describe(el)} is not a colour`
+        return `${named(el)} is not a colour`
       const style = getComputedStyle(el)
       const opacity = opacityOf(el)
       // A point that falls in an element's border is painted in the border's
       // colour, over its background: react-colorful's colour area has a 12px
       // black one under it, and a gradient behind it.
       const border = at === null ? null : borderAt(el, style, at)
-      if (border === false) return `${describe(el)} has a border colour that cannot be read`
+      if (border === false) return `${named(el)} has a border colour that cannot be read`
       if (border !== null) {
         const alpha = border[3] * opacity
         if (alpha > 0) layers.push([border[0], border[1], border[2], alpha])
         if (alpha >= 1) break
       }
-      if (style.backgroundImage !== 'none') return `${describe(el)} has a background image`
+      if (style.backgroundImage !== 'none') return `${named(el)} has a background image`
       const colour = parseColour(style.backgroundColor)
       if (colour === null)
-        return `${describe(el)} has a background it cannot read: ${style.backgroundColor}`
+        return `${named(el)} has a background it cannot read: ${style.backgroundColor}`
       const alpha = colour[3] * opacity
       if (alpha === 0) continue
       layers.push([colour[0], colour[1], colour[2], alpha])
@@ -443,6 +445,7 @@ export function installProbe(): void {
     colourText: string,
     grounds: [string, Rgb | string][],
     extra: { offset?: number; inset?: boolean; opaque?: boolean } = {},
+    where = '',
   ): RingReading => {
     const colour = parseColour(colourText)
     // The worst side decides. A side that could not be read makes the ring
@@ -450,7 +453,7 @@ export function installProbe(): void {
     if (colour === null || grounds.length === 0 || grounds.some(([, g]) => typeof g === 'string')) {
       const sides =
         grounds.length === 0
-          ? 'not on the screen'
+          ? `not on the screen (${where})`
           : grounds
               .map(([side, g]) => (typeof g === 'string' ? `${side}: ${g}` : `${side} ${hex(g)}`))
               .join('; ')
@@ -510,6 +513,17 @@ export function installProbe(): void {
     const offset = parseFloat(style.outlineOffset) || 0
     const outlineWidth = parseFloat(style.outlineWidth)
     const own = (): [string, Rgb | string][] => [['inside', groundBehind(el)]]
+    // Where the control is, for a ring none of whose sides is on the screen:
+    // its box, the box of the popover it is in if any, and the window.
+    const box = (e: Element): string => {
+      const r = e.getBoundingClientRect()
+      return `${Math.round(r.left)},${Math.round(r.top)} to ${Math.round(r.right)},${Math.round(r.bottom)}`
+    }
+    const popover = el.closest('[popover]')
+    const where =
+      `the control at ${box(el)}` +
+      (popover ? `, its popover at ${box(popover)}` : '') +
+      `, the window ${innerWidth}x${innerHeight}`
     const outline =
       style.outlineStyle === 'none' || outlineWidth === 0
         ? null
@@ -519,6 +533,7 @@ export function installProbe(): void {
             style.outlineColor,
             offset >= 0 ? groundsOutside(el, offset + outlineWidth / 2) : own(),
             { offset },
+            where,
           )
     const shadows: RingReading[] = []
     if (style.boxShadow !== 'none')
@@ -535,6 +550,7 @@ export function installProbe(): void {
             colourText,
             layer.includes('inset') ? own() : groundsOutside(el, lengths[3] / 2),
             { inset: layer.includes('inset'), opaque: parseColour(colourText)?.[3] === 1 },
+            where,
           ),
         )
       }
