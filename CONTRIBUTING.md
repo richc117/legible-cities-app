@@ -64,21 +64,24 @@ sidecar, and each release of the app pins one tag of it (`engine.tag` in
 `vendor/pins.json`). **Without an engine checkout, most of the work runs:**
 the unit tests run against a stand-in engine (`tests/fake-engine/`, which
 needs a `python3` on your `PATH`), and so does most of the end-to-end suite
-(the export, layout, feeds, inspect and settings specs among them). CI is set
-up that way too, so a green `ci` does not exercise the real engine.
+(the export, layout, feeds, inspect and settings specs among them). The `ci`
+and `e2e` checks are set up that way too, so neither exercises the real
+engine; the `determinism` workflow does (below).
 
 **What needs the real engine**, each on its own condition:
 
 - `npm run dev` runs the app against the engine named by
   `LEGIBLE_ENGINE_CHECKOUT`.
-- The unit tests `sidecar-real`, `feeds-real`, `protocol-real`,
-  `opening-real` and `layout-real` read only `LEGIBLE_ENGINE_CHECKOUT` and use
-  that checkout's own `.venv`; `LEGIBLE_ENGINE_PYTHON` does not reach them.
-  `determinism-real` takes either.
-- `layout-real` also needs a layout the engine has cached for
-  `la-metro-rail` in the checkout (`data/graphs/la-metro-rail/<id>/`),
-  `viewer-real` a page the engine has generated under the checkout's `out/`,
-  and `tokens` only the checkout's source (`src/schematic/page/page.html`).
+- The seven unit suites `sidecar-real`, `feeds-real`, `protocol-real`,
+  `opening-real`, `layout-real`, `viewer-real` and `determinism-real` find the
+  engine through `LEGIBLE_ENGINE_PYTHON` first, then
+  `LEGIBLE_ENGINE_CHECKOUT`'s `.venv`. A feed, a stored layout or a page they
+  need comes from the committed BART fixture, so an interpreter with the
+  pinned engine is enough. A few checks beyond the fixture still want a
+  checkout: `layout-real`'s Los Angeles block, a layout the engine has cached
+  for `la-metro-rail` (`data/graphs/la-metro-rail/<id>/`), and `feeds-real`'s
+  inspections of the feeds the checkout has cached under `data/feeds/`.
+- `tokens` reads only the checkout's source (`src/schematic/page/page.html`).
 - The end-to-end `capture` spec needs `out/la-metro-rail.html` in the
   checkout. The `reel` spec needs the same page, the checkout's `.venv`,
   `ffmpeg` on your `PATH` and `LEGIBLE_REEL_TEST=1`. The `typeface` spec needs
@@ -86,9 +89,11 @@ up that way too, so a green `ci` does not exercise the real engine.
 - The `determinism` spec runs only with `LEGIBLE_DETERMINISM_TEST=1`, and then
   it **fails rather than skips** unless `LEGIBLE_ENGINE_PYTHON` names an
   interpreter with the pinned engine and `SCHEMATIC_FFMPEG` names an ffmpeg
-  with `ffprobe` beside it. The `determinism` workflow runs it, and the
-  `typeface` spec, on pull requests that touch the app (it is not a required
-  check).
+  with `ffprobe` beside it. The `determinism` workflow runs it, the
+  `typeface` spec and the seven `*-real` suites, on three platforms, on pull
+  requests that touch what an export is made of or any of those suites. There
+  a suite that would skip fails instead, so a skip cannot pass for a run. It is
+  not a required check.
 
 To get one on macOS or Linux, you need [`uv`](https://docs.astral.sh/uv/)
 and a clone of the engine beside this repository (in a folder called
@@ -161,9 +166,15 @@ an ffmpeg for an export.
   tried the change on; if you have one, that is enough, and CI covers the
   three.
 
-The checks that must be green before a merge are `gitleaks`, `preflight`
-and the three `ci` jobs (Ubuntu, macOS, Windows), and the branch must be up
-to date with `main` (`docs/repository-settings.md` lists the protection).
+The checks that must be green before a merge are `gitleaks`, `preflight`,
+the three `ci` jobs (lint, typecheck, unit tests and a build, on Ubuntu,
+macOS and Windows) and the two `e2e` jobs (the end-to-end suite, on macOS and
+Windows), and the branch must be up to date with `main`
+(`docs/repository-settings.md` lists the protection). A pull request whose
+every changed path is documentation (a `.md` file anywhere, `docs/`, `specs/`,
+the issue templates, `LICENSE`, `.claude/`) still gets its `e2e` results, which
+pass in a couple of minutes without running the suite; anything else runs it,
+and so does every push to `main`.
 Other workflows are not required: the determinism run also starts on pull
 requests that touch the app, and the installers and the acceptance run are the
 maintainer's, on a tag or by hand.
