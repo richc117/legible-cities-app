@@ -18,6 +18,7 @@ import { EngineError, ERROR_CODES, type EngineErrorShape } from '../../src/share
 import type { ExportPreview, ExportSettled } from '../../src/shared/export'
 import { inUseSentence } from '../../src/main/feeds-ipc'
 import { log } from '../../src/main/log'
+import { ProjectActivity } from '../../src/main/projectActivity'
 
 // The one door an error goes through on its way to the page (issue 207).
 // Until v0.10.1 the engine named a failed download's whole URL in its
@@ -319,6 +320,7 @@ describe('a field the paths cannot be looked for in', () => {
       () => {},
       undefined,
       broken,
+      new ProjectActivity(),
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
     await tick()
@@ -372,6 +374,7 @@ describe('both bridges hand the door their folders', () => {
       () => {},
       async (method) => (method === 'feeds.remove' ? `the zip at ${HOME} is not yours` : null),
       ROOTS,
+      new ProjectActivity(),
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
     await tick()

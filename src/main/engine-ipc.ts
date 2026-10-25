@@ -127,10 +127,10 @@ export function registerEngineHandlers(
   roots: PathRoots,
   /**
    * Which projects have a request in flight that writes their folder, for
-   * the exporter and the store to consult (issue 491). A bridge handed none
-   * keeps its own, which nothing else reads.
+   * the exporter and the store to consult (issue 491). Required, so a wiring
+   * that dropped it would be a type error and not a rule held by nothing.
    */
-  activity: ProjectActivity = new ProjectActivity(),
+  activity: ProjectActivity,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -167,6 +167,12 @@ export function registerEngineHandlers(
     // the request however it ends (issue 491): before the guard's await, so
     // a deletion confirmed while the guard thinks is already refused.
     const named = projectNamedBy(method, params as Record<string, unknown> | undefined)
+    // Not into a folder whose deletion has begun: the removal is walking it.
+    const stopped = named === null ? null : activity.requestRefusal(named)
+    if (stopped !== null) {
+      idOf.delete(token)
+      return badCall(stopped, roots)
+    }
     const release = named === null ? () => {} : activity.beginRequest(named)
     // The gate: what may be asked of the registry on a person's behalf is
     // decided here, with what the main process knows (the paths its own

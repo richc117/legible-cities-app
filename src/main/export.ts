@@ -48,7 +48,7 @@ import {
 import { isObject, toShape, URLS_ONLY } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
-import { ProjectActivity } from './projectActivity'
+import type { ProjectActivity } from './projectActivity'
 import { contains, inTime, LAPSED, oneAtATime, type FolderResolver } from './settings'
 import type { Notification } from './sidecar'
 
@@ -94,9 +94,9 @@ export interface ExporterOptions {
    * What is going on for each project (issue 491): an export is refused
    * while a request writing the project's folder is in flight, and is
    * marked here for as long as it runs so the project cannot be deleted
-   * under it. Omitted, the exporter keeps its own, which nothing else reads.
+   * under it. Required, so a wiring that dropped it is a type error.
    */
-  activity?: ProjectActivity
+  activity: ProjectActivity
   /**
    * Where a copy of each export's captured frames goes before they are
    * removed, as `<keepFrames>/<nnn>-<token>/`, numbered in the order the
@@ -322,7 +322,7 @@ export class Exporter {
 
   constructor(options: ExporterOptions) {
     this.#options = options
-    this.#activity = options.activity ?? new ProjectActivity()
+    this.#activity = options.activity
   }
 
   onProgress(listener: (p: ExportProgress) => void): () => void {

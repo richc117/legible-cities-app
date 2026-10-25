@@ -1182,23 +1182,31 @@ export class ProjectStore {
     // output folder are as they were (issue 491).
     const going = this.activity.deleteRefusal(id)
     if (going !== null) throw new Error(going)
-    if (!(await this.exists(this.dir(id)))) throw new Error('not found')
-    const result: DeleteResult = { removed: [], failed: [] }
-    const targets = [
-      { folder: 'project', path: this.dir(id) },
-      { folder: 'output', path: this.outputDir(id) },
-    ] as const
-    // Each removal is attempted whatever happened to the other, so the
-    // record goes where it can and the person hears about the rest.
-    for (const { folder, path } of targets) {
-      if (!(await this.exists(path))) continue
-      try {
-        await rm(path, { recursive: true, force: true })
-        result.removed.push(folder)
-      } catch (error) {
-        result.failed.push({ folder, reason: reasonOf(error) })
+    // Marked at the same synchronous point as the check, to the end of the
+    // removals: a map.build sent while they await would otherwise pass the
+    // bridge and write into the folder being removed.
+    const release = this.activity.beginDelete(id)
+    try {
+      if (!(await this.exists(this.dir(id)))) throw new Error('not found')
+      const result: DeleteResult = { removed: [], failed: [] }
+      const targets = [
+        { folder: 'project', path: this.dir(id) },
+        { folder: 'output', path: this.outputDir(id) },
+      ] as const
+      // Each removal is attempted whatever happened to the other, so the
+      // record goes where it can and the person hears about the rest.
+      for (const { folder, path } of targets) {
+        if (!(await this.exists(path))) continue
+        try {
+          await rm(path, { recursive: true, force: true })
+          result.removed.push(folder)
+        } catch (error) {
+          result.failed.push({ folder, reason: reasonOf(error) })
+        }
       }
+      return result
+    } finally {
+      release()
     }
-    return result
   }
 }

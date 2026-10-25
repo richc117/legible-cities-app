@@ -169,17 +169,22 @@ and is told the file's name, never its path. The engine's plan goes through
 `validateCaptureJob` before a window exists, and its file name must be a
 bare name: both arrive from another process. The frames are removed when
 the export ends, whichever way. A layout run and an export of one project
-never overlap: the export reads the page a layout rewrites. **Main holds
-that rule, not only the disabled buttons** (issue 491, spec 037):
-`ProjectActivity` (`src/main/projectActivity.ts`) marks a project while a
-`map.build` writing its `out` folder is in flight (set in `engine-ipc.ts`
-before the guard's await, cleared in `finally`, so a failed or cancelled
-request clears it) and while its export runs. `Exporter.start` refuses with
-nothing planned or written while the map is being drawn, and
-`ProjectStore.delete` refuses with the record and `out/<id>` untouched while
-its export runs or a request addresses it. The sentences are
-`src/shared/activity.ts`. A request names a project only by `out`: the other
-methods carry a feed's key, which projects share.
+never overlap: the export reads the page a layout rewrites. The screen holds
+that rule with disabled buttons; **main holds only part of it** (issue 491,
+spec 037). `ProjectActivity` (`src/main/projectActivity.ts`) marks a project
+while a `map.build` writing its `out` folder is in flight (set in
+`engine-ipc.ts` before the guard's await, cleared in `finally`, so a failed
+or cancelled request clears it), while its export runs, and while its
+deletion runs. What main refuses: an export may not start while the map is
+being written, with nothing planned or written; a deletion may not run while
+a request names the project or it exports, with the record and `out/<id>`
+untouched; and a `map.build` is refused while the project's deletion runs.
+All three also refuse while the engine reports a request it stopped
+answering (`Sidecar.abandoned`), since the mark follows the engine's answer
+and not its work. The sentences are `src/shared/activity.ts`. **The screen
+alone still holds** a `map.build` sent during an export, and a layout's
+earlier steps: `graph.build` names a feed, not a project, so main cannot tell
+whose it is.
 
 ## The hygiene hook and a commit
 

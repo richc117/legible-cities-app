@@ -15,3 +15,10 @@ export const DELETE_WHILE_EXPORTING =
 /** The project cannot be deleted under a request that is writing its folder. */
 export const DELETE_WHILE_DRAWING =
   'This project is being drawn. Wait for it to finish or cancel it, then delete the project.'
+
+/**
+ * A map.build for a project whose deletion is under way would write into a
+ * folder that is being removed. Not one of the spec's three sentences: a
+ * refusal it did not foresee, so a plain one.
+ */
+export const REQUEST_WHILE_DELETING = 'This project is being deleted.'

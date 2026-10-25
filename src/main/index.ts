@@ -445,8 +445,9 @@ if (!hasLock) {
     }
     // Which projects have a map being written or an export running, for the
     // store's deletion, the exporter's start and the engine bridge to share
-    // (issue 491).
-    const activity = new ProjectActivity()
+    // (issue 491), and which also refuses while the engine reports a request
+    // it was stopped from answering.
+    const activity = new ProjectActivity(() => engine.abandoned)
     const store = new ProjectStore(config.home, (m) => log.warn('projects', m), {}, activity)
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame

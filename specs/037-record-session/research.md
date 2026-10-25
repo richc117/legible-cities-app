@@ -83,6 +83,8 @@ The code these decisions rest on is in the spec's "Why", re-checked at a3c775d. 
 
   `Exporter.start` and `ProjectStore.delete` consult it. The refusal sentences are the spec's User Story 4.
 
+  The request is keyed off `map.build`'s `out` only, because `out` is the project's id while `key` is a feed's, shared by every project on it, so no other allowlisted method can say which project it is for.
+
 ## R7. The split of `shared/project.ts` (part 4, outline)
 
 - **Decision:** `shared/project/` holds:

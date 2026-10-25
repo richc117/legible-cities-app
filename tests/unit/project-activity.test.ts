@@ -7,7 +7,7 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -20,6 +20,7 @@ import {
   DELETE_WHILE_DRAWING,
   DELETE_WHILE_EXPORTING,
   EXPORT_WHILE_DRAWING,
+  REQUEST_WHILE_DELETING,
 } from '../../src/shared/activity'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
@@ -67,6 +68,26 @@ describe('which request names a project', () => {
 })
 
 describe('the marks', () => {
+  it('hold a deletion against requests and exports of that project only', () => {
+    const activity = new ProjectActivity()
+    const done = activity.beginDelete('p')
+    expect(activity.requestRefusal('p')).toBe(REQUEST_WHILE_DELETING)
+    expect(activity.exportRefusal('p')).toBe(REQUEST_WHILE_DELETING)
+    expect(activity.requestRefusal('q')).toBeNull()
+    expect(activity.exportRefusal('q')).toBeNull()
+    done()
+    expect(activity.requestRefusal('p')).toBeNull()
+    expect(activity.exportRefusal('p')).toBeNull()
+  })
+  it('refuse an export and a deletion while the engine has abandoned a request', () => {
+    let abandoned = 2
+    const activity = new ProjectActivity(() => abandoned)
+    expect(activity.exportRefusal('p')).toBe(EXPORT_WHILE_DRAWING)
+    expect(activity.deleteRefusal('p')).toBe(DELETE_WHILE_DRAWING)
+    abandoned = 0
+    expect(activity.exportRefusal('p')).toBeNull()
+    expect(activity.deleteRefusal('p')).toBeNull()
+  })
   it('count, and a release is safe to repeat', () => {
     const activity = new ProjectActivity()
     const first = activity.beginRequest('p')
@@ -230,19 +251,23 @@ describe('the engine bridge marks a project while a request names it', () => {
 })
 
 /** An exporter whose engine records what it was asked and answers nothing until told. */
-function exporterOver(activity: ProjectActivity, id = 'abcdefghijk1') {
+function exporterOver(activity: ProjectActivity, presets: unknown = { presets: [] }) {
   const asked: string[] = []
-  const pending: { method: string; reject(e: unknown): void }[] = []
+  const pending: { id: number; method: string; reject(e: unknown): void }[] = []
+  const cancelled: number[] = []
   const engine: ExportEngine = {
     request(method) {
       asked.push(method)
-      if (method === 'export.presets') return { id: 1, result: Promise.resolve({ presets: [] }) }
+      if (method === 'export.presets') return { id: 1, result: Promise.resolve(presets) }
       let reject!: (e: unknown) => void
       const result = new Promise<unknown>((_, rej) => (reject = rej))
-      pending.push({ method, reject })
+      pending.push({ id: 2, method, reject })
       return { id: 2, result }
     },
-    cancel: () => {},
+    cancel: (id) => {
+      cancelled.push(id)
+      pending.find((p) => p.id === id)?.reject(new EngineError(ERROR_CODES.cancelled, 'cancelled'))
+    },
     onNotification: () => () => {},
   }
   const gets: string[] = []
@@ -276,8 +301,7 @@ function exporterOver(activity: ProjectActivity, id = 'abcdefghijk1') {
     activity,
     log: () => {},
   })
-  void id
-  return { exporter, asked, gets, pending }
+  return { exporter, asked, gets, pending, cancelled }
 }
 
 describe('Exporter.start', () => {
@@ -307,6 +331,44 @@ describe('Exporter.start', () => {
     const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
     result.catch(() => {})
     expect(exporter.live).toBe(1)
+  })
+  it('is refused while the engine reports a request it stopped answering', () => {
+    let abandoned = 1
+    const activity = new ProjectActivity(() => abandoned)
+    const { exporter, asked } = exporterOver(activity)
+    expect(() => exporter.start('tok-1', 'abcdefghijk1', REEL)).toThrow(EXPORT_WHILE_DRAWING)
+    expect(asked).toEqual([])
+    abandoned = 0
+    const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
+    result.catch(() => {})
+    expect(exporter.live).toBe(1)
+  })
+  it('is refused while the project is being deleted', () => {
+    const activity = new ProjectActivity()
+    const { exporter, asked } = exporterOver(activity)
+    const done = activity.beginDelete('abcdefghijk1')
+    expect(() => exporter.start('tok-1', 'abcdefghijk1', REEL)).toThrow(REQUEST_WHILE_DELETING)
+    expect(asked).toEqual([])
+    done()
+  })
+  it('clears the mark when a running export is cancelled', async () => {
+    const activity = new ProjectActivity()
+    const presets = JSON.parse(
+      readFileSync(join(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
+    ) as { presets: unknown[] }
+    const { exporter, pending, cancelled } = exporterOver(activity, { presets: presets.presets })
+    const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
+    result.catch(() => {})
+    // Held at the engine's plan: the export is running, and nothing has ended.
+    const deadline = Date.now() + 10_000
+    while (pending.length === 0 && Date.now() < deadline) await tick()
+    expect(pending.map((p) => p.method)).toEqual(['export.plan'])
+    expect(activity.deleteRefusal('abcdefghijk1')).toBe(DELETE_WHILE_EXPORTING)
+    exporter.cancel('tok-1')
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    expect(cancelled).toEqual([2])
+    expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
+    expect(exporter.live).toBe(0)
   })
   it('marks the project while it runs and clears it when the export fails', async () => {
     const activity = new ProjectActivity()
@@ -361,6 +423,48 @@ describe('ProjectStore.delete', () => {
     await rename
     await expect(deletion).rejects.toThrow(DELETE_WHILE_EXPORTING)
     await untouched(project.id)
+  })
+  it('is refused while the engine reports a request it stopped answering', async () => {
+    let abandoned = 1
+    const activity = new ProjectActivity(() => abandoned)
+    const { store, project } = await made(activity)
+    await expect(store.delete(project.id)).rejects.toThrow(DELETE_WHILE_DRAWING)
+    await untouched(project.id)
+    abandoned = 0
+    expect(await store.delete(project.id)).toEqual({ removed: ['project', 'output'], failed: [] })
+  })
+  it('refuses a map.build sent after the check and before the removals end', async () => {
+    // The window is the awaits after the check: a debounced redraw's timer
+    // can fire in it. The mark is raised at the check's own turn, so a
+    // request sent at that instant is already refused by the bridge.
+    const seen: unknown[] = []
+    const later: { b?: ReturnType<typeof bridge> } = {}
+    class Watching extends ProjectActivity {
+      override beginDelete(projectId: string): () => void {
+        const release = super.beginDelete(projectId)
+        seen.push(later.b!.request('t-late', 'map.build', { out: projectId }))
+        return release
+      }
+    }
+    const activity = new Watching()
+    const b = bridge(activity)
+    later.b = b
+    const { store, project } = await made(activity)
+    expect(await store.delete(project.id)).toEqual({ removed: ['project', 'output'], failed: [] })
+    expect(seen, 'the deletion raised its mark').toHaveLength(1)
+    const answer = JSON.stringify(await seen[0])
+    expect(answer).toContain(REQUEST_WHILE_DELETING)
+    expect(answer).toContain('"accepted":false')
+    expect(b.held, 'nothing reached the engine').toEqual([])
+    // Released at the end of the removals, so a later project is not held.
+    await b.request('t-after', 'map.build', { out: project.id })
+    expect(b.held).toHaveLength(1)
+  })
+  it('releases its mark when it fails', async () => {
+    const activity = new ProjectActivity()
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    await expect(store.delete('aaaaaaaaaaaa')).rejects.toThrow('not found')
+    expect(activity.requestRefusal('aaaaaaaaaaaa')).toBeNull()
   })
   it('leaves another project alone', async () => {
     const activity = new ProjectActivity()

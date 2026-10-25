@@ -14,6 +14,19 @@
 // held by the screen alone, and the `map.build` that ends the run is held
 // here for as long as it writes.
 //
+// **A mark follows the engine's answer, not its work.** A request the
+// supervisor's inactivity bound expired, or a stop, fails the request while
+// the engine may still be writing; the mark is then cleared though the
+// folder is not safe. So both refusals below also hold while the engine
+// reports a request it stopped answering (`abandoned`, the reset's own
+// `engineWorkRefusal` signal), with the same sentences. That is wider than
+// the project: any abandoned request, a feed download included, refuses an
+// export and a deletion until the engine answers it or the app is quit.
+//
+// A deletion is marked too, from the moment it is allowed to run to the end
+// of its removals, so a `map.build` sent in that window is refused rather
+// than writing into `out/<id>` while it is removed.
+//
 // A mark is set before the request is let through and cleared in `finally`,
 // so a request that fails, is refused or is cancelled clears it as one that
 // finishes does. `begin*` hands back the function that clears it, which is
@@ -23,6 +36,7 @@ import {
   DELETE_WHILE_DRAWING,
   DELETE_WHILE_EXPORTING,
   EXPORT_WHILE_DRAWING,
+  REQUEST_WHILE_DELETING,
 } from '../shared/activity'
 
 /** The project an engine request is for, or null when its params name none. */
@@ -38,6 +52,13 @@ export function projectNamedBy(
 export class ProjectActivity {
   readonly #requests = new Map<string, number>()
   readonly #exports = new Map<string, number>()
+  readonly #deleting = new Map<string, number>()
+
+  /**
+   * @param abandoned how many requests the engine was stopped from
+   * answering and has not answered since (`Sidecar.abandoned`).
+   */
+  constructor(private readonly abandoned: () => number = () => 0) {}
 
   /** A request naming the project is in flight; call the answer when it ends. */
   beginRequest(projectId: string): () => void {
@@ -49,15 +70,27 @@ export class ProjectActivity {
     return this.#begin(this.#exports, projectId)
   }
 
+  /** The project's deletion is running; call the answer when its removals end. */
+  beginDelete(projectId: string): () => void {
+    return this.#begin(this.#deleting, projectId)
+  }
+
+  /** Why a request writing the project's folder may not be sent, or null. */
+  requestRefusal(projectId: string): string | null {
+    return this.#deleting.has(projectId) ? REQUEST_WHILE_DELETING : null
+  }
+
   /** Why an export of the project may not start, or null. */
   exportRefusal(projectId: string): string | null {
-    return this.#requests.has(projectId) ? EXPORT_WHILE_DRAWING : null
+    if (this.#deleting.has(projectId)) return REQUEST_WHILE_DELETING
+    if (this.#requests.has(projectId) || this.abandoned() > 0) return EXPORT_WHILE_DRAWING
+    return null
   }
 
   /** Why the project may not be deleted, or null. */
   deleteRefusal(projectId: string): string | null {
     if (this.#exports.has(projectId)) return DELETE_WHILE_EXPORTING
-    if (this.#requests.has(projectId)) return DELETE_WHILE_DRAWING
+    if (this.#requests.has(projectId) || this.abandoned() > 0) return DELETE_WHILE_DRAWING
     return null
   }
 

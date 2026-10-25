@@ -33,6 +33,7 @@ import {
   themeFor,
   type ExportEngine,
 } from '../../src/main/export'
+import { ProjectActivity } from '../../src/main/projectActivity'
 import type { Notification } from '../../src/main/sidecar'
 import type { CaptureJob } from '../../src/shared/capture'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
@@ -319,6 +320,7 @@ function harness(
     // without a restart (A1-04).
     exportFolder: () => folder.now,
     blocked: () => over.blocked ?? null,
+    activity: new ProjectActivity(),
     destinationRefusal: over.destinationRefusal,
     keepFrames: over.keepFrames ?? null,
     log: (m) => log.push(m),
@@ -1332,6 +1334,7 @@ describe('what the export tab chooses', () => {
     })
     const eng = fakeEngine()
     const exporter = new Exporter({
+      activity: new ProjectActivity(),
       engine: eng.engine,
       projects: {
         get: async (id) => {
