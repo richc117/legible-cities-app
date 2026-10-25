@@ -24,8 +24,11 @@ All seven run, with no skips and with no `LEGIBLE_ENGINE_CHECKOUT` set: each fin
 On the pull request that changes `ci.yml`:
 
 1. The checks show `ci (<os>)` three times and `e2e (<os>)` twice.
-2. Push a second commit that changes only a `.md` file. `e2e (<os>)` passes in under two minutes with the "documentation only" notice, and lists the one path.
-3. Push a commit that touches `src/`. `e2e (<os>)` runs the suite.
+2. The pull request touches `src/` and `ci.yml`, so `e2e (<os>)` runs the suite.
+
+The documentation-only case cannot be shown on that pull request. The gate judges a pull request's whole diff, not its last commit, so a later commit there that changes only a `.md` file still runs the suite, which is the gate failing closed. It is shown on the first pull request after the merge whose every path is documentation:
+
+3. `e2e (<os>)` passes in under two minutes with the "documentation only" notice, and lists each path with the rule it met.
 4. After the merge, a push to `main` runs the suite on both platforms.
 5. Branch protection lists the seven checks (`gh api repos/<owner>/<repo>/branches/main/protection --jq '.required_status_checks.contexts'`).
 
