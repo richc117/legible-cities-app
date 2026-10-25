@@ -1716,17 +1716,28 @@ guard's await, cleared in `finally`), which have an export running, and which
 are being deleted. An export may not start while the map is being written,
 planning and writing nothing; a deletion may not run while a request names
 the project or it exports, leaving the record and `out/<id>` as they were;
-and a `map.build` is refused while the deletion runs. Each says why in a
+and a `map.build` is refused while the deletion runs, while the project
+exports (issue 505), and for an `out` that names no project record (issue
+505). The bridge asks the store that last question
+(`ProjectStore.recordGone`, queued behind the project's writes) within
+`FOLDERS_TIMEOUT_MS`, and refuses on a lapse too; it is what keeps a
+layout's closing `map.build` from making `out/<id>` again for a project
+deleted while its `graph.build` ran. A record that is there but cannot be
+read is let through, since its folder is still there for a deletion to
+remove `out/<id>` with. The bridge raises the request's mark in the same
+turn as its check and before the lookup's await, so an export or a deletion
+begun while it waits meets the mark and is refused. Each says why in a
 sentence (`src/shared/activity.ts`), the screen's confirm re-reads its runs
 and says the same. A mark follows the engine's answer, not its work, so when
 a bound ends a project's `map.build` (`inactive`) while the engine still
 reports a request it stopped answering (`Sidecar.abandoned`), the bridge
 calls `abandon(project)` and an export or deletion of that project alone is
-refused until the count reads 0; the deletion mark is checked by itself for
-a `map.build`. Requests a stop fails are not counted, so for at most
-`shutdownMs` they leave no mark. A `map.build` sent during an export, and a layout's earlier
-steps (`graph.build` names a feed, which projects share, not a project), are
-the screen's alone.
+refused until the count reads 0; for a `map.build`, the deletion and export
+marks are checked and that hold is not. Requests a stop fails are not
+counted, so for at most `shutdownMs` they leave no mark. A layout's earlier
+steps (`graph.build` names a feed, which projects share, not a project) are
+the screen's alone; a project deleted while one runs loses nothing by it,
+since `graph.build` writes only `data/graphs/<key>/`.
 
 ### The export's choices
 

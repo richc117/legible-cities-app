@@ -674,6 +674,8 @@ if (!hasLock) {
         resetInProgress() ?? (await registry(method, params)) ?? resetInProgress(),
       pathRoots,
       activity,
+      // A map.build for a project with no record is refused (issue 505).
+      store,
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of

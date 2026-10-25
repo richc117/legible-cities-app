@@ -83,6 +83,7 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     // No folder known: the door's own tests are in ipc-shape.test.ts.
     NO_ROOTS,
     new ProjectActivity(() => 0),
+    { recordGone: async () => false },
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)

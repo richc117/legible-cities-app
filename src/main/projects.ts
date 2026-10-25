@@ -562,6 +562,37 @@ export class ProjectStore {
     })
   }
 
+  /**
+   * Is there no record for this identifier? Yes only when the store knows
+   * there is none: an identifier no record can have, or no `project.json`
+   * in its folder, no folder included. The engine bridge asks it before a
+   * `map.build` may write `out/<id>` (issue 505), so a run whose project was
+   * deleted under it does not make that folder again.
+   *
+   * A record that is there but cannot be read or parsed is not gone, and
+   * nor is one the disk will not say about (a code other than ENOENT or
+   * ENOTDIR): its folder is still here, a deletion still removes `out/<id>`
+   * with it, so nothing is orphaned, and the run's own read or write says
+   * what is wrong with the record. Refusing it would turn a passing read
+   * failure into a lost draw.
+   *
+   * Queued behind the project's writes, as `get` is, so it answers with
+   * every write sent before it, a deletion among them. Not counted as a
+   * write, and never rejects.
+   */
+  async recordGone(id: string): Promise<boolean> {
+    if (!ID_PATTERN.test(id) || !isValidProjectId(id)) return true
+    return this.#serial(id, async () => {
+      try {
+        await stat(this.file(id))
+        return false
+      } catch (error) {
+        const code = reasonOf(error)
+        return code === 'ENOENT' || code === 'ENOTDIR'
+      }
+    })
+  }
+
   async create(input: CreateProjectInput): Promise<ProjectRecord> {
     const name = input.name.trim()
     const mode = input.mode ?? DEFAULT_MODE

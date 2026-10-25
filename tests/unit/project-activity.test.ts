@@ -7,11 +7,15 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { registerEngineHandlers, type EngineSource } from '../../src/main/engine-ipc'
+import {
+  registerEngineHandlers,
+  type EngineSource,
+  type RecordLookup,
+} from '../../src/main/engine-ipc'
 import { Exporter, type ExportEngine } from '../../src/main/export'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
 import { ProjectActivity, projectNamedBy } from '../../src/main/projectActivity'
@@ -19,7 +23,10 @@ import { ProjectStore } from '../../src/main/projects'
 import {
   DELETE_WHILE_DRAWING,
   DELETE_WHILE_EXPORTING,
+  DRAW_WHILE_EXPORTING,
   EXPORT_WHILE_DRAWING,
+  REQUEST_FOR_NO_PROJECT,
+  REQUEST_UNCHECKED,
   REQUEST_WHILE_DELETING,
 } from '../../src/shared/activity'
 import { CHANNELS } from '../../src/shared/api'
@@ -51,6 +58,13 @@ describe('the sentences', () => {
       'This project is being drawn. Wait for it to finish or cancel it, then delete the project.',
     )
   })
+  it('and the ones issue 505 adds', () => {
+    expect(DRAW_WHILE_EXPORTING).toBe(
+      'This project is exporting. Wait for the export to finish or cancel it, then try again.',
+    )
+    expect(REQUEST_FOR_NO_PROJECT).toBe('This project has been deleted.')
+    expect(REQUEST_UNCHECKED).toBe('This project could not be found in time. Try again.')
+  })
 })
 
 describe('which request names a project', () => {
@@ -78,6 +92,16 @@ describe('the marks', () => {
     done()
     expect(activity.requestRefusal('p')).toBeNull()
     expect(activity.exportRefusal('p')).toBeNull()
+  })
+  it('hold an export against requests that write that project only (issue 505)', () => {
+    // Mutation: `requestRefusal` without its export line - the first expect
+    // reads null.
+    const activity = new ProjectActivity(() => 0)
+    const done = activity.beginExport('p')
+    expect(activity.requestRefusal('p')).toBe(DRAW_WHILE_EXPORTING)
+    expect(activity.requestRefusal('q')).toBeNull()
+    done()
+    expect(activity.requestRefusal('p')).toBeNull()
   })
   it('hold an abandoned project, and only it, while the engine has work unanswered', () => {
     let abandoned = 2
@@ -136,6 +160,9 @@ function bridge(
   over: {
     guard?: (method: string) => Promise<string | null>
     throwOnRequest?: boolean
+    /** The store's lookup; by default every project has its record. */
+    records?: RecordLookup
+    lookupMs?: number
   } = {},
 ) {
   const handlers = new Map<
@@ -153,8 +180,15 @@ function bridge(
   let nextId = 1
   const engine: EngineSource = {
     state: { state: 'ready', version: '0.19.0', protocol: 1 },
-    request: (method) => {
+    request: (method, params) => {
       if (over.throwOnRequest) throw new Error('the engine is gone')
+      // A map.build that reaches the engine writes its folder at once, as the
+      // real one stages and renames it, so "nothing written" is a fact on
+      // disk and not only an empty list of requests.
+      if (method === 'map.build' && typeof params?.out === 'string') {
+        mkdirSync(join(home, 'out', params.out), { recursive: true })
+        writeFileSync(join(home, 'out', params.out, 'index.html'), '<title>drawn</title>')
+      }
       const id = nextId++
       let resolve!: (v: unknown) => void
       let reject!: (e: unknown) => void
@@ -181,6 +215,8 @@ function bridge(
     over.guard,
     NO_ROOTS,
     activity,
+    over.records ?? { recordGone: async () => false },
+    over.lookupMs,
   )
   const event = {} as IpcMainInvokeEvent
   return {
@@ -531,5 +567,219 @@ describe('ProjectStore.delete', () => {
     activity.beginExport('zzzzzzzzzzzz')
     activity.beginRequest('zzzzzzzzzzzz')
     expect(await store.delete(project.id)).toEqual({ removed: ['project', 'output'], failed: [] })
+  })
+})
+
+/** What the bridge answered, as text, for a sentence and the refusal's shape. */
+const said = async (answer: Promise<unknown>): Promise<string> => JSON.stringify(await answer)
+const drawnInto = (id: string): boolean => existsSync(join(home, 'out', id))
+
+describe('the engine bridge refuses a map.build for a project with no record (issue 505)', () => {
+  // Every case is main alone, the renderer's guards nowhere: the bridge is
+  // handed the real store, and a map.build that reached the engine would
+  // write `out/<id>` (the fake engine above), so "nothing written" is read
+  // from the disk.
+  it('the closing map.build of a layout whose project was deleted while it ran', async () => {
+    // Mutation: the bridge without the record lookup (`gone` always false) -
+    // the map.build is accepted and out/<id> is made again.
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const b = bridge(activity, { records: store })
+    const project = await store.create({ name: 'Gone', feed: 'la-metro-rail' })
+    // The layout's long step names a feed, not the project, so nothing holds
+    // the deletion: it runs and removes the record.
+    await b.request('t-graph', 'graph.build', { key: 'la-metro-rail' })
+    expect(await store.delete(project.id)).toEqual({ removed: ['project'], failed: [] })
+    b.held[0].resolve({ layout: 'a'.repeat(64) })
+    await tick()
+    const answer = await said(b.request('t-map', 'map.build', { out: project.id }))
+    expect(answer).toContain('"accepted":false')
+    expect(answer).toContain(REQUEST_FOR_NO_PROJECT)
+    expect(
+      b.held.map((h) => h.method),
+      'only the layout reached the engine',
+    ).toEqual(['graph.build'])
+    expect(drawnInto(project.id), 'out/<id> was not made again').toBe(false)
+    // The refusal released its mark.
+    expect(activity.exportRefusal(project.id)).toBeNull()
+    expect(activity.deleteRefusal(project.id)).toBeNull()
+  })
+  it('refuses an out that no record can have, and writes nothing', async () => {
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const b = bridge(activity, { records: store })
+    for (const [i, out] of ['aaaaaaaaaaaa', 'Not-An-Id', '../escape'].entries()) {
+      const answer = await said(b.request(`t-${i}`, 'map.build', { out }))
+      expect(answer, out).toContain(REQUEST_FOR_NO_PROJECT)
+    }
+    expect(b.held).toEqual([])
+    expect(existsSync(join(home, 'out')), 'nothing under out/').toBe(false)
+    expect(existsSync(join(home, 'escape'))).toBe(false)
+  })
+  it('lets a first layout through for a project just made, with no out folder yet', async () => {
+    // Both front doors (the New project sheet and a sample card) answer
+    // only once `create` has written the record, and a run reads the record
+    // before it draws, so the first map.build always finds it.
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const b = bridge(activity, { records: store })
+    const project = await store.create({ name: 'New', feed: 'la-metro-rail' })
+    expect(drawnInto(project.id)).toBe(false)
+    expect(await b.request('t1', 'map.build', { out: project.id })).toEqual({ accepted: true })
+    expect(b.held.map((h) => h.method)).toEqual(['map.build'])
+    expect(drawnInto(project.id)).toBe(true)
+  })
+  it('lets a rebuild through over the map already drawn', async () => {
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const b = bridge(activity, { records: store })
+    const project = await store.create({ name: 'Drawn', feed: 'la-metro-rail' })
+    await mkdir(join(home, 'out', project.id), { recursive: true })
+    expect(await b.request('t1', 'map.build', { out: project.id })).toEqual({ accepted: true })
+    expect(b.held).toHaveLength(1)
+  })
+  it('lets a record that is there but cannot be read through', async () => {
+    // Not gone: its folder is still under projects/, and a deletion still
+    // removes out/<id> with it. The run's own write says what is wrong.
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const b = bridge(activity, { records: store })
+    const project = await store.create({ name: 'Broken', feed: 'la-metro-rail' })
+    await writeFile(join(home, 'projects', project.id, 'project.json'), '{ not json')
+    expect(await b.request('t1', 'map.build', { out: project.id })).toEqual({ accepted: true })
+    expect(b.held).toHaveLength(1)
+  })
+  it('refuses when the lookup does not answer in time, and releases the mark', async () => {
+    // Mutation: `gone === LAPSED` read as "not gone" - the request is sent.
+    const activity = new ProjectActivity(() => 0)
+    const b = bridge(activity, {
+      records: { recordGone: () => new Promise<boolean>(() => {}) },
+      lookupMs: 20,
+    })
+    const answer = await said(b.request('t1', 'map.build', { out: 'abcdefghijk1' }))
+    expect(answer).toContain(REQUEST_UNCHECKED)
+    expect(b.held).toEqual([])
+    expect(drawnInto('abcdefghijk1')).toBe(false)
+    expect(activity.deleteRefusal('abcdefghijk1')).toBeNull()
+  })
+  it('asks nothing of the store for a request that names no project', async () => {
+    const activity = new ProjectActivity(() => 0)
+    const asked: string[] = []
+    const b = bridge(activity, {
+      records: {
+        recordGone: async (id) => {
+          asked.push(id)
+          return true
+        },
+      },
+    })
+    await b.request('t1', 'graph.build', { key: 'bart' })
+    await b.request('t2', 'map.build', { key: 'bart' })
+    expect(asked).toEqual([])
+    expect(b.held).toHaveLength(2)
+  })
+})
+
+describe('the engine bridge refuses a map.build while the project exports (issue 505)', () => {
+  it('with its own sentence, writing nothing, and lets it through once the export ends', async () => {
+    // Mutation: `requestRefusal` without its export line - the map.build is
+    // accepted and out/<id> is written under the export.
+    const activity = new ProjectActivity(() => 0)
+    const presets = JSON.parse(
+      readFileSync(join(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
+    ) as { presets: unknown[] }
+    const { exporter, pending } = exporterOver(activity, { presets: presets.presets })
+    const b = bridge(activity)
+    const { result } = exporter.start('tok-1', 'abcdefghijk1', REEL)
+    result.catch(() => {})
+    // Refused from the export's first turn, before it has asked the engine
+    // anything: the mark is up when `start` returns.
+    const early = await said(b.request('t-early', 'map.build', { out: 'abcdefghijk1' }))
+    expect(early).toContain(DRAW_WHILE_EXPORTING)
+    // And still while it waits on the engine's plan.
+    const deadline = Date.now() + 10_000
+    while (pending.length === 0 && Date.now() < deadline) await tick()
+    expect(pending.map((p) => p.method)).toEqual(['export.plan'])
+    const answer = await said(b.request('t1', 'map.build', { out: 'abcdefghijk1' }))
+    expect(answer).toContain('"accepted":false')
+    expect(answer).toContain(DRAW_WHILE_EXPORTING)
+    expect(b.held, 'nothing reached the engine').toEqual([])
+    expect(drawnInto('abcdefghijk1'), 'out/<id> untouched').toBe(false)
+    // Another project's map is not held by this export.
+    expect(await b.request('t2', 'map.build', { out: 'zzzzzzzzzzzz' })).toEqual({
+      accepted: true,
+    })
+    exporter.cancel('tok-1')
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    expect(await b.request('t3', 'map.build', { out: 'abcdefghijk1' })).toEqual({
+      accepted: true,
+    })
+  })
+})
+
+describe('the bridge marks before it asks (issue 505)', () => {
+  // The record lookup awaits the disk, which opens a window between the
+  // bridge's check and the engine. The mark goes up before that await, so an
+  // export or a deletion begun in the window meets it.
+  // Mutation: `beginRequest` moved after the lookup - the export starts and
+  // the deletion removes the record while the map.build is still let through.
+  async function held() {
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    let open!: () => void
+    const opened = new Promise<void>((r) => (open = r))
+    const b = bridge(activity, {
+      records: { recordGone: (id) => opened.then(() => store.recordGone(id)) },
+    })
+    const project = await store.create({ name: 'Racing', feed: 'la-metro-rail' })
+    const asked = b.request('t1', 'map.build', { out: project.id })
+    await tick()
+    return { activity, store, b, project, asked, open }
+  }
+  it('an export begun while the lookup thinks is refused', async () => {
+    const { activity, b, project, asked, open } = await held()
+    const { exporter, asked: planned } = exporterOver(activity)
+    expect(() => exporter.start('tok-1', project.id, REEL)).toThrow(EXPORT_WHILE_DRAWING)
+    expect(planned).toEqual([])
+    open()
+    expect(await asked).toEqual({ accepted: true })
+    expect(b.held.map((h) => h.method)).toEqual(['map.build'])
+  })
+  it('a deletion begun while the lookup thinks is refused, and the record stays', async () => {
+    const { store, b, project, asked, open } = await held()
+    await expect(store.delete(project.id)).rejects.toThrow(DELETE_WHILE_DRAWING)
+    await access(join(home, 'projects', project.id, 'project.json'))
+    open()
+    expect(await asked).toEqual({ accepted: true })
+    expect(b.held).toHaveLength(1)
+  })
+})
+
+describe('ProjectStore.recordGone', () => {
+  it('is true only when the store knows there is no record', async () => {
+    // Mutation: `recordGone` answers false for ENOENT - the deleted and the
+    // never-made rows fail.
+    const store = new ProjectStore(home, () => {})
+    const kept = await store.create({ name: 'Kept', feed: 'la-metro-rail' })
+    const removed = await store.create({ name: 'Removed', feed: 'la-metro-rail' })
+    await store.delete(removed.id)
+    const broken = await store.create({ name: 'Broken', feed: 'la-metro-rail' })
+    await writeFile(join(home, 'projects', broken.id, 'project.json'), '{ not json')
+    const emptied = await store.create({ name: 'Emptied', feed: 'la-metro-rail' })
+    await rm(join(home, 'projects', emptied.id, 'project.json'))
+    expect(await store.recordGone(kept.id), 'kept').toBe(false)
+    expect(await store.recordGone(broken.id), 'there, unreadable').toBe(false)
+    expect(await store.recordGone(removed.id), 'deleted').toBe(true)
+    expect(await store.recordGone(emptied.id), 'a folder with no record').toBe(true)
+    expect(await store.recordGone('aaaaaaaaaaaa'), 'never made').toBe(true)
+    expect(await store.recordGone('../projects'), 'no identifier').toBe(true)
+  })
+  it('answers after a deletion sent before it', async () => {
+    const store = new ProjectStore(home, () => {})
+    const project = await store.create({ name: 'Queued', feed: 'la-metro-rail' })
+    const deletion = store.delete(project.id)
+    const gone = store.recordGone(project.id)
+    await deletion
+    expect(await gone).toBe(true)
   })
 })
