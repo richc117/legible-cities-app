@@ -71,7 +71,7 @@ export function exemption(commit, owner) {
   if ((commit.parents ?? []).length > 1) return 'a merge commit'
   const login = commit.author?.login ?? ''
   if (commit.author?.type === 'Bot' || login.toLowerCase().endsWith('[bot]')) return 'a bot'
-  if (login !== '' && same(login, owner)) return "the repository owner's"
+  if (same(login, owner)) return "the repository owner's"
   const author = commit.commit?.author ?? {}
   for (const line of signOffs(commit.commit?.message)) {
     if (same(line.name, author.name)) return 'signed off by name'

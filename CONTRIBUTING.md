@@ -146,6 +146,7 @@ an ffmpeg for an export.
 - A spec under `specs/` first, if it is a feature (see **Specs**).
 - The checks green: lint, typecheck, test and build locally, and the checks
   below on the pull request.
+- Every commit signed off (`git commit -s`; **Commits**, below).
 - `bin/preflight` clean, and `gitleaks` if you have it. Install the hooks
   once (**Local hooks**, below): they are the same scanners the pull request
   check runs, and they tell you before you push instead of after.
@@ -166,7 +167,8 @@ an ffmpeg for an export.
   tried the change on; if you have one, that is enough, and CI covers the
   three.
 
-The checks that must be green before a merge are `gitleaks`, `preflight`,
+The checks that must be green before a merge are `gitleaks`, `preflight` (the
+scans, and the sign-off of every commit),
 the three `ci` jobs (lint, typecheck, unit tests and a build, on Ubuntu,
 macOS and Windows) and the two `e2e` jobs (the end-to-end suite, on macOS and
 Windows), and the branch must be up to date with `main`
@@ -236,33 +238,59 @@ changing these in the same pull request.
    and force pushes are blocked. The squash message is written by hand and
    run through `bin/preflight --message-file` first, and any `Co-authored-by:`
    with a personal address is removed or rewritten to a no-reply address
-   before the merge is confirmed.
+   before the merge is confirmed. **The squash message keeps every
+   contributor's `Signed-off-by:` lines**, one per person, so that `main`
+   records the certificate each contribution came under although the commits
+   that carried it are gone.
 
 ## Commits
 
 - Subject: an imperative sentence under 72 characters. Body: why, not what.
 - `Co-Authored-By:` trailers are welcome for pair and tool-assisted work.
   Do not add trailers that link to tool sessions or private services.
-- **Sign-off is not used.** The project does not ask for a DCO
-  `Signed-off-by` line: a contribution arrives under the GPL by being
-  submitted (**Licence of contributions**, below), and nothing checks for a
-  sign-off. Leave one out. If you do add a `Signed-off-by:` or a
-  `Co-authored-by:` trailer, **its address must not be a personal one**:
+- **Every commit carries a sign-off.** A `Signed-off-by:` line is your
+  statement that you have the right to submit the change under this
+  project's licence: the [Developer Certificate of Origin
+  1.1](https://developercertificate.org/), which is short enough to read
+  whole. It says the contribution is yours, or is under a compatible open
+  source licence you may pass on, or comes from someone who certified it to
+  you, and that you understand it and your sign-off are public and kept for
+  good. There is no contributor licence agreement to sign, and nothing is
+  assigned to anyone (**Licence of contributions**, below). Add the line with
+  `git commit -s`, which writes `Signed-off-by: <user.name> <user.email>` from
+  your git configuration. **Only you can sign off for you**: write it
+  yourself or let git add it, and do not let an assistant or a tool add one on
+  your behalf.
+- **The sign-off is public for good, so use the GitHub no-reply address.**
+  It is shown under Settings, Emails
+  (`<id>+<username>@users.noreply.github.com`). Set it before you commit, so
+  that `-s` writes an acceptable line:
+  `git config user.email "<id>+<username>@users.noreply.github.com"`. That
+  also keeps your own address out of the commit's author field, which git
+  records and which stays in the public history; `bin/preflight` does not
+  scan the author and committer fields. Turn on "Keep my email addresses
+  private" and "Block command line pushes that expose my email" on GitHub as
+  well. Whatever trailer you write, a `Signed-off-by:` or a
+  `Co-authored-by:`, **its address must not be a personal one**:
   `bin/preflight` reads every commit message the pull request adds (the whole
   message, trailers included) and fails the required `preflight` check on an
   address at `gmail.com`, `icloud.com` or `outlook.com`, and a pull request
   whose message does has to have its commits rewritten before it can merge.
-  Use your GitHub no-reply address instead
-  (`<id>+<username>@users.noreply.github.com`, shown under Settings, Emails),
-  and treat any other personal domain the same way though the list does not
-  name it. What is **not** scanned is the commit's author and committer
-  fields, which git records and which stay in the public history: if you do
-  not want your own address there, set `git config user.email` to the same
-  no-reply address before you commit, and turn on "Keep my email addresses
-  private" and "Block command line pushes that expose my email" on GitHub.
-  Do this whatever you decide about trailers: a commit address can reach a
-  `Co-authored-by:` trailer when the pull request is merged, and the
-  maintainer should not have to catch it.
+  Treat any other personal domain the same way though the list does not name
+  it.
+- **The check reads the name or the address.** The `preflight` check fails a
+  pull request unless every commit it adds has a `Signed-off-by:` line whose
+  name is the commit author's name (case does not matter) or whose address is
+  the author's address. The name is enough on its own, so a no-reply
+  sign-off passes though the commit's author address is another. A merge
+  commit, a commit by a bot (Dependabot's) and a commit by the maintainer are
+  exempt: the maintainer certifies nothing to himself. The failure names each
+  commit by its short id and subject.
+- **To fix a branch that lacks it**, with your no-reply address set as above:
+  `git commit --amend -s --no-edit` signs the last commit, and
+  `git fetch origin && git rebase --signoff origin/main` signs every commit
+  the branch adds on top of `main`. Then push with
+  `git push --force-with-lease`; the check runs again.
 - Never put a closing keyword (`Closes #N`) in a commit message; it belongs
   in the pull request body, and `bin/preflight` refuses it.
 - Run `bin/preflight` before pushing. It refuses personal file paths,
@@ -399,7 +427,10 @@ under `docs/adr/`; see the README there. A spike ends in one.
 
 By contributing you agree that your contribution is licensed under the
 GNU General Public License v3.0 or later, the same terms as the rest of the
-repository (inbound = outbound). If a contribution includes third-party
+repository (inbound = outbound), and the sign-off on each commit is your
+statement that you may say so (**Commits**, above; ADR-058). You keep your
+copyright: there is no assignment and no contributor licence agreement, and
+the project never needs to relicense. If a contribution includes third-party
 code or assets, add them to `THIRD_PARTY_NOTICES.md` with their licence.
 
 ## Reporting problems
