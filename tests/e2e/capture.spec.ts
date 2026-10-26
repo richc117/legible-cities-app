@@ -20,7 +20,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test'
-import { staleFrame } from '../../src/main/capture'
+import { NO_BAND_FOR_ADDRESS, staleFrame } from '../../src/main/capture'
 import { readPng, stripOf } from '../../src/main/capture-strip'
 import type { CaptureJob } from '../../src/shared/capture'
 import { readPngRows } from '../support/frames'
@@ -394,6 +394,25 @@ test('a page whose band never shows its own paint fails the capture in its sente
   })
 })
 
+test('a page that counts its draws and drew no band is refused, not captured as an older page', async () => {
+  // The stand-in takes `strip` in present mode only, as the engine's page
+  // does; loaded without `present=1` it counts its draws and draws no band.
+  // Mutation: the counts check removed - the page is loaded again and
+  // captured unproven, and this capture succeeds.
+  const { dir, url } = standInHome()
+  const notPresent = job(url)
+  notPresent.url = notPresent.url.replace('present=1&', '')
+  expect(notPresent.url).not.toContain('present=')
+  await withHarness(dir, async (app) => {
+    const out = await drive(app).capture(notPresent, join(dir, 'absent'))
+    expect(out.ok).toBe(false)
+    expect(out.message).toBe(NO_BAND_FOR_ADDRESS)
+    expect(existsSync(join(dir, 'absent'))).toBe(false)
+    expect(out.windows).toBe(0)
+    expect(out.live).toBe(0)
+  })
+})
+
 /** The engine checkout, from the environment or .env.local, when it holds a generated page. */
 function realPage(): string | null {
   let checkout = process.env.LEGIBLE_ENGINE_CHECKOUT ?? ''
@@ -431,6 +450,9 @@ test('sixty frames of the Los Angeles page, captured twice, are byte-identical',
     const second = await h.capture(job(url), join(dir, 'b'))
     expect(first.ok, first.message).toBe(true)
     expect(second.ok, second.message).toBe(true)
+    // A page the pinned engine drew draws its frame counter.
+    expect(first.result?.proven, 'a page drawn at the pin is proven').toBe(true)
+    expect(second.result?.proven).toBe(true)
     const { frames, differing } = identical(join(dir, 'a'), join(dir, 'b'))
     expect(frames).toBe(60)
     expect(differing).toEqual([])

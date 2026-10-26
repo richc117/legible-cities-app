@@ -24,6 +24,7 @@ import {
   openingList,
   planOptions,
   sentChoice,
+  UNPROVEN_FRAMES,
   type ExportChoice,
   type ExportPreview,
   type ExportProgress,
@@ -210,15 +211,8 @@ export function jobOf(plan: PlannedJob): CaptureJob {
   }
 }
 
-/**
- * Said beside the encode's first sentence when the capture could not prove
- * its frames fresh (app issue 100): the page on disk was drawn by an engine
- * before v0.20.0, which draws no frame counter, so its frames were captured
- * as every export's were before the proof. Drawing the map again draws it
- * with the counter.
- */
-export const UNPROVEN_FRAMES =
-  'They could not be proven fresh, because an older engine drew this map; draw the map again to prove them.'
+/** The sentence for frames the capture could not prove fresh, which `src/shared/export.ts` owns. */
+export { UNPROVEN_FRAMES }
 
 /** The one frame a still's capture writes, which is what `export.encode` takes as its source. */
 export const STILL_FRAME = '000000.png'
@@ -692,16 +686,19 @@ export class Exporter {
       })
       this.#stopIfCancelled(control)
 
-      // An unproven capture is said where the plan's notes are said, beside
-      // a stage's sentence, and so in the job's log; the export goes on.
-      this.#emit(
-        token,
-        'encode',
-        0,
-        captured.proven
-          ? `Encoding ${captured.frames} frames.`
-          : `Encoding ${captured.frames} frames. ${UNPROVEN_FRAMES}`,
-      )
+      // An unproven capture is said after the capture's last sentence, on
+      // the capture's stage: the page's log keeps one line a stage, the
+      // newest, so a line on the encode's stage would be replaced by its
+      // first progress report, and this one stays because the next stage's
+      // differs. The finished export says it again (`unproven`).
+      if (!captured.proven)
+        this.#emit(
+          token,
+          'capture',
+          1,
+          `Captured ${captured.frames} of ${captured.frames} frames. ${UNPROVEN_FRAMES}`,
+        )
+      this.#emit(token, 'encode', 0, `Encoding ${captured.frames} frames.`)
       // A video is encoded from the folder of frames; a still from its one
       // frame, which is the file `export.encode` takes for a still plan.
       const encodeParams = {
@@ -745,6 +742,7 @@ export class Exporter {
           bytes,
           frames: captured.frames,
           ...(late ? { late: true as const } : {}),
+          ...(captured.proven ? {} : { unproven: true as const }),
         },
         path: dest,
       }

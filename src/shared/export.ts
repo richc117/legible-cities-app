@@ -517,7 +517,23 @@ export interface ExportResult {
    * export finished and the page says the file was kept. Absent otherwise.
    */
   late?: true
+  /**
+   * Present, and true, when the capture could not prove its frames fresh
+   * (app issue 100): the page on disk was drawn by an engine before v0.20.0,
+   * which draws no frame counter. The page says `UNPROVEN_FRAMES` when the
+   * export finishes. Absent otherwise.
+   */
+  unproven?: true
 }
+
+/**
+ * What is said of an export whose frames the capture could not prove fresh:
+ * after the capture's last sentence, where the job's log keeps it, and when
+ * the export finishes, in cell 06 and the jobs inspector. Drawing the map
+ * again draws it with the frame counter, which is what proves them.
+ */
+export const UNPROVEN_FRAMES =
+  'The frames could not be proven fresh, because an older engine drew this map; draw the map again to prove them.'
 
 /**
  * One thing a project has produced, as the rail's Outputs list says it

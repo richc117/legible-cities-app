@@ -93,8 +93,20 @@ const LAYOUT: Record<number, { channels: number; colours: number }> = {
   6: { channels: 4, colours: 3 },
 }
 
-/** The largest image data a shot may inflate to: a frame of 8192 by 8192 at scale 3, in RGBA. */
-const MAX_IMAGE_BYTES = 2 ** 31 - 1
+/** The largest edge of a frame a job may name, in CSS pixels (`validateCaptureJob`). */
+export const MAX_FRAME_EDGE = 8192
+
+/** The largest scale factor a job may name. */
+export const MAX_FRAME_SCALE = 3
+
+/**
+ * The largest image data a shot may inflate to: the largest frame a job may
+ * name, 8192 by 8192 CSS pixels at scale 3, with the band under it, in RGBA,
+ * a filter byte a row - about 2.42e9 bytes. Anything larger is no shot of a
+ * job the capture would take.
+ */
+export const MAX_IMAGE_BYTES =
+  (MAX_FRAME_EDGE + STRIP_PX) * MAX_FRAME_SCALE * (1 + MAX_FRAME_EDGE * MAX_FRAME_SCALE * 4)
 
 /**
  * Read a PNG's header and image data. Takes what Chromium's screenshots are:

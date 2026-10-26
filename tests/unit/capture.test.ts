@@ -572,7 +572,7 @@ describe('the proof', () => {
       unreadFrame(0),
     )
     expect(unreadFrame(0)).toBe(
-      'the frame counter could not be read in any of 4 shots of frame 0; draw the map again, then export again',
+      'the frame counter could not be read in any of 4 shots of frame 0; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies',
     )
     expect(page.screenshots).toBe(FRESH_TRIES)
   })
@@ -590,6 +590,30 @@ describe('the proof', () => {
     await expect(runCapture(page, short(), { frames: frames(), ...noWait })).rejects.toThrow(
       staleFrame(0),
     )
+  })
+
+  it('answers a cancel that lands while a shot is being read at once, and keeps nothing of that frame', async () => {
+    // The cancel comes a turn after the third shot is answered, while its
+    // PNG is being inflated on zlib's threads. Mutation: the reading and the
+    // crop not steps of their own - the frame is read, cropped and written,
+    // and counted, before the cancel is seen.
+    const controller = new AbortController()
+    const page = new FakePage()
+    page.onScreenshot = (n) => {
+      if (n === 3) setTimeout(() => controller.abort(), 0)
+    }
+    const progress: number[] = []
+    const dir = frames()
+    const run = runCapture(page, short(), {
+      frames: dir,
+      ...noWait,
+      signal: controller.signal,
+      onProgress: (n) => progress.push(n),
+    })
+    await expect(run).rejects.toMatchObject({ cancelled: true })
+    expect(page.screenshots).toBe(3)
+    expect(progress, 'the third frame is not counted').toEqual([1, 2])
+    expect(existsSync(dir)).toBe(false)
   })
 
   it('compares the count modulo 65536, across the wrap', async () => {
@@ -648,7 +672,7 @@ describe('the proof', () => {
         ? Promise.resolve({ strip: null, band: false, counts: true })
         : evaluate(code)
     await expect(runCapture(page, short(), { frames: frames(), ...noWait })).rejects.toThrow(
-      'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; draw the map again',
+      'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies',
     )
     expect(
       page.calls.filter((c) => c.startsWith('navigate')),

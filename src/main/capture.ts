@@ -59,6 +59,8 @@ import type { BrowserWindowConstructorOptions } from 'electron'
 import { VIEWS, frameTotal, type Beat, type CaptureJob, type PresentState } from '../shared/capture'
 import {
   PngError,
+  MAX_FRAME_EDGE,
+  MAX_FRAME_SCALE,
   STRIP_MODULUS,
   STRIP_PX,
   cropPng,
@@ -94,9 +96,17 @@ export function staleFrame(frame: number, tries = FRESH_TRIES): string {
   return `frame ${frame} was never painted after its step: ${tries} shots in a row showed an earlier picture; export again, with less running on this machine`
 }
 
+/**
+ * The sentence for a page that counts its draws and drew no band: its engine
+ * has the band, so the cause is the address or the page, not its age, and
+ * drawing the map again would not mend it.
+ */
+export const NO_BAND_FOR_ADDRESS =
+  'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies'
+
 /** The sentence a capture fails with when no shot of a frame showed a count at all. */
 export function unreadFrame(frame: number, tries = FRESH_TRIES): string {
-  return `the frame counter could not be read in any of ${tries} shots of frame ${frame}; draw the map again, then export again`
+  return `the frame counter could not be read in any of ${tries} shots of frame ${frame}; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies`
 }
 
 /** A message for a person; `cancelled` distinguishes the one that is not a failure. */
@@ -187,7 +197,7 @@ export function captureWindowOptions(job: CaptureJob): BrowserWindowConstructorO
 }
 
 const PAGE = /^\/projects\/([^/]+)\/[^/]+\.html$/
-const MAX_EDGE = 8192
+const MAX_EDGE = MAX_FRAME_EDGE
 const MAX_SETTLE = 60_000
 
 function isInt(value: unknown, min: number, max: number): value is number {
@@ -225,7 +235,7 @@ export function validateCaptureJob(job: unknown): string | null {
     return "the page must be a project's, under app://local/projects/"
   if (!isInt(j.width, 1, MAX_EDGE) || !isInt(j.height, 1, MAX_EDGE))
     return `width and height are whole pixels between 1 and ${MAX_EDGE}`
-  if (!isInt(j.scale, 1, 3)) return 'the scale factor is 1, 2 or 3'
+  if (!isInt(j.scale, 1, MAX_FRAME_SCALE)) return 'the scale factor is 1, 2 or 3'
   if (!isInt(j.fps, 1, 120)) return 'fps is a whole number between 1 and 120'
   if (!isInt(j.settle, 0, MAX_SETTLE)) return `settle is milliseconds between 0 and ${MAX_SETTLE}`
   if (!Array.isArray(j.beats) || j.beats.length === 0) return 'a job has at least one beat'
@@ -595,10 +605,7 @@ export async function runCapture(
       // one that has the band, and drew none for this address (one without
       // `present=1`, or a band the page no longer names as the capture
       // does). Captured unproven, it would pass for an older page silently.
-      if (taken?.counts === true)
-        throw new CaptureError(
-          'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; draw the map again',
-        )
+      if (taken?.counts === true) throw new CaptureError(NO_BAND_FOR_ADDRESS)
       log(
         'capture: the page has no frame counter (an older engine drew it); its frames are not proven fresh',
       )
@@ -724,9 +731,20 @@ export async function runCapture(
             kept = bytes
             break
           }
-          const shown = await freshness(bytes, width, shotHeight, height)
+          // The zlib work as steps of their own, so a cancel or a page gone
+          // answers at once rather than once the frame is read and written.
+          const shown = await step(
+            'reading the frame',
+            () => freshness(bytes, width, shotHeight, height),
+            timeouts.frame,
+          )
           if (shown.count === draws % STRIP_MODULUS) {
-            kept = await cropPng(shown.png, height, options.still === true ? {} : { level: 1 })
+            const png = shown.png
+            kept = await step(
+              'keeping the frame',
+              () => cropPng(png, height, options.still === true ? {} : { level: 1 }),
+              timeouts.frame,
+            )
             break
           }
           counted ||= shown.count !== null

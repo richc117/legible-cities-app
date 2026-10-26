@@ -7,6 +7,7 @@
 import { crc32 } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import {
+  MAX_IMAGE_BYTES,
   PngError,
   STRIP_MODULUS,
   STRIP_PX,
@@ -246,6 +247,29 @@ describe('the crop', () => {
 
 describe('a shot it cannot read', () => {
   const good = shot({ width: 64, stage: 4, count: 1 }).png
+
+  /** `good` with its header saying another size, RGBA. */
+  const sized = (width: number, height: number): Buffer => {
+    const b = Buffer.from(good)
+    b.writeUInt32BE(width, 8 + 8)
+    b.writeUInt32BE(height, 8 + 8 + 4)
+    return b
+  }
+
+  it('takes the shot of the largest job the capture accepts, and refuses one a row larger', async () => {
+    // 8192 by 8192 CSS pixels at scale 3, the band under it at scale 3: the
+    // largest `validateCaptureJob` lets through. Mutation: the bound at 2^31,
+    // which refuses that job's every frame.
+    const width = 8192 * 3
+    const height = (8192 + 8) * 3
+    expect(MAX_IMAGE_BYTES).toBe(height * (1 + width * 4))
+    expect(MAX_IMAGE_BYTES).toBeGreaterThan(2 ** 31)
+    // Past the bound check: refused only because its data is not that size.
+    await expect(readPng(sized(width, height))).rejects.toThrow(/not the size its header says/)
+    await expect(readPng(sized(width, height + 1))).rejects.toThrow(
+      'the frame is larger than any frame can be',
+    )
+  })
 
   it.each<[string, () => Buffer, RegExp]>([
     [

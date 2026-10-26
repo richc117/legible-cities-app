@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
+import { ExportRun } from '../../src/renderer/src/engine/exportRun'
 import {
   destinationLate,
   destinationRefusal,
@@ -488,10 +489,22 @@ describe('the export, step by step', () => {
     for (const p of h.progress) expect(p.message).not.toMatch(/[/\\]/)
   })
 
-  it('says beside the encode that the frames could not be proven, when the capture could not prove them', async () => {
-    // Mutations: the note left out, or said whatever the capture answered.
+  it('says the frames were unproven where the page keeps it: the capture’s last line in the job’s log, and the finished export', async () => {
+    // Through to what the renderer keeps: the main process's progress, with
+    // encode reports after it, into cell 06's run and the job it derives.
+    // Mutations: the sentence on the encode's stage, where its first report
+    // replaces it; `unproven` left off the result, or not read by the run.
     const h = harness()
-    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    const run = new ExportRun({
+      run: (projectId, choice) => ({
+        id: 'tok-1',
+        result: h.exporter.start('tok-1', projectId, choice).result,
+      }),
+      cancel: async () => undefined,
+      reveal: async () => undefined,
+      onProgress: (listener) => h.exporter.onProgress(listener),
+    })
+    run.start(project() as ProjectRecord, { state: 'ready', version: '0.20.0', protocol: 1 }, REEL)
     await until('the plan', () => h.eng.requests.length === 1)
     h.eng.requests[0].resolve(plan())
     await until('the capture', () => h.cap.calls.length === 1)
@@ -499,14 +512,35 @@ describe('the export, step by step', () => {
     expect(h.cap.calls[0].options.still).toBe(false)
     h.cap.calls[0].finish(60, false)
     await until('the encode', () => h.eng.requests.length === 2)
+    h.eng.notify(2, 0.5)
+    h.eng.notify(2, 1)
     const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
     h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1 }], sidecar: {} })
-    await result
-    const encoding = h.progress.find((p) => p.stage === 'encode')
-    expect(encoding?.message).toBe(`Encoding 60 frames. ${UNPROVEN_FRAMES}`)
+    await until('the finish', () => run.snapshot.state === 'done')
+    expect(run.job()?.log).toEqual([
+      'plan: Planned la-metro-rail-instagram-reel.mp4: 60 frames at 30 frames per second.',
+      `capture: Captured 60 of 60 frames. ${UNPROVEN_FRAMES}`,
+      'encode: Encoded 60 of 60 frames.',
+    ])
+    expect(run.snapshot.message, 'cell 06, beside "Exported"').toBe(UNPROVEN_FRAMES)
+    expect(run.job()?.message, 'the jobs inspector').toBe(UNPROVEN_FRAMES)
     expect(UNPROVEN_FRAMES).toBe(
-      'They could not be proven fresh, because an older engine drew this map; draw the map again to prove them.',
+      'The frames could not be proven fresh, because an older engine drew this map; draw the map again to prove them.',
     )
+  })
+
+  it('says nothing of proof when the capture proved its frames', async () => {
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    h.cap.calls[0].finish(60)
+    await until('the encode', () => h.eng.requests.length === 2)
+    const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
+    h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1 }], sidecar: {} })
+    expect(await result).toEqual({ file: 'la-metro-rail-instagram-reel.mp4', bytes: 1, frames: 60 })
+    expect(h.progress.some((p) => p.message.includes(UNPROVEN_FRAMES))).toBe(false)
   })
 
   it("puts the plan's notes beside the planned sentence, with any path taken out", async () => {
