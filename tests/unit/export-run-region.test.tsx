@@ -210,7 +210,7 @@ function started() {
     { state: 'ready', version: '0.3.0', protocol: 1 },
     { preset: 'instagram-reel', options: {} },
   )
-  const report = (stage: string, message: string, fraction = 0): void =>
+  const report = (stage: ExportProgress['stage'], message: string, fraction = 0): void =>
     listeners.forEach((listener) => listener({ id: 'tok-1', stage, fraction, message }))
   const drawn = (): string =>
     renderToStaticMarkup(
