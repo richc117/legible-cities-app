@@ -915,7 +915,7 @@ export default function ExportTab({
                     void changeFolder(() => window.api.export.chooseDestination(project.id))
                   }}
                 >
-                  <Icon name="layers" />
+                  <Icon name="folder" />
                   Choose folder
                 </Button>
                 {destination !== null && (

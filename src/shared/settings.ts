@@ -42,6 +42,12 @@ export interface FolderView {
 }
 
 export interface SettingsView {
+  /**
+   * The app's own version, read in the main process (the one `Copy
+   * diagnostics` names), so Settings can say it whether or not the engine is
+   * running (issue 544).
+   */
+  appVersion: string
   theme: AppTheme
   engine: FolderView
   export: FolderView

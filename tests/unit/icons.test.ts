@@ -19,6 +19,14 @@ describe('icons', () => {
     expect(iconMarkup('play', 16, true)).toMatch(/^<svg/)
     expect(() => iconMarkup('train', 16, true)).toThrow('no icon file')
   })
+  // One glyph, one meaning (issue 544): the header's Jobs toggle wears
+  // `layers`, so a folder control wears its own. Which controls wear which
+  // is read from the rendered Settings screen in settings-screen.test.tsx.
+  it('give a folder a glyph of its own, not the one the Jobs toggle wears', () => {
+    expect(iconMarkup('folder', 16)).not.toBe(iconMarkup('layers', 16))
+    expect(iconMarkup('folder', 24)).not.toBe(iconMarkup('layers', 24))
+    expect(iconMarkup('folder', 16)).not.toBe(iconMarkup('info', 16))
+  })
   it('are plain SVG files with no script and currentColor only', () => {
     const files = readdirSync(join(dir, 'phosphor')).filter((f) => f.endsWith('.svg'))
     expect(files.length).toBeGreaterThan(30)

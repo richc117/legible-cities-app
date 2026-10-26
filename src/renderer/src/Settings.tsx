@@ -328,7 +328,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
               )
             }
           >
-            <Icon name="layers" />
+            <Icon name="folder" />
             Choose folder
           </Button>
           {/* There is a stored folder to clear: either it is the one in
@@ -384,6 +384,10 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
           </p>
         )}
         {folder('export', settings.export, 'Export folder')}
+      </section>
+
+      <section aria-labelledby="settings-logs">
+        <h2 id="settings-logs">Logs and diagnostics</h2>
         <div className="toolbar">
           <Button
             onClick={() => {
@@ -393,7 +397,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
               })
             }}
           >
-            <Icon name="info" />
+            <Icon name="folder" />
             Open logs folder
           </Button>
         </div>
@@ -465,27 +469,34 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
 
       <section aria-labelledby="settings-versions">
         <h2 id="settings-versions">Versions</h2>
-        {info === null ? (
+        {/* The app's own version is known without the engine, so it is
+            said whether or not the engine is running (issue 544). */}
+        <dl className="fields">
+          <dt>App</dt>
+          <dd>{settings.appVersion}</dd>
+          {info !== null && (
+            <>
+              <dt>Engine</dt>
+              <dd>{info.engine}</dd>
+              <dt>Protocol</dt>
+              <dd>{info.protocol}</dd>
+              <dt>Python</dt>
+              <dd>{info.python}</dd>
+              <dt>LOOM backend</dt>
+              <dd>{info.loom.backend}</dd>
+              <dt>LOOM commit</dt>
+              <dd>{reported(info.loom.commit, 'the host reported no commit')}</dd>
+              <dt>ffmpeg</dt>
+              <dd>{reported(info.ffmpeg, 'none found')}</dd>
+            </>
+          )}
+        </dl>
+        {info === null && (
           <p className="message" role="status">
             {ready
               ? 'Asking the engine…'
               : 'The engine is not running, so it cannot say what versions it has.'}
           </p>
-        ) : (
-          <dl className="fields">
-            <dt>Engine</dt>
-            <dd>{info.engine}</dd>
-            <dt>Protocol</dt>
-            <dd>{info.protocol}</dd>
-            <dt>Python</dt>
-            <dd>{info.python}</dd>
-            <dt>LOOM backend</dt>
-            <dd>{info.loom.backend}</dd>
-            <dt>LOOM commit</dt>
-            <dd>{reported(info.loom.commit, 'the host reported no commit')}</dd>
-            <dt>ffmpeg</dt>
-            <dd>{reported(info.ffmpeg, 'none found')}</dd>
-          </dl>
         )}
       </section>
 

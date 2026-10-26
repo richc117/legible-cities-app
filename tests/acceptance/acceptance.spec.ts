@@ -1003,7 +1003,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       const versions = window.getByRole('region', { name: 'Versions' })
       await log.soft('Versions', async () => {
-        await expect(versions.locator('dl')).toBeVisible({ timeout: SHORT_MS })
+        // The list is there from the first frame with the app's own version; the
+        // engine's rows follow once it has answered (issue 544).
+        await expect(definition(versions, 'Engine')).toBeVisible({ timeout: SHORT_MS })
         const read = async (term: string): Promise<string> => text(definition(versions, term))
         const six = {
           Engine: await read('Engine'),

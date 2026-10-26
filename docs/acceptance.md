@@ -200,9 +200,10 @@ again.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
-- **Versions** lists Engine (the same version as the status line),
-  Protocol `1`, Python, LOOM backend `native`, LOOM commit and ffmpeg, none
-  of them blank. Copy the six into the run's issue.
+- **Versions** lists App (the version of the installer you ran), then
+  Engine (the same version as the status line), Protocol `1`, Python, LOOM
+  backend `native`, LOOM commit and ffmpeg, none of them blank. Copy the six
+  after App into the run's issue.
 - **Folders** shows the **Engine data folder** and the **Export folder**,
   each "the default", at the places install.md's table gives for this
   system, and the engine folder's size ("empty", or a size and a count of
