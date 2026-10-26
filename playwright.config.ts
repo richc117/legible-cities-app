@@ -11,8 +11,8 @@ export default defineConfig({
   outputDir: 'test-results',
   // On CI the json report would carry the commit's author and e-mail, and it is uploaded.
   captureGitInfo: { commit: false, diff: false },
-  // A log folder of the suite's own for every launch, so no run writes a
-  // person's own log (specs/023-logs-and-diagnostics).
+  // A profile and a log folder of the run's own for every launch that names
+  // none, so no run writes a person's own settings or log (specs/023, issue 549).
   globalSetup: './tests/e2e/global-setup.ts',
   globalTeardown: './tests/e2e/global-teardown.ts',
 })

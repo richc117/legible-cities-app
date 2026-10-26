@@ -38,19 +38,26 @@ function profile(): string {
  * One launch on `userData`, closed afterwards whatever happens, and not
  * returned from until the process has ended: a relaunch on the same profile
  * must never meet the lock of a process still quitting.
+ *
+ * `engine: 'none'` names an interpreter that is not there, so the engine is
+ * unavailable and a quit has nothing to wait for: the close comes well
+ * inside the half second the place waits before it is written.
  */
 async function withApp(
   userData: string,
   run: (app: ElectronApplication) => Promise<void>,
+  engine: 'stand-in' | 'none' = 'stand-in',
 ): Promise<void> {
+  const missing = join(userData, 'nowhere', process.platform === 'win32' ? 'python.exe' : 'python')
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
     env: {
       ...process.env,
       LEGIBLE_USER_DATA: userData,
-      LEGIBLE_ENGINE_PYTHON: PYTHON as string,
-      PYTHONPATH: FAKE_ENGINE,
+      ...(engine === 'none'
+        ? { LEGIBLE_ENGINE_PYTHON: missing }
+        : { LEGIBLE_ENGINE_PYTHON: PYTHON as string, PYTHONPATH: FAKE_ENGINE }),
     } as Record<string, string>,
     timeout: 30_000,
   })
@@ -182,4 +189,101 @@ test('opens on a display that is attached when its place is on none', async () =
     expect(onOne, `${JSON.stringify(bounds)} on ${JSON.stringify(displays)}`).toBe(true)
     expect(bounds.width, 'the default size, not the stored one').not.toBe(900)
   })
+})
+
+/** Move the app's window and answer where the platform put it, in one turn of the main process. */
+async function moveTo(app: ElectronApplication, bounds: Rect): Promise<Rect> {
+  return app.evaluate(({ BrowserWindow }, to) => {
+    const window = BrowserWindow.getAllWindows().find((w) =>
+      w.webContents.getURL().startsWith('app://local/ui/'),
+    )
+    if (window === undefined) throw new Error('no app window')
+    window.setBounds(to)
+    return window.getBounds()
+  }, bounds)
+}
+
+// The place is written half a second after the window comes to rest, and
+// once more as it closes; a quit waits for that last write (will-quit,
+// src/main/index.ts). Closed at once after the move, the wait has not run,
+// so the place on the relaunch is the close's write or nothing.
+//
+// Without the 'close' handler the relaunch opens at the default size and
+// this fails at the comparison. Without the will-quit wait it may still
+// pass: the write is a few milliseconds and the logs' own close often covers
+// it, so that mutation is a race this test can lose but not prove.
+test('keeps the place it was closed at before the wait to write it was over', async () => {
+  test.setTimeout(120_000)
+  const userData = profile()
+  const seen: { left?: Rect } = {}
+
+  await withApp(
+    userData,
+    async (app) => {
+      await appBounds(app)
+      const area = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea)
+      const left = await moveTo(app, {
+        x: area.x + 90,
+        y: area.y + 70,
+        width: Math.min(760, area.width - 160),
+        height: Math.min(540, area.height - 120),
+      })
+      seen.left = left
+      expect(left.width, 'not the default size').not.toBe(1100)
+      // Read at once: the half second has not passed, so nothing is kept
+      // yet and what the relaunch finds is the close's own write.
+      expect(storedWindow(userData), 'nothing written before the close').toBeUndefined()
+    },
+    'none',
+  )
+
+  expect(storedWindow(userData), 'the close wrote the place').toMatchObject({ maximized: false })
+  await withApp(
+    userData,
+    async (app) => {
+      const left = seen.left as Rect
+      const back = await appBounds(app)
+      expect(near(back, left), `${JSON.stringify(back)} is ${JSON.stringify(left)}`).toBe(true)
+    },
+    'none',
+  )
+})
+
+// Maximised is a state, kept beside the place and restored after the window
+// is shown.
+test('opens maximised when it was left maximised', async () => {
+  test.setTimeout(120_000)
+  const userData = profile()
+  const isMaximized = (app: ElectronApplication): Promise<boolean> =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().some(
+        (w) => w.webContents.getURL().startsWith('app://local/ui/') && w.isMaximized(),
+      ),
+    )
+
+  await withApp(
+    userData,
+    async (app) => {
+      await appBounds(app)
+      await app.evaluate(({ BrowserWindow }) => {
+        BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL().startsWith('app://local/ui/'))
+          ?.maximize()
+      })
+      await expect.poll(() => isMaximized(app), { timeout: 10_000 }).toBe(true)
+      await expect
+        .poll(() => storedWindow(userData), { timeout: 10_000 })
+        .toMatchObject({ maximized: true })
+    },
+    'none',
+  )
+
+  await withApp(
+    userData,
+    async (app) => {
+      await appBounds(app)
+      await expect.poll(() => isMaximized(app), { timeout: 10_000 }).toBe(true)
+    },
+    'none',
+  )
 })

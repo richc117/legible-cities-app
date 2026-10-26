@@ -2357,10 +2357,16 @@ same way, separately, and whichever answered are used.
 the user-data folder ("Settings and the reset"): development only,
 an absolute path, read before the app is ready, and a bad value costs the
 switch and not the launch. A moved user-data folder wins over it, its logs
-following it. The end-to-end suite sets it for every launch from
-`tests/e2e/global-setup.ts`, to a temporary folder `global-teardown.ts`
-removes, because most launches keep the default profile and would
-otherwise write and rotate a person's own log.
+following it. The end-to-end suite moves the profile for every launch
+that names none of its own: `tests/e2e/global-setup.ts` sets
+`LEGIBLE_USER_DATA` to one temporary folder for the whole run, and
+`LEGIBLE_LOGS` to the `logs` folder inside it, where those launches' logs
+go, and `global-teardown.ts` removes it. Otherwise most launches would use
+the default development profile, a person's own: write its settings file -
+the window's place at every close (issue 549) - read what that person chose
+there, and write and rotate their log. A spec that resizes or moves the
+window launches with a profile of its own, so its window never reaches
+another spec's launch.
 
 ## Packaging
 

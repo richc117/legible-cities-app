@@ -26,13 +26,19 @@ async function withApp(
 ): Promise<void> {
   const home = mkdtempSync(join(tmpdir(), 'legible-cities-design-'))
   const missing = join(home, 'nowhere', process.platform === 'win32' ? 'python.exe' : 'python')
+  // A profile of each launch's own: these tests resize the window, and the
+  // app keeps its window's place in the profile's settings (issue 549), so
+  // on the run's shared profile the next spec would open at this one's size.
+  const profile = mkdtempSync(join(tmpdir(), 'legible-cities-design-profile-'))
   const app = await electron.launch({
     args: ['.'],
     cwd: repoRoot,
-    env: { ...process.env, SCHEMATIC_HOME: home, LEGIBLE_ENGINE_PYTHON: missing } as Record<
-      string,
-      string
-    >,
+    env: {
+      ...process.env,
+      SCHEMATIC_HOME: home,
+      LEGIBLE_ENGINE_PYTHON: missing,
+      LEGIBLE_USER_DATA: profile,
+    } as Record<string, string>,
     timeout: 30_000,
   })
   const child = app.process()
@@ -489,10 +495,12 @@ test('with no projects the New project card keeps its slot, and the quiet line i
     // The window at its narrowest, where two cards fit to a row.
     await judge(await sized(640, 700))
     // And narrower than the app lets a person make it, where one card
-    // fills the row: the minimum (640 by 480, `src/main/index.ts`) is
-    // lowered for this measure only and put back whatever happens, so the
-    // app leaves as it came. A person reaches the same column by zooming
-    // the window in, which this stands in for.
+    // fills the row: the minimum (640 by 480, `MINIMUM_WINDOW_SIZE` in
+    // `src/main/window-bounds.ts`) is lowered for this measure only and put
+    // back whatever happens. The window's place this leaves is kept in this
+    // launch's own profile, and the next launch on it would open raised to
+    // the minimum; no other spec's launch sees it. A person reaches the same
+    // column by zooming the window in, which this stands in for.
     try {
       await app.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()[0].setMinimumSize(320, 480)

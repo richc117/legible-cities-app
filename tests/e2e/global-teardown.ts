@@ -1,23 +1,24 @@
 // After the last worker: first, whether any record or settings write was
 // retried or failed during the run, printed from the logs before they go
-// (issue 93); then the suite's own log folder goes. It is removed only when
-// the setup recorded making exactly this folder, and it still sits under the
-// temporary folder with the setup's prefix, so a LEGIBLE_LOGS set by hand is
-// never touched whatever it is called.
+// (issue 93); then the run's own profile goes, its logs with it. It is
+// removed only when the setup recorded making exactly this folder, and it
+// still sits under the temporary folder with the setup's prefix, so a
+// LEGIBLE_USER_DATA set by hand is never touched whatever it is called.
 
 import { copyFileSync, lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { logFiles, logFolders, logLines, RETRY_LINES } from '../support/store-lines'
-import { LOGS_PREFIX } from './global-setup'
+import { RUN_PROFILE_PREFIX } from './global-setup'
 
 /** The prefix every test's temporary folder is made with. */
 const TEST_PREFIX = 'legible-cities-'
 
 /**
- * The log folders this run wrote: the suite's shared one, and the `logs`
- * folder of each temporary profile made since the run began, which is where
- * a launch with LEGIBLE_USER_DATA keeps its logs instead.
+ * The log folders this run wrote: the suite's shared one, in the run's own
+ * profile, and the `logs` folder of each temporary profile a spec made
+ * since the run began, which is where a launch with a profile of its own
+ * keeps its logs instead.
  */
 function runLogFolders(shared: string | undefined): string[] {
   const folders = shared !== undefined && shared !== '' ? [shared] : []
@@ -30,7 +31,7 @@ function runLogFolders(shared: string | undefined): string[] {
     return folders
   }
   for (const name of names) {
-    if (!name.startsWith(TEST_PREFIX) || name.startsWith(LOGS_PREFIX)) continue
+    if (!name.startsWith(TEST_PREFIX) || name.startsWith(RUN_PROFILE_PREFIX)) continue
     const path = join(tmpdir(), name)
     try {
       const info = lstatSync(path)
@@ -99,10 +100,14 @@ export default function globalTeardown(): void {
   } catch (error) {
     console.log(`[issue 93] the logs could not be searched: ${String(error)}`)
   }
-  const made = process.env.LEGIBLE_E2E_LOGS_MADE
-  if (folder === undefined || folder === '' || made !== folder) return
+  const profile = process.env.LEGIBLE_USER_DATA
+  const made = process.env.LEGIBLE_E2E_PROFILE_MADE
   const ours =
-    resolve(dirname(folder)) === resolve(tmpdir()) && basename(folder).startsWith(LOGS_PREFIX)
+    profile !== undefined &&
+    profile !== '' &&
+    made === profile &&
+    resolve(dirname(profile)) === resolve(tmpdir()) &&
+    basename(profile).startsWith(RUN_PROFILE_PREFIX)
   keepLogs(folder, ours)
-  if (ours) rmSync(folder, { recursive: true, force: true })
+  if (ours) rmSync(profile, { recursive: true, force: true })
 }

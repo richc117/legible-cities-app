@@ -100,10 +100,10 @@ if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserD
 }
 // The logs, moved for a test run, on the same terms as the user-data folder:
 // development only, an absolute path, and a bad value costs the switch and
-// not the launch. The end-to-end suite sets LEGIBLE_LOGS for every launch
-// (tests/e2e/global-setup.ts), because most of its launches keep the default
-// profile and would otherwise write and rotate a person's own log. A moved
-// profile wins: its logs follow it. On Windows and Linux Electron keeps the
+// not the launch. The end-to-end suite moves the profile for every launch
+// that names none (tests/e2e/global-setup.ts), and its logs with it, so no
+// launch writes a person's own settings or log. A moved profile wins: its
+// logs follow it. On Windows and Linux Electron keeps the
 // logs inside the user-data folder already; on macOS it does not
 // (specs/023, FR-009).
 const movedLogs = !app.isPackaged ? process.env.LEGIBLE_LOGS : undefined
