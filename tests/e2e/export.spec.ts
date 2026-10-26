@@ -466,7 +466,7 @@ test('closing the window during an export quits at once, on Windows and Linux, a
     const page = await ready(app)
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
+    await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
     // The capture window is open, as the old rule counted it.
     expect(
       await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
@@ -501,7 +501,7 @@ test('closing the window during an export on macOS keeps the export going, and t
   await withApp(h, async (page, app) => {
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
+    await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
 
     await closeAppWindow(app)
     await expect
