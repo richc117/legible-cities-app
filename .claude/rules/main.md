@@ -22,6 +22,13 @@ Every spawn, without exception:
   user can send us;
 - a **clean shutdown on quit**, so nothing outlives the app.
 
+The first-run check (`src/main/first-run.ts`) runs the bundled tools on
+every start of a packaged app, and only once the engine's first start has
+settled, so its spawns never compete with the handshake
+(`src/main/index.ts`): `gtfs2graph`'s output must parse as a line graph,
+because a zero exit proves nothing, and a failure opens one dialog naming
+the tool, never over the mismatch dialog.
+
 ## Native dialogs
 
 Prefer the page's own `<dialog>` for anything the app has to say: the
@@ -97,6 +104,63 @@ moves them, and an end-to-end launch always has one of the two, or it
 writes a person's own log (`src/main/log-file.ts`, specs/023). A path that
 is not one of those is a bug. See ADR-016.
 
+Every log line, and "Copy diagnostics" again, has its URLs' user
+information, query values and fragments redacted (`src/main/redact.ts`); the
+copy writes the home folder as `~`, its 8.3 short form on Windows included,
+and is checked for the home afterwards (`src/main/diagnostics-text.ts`).
+
+## The reset
+
+"Reset engine data" (`src/main/settings.ts`, `src/main/settings-ipc.ts`)
+is the one destructive act; `docs/ARCHITECTURE.md` has it in full. What a
+change to it must keep:
+
+- It removes four folders under the engine's home - `projects`, `out`,
+  `data` and `frames` - and **never the home itself**, which a person can
+  point at `~/Documents` in one click. The engine's `config.py` is where
+  the list comes from; read it before adding a name. A folder that turns
+  out to be a symbolic link is left alone and reported, never unlinked.
+- **The home is resolved through `realpath` before any guard judges it**,
+  and so is everything it is compared with: the guards are textual, and a
+  home that is itself a link would pass them all and then remove four
+  folders from wherever it points.
+- Main refuses while a reset is already running, while an export, an
+  engine request or a record write is in flight, and for a home so high up
+  that the four names would mean something else; the screen refuses
+  separately while a layout run or an export is open, because only the
+  renderer sees the gaps between a run's steps. The flag goes up **before
+  the first `await`**, and while it is up every engine request, export and
+  record write is refused.
+- A project's own export folder is kept out of the reset's reach at three
+  doors (issue 206): the reset, which refuses while a project under the
+  home in force exports to a folder inside the home or around it; the
+  choice of the engine's folder in Settings, the default included; and the
+  project's folder, judged against
+  the home in force and the engine folder waiting for a restart, where it
+  is chosen and again at each export (`destinationRefusal`, handed a
+  function for the folder waiting and asking it at every judgement).
+  `destinationsInTheWay` is the pure rule on Settings' side, on real paths.
+  No door sees a record left behind in a previous home. The reset also
+  refuses when the app's own export folder is the home, holds it, or is
+  inside one of the four (`settings-ipc.ts`).
+- A projects folder that cannot be listed refuses the choice and the reset,
+  because it hides every project (`destinations()` reads strictly; `list()`
+  does not, so the front door still opens); one record that cannot be read
+  is skipped and refuses nothing, because the reset is the remedy for bad
+  records.
+- Every check over folders has one deadline (`FOLDERS_TIMEOUT_MS`,
+  `inTime`): a folder that stalls refuses, with nothing changed or removed;
+  a check that lapsed is abandoned, so checks only read and whatever acts
+  on their answer comes after them; the refusal names the project whose
+  folder did not answer; and a folder that has not answered is not asked
+  again (`oneAtATime`), because each unanswered question holds one of the
+  four threads files are read with.
+- Every refusal over exported files asks for the files to be moved out
+  **and then** the folder changed, in that order: changing a folder moves
+  nothing, and a reset that goes ahead removes what was exported into one
+  of the four. The screen promises only that exported files outside the
+  four folders are not touched.
+
 ## The protocol is a contract
 
 JSON-RPC 2.0 over stdio. The types are generated from the engine's JSON
@@ -170,7 +234,9 @@ without naming which binary.
 
 The flow lives in the main process (`src/main/export.ts`), because the
 capture does; the page starts, watches and stops it through `api.export`
-and is told the file's name, never its path. The engine's plan goes through
+and is told the file's name, never its path. **An export's plan never
+carries `safe`**: the safe zones are for cell 06's preview alone. The
+engine's plan goes through
 `validateCaptureJob` before a window exists, and its file name must be a
 bare name: both arrive from another process. The frames are removed when
 the export ends, whichever way. A layout run and an export of one project
@@ -221,7 +287,9 @@ The bridge is the whole attack surface between the page and the machine.
 Expose named, typed, narrow methods over `contextBridge`; never expose
 `ipcRenderer` itself, a path the renderer chose, or anything that takes a
 command to run. Validate on the main side, not in the renderer, because only
-the main side is trusted.
+the main side is trusted. So `feeds.add` is refused for a path no dialog
+answered, and `feeds.remove` for a feed a project names
+(`src/main/feeds-ipc.ts`).
 
 ## Serving `app://local`
 

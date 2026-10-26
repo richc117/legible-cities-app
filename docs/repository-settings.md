@@ -83,8 +83,9 @@ access.
 The issue templates and `.github/dependabot.yml` apply labels, which have to
 exist first or the label is silently dropped, so a template names only a label
 the board holds (a defect is `bug`; there is no `type:bug`). `CONTRIBUTING.md`
-("Labels, milestones and issue codes") lists the labels and the milestones;
-read the board itself for the live set.
+("Labels, milestones and issue codes") lists the labels, and its "Where
+things stand" points at the milestones; read the board itself for the live
+set.
 
 ## Merging
 
