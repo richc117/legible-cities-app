@@ -8,6 +8,7 @@ import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 import { runRowStatus } from '../runRow'
+import { EVERY_OPERATOR } from '../../record'
 
 // Cell 01, Data: what the project is made of (ADR-045).
 //
@@ -37,13 +38,6 @@ import { runRowStatus } from '../runRow'
 // because it is prose about this cell's own subject: a table of summaries
 // would have to know what every cell is made of, and each new one would
 // edit the file all six share (A5.5-09).
-
-/**
- * What the record says about no operator: the picker's own name for it
- * (`Inspect`'s first option), so one value has one name on one screen.
- * "none" read as no operator drawn, which is the opposite of the truth.
- */
-export const EVERY_OPERATOR = 'every operator'
 
 /**
  * The cell's field list: the feed, the mode and the operator the project

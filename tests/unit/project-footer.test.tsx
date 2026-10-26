@@ -22,7 +22,15 @@ const state = {
     readOnly: false,
   },
   rename: { open: false, buttonRef: { current: null } },
-  remove: { confirming: false, buttonRef: { current: null } },
+  remove: {
+    confirming: false,
+    problem: null,
+    buttonRef: { current: null },
+    begin: () => {},
+    confirm: async () => {},
+    cancel: () => {},
+    setProblem: () => {},
+  },
   exporting: false,
   layingOut: false,
 } as unknown as ProjectState
@@ -38,6 +46,10 @@ describe('the delete confirmation', () => {
     expect(html).toContain(
       'This removes the project and its generated output. The feed stays. Exported files stay where they are.',
     )
+  })
+
+  it('draws no alert while nothing has gone wrong', () => {
+    expect(html).not.toContain('role="alert"')
   })
 
   it('is titled with the project it would delete', () => {

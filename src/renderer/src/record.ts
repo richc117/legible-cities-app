@@ -48,6 +48,13 @@ export function orderOf(record: Pick<ProjectRecord, 'lineOrder'>): LineOrder {
   return record.lineOrder
 }
 
+/**
+ * What the project says for no operator: the picker's first option, the
+ * facts under it, the run's summary and cell 01's field list all use this
+ * one name, so one value has one name on one screen.
+ */
+export const EVERY_OPERATOR = 'every operator'
+
 export const DEFAULT_FEED = 'la-metro-rail'
 
 /**
