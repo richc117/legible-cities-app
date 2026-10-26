@@ -169,18 +169,37 @@ describe('what the samples region says when it has no presets to draw', () => {
     }
   })
 
-  it('never promises a wait while the engine is unavailable or stopped (issue 547)', () => {
-    for (const engine of [unavailable, stopped]) {
+  const mismatched: EngineState = {
+    state: 'mismatched',
+    expected: { repo: 'https://github.com/x/y', tag: 'v1.0.0', version: '1.0.0', protocol: 1 },
+    found: { version: '0.9.0', protocol: 1 },
+  }
+
+  it('never promises a wait while the engine is unavailable, mismatched or stopped (issue 547)', () => {
+    for (const engine of [unavailable, mismatched, stopped]) {
       const sentence = samplesSentence(engine, 'unread')
       expect(sentence).not.toBeNull()
       expect(sentence).not.toContain('once the engine is ready')
       expect(sentence).toContain('Copy diagnostics')
+      expect(sentence).toContain("on the project's tracker")
     }
+  })
+
+  it('says a mismatched engine is not coming back, in whole sentences of its own', () => {
+    expect(samplesSentence(mismatched, 'unread')).toBe(SAMPLES_ENGINE_DOWN)
+  })
+
+  it('leads a stopped engine with the one thing that begins it anew', () => {
+    expect(
+      samplesSentence(stopped, 'unread')?.startsWith('Quit and open Legible Cities again. '),
+    ).toBe(true)
+    // Not an engine that can still start by itself.
+    expect(samplesSentence(unavailable, 'unread')).not.toContain('Quit and open')
   })
 
   it('carries the whole reason, first, which the status line cuts short', () => {
     expect(samplesSentence(unavailable, 'unread')?.startsWith(unavailable.reason)).toBe(true)
-    expect(samplesSentence(stopped, 'unread')?.startsWith(stopped.reason)).toBe(true)
+    expect(samplesSentence(stopped, 'unread')).toContain(` ${stopped.reason} `)
     expect(samplesSentence(stopped, 'unread')).toContain('It failed 3 times in a row.')
     expect(samplesSentence(stopped, 'unread')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
   })

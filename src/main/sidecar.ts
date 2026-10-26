@@ -73,24 +73,26 @@ export interface SidecarOptions {
   bounds?: Partial<Bounds>
   platform?: NodeJS.Platform
   /**
-   * Whether this is an installed app, whose person has no engine checkout and
-   * no environment to look at: the reason an interpreter that will not start
-   * gives is then a sentence they can act on (issue 547).
+   * Whether the interpreter is the installer's own runtime (`isBundledRuntime`),
+   * not a packaged app that was pointed at another: only then can the person
+   * be told to reinstall, and only then has the reason no environment variable
+   * to name (issue 547).
    */
-  isPackaged?: boolean
+  bundledInterpreter?: boolean
 }
 
 const STDERR_TAIL = 20
 
 /**
  * Why the interpreter could not be started, as a sentence for whoever is
- * looking at the screen. A person with the installed app is told the next
- * step first and never an environment variable, which means nothing to them;
- * whoever runs from a checkout keeps the sentence that names what to check.
+ * looking at the screen. When the interpreter is the installer's own, the
+ * person is told the next step first and never an environment variable, which
+ * means nothing to them; any other interpreter (a checkout's, or one named by
+ * LEGIBLE_ENGINE_PYTHON) keeps the sentence that names what to check.
  * What the operating system said goes to the log either way.
  */
-export function interpreterFailedReason(what: string, isPackaged: boolean): string {
-  if (isPackaged) return 'Reinstall the app: the bundled engine could not be started.'
+export function interpreterFailedReason(what: string, bundledInterpreter: boolean): string {
+  if (bundledInterpreter) return 'Reinstall the app. The bundled engine could not be started.'
   return `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`
 }
 
@@ -581,7 +583,7 @@ export class Sidecar {
     this.log(`the interpreter could not be started: ${what}`)
     this.setState({
       state: 'unavailable',
-      reason: interpreterFailedReason(what, this.options.isPackaged ?? false),
+      reason: interpreterFailedReason(what, this.options.bundledInterpreter ?? false),
     })
   }
 

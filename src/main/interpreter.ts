@@ -72,9 +72,19 @@ export function resolveInterpreter(input: ResolveInput): Resolution {
   if (input.exists(bundled)) return { interpreter: bundled, origin: 'bundled runtime' }
   return {
     interpreter: null,
-    reason: 'Reinstall the app: the bundled Python runtime is missing.',
+    reason: 'Reinstall the app. The bundled Python runtime is missing.',
     detail: `no bundled runtime at ${bundled}`,
   }
+}
+
+/**
+ * Whether the interpreter is the one the installer ships, as against one a
+ * person named or one in a checkout. An installed app still honours
+ * LEGIBLE_ENGINE_PYTHON, so "packaged" is not this fact: telling someone to
+ * reinstall helps only when the interpreter that failed is the installer's.
+ */
+export function isBundledRuntime(origin: Origin): boolean {
+  return origin === 'bundled runtime'
 }
 
 export function engineCommand(interpreter: string): string[] {

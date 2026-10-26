@@ -197,13 +197,16 @@ export const SAMPLES_AWAY =
 
 /**
  * What follows the engine's reason when it is not coming back by itself
- * (unavailable, or stopped after failing too often): no promise of a wait,
- * and where to go if it keeps happening (issue 547). The reason comes first,
- * in full, since the status line cuts a long one short, and a packaged
- * app's reason leads with its own next step.
+ * (unavailable, mismatched, or stopped after failing too often): no promise
+ * of a wait, and where to go if it keeps happening (issue 547). The reason
+ * comes first, in full, since the status line cuts a long one short, and a
+ * packaged app's reason leads with its own next step.
  */
 export const SAMPLES_ENGINE_DOWN =
-  'The sample cities cannot be listed until the engine runs. If this keeps happening, open Settings, press Copy diagnostics and paste what it copies into a new issue.'
+  "The sample cities cannot be listed until the engine runs. If this keeps happening, open Settings, press Copy diagnostics and paste what it copies into a new issue on the project's tracker."
+
+/** What a stopped engine leads with: only a quit and a start again begins it anew. */
+export const SAMPLES_STOPPED_FIRST = 'Quit and open Legible Cities again.'
 
 /** What it says when the engine is ready and its answer to `feeds.list` failed. */
 export const SAMPLES_UNREAD =
@@ -219,8 +222,12 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  * that says it is, would be the screen contradicting itself for a beat.
  */
 export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
-  if (engine?.state === 'unavailable' || engine?.state === 'stopped')
-    return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+  if (engine?.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+  if (engine?.state === 'stopped')
+    return `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+  // Ended at the handshake and never restarted: it has no reason of its own,
+  // the dialog says which versions, and the status line the sentence.
+  if (engine?.state === 'mismatched') return SAMPLES_ENGINE_DOWN
   if (engine?.state !== 'ready') return SAMPLES_AWAY
   if (read === 'failed') return SAMPLES_UNREAD
   if (read === 'listed') return SAMPLES_NONE

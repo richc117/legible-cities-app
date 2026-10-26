@@ -1,9 +1,15 @@
 // Which interpreter runs the engine, in what order it is looked for, and
 // what environment it gets. Pure functions; every platform's path shape.
 
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { engineCommand, engineEnvironment, resolveInterpreter } from '../../src/main/interpreter'
+import {
+  engineCommand,
+  engineEnvironment,
+  isBundledRuntime,
+  resolveInterpreter,
+} from '../../src/main/interpreter'
 
 const existing =
   (...paths: string[]) =>
@@ -120,6 +126,50 @@ describe('resolveInterpreter', () => {
       // An installed app's person has no environment to look at (issue 547).
       expect(missing.reason).not.toMatch(/LEGIBLE_/)
     }
+  })
+})
+
+describe('isBundledRuntime (issue 547)', () => {
+  const base = {
+    resourcesPath: '/app/resources',
+    platform: 'linux' as const,
+    exists: () => true,
+  }
+
+  it('is true only for the installer’s own runtime', () => {
+    expect(isBundledRuntime('bundled runtime')).toBe(true)
+    expect(isBundledRuntime('engine checkout')).toBe(false)
+    expect(isBundledRuntime('LEGIBLE_ENGINE_PYTHON')).toBe(false)
+  })
+
+  it('is false for an installed app pointed at another interpreter, which a reinstall does not mend', () => {
+    const named = resolveInterpreter({
+      ...base,
+      packaged: true,
+      config: { enginePython: '/opt/py/bin/python', engineCheckout: null },
+    })
+    expect(named.interpreter).not.toBeNull()
+    if (named.interpreter !== null) expect(isBundledRuntime(named.origin)).toBe(false)
+    const bundled = resolveInterpreter({
+      ...base,
+      packaged: true,
+      config: { enginePython: null, engineCheckout: null },
+    })
+    if (bundled.interpreter !== null) expect(isBundledRuntime(bundled.origin)).toBe(true)
+    else throw new Error('expected the bundled runtime')
+  })
+})
+
+describe('the main process hands the supervisor the interpreter’s origin (issue 547)', () => {
+  // `createSidecar` needs Electron, so the wiring is read: one fact, taken
+  // from the resolution once, goes to the engine's environment and to the
+  // supervisor, which chooses its sentence by it. Deleting the second use
+  // would silently give a named interpreter the reinstall advice, or none.
+  const source = readFileSync(resolve(__dirname, '../../src/main/index.ts'), 'utf8')
+
+  it('derives it once, from the resolution, and gives it to both', () => {
+    expect(source.match(/isBundledRuntime\(resolution\.origin\)/g)).toHaveLength(1)
+    expect(source.match(/^\s+bundledInterpreter,$/gm)).toHaveLength(2)
   })
 })
 

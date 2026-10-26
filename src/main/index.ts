@@ -27,7 +27,12 @@ import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './export'
 import { claimFramesRoot, clearFrames, describeSweep, FRAMES_FOLDER } from './frames'
 import { registerExportHandlers } from './export-ipc'
-import { engineCommand, engineEnvironment, resolveInterpreter } from './interpreter'
+import {
+  engineCommand,
+  engineEnvironment,
+  isBundledRuntime,
+  resolveInterpreter,
+} from './interpreter'
 import { crashBox, registerProcessHandlers, watchRendererCrash } from './process-handlers'
 import { registerClipboardHandler, registerProjectHandlers, registerViewerHandlers } from './ipc'
 import { registerJobsHandlers } from './jobs-ipc'
@@ -359,17 +364,18 @@ function createSidecar(config: Config): Sidecar {
     })
   }
   log.info('engine', `interpreter: ${resolution.interpreter} (${resolution.origin})`)
+  const bundledInterpreter = isBundledRuntime(resolution.origin)
   return new Sidecar({
     command: engineCommand(resolution.interpreter),
     env: engineEnvironment({
       config,
       base: process.env,
       development: !app.isPackaged,
-      bundledInterpreter: resolution.origin === 'bundled runtime',
+      bundledInterpreter,
     }),
     pin,
     log: engineLog,
-    isPackaged: app.isPackaged,
+    bundledInterpreter,
   })
 }
 
