@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-09
 
-**Status**: Draft
+**Status**: Implemented 2026-10-09 (#386)
 
 **Input**: Issue 385, "Layout tuning in cell 02: LOOM's grid, merge distance, grid size and bend penalties, a tuned layout being a layout of its own (the app half of engine 37)"; engine issue 37 (E26), at the v0.14.0 pin (issue 383). The issue's paragraph "Decided on 9 Oct 2026" and the lane brief's settled list are the coordinator's decisions; each is recorded below as an "*As of 9 Oct 2026:*" line under the requirement it settles.
 

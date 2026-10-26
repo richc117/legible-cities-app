@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft, no open questions. Split out of `specs/001-electron-skeleton/` on 2026-09-07 so the skeleton can be built and checked before any vendored component exists.
+**Status**: Implemented 2026-09-12 (#99), no open questions. Split out of `specs/001-electron-skeleton/` on 2026-09-07 so the skeleton can be built and checked before any vendored component exists.
 
 **Input**: Planned issue A0-10. The application shell (`specs/001`) opens to an empty Library from a development build. This feature makes it installable: every component the engine needs at run time — the Python runtime, the layout binaries, the media encoder, and the engine itself — is obtained from a pinned, checksummed source, laid out where the application can execute it, and packaged into installers that a build run attaches for download. Packages are unsigned; the steps for getting past each operating system's warning are published beside them.
 

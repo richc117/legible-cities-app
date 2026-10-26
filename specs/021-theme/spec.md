@@ -44,7 +44,7 @@
 
 **Created**: 2026-09-12
 
-**Status**: Draft
+**Status**: Implemented 2026-09-12 (#86)
 
 **Input**: Planned issue A4-03, "Theme: warm-dark and sepia from the site's
 tokens, persisted, pushed into the viewer". The engine's page has taken

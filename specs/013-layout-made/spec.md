@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#73)
 
 **Input**: Planned issue A3-06 (#69), found by the reviewer of A3-05. Since
 ADR-033 a project records the engine's layout id, the hash of the layout's

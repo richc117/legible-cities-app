@@ -20,7 +20,7 @@
 
 **Created**: 2026-09-12
 
-**Status**: Draft
+**Status**: Implemented 2026-09-12 (#85)
 
 **Input**: Planned issue A4-02, "Line order with up/down controls (keyboard
 accessible); debounced re-render from the stored layout; persisted in

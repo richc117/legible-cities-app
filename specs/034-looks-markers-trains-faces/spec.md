@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-10
 
-**Status**: Draft
+**Status**: Implemented 2026-10-10 (#396)
 
 **Input**: Issue 391, "Cell 04: looks, marker shapes, trains and the label typeface (the app half of engine 73 to 76)"; engine issues 73, 74, 75 and 76, at the v0.15.0 pin (issue 389). The issue's block "Decided on 10 Oct 2026" and the lane brief's settled list are the coordinator's decisions; each is recorded below as an "*As of 10 Oct 2026:*" line under the requirement it settles. Where this spec had to read a decision one way, it says so and why, and where the reading could reasonably go the other way it carries a `[NEEDS CLARIFICATION]` marker beside what was built.
 

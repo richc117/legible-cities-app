@@ -28,7 +28,7 @@
 
 **Created**: 2026-09-12
 
-**Status**: Draft
+**Status**: Implemented 2026-09-12 (#91)
 
 **Input**: Planned issue A5-01, "Export tab: presets and storyboards from
 the engine, options, live preview with frame and safe zones". A5-02b built

@@ -16,7 +16,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#76)
 
 **Input**: Planned issue A2-02 (#20). Engine v0.7.x answers `feeds.inspect`:
 the agencies, every route with its names, label, type, colours and trip

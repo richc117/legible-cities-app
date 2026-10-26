@@ -16,7 +16,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#74)
 
 **Input**: Planned issue A2-01 (#19). Engine v0.7.0 puts the registry on
 the protocol: `feeds.list` answers every feed, preset or added, with

@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#77)
 
 **Input**: Planned issue A2-03 (#21). Engine v0.7.x answers `render.stage`:
 one stored stage graph of a layout, by the layout's id, as a

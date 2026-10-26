@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-10
 
-**Status**: Draft
+**Status**: Implemented 2026-09-10 (#63)
 
 **Input**: Planned issue A5-02a, "Capture: an offscreen window takes a
 page's frames (ADR-024)". The first half of the first reel: the app takes

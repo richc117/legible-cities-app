@@ -4,7 +4,9 @@
 
 **Created**: 2026-10-24
 
-**Status**: Draft
+**Status**: Implemented 2026-10-25 (#525, the last of four parts: #509, #510, #511 and #525)
+
+The end-to-end loop of T015 (SC-004) is not recorded as run: its task in `tasks.md` is open.
 
 **Input**: Issue 426, "Spec: the record session (revision, drawn from what the run sent, one writer path)", from the codebase review of 15 Oct 2026 (findings R3-02, R3-03, R1-02, R1-04, R4-01). The review read 667b48c. Every claim below about the code as it stands was re-checked at a3c775d on 24 Oct 2026, and the line numbers are from there. Where the review was wrong or has been overtaken, this spec says so.
 

@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#82)
 
 **Input**: Planned issue A4-01, "Line colours: the project's lines with the
 GTFS swatch, an override picker, reset per line and for all, and a default

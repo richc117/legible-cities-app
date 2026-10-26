@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-10
 
-**Status**: Draft
+**Status**: Implemented 2026-10-10 (#397)
 
 **Input**: Issue 392, "Cell 06: open the export on a title card and the network drawing in, and the capture that drives them (the app half of engine 44)"; engine issue 44, at the v0.15.0 pin (issue 389). The issue's block "Decided on 10 Oct 2026" and the lane brief's settled list are the coordinator's decisions; each is recorded below as an "*As of 10 Oct 2026:*" line under the requirement it settles. Where the lane had to decide something the two are silent on, the line says so ("the lane's").
 

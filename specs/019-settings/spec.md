@@ -53,7 +53,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#83)
 
 **Input**: Planned issue A1-04 (#17). Two folders have been decided by the
 environment and nothing else since A1-05: the engine's home

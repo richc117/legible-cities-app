@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-13
 
-**Status**: Draft
+**Status**: Implemented 2026-09-13 (#102)
 
 **Input**: Planned issue A6-02, "First-run check: bundled LOOM and ffmpeg
 run, or a clear message". A packaged app carries its own Python, LOOM and

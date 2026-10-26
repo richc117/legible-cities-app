@@ -17,7 +17,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft; no open questions (the one convention the design document left ambiguous, the theme attribute, is decided under [Assumptions](#assumptions))
+**Status**: Implemented 2026-09-07 (#47); no open questions (the one convention the design document left ambiguous, the theme attribute, is decided under [Assumptions](#assumptions))
 
 **Input**: Planned issue A2-00 (GitHub #45). `docs/DESIGN.md` and ADR-026 fix what the interface looks like: four colour tiers from the brand's six tokens, two type tracks, a 4px grid, FigUI3's MIT core as the control kit behind an adapter, Phosphor icons, the native select, and a mark and a progress line drawn from Beck's vocabulary. The screens that exist (the header and status line, the Library, the project view, three dialogs) were built before it. This feature lays the foundations once and brings those screens onto them, before the feed chooser (A2-01) adds more interface.
 

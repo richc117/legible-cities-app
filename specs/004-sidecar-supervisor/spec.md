@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft; no open questions (the four things the issue was silent on are decided under [Assumptions](#assumptions))
+**Status**: Implemented 2026-09-07 (#42); no open questions (the four things the issue was silent on are decided under [Assumptions](#assumptions))
 
 **Input**: Planned issue A1-01 (GitHub #14). The engine now runs as a server (`schematic.serve`, engine 0.2.0, protocol 1): the app must start it, prove it is the engine it was built for, pass requests and answers between the interface and it, bring it back when it dies, and end it when the app quits, leaving nothing behind. This is the first time the app talks to the engine at all; the typed client over this connection is A1-02, the screen that shows long jobs is A1-03.
 

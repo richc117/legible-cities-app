@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-02
 
-**Status**: Draft
+**Status**: Implemented 2026-10-09 (#376)
 
 **Input**: Issue 272, "Route mode: a trip between two stations, everything else faded"; engine issue 49 (E38); ADR-048, which this spec carries out.
 

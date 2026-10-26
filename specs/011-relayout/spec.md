@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-10
 
-**Status**: Draft
+**Status**: Implemented 2026-09-10 (#70)
 
 **Input**: Planned issue A3-05, "Re-layout, explicit and warned, over the
 engine's addressed layouts". Engine v0.5.0 (E04b) stores every layout under

@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-13
 
-**Status**: Draft
+**Status**: Implemented 2026-09-13 (#110)
 
 **Input**: Planned issue A6-01 (#34), "Installers from CI on a tag, and
 unsigned install instructions for both OSes". `build.yml` already builds a

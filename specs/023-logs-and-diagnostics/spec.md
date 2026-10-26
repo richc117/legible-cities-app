@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-12
 
-**Status**: Draft
+**Status**: Implemented 2026-09-12 (#92)
 
 **Input**: Planned issue A6-03, "Local logs with rotation and a
 copy-diagnostics button; no telemetry". Every line the main process logs

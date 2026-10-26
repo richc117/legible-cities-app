@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-10
 
-**Status**: Draft
+**Status**: Implemented 2026-10-10 (#400)
 
 **Input**: Issue 394, "Cell 05: a line's name, visibility, width, casing and dash (the app half of engine 42 and 55)"; engine issues 42 (a line's name and hidden, v0.12.0) and 55 (a line's width, casing and dash, v0.16.0), at the v0.16.0 pin (issue 393); app ADR-053, which decides what a hidden line is. The issue's block "Decided on 10 Oct 2026" and the lane brief's settled list are the coordinator's decisions; each is recorded below as an "*As of 10 Oct 2026:*" line under the requirement it settles. Where the lane had to read a decision one way, the requirement says so and why, and where the reading could reasonably go the other way it carries a `[NEEDS CLARIFICATION]` marker beside what was built.
 
