@@ -11,8 +11,9 @@ writes before the app starts (every key optional):
     ignore_shutdown   true: answer engine.shutdown and keep running
     silent            true: long requests send no progress and never answer
     mute              true: answer nothing at all, not even engine.info
-    handshake_delay_ms  wait this long before answering engine.info, so the supervisor's
-                      log of how long the handshake took has a number to be held to
+    handshake_delay_ms  wait this long before answering every engine.info (the handshake's, and
+                      any later one), so the supervisor's log of how long the handshake took
+                      has a number to be held to
     spawn_child       true: start a child that sleeps (pid in fake-engine.child.pid), as
                       the engine starts a layout tool; ended on engine.shutdown
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it

@@ -48,7 +48,7 @@ function sayIfTheEngineIsNotNamed(): void {
  * stand-in compiled for the first time, a scanner reading both - and then
  * waited through a restart its deadline did not cover. Best effort: a
  * warm-up that fails is said and the run goes on, since all it changes is
- * that first test's odds. `main.log` has the handshake's own time for every
+ * that first test's odds. `engine.log` has the handshake's own time for every
  * launch (`handshake: answered in N ms`), which is how a warm first test is
  * told from a cold one.
  */

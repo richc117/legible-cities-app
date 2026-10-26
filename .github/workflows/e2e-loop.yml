@@ -13,7 +13,9 @@
 # build, and `xvfb-run -a` on Linux. Like ci.yml it names no engine, so a test
 # that needs a real generated page skips here and says so in the log. The log
 # folder is the suite's own (tests/e2e/global-setup.ts sets `LEGIBLE_LOGS`
-# before any worker starts), so nothing is set for it here.
+# before any worker starts); `LEGIBLE_KEEP_LOGS` below has the teardown copy
+# the logs into test-results/logs/ before they go, so the artefact carries
+# the engine's handshake time for every launch (issue 529).
 #
 # `load` starts one `node -e "for(;;){}"` per core minus one, from the same
 # step that runs the suite and stopped by the same step when the suite ends,
@@ -142,6 +144,9 @@ jobs:
       - name: Run the spec, repeated
         env:
           CI: 'true'
+          # The app's logs are already redacted of URLs' user information,
+          # query values and fragments, and this step holds no secret.
+          LEGIBLE_KEEP_LOGS: '1'
           SPEC: ${{ inputs.spec }}
           REPEATS: ${{ inputs.repeats }}
           LOAD: ${{ inputs.load }}
