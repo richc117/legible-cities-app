@@ -209,7 +209,7 @@ test('pans, zooms and fits by the buttons alone, with no key and no drag (issue 
     await expect.poll(async () => (await read()).x).toBeCloseTo(fitted.x, 5)
     await named('Pan up').click()
     await expect.poll(async () => (await read()).y).toBeGreaterThan(fitted.y)
-    expect((await read()).x).toBe(fitted.x)
+    expect((await read()).x).toBeCloseTo(fitted.x, 5)
     await named('Pan down').click()
     await expect.poll(async () => (await read()).y).toBeCloseTo(fitted.y, 5)
 

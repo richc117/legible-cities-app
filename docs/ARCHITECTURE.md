@@ -1243,7 +1243,7 @@ into an iframe with an empty `sandbox`, no permission at all, through
 `srcdoc`: nothing in it runs, it has no origin, and it is never inline
 in the interface's document. Pan and zoom are the interface's transforms
 on the frame, from the wheel, a drag, and the keys on a focusable pane
-named for a screen reader. A narrower mode chosen in the Inspect view and
+named for a screen reader, and the buttons above it (issue 546). A narrower mode chosen in the Inspect view and
 a new layout draw fewer lines here, from the new layout's set.
 
 While a layout run goes, the pane draws the layout as it solves (issue 382,
