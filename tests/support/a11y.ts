@@ -49,6 +49,7 @@ import {
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { READY_DEADLINE_MS } from './ready'
 import { describePair, describeReading, duplicatedNames } from './a11y-names'
+import { coveredStops, type StopCover } from './obscured'
 import {
   MIN_RING_CONTRAST,
   MIN_RING_WIDTH,
@@ -186,7 +187,30 @@ interface Finding {
   stops: number
 }
 
+/** What the backwards walk's `backRead()` says of the place focus is at (issue 536). */
+export interface BackAnswer {
+  state: 'none' | 'frame' | 'stop' | 'repeat' | 'same'
+  /** What holds focus, for the trace. */
+  at: string
+  /** The stop's box, the window and the pinned boxes painted over it; null unless it is a stop. */
+  cover: StopCover | null
+  /** The control is the first the walk wants: the walk has come to the top. */
+  top: boolean
+}
+
 export type Probe = {
+  /**
+   * The backwards walk (issue 536). `backBegin()` scrolls to the foot of the
+   * page, puts focus on the last control wanted and says how many there are;
+   * `backRead()` reads where focus is once the page has painted twice;
+   * `backOut()` puts focus on the last wanted control before the frame that
+   * holds it, as `past()` does going forwards, and records nothing.
+   */
+  backBegin(): number
+  backRead(): Promise<BackAnswer>
+  backOut(): string | null
+  /** How many distinct controls the walk has read, and the wanted ones it has not. */
+  backUnread(): { read: number; unread: string[] }
   begin(): number
   step(): StepAnswer
   /**
@@ -572,6 +596,10 @@ export function installProbe(): void {
     return chain
   }
 
+  // The backwards walk's own (issue 536); the forward walk's are below.
+  let backWant: Element[] = []
+  let backSeen = new Set<Element>()
+  let backLast: Element | null = null
   let want: Element[] = []
   let visited = new Set<Element>()
   let last: Element | null = null
@@ -758,6 +786,99 @@ export function installProbe(): void {
         skipped: skipped === undefined ? null : named(skipped),
         topUnread,
       }
+    },
+    backBegin() {
+      backWant = expected()
+      backSeen = new Set()
+      backLast = null
+      ;(document.activeElement as HTMLElement | null)?.blur?.()
+      window.scrollTo(0, document.documentElement.scrollHeight)
+      ;(backWant[backWant.length - 1] as HTMLElement | undefined)?.focus?.()
+      return backWant.length
+    },
+    async backRead() {
+      // Two paints, as the capture waits for, so that a scroll the browser
+      // makes for focus has landed; a deadline of its own in case the
+      // window is not painting.
+      await new Promise<void>((done) => {
+        const timer = setTimeout(done, 250)
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            clearTimeout(timer)
+            done()
+          }),
+        )
+      })
+      const deep = deepActive()
+      const at = deep === null ? 'nothing' : describe(deep)
+      const answer = (state: BackAnswer['state']): BackAnswer => ({
+        state,
+        at,
+        cover: null,
+        top: false,
+      })
+      if (deep === null || deep === document.body || deep.tagName === 'DIALOG')
+        return answer('none')
+      const control = controlOf(deep)
+      if (control.tagName === 'IFRAME') return answer('frame')
+      if (control === backLast) return answer('same')
+      if (backSeen.has(control)) return answer('repeat')
+      backLast = control
+      backSeen.add(control)
+      const box = control.getBoundingClientRect()
+      const rect = { left: box.left, top: box.top, right: box.right, bottom: box.bottom }
+      // What paints over the middle of the control, and which of the boxes
+      // it and its ancestors form stays where it is while the page scrolls.
+      // A pinned box the control is inside of is not over it. Off the
+      // window, `elementFromPoint` answers nothing and so does this.
+      const over: { name: string; rect: typeof rect }[] = []
+      const top = document.elementFromPoint((box.left + box.right) / 2, (box.top + box.bottom) / 2)
+      if (top !== null && top !== control && !control.contains(top)) {
+        const within = new Set<Element>()
+        for (let up: Element | null = control; up !== null; up = parentOf(up)) within.add(up)
+        for (let up: Element | null = top; up !== null; up = parentOf(up)) {
+          const position = getComputedStyle(up).position
+          if ((position !== 'sticky' && position !== 'fixed') || within.has(up)) continue
+          const edge = up.getBoundingClientRect()
+          const named = up.id !== '' ? `#${up.id}` : up.classList[0] ? `.${up.classList[0]}` : ''
+          over.push({
+            name: `${up.tagName.toLowerCase()}${named} (${position})`,
+            rect: { left: edge.left, top: edge.top, right: edge.right, bottom: edge.bottom },
+          })
+        }
+      }
+      return {
+        state: 'stop',
+        at,
+        cover: {
+          control: describe(control),
+          rect,
+          window: { width: innerWidth, height: innerHeight },
+          over,
+        },
+        top: backWant.indexOf(control) === 0,
+      }
+    },
+    backUnread() {
+      return {
+        read: backSeen.size,
+        unread: backWant.filter((el) => el.isConnected && !backSeen.has(el)).map(describe),
+      }
+    },
+    backOut() {
+      const deep = deepActive()
+      if (deep === null || deep.tagName !== 'IFRAME') return null
+      const before = backWant.filter(
+        (el) =>
+          el.isConnected &&
+          !backSeen.has(el) &&
+          (deep.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING) !== 0 &&
+          !el.contains(deep),
+      )
+      const target = before[before.length - 1]
+      if (target === undefined) return null
+      ;(target as HTMLElement).focus?.()
+      return describe(target)
     },
     finish() {
       ;(document.activeElement as HTMLElement | null)?.blur?.()
@@ -1323,6 +1444,147 @@ export async function sweep(
     failure ??= error
   }
   if (failure !== null) throw failure
+}
+
+/** The longest one backwards walk may run: a deadline, not a count of presses. */
+const BACK_WALK_MS = 60_000
+
+/**
+ * A walk from the foot of the screen to its top with Shift+Tab, in both
+ * themes, that fails any stop whose control is wholly under a box that stays
+ * where it is while the page scrolls - the sticky header (issue 536, WCAG
+ * 2.2 SC 2.4.11). Tabbing forwards never shows it, which is why every other
+ * sweep passed while a stop in sixteen was hidden: moving up, the browser
+ * scrolls a control that is above the window to the window's top edge.
+ *
+ * It is not `expectTabWalk` read backwards. That walk is about reaching
+ * every control and showing its ring; this one is about where the page is
+ * scrolled to when focus arrives, so it reads one thing at each stop and
+ * hands over at a frame in the one way that matters here: focus is put on
+ * the last control before the frame, by hand, since a document cannot see
+ * into a frame that runs at an opaque origin (ADR-028).
+ *
+ * What stops it being green with nothing in it: the walk has to come to the
+ * first control the screen has, by presses and not by the hand, and has to
+ * have read most of the controls that were wanted (`wanted`, from the
+ * probe), or it fails and prints every press.
+ */
+export async function expectNoFocusUnderPinned(page: Page, where: string): Promise<void> {
+  let failure: unknown = null
+  try {
+    for (const theme of THEMES) {
+      await inTheme(page, theme)
+      await walkBackwards(page, `${where} (${theme.name})`)
+    }
+  } catch (error) {
+    failure = error
+  }
+  try {
+    await inTheme(page, THEMES[0])
+  } catch (error) {
+    failure ??= error
+  }
+  if (failure !== null) throw failure
+}
+
+async function walkBackwards(page: Page, where: string): Promise<void> {
+  const probe = {
+    begin: (): Promise<number> =>
+      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backBegin()),
+    read: (): Promise<BackAnswer> =>
+      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backRead()),
+    out: (): Promise<string | null> =>
+      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backOut()),
+    unread: (): Promise<{ read: number; unread: string[] }> =>
+      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backUnread()),
+  }
+  await page.evaluate(installProbe)
+  // The pointer out of the way, as `expectTabWalk` has it, so that no
+  // control is read under a hover.
+  await page.mouse.move(0, 0)
+  const wanted = await probe.begin()
+  expect(wanted, `${where}: there are controls to reach`).toBeGreaterThan(0)
+
+  const began = Date.now()
+  const trace: string[] = []
+  const stops: StopCover[] = []
+  let reachedTop = false
+  let came = 'the walk ran out of time'
+
+  // Focus can be read as nothing, or as a frame, for a moment while it
+  // crosses a process boundary. Read again until it is a control, handing
+  // over from a frame by hand, within a deadline and not a count of turns.
+  const settled = async (): Promise<BackAnswer> => {
+    let answer = await probe.read()
+    const until = Date.now() + 6_000
+    let nextHandOver = Date.now()
+    while ((answer.state === 'none' || answer.state === 'frame') && Date.now() < until) {
+      if (answer.state === 'frame' && Date.now() >= nextHandOver) {
+        const to = await probe.out()
+        trace.push(`  handed over from ${answer.at} to ${to ?? 'nothing before it'}`)
+        nextHandOver = Date.now() + 2_000
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100))
+      answer = await probe.read()
+    }
+    return answer
+  }
+
+  const take = (answer: BackAnswer): boolean => {
+    trace.push(`${answer.state} ${answer.at}`)
+    if (answer.cover !== null) stops.push(answer.cover)
+    if (answer.top) {
+      reachedTop = true
+      came = 'it came to the first control'
+      return true
+    }
+    if (answer.state === 'repeat') {
+      came = `it came back round to ${answer.at}`
+      return true
+    }
+    if (answer.state === 'none' || answer.state === 'frame') {
+      came = `focus was lost at ${answer.at}`
+      return true
+    }
+    return false
+  }
+
+  // The start is a stop too: focus was put on the last control.
+  let over = take(await settled())
+  while (!over && Date.now() - began < BACK_WALK_MS) {
+    await page.keyboard.press('Shift+Tab')
+    over = take(await settled())
+  }
+
+  const story = `${trace.length} reads, the last 30:\n${trace.slice(-30).join('\n')}`
+  expect(
+    reachedTop,
+    `${where}: the backwards walk did not come to the first control (${came}); ${story}`,
+  ).toBe(true)
+  // Most of the screen was read: a walk that went from the foot to the top
+  // in a few presses would have judged nothing. Counted in distinct controls
+  // (`read`, from the probe's own set), not in readings, and the controls
+  // wanted and never read are named, whether the floor holds or not, so the
+  // number can be tightened to what is known. Why it is not "all": the
+  // wanted list is taken once, before the walk, and a control can leave the
+  // document while the walk goes (a panel that closes as focus moves on) or
+  // be one Tab never reaches in order (a radio that is not its group's stop
+  // is already excluded; the rest has not been seen on a run). 0.8 is a
+  // guess at that, to be replaced by the set the first runs print.
+  const { read, unread } = await probe.unread()
+  if (unread.length > 0)
+    test.info().annotations.push({
+      type: `backwards walk, ${where}: wanted and not read`,
+      description: unread.join('; '),
+    })
+  expect(
+    read,
+    `${where}: the backwards walk read ${read} distinct controls of ${wanted} wanted; not read: ${unread.join('; ') || 'none'}; ${story}`,
+  ).toBeGreaterThanOrEqual(Math.floor(wanted * 0.8))
+  expect(
+    coveredStops(stops),
+    `${where}: focus stops wholly under a sticky or fixed box, going backwards (${stops.length} stops read of ${wanted} wanted)`,
+  ).toEqual([])
 }
 
 export const heading = (page: Page): Locator => page.getByRole('heading', { level: 1 })

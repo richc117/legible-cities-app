@@ -301,6 +301,7 @@ platform is):
 | `--listbox-max-height` | 16rem: how much of a combobox's popup shows at once, about eight options, before it scrolls; every match is listed (issue 272) |
 | `--card-min-width` | 14rem: the narrowest a front door card may be, a project's or a sample city's, before the gallery puts one fewer in a row (A5.6-02, ADR-047) |
 | `--picker-size` | 200px: the colour picker's square, big enough to aim in |
+| `--header-clearance` | `--header-height` (40px) and `--space-4-4`: how far below the top of the window the browser keeps a control it scrolls to, as the `html` rule's `scroll-padding-top`, so the sticky header never covers focus (issue 536) |
 
 **Layers** (z-index tokens): `--layer-base` 0, `--layer-raised` 10 (sticky
 headers), `--layer-overlay` 100 (drawers), `--layer-dialog` 1000 (native
@@ -655,6 +656,13 @@ next before it says what went wrong.
   A click into the map closes it too, by intent: focus lands on the map's
   frame, which is outside it. Because of this rule, the sweep's walk begins
   at an open popover's invoker.
+- Focus is never wholly under the sticky header (WCAG 2.4.11, issue 536):
+  the page scrolls under the header, so `html` carries
+  `scroll-padding-top: var(--header-clearance)` and the browser's own scroll
+  to a focused control stops below it. The sweep also walks the notebook
+  backwards, from the bottom with Shift+Tab, and fails any stop whose box is
+  wholly covered by a sticky or fixed box (`tests/support/obscured.ts`);
+  tabbing forwards never showed it.
 - Contrast: text ≥ 4.5, controls and icons ≥ 3.0, in both themes; the
   token file's pairs are asserted by a unit test.
 - Live regions: the status line is polite; a finished or failed job is

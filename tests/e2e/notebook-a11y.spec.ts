@@ -22,6 +22,7 @@ import {
   PYTHON,
   controlsOf,
   expectEdgesInForcedColours,
+  expectNoFocusUnderPinned,
   expectPopoverClear,
   expectNamed,
   expectNoDuplicatedNames,
@@ -462,6 +463,62 @@ test("the project with the layout tuning and one line's options open", async () 
     ).not.toHaveCount(0)
     await openTheDisclosures(page)
     await sweep(page, "the project, the layout tuning and a line's options open")
+  })
+})
+
+// Mutations the coordinator runs this under, each of which must turn it red:
+// - `scroll-padding-top` deleted from `html` in app.css (or the token
+//   `--header-clearance` made 0): on main without the fix, with these cells
+//   open at 1024x768, the walk read 108 stops and named, among others,
+//   `input "A"`, `button "Choose the colour of line A"` and `select
+//   "Interchange marker"`, each wholly under `header.app-header`. (The issue
+//   counted 16 of 250 stops, with a different set of cells open; the
+//   failure names each stop and the header's box.)
+// - `backBegin` in `tests/support/a11y.ts` not focusing the last control, or
+//   the walk pressing 'Tab' for 'Shift+Tab': it comes to no first control,
+//   or reads too few stops, and says so.
+test('Shift+Tab up the notebook never leaves focus wholly under the sticky header (issue 536)', async () => {
+  // A layout run, the walk's presses in two themes at up to a minute each,
+  // and the preview of cell 06.
+  test.setTimeout(300_000)
+  const p = profile()
+  await withApp(p, async (page, app) => {
+    await openLaidOut(page, 'Los Angeles')
+    const [id] = readdirSync(join(p.engineHome, 'projects'))
+    copyFileSync(fixture, join(p.engineHome, 'out', id, 'la-metro-rail.html'))
+    for (const cellId of ['process', 'style', 'lines', 'export'] as const)
+      await openCell(page, cellId)
+
+    // The CI's window. Asked for and read back, as `design.spec.ts` asks:
+    // a display smaller than the ask leaves the window as large as it can
+    // be, and the check holds at any size, so it goes on and says what it got.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()[0].setContentSize(1024, 768)
+    })
+    try {
+      await expect
+        .poll(() => page.evaluate(() => [window.innerWidth, window.innerHeight]), {
+          timeout: 10_000,
+        })
+        .toEqual([1024, 768])
+    } catch {
+      test.info().annotations.push({
+        type: 'window not 1024x768',
+        description: `got ${await page.evaluate(() => `${window.innerWidth}x${window.innerHeight}`)}`,
+      })
+    }
+
+    // That the page scrolls at all, said before the walk and apart from it,
+    // as `rail.spec.ts` says it: in a window too tall for the screen to
+    // scroll, nothing is ever scrolled to and the walk below would find
+    // nothing to be under the header. A window that could not be set to the
+    // size asked for fails here, by name, and not green.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight),
+      'the page scrolls, so a walk up it has focus to scroll to',
+    ).toBeGreaterThan(0)
+
+    await expectNoFocusUnderPinned(page, 'the project, cells 02, 04, 05 and 06 open')
   })
 })
 
