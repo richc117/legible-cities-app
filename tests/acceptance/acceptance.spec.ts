@@ -1129,9 +1129,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(
           window.getByRole('navigation', { name: 'Steps' }).getByRole('button'),
         ).toHaveCount(6)
-        await expect(window.getByRole('region', { name: 'Outputs' })).toContainText(
-          'Nothing exported yet.',
-        )
+        const outputs = window.getByRole('region', { name: 'Outputs' })
+        await expect(outputs).toContainText('Nothing exported yet.')
+        await expect(outputs.getByRole('button')).toHaveCount(0)
       })
       const region = window.getByRole('region', { name: 'Layout run' })
       await log.soft('the layout starts by itself', async () => {
@@ -1186,6 +1186,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
           .getByRole('button')
           .evaluateAll((buttons) => buttons.map((b) => b.getAttribute('aria-label') ?? ''))
         expect(steps.filter((name) => !name.endsWith(', ready'))).toEqual([])
+        // Laid out now, so the empty Outputs offers the way to cell 06; at
+        // the first press, with no map to export, it offered none.
+        await expect(
+          window
+            .getByRole('region', { name: 'Outputs' })
+            .getByRole('button', { name: 'Export one in cell 06.' }),
+        ).toBeVisible()
       })
       await log.soft('the fields', async () => {
         const record = await recordOf(window, LA)

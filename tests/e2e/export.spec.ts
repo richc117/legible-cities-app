@@ -13,6 +13,8 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -25,7 +27,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
-import { openCell } from '../support/project'
+import { openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -186,6 +188,55 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
     await expect
       .poll(() => app.evaluate(() => (globalThis as { __revealed?: string[] }).__revealed))
       .toEqual([file])
+  })
+})
+
+// Issue 545: the rail's Outputs row is dated by its sidecar, and an export
+// over a file of the same name replaces that sidecar. The walk that raised
+// this showed the old date after "Exported"; the code reads the folder
+// again on `done`, which is after the engine has moved the sidecar into
+// place, and the walk's own screenshot shows the new date. This is the
+// test that says so on every run.
+//
+// The first export's sidecar is put back to 2020 and the project reopened,
+// so the row on screen reads that date and no read has happened since;
+// the second export then has to move it, with no reload, as soon as the
+// run says it is done. The mutation to watch it fail under: take
+// `runState` out of the effect's dependencies in `Outputs.tsx`.
+test('Outputs dates a re-exported file by the new export, with no reload', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, h)
+    await exportButton(page).click()
+    await expect(page.getByText(/^Exported /)).toHaveText(`Exported ${REEL}.`, {
+      timeout: 45_000,
+    })
+    const sidecar = `${deliverable(h)}.json`
+    const long = new Date('2020-01-01T12:00:00Z')
+    utimesSync(sidecar, long, long)
+
+    // The screen mounted afresh reads the folder: the row says 2020.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openProject(page, 'Los Angeles')
+    const made = page.getByRole('region', { name: 'Outputs' }).locator('time[datetime^="2020"]')
+    await expect(made).toHaveCount(1)
+
+    await openCell(page, 'export')
+    await expect(exportButton(page)).toBeVisible({ timeout: 20_000 })
+    await exportButton(page).click()
+    // The run belongs to the project and outlives the trip to the Library,
+    // so "Exported" is on screen from the start and says nothing about this
+    // export. The sidecar moving past 2020 is the engine having put the new
+    // one in place; the row has to follow it, and that is asserted next.
+    await expect
+      .poll(() => statSync(sidecar).mtimeMs, { timeout: 45_000 })
+      .toBeGreaterThan(long.getTime())
+    // Within the expectation's own deadline, and with no reload, no way
+    // back to the Library and no press: the run's `done` is the only thing
+    // that can make the list read again.
+    await expect(made).toHaveCount(0, { timeout: 20_000 })
+    await expect(page.getByRole('region', { name: 'Outputs' }).locator('time')).toHaveCount(1)
   })
 })
 

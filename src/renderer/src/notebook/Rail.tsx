@@ -82,6 +82,21 @@ export function landOnCell(id: CellId): void {
   })
 }
 
+/**
+ * Take a person to a cell: open it if it is closed, and have it landed on
+ * once it is laid out. The stepper's press and the Outputs' empty state
+ * (which sends a person to cell 06) are the same gesture and share this.
+ */
+export function goToCell(
+  cell: CellId,
+  isOpen: boolean,
+  onOpen: (cell: CellId) => void,
+  land: (cell: CellId) => void,
+): void {
+  if (!isOpen) onOpen(cell)
+  land(cell)
+}
+
 /** Where the six cells are now, in the order they are read. */
 function boxes(): CellBox[] {
   const found: CellBox[] = []
@@ -161,10 +176,7 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
                   // them are hidden from the eye and not from the tree.
                   aria-label={stepName(cell, state)}
                   aria-current={current === cell.id ? 'step' : undefined}
-                  onClick={() => {
-                    if (!open[cell.id]) onOpen(cell.id)
-                    setPending(cell.id)
-                  }}
+                  onClick={() => goToCell(cell.id, open[cell.id], onOpen, setPending)}
                 >
                   <span className="rail-number">{cellNumber(cell.number)}</span>
                   <span className="rail-name">{cell.name}</span>
@@ -178,7 +190,7 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
           })}
         </ol>
       </nav>
-      <Outputs />
+      <Outputs onExport={() => goToCell('export', open.export, onOpen, setPending)} />
     </div>
   )
 }

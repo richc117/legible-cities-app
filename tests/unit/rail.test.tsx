@@ -15,11 +15,17 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import { stateIcon } from '../../src/renderer/src/notebook/Cell'
-import Rail, { RAIL_LABEL, stepName } from '../../src/renderer/src/notebook/Rail'
+import {
+  EXPORT_ONE,
+  NOTHING_YET,
+  OutputsEmpty,
+  canExportFrom,
+} from '../../src/renderer/src/notebook/Outputs'
+import Rail, { RAIL_LABEL, goToCell, stepName } from '../../src/renderer/src/notebook/Rail'
 import {
   clearance,
   currentStepOf,
@@ -297,5 +303,62 @@ describe('which step the scroll is on', () => {
 
   it('is nothing at all when there are no cells to be on', () => {
     expect(currentStepOf([], HEADER.bottom)).toBeNull()
+  })
+})
+
+describe('Outputs’ empty state', () => {
+  const empty = (canExport: boolean, onExport: () => void = () => {}): string =>
+    renderToStaticMarkup(<OutputsEmpty canExport={canExport} onExport={onExport} />)
+
+  it('says its sentence and offers one way to fill it, link-styled', () => {
+    const drawn = empty(true)
+    expect(drawn).toContain(NOTHING_YET)
+    expect(drawn).toContain(`<button type="button" class="inline-link">${EXPORT_ONE}</button>`)
+    expect(EXPORT_ONE).toBe('Export one in cell 06.')
+    expect([...drawn.matchAll(/<button/g)]).toHaveLength(1)
+  })
+
+  it('offers nothing where no export can be made: no layout yet, or a read-only project', () => {
+    const drawn = empty(false)
+    expect(drawn).toContain(NOTHING_YET)
+    expect(drawn).not.toContain('<button')
+  })
+})
+
+describe('when the empty Outputs may offer an export', () => {
+  const layout = { stations: [] }
+
+  it('does once the project is laid out', () => {
+    expect(canExportFrom({ readOnly: false, layout })).toBe(true)
+  })
+
+  it('does not before a layout, where cell 06 says there is no map to export', () => {
+    expect(canExportFrom({ readOnly: false, layout: null })).toBe(false)
+  })
+
+  it('does not to a read-only project, or before there is a project', () => {
+    expect(canExportFrom({ readOnly: true, layout })).toBe(false)
+    expect(canExportFrom(null)).toBe(false)
+  })
+})
+
+describe('going to a cell', () => {
+  it('opens a closed cell and then lands on it', () => {
+    const calls: string[] = []
+    goToCell(
+      'export',
+      false,
+      (cell) => calls.push(`open ${cell}`),
+      (cell) => calls.push(`land ${cell}`),
+    )
+    expect(calls).toEqual(['open export', 'land export'])
+  })
+
+  it('lands on an open cell without opening it again', () => {
+    const onOpen = vi.fn()
+    const land = vi.fn()
+    goToCell('export', true, onOpen, land)
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(land).toHaveBeenCalledWith('export')
   })
 })
