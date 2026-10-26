@@ -2308,7 +2308,9 @@ describe('where a project may not export to', () => {
         () => refusal !== null || h.eng.requests.length > 2,
       )
       expect(h.eng.requests, 'the engine was not asked for a second plan').toHaveLength(2)
-      expect(refusal).toBe(`The folder this project exports to cannot be written to. ${INSIDE}`)
+      expect(refusal).toBe(
+        `${INSIDE} That is the folder this project exports to, so the export did not start.`,
+      )
       expect(h.cap.calls, 'nothing more was captured').toHaveLength(1)
       expect(h.exporter.live, 'the export was let go').toBe(0)
     })
@@ -2477,7 +2479,7 @@ describe('where a project may not export to', () => {
       try {
         const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
         const refused = expect(result).rejects.toThrow(
-          `The folder this project exports to cannot be written to. ${LATE.folder}`,
+          `${LATE.folder} That is the folder this project exports to, so the export did not start.`,
         )
         await askedOrEnded(wasAsked, refused)
         expect(h.exporter.live, 'it is an export until it is refused').toBe(1)

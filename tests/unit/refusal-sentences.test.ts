@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest'
 import { withoutPaths } from '../../src/shared/engine'
 import { NAME_MAX, validateName } from '../../src/shared/project/validate'
 import { FEED_REFUSALS, PickedPaths, refuseUrl, registryGuard } from '../../src/main/feeds-ipc'
-import { DESTINATION_REFUSALS, destinationLate } from '../../src/main/export'
+import { DESTINATION_REFUSALS, destinationLate, EXPORTS_THERE } from '../../src/main/export'
 import { NO_BAND_FOR_ADDRESS, staleFrame, unreadFrame } from '../../src/main/capture'
 import { SHEET_REFUSALS, validateFeedUrl } from '../../src/renderer/src/NewProjectSheet'
 import { openFailed } from '../../src/renderer/src/Library'
@@ -41,6 +41,7 @@ async function refusals(): Promise<Array<[string, string | null]>> {
       `destinationLate(${asked})`,
       destinationLate(asked),
     ]),
+    ['EXPORTS_THERE', EXPORTS_THERE],
     ['staleFrame', staleFrame(3)],
     ['unreadFrame', unreadFrame(0)],
     ['NO_BAND_FOR_ADDRESS', NO_BAND_FOR_ADDRESS],

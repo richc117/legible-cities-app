@@ -88,9 +88,9 @@ settings: {
   to name one, and this holds the rule for any route added later.
 - **A folder inside the app itself** is refused even though the dialog
   answered it: "Choose another folder: that folder is inside the app
-  itself, and nothing can be kept there." (since issue 548). The chooser makes a folder anywhere the platform allows, the
-  bundle included, and the bundle is read-only on macOS and wiped on update
-  (ADR-016).
+  itself, and nothing can be kept there." (since issue 548). The chooser
+  makes a folder anywhere the platform allows, the bundle included, and
+  the bundle is read-only on macOS and wiped on update (ADR-016).
 - **A theme** must be one of the three names: "that is not a theme".
 - **A folder the environment names** is not changeable: "`SCHEMATIC_HOME`
   names this folder; the app does not change it here", and the same for

@@ -542,12 +542,7 @@ export class Exporter {
     // is a file anything on the machine can write.
     if (project.destination !== null) {
       const why = (await this.#options.destinationRefusal?.(project.destination)) ?? null
-      if (why !== null)
-        throw engineError(
-          ERROR_CODES.badCall,
-          `The folder this project exports to cannot be written to. ${why}`,
-          'params',
-        )
+      if (why !== null) throw engineError(ERROR_CODES.badCall, `${why} ${EXPORTS_THERE}`, 'params')
     }
     const destination = project.destination ?? appFolder
     // The service day the map on disk was drawn for. Not `project.date`,
@@ -806,12 +801,19 @@ export interface ForbiddenFolders {
 export type DestinationAsked = 'folder' | 'app' | 'engine' | 'waiting'
 
 /**
+ * What the exporter says after a refusal of the project's own folder
+ * (`destinationRefusal`, asked again at each export): the refusal leads with
+ * what to do, and this names the folder it is about (issue 548).
+ */
+export const EXPORTS_THERE =
+  'That is the folder this project exports to, so the export did not start.'
+
+/**
  * What the chooser and the exporter say when a folder did not answer in
  * time (issue 206): which folder, that nothing was changed or written, and
  * what can be done about it. Whole sentences, like the refusals beside it
- * (issue 548): the exporter says one after "The folder this project
- * exports to cannot be written to.", which is where the project is named.
- * No path.
+ * (issue 548): the exporter says one before `EXPORTS_THERE`, which is
+ * where the project's folder is named. No path.
  */
 export function destinationLate(asked: DestinationAsked): string {
   const unchecked =
@@ -832,9 +834,9 @@ export function destinationLate(asked: DestinationAsked): string {
  * Why a folder may not be an export's destination, one sentence for each
  * forbidden folder and direction (`judgeDestination`), each leading with
  * what to do (DESIGN.md section 11, issue 548). The chooser shows one as
- * written, and the exporter after "The folder this project exports to
- * cannot be written to.". `insideApp` is also Settings' refusal of a
- * folder in the bundle (`settings-ipc.ts`). No path.
+ * written, and the exporter with `EXPORTS_THERE` after it. `insideApp` is
+ * also Settings' refusal of a folder in the bundle (`settings-ipc.ts`). No
+ * path.
  */
 export const DESTINATION_REFUSALS = {
   insideApp:

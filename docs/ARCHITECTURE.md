@@ -2011,7 +2011,7 @@ against the homes.
   refused at the next export. The sentence does not call the folder
   waiting the engine data folder, which it is not yet: "Choose another
   folder: that folder is inside the folder the engine data moves to at the
-  next start, which “Reset engine data” removes from then on.".
+  next start, which “Reset engine data” removes from then on.
 
 So whichever of the two folders is chosen second is the one refused.
 
@@ -2109,9 +2109,9 @@ home folder, the folder the app keeps its settings in, or the reading of
 the projects itself. No path in any. `destinationRefusal` is bounded the
 same way and says which of its folders it was - the folder being judged,
 the app itself, the engine data folder or the one waiting - in a sentence
-the chooser shows and the exporter says after "The folder this project
-exports to cannot be written to."; "The export" above says what that
-leaves.
+the chooser shows and the exporter says before "That is the folder this
+project exports to, so the export did not start."; "The export" above
+says what that leaves.
 
 **One question to the disk per folder.** A check that lapses leaves its
 question unanswered, and each holds one of the four threads the runtime

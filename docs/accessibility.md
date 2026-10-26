@@ -1407,8 +1407,8 @@ a table).
 - **Created and Modified.** A description list at the foot of the
   notebook: Created and Modified, each read with its date and time.
 - **Rename form.** Press **Rename**: expanded, focus stays on it; Tab past
-  **Delete project** to the text field "New name", required. Empty it and press **Save**: "name is
-  required" read with the field. Press **Cancel** and listen for focus back
+  **Delete project** to the text field "New name", required. Empty it and press **Save**: "Give the
+  project a name." read with the field. Press **Cancel** and listen for focus back
   on **Rename**, collapsed.
 - **Delete confirmation.** On the throwaway project, press
   **Delete project**. Listen for a dialog "Delete `<project>`?", the

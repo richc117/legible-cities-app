@@ -119,7 +119,10 @@ type Messages = Partial<Record<Field, string>>
 
 // A create's refusal about the feed opens with the word ("feed key must
 // be…"), so it lands under that field; anything else, the name's own
-// ("Give the project a name.") included, lands under the name.
+// ("Give the project a name.") included, lands under the name. The match is
+// on that lower-case prefix: `validateFeedKey`'s sentence must keep starting
+// with "feed", and no other create refusal may, or a reworded one lands
+// under the wrong field without any test saying so.
 function fieldFor(message: string): Field {
   return message.startsWith('feed') ? 'feed' : 'name'
 }
