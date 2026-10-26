@@ -226,7 +226,7 @@ run.
   Rail**, with **Library** in the header beside the engine's status (a
   screen reader names it "Back to Library"), and the notebook's six cells, 01 to 06, with cells 01 to 05
   open and 06 closed. The rail's **Steps**, under the project's name, lists the same six, and its
-  **Outputs** says "Nothing exported yet."
+  **Outputs** says "Nothing exported yet." with a link-styled button after it, "Export one in cell 06."
 - The layout starts by itself. The status sentence under the heading reads "01
   Data is running." while the feed downloads, then "02 Process is running.",
   with **Stop** beside it.

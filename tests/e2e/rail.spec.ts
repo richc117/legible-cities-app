@@ -34,7 +34,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cellHandback, laidOutProject, openProject } from '../support/project'
+import { cellHandback, cellHeading, laidOutProject, openProject } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -257,6 +257,22 @@ test('Outputs lists what is on disk, from files this session never wrote', async
     await expect(outputs.getByRole('button', { name: /^Reveal / })).toBeVisible()
     // No path, anywhere in the rail (constitution V).
     await expect(page.locator('.rail')).not.toContainText(h.exportFolder)
+  })
+})
+
+test('the empty Outputs offers to export, and a press lands on cell 06’s heading', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', PROJECT)
+    const outputs = page.getByRole('region', { name: 'Outputs' })
+    await expect(outputs).toContainText('Nothing exported yet.')
+    // Cell 06 starts closed on a project with a layout, so the press has to
+    // open it as well as land on it.
+    await expect(cellHeading(page, 'export')).toHaveAttribute('aria-expanded', 'false')
+    await outputs.getByRole('button', { name: 'Export one in cell 06.' }).click()
+    await expect(cellHeading(page, 'export')).toHaveAttribute('aria-expanded', 'true')
+    await expect(cellHandback(page, 'export')).toBeFocused()
   })
 })
 

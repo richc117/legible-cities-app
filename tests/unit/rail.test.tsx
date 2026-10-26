@@ -15,11 +15,12 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import { stateIcon } from '../../src/renderer/src/notebook/Cell'
-import Rail, { RAIL_LABEL, stepName } from '../../src/renderer/src/notebook/Rail'
+import { EXPORT_ONE, NOTHING_YET, OutputsEmpty } from '../../src/renderer/src/notebook/Outputs'
+import Rail, { RAIL_LABEL, goToCell, stepName } from '../../src/renderer/src/notebook/Rail'
 import {
   clearance,
   currentStepOf,
@@ -297,5 +298,60 @@ describe('which step the scroll is on', () => {
 
   it('is nothing at all when there are no cells to be on', () => {
     expect(currentStepOf([], HEADER.bottom)).toBeNull()
+  })
+})
+
+describe('Outputs’ empty state', () => {
+  const empty = (readOnly: boolean, onExport: () => void = () => {}): string =>
+    renderToStaticMarkup(<OutputsEmpty readOnly={readOnly} onExport={onExport} />)
+
+  it('says its sentence and offers one way to fill it, link-styled', () => {
+    const drawn = empty(false)
+    expect(drawn).toContain(NOTHING_YET)
+    expect(drawn).toContain(`<button type="button" class="inline-link">${EXPORT_ONE}</button>`)
+    expect(EXPORT_ONE).toBe('Export one in cell 06.')
+    expect([...drawn.matchAll(/<button/g)]).toHaveLength(1)
+  })
+
+  it('offers nothing to a read-only project, which cannot export', () => {
+    const drawn = empty(true)
+    expect(drawn).toContain(NOTHING_YET)
+    expect(drawn).not.toContain('<button')
+  })
+
+  it('is handed the press the rail makes for cell 06', () => {
+    const rail = readFileSync(
+      resolve(__dirname, '../../src/renderer/src/notebook/Rail.tsx'),
+      'utf8',
+    )
+    expect(rail).toContain(
+      "<Outputs onExport={() => goToCell('export', open.export, onOpen, setPending)}",
+    )
+    const outputs = readFileSync(
+      resolve(__dirname, '../../src/renderer/src/notebook/Outputs.tsx'),
+      'utf8',
+    )
+    expect(outputs).toContain('onClick={onExport}')
+  })
+})
+
+describe('going to a cell', () => {
+  it('opens a closed cell and then lands on it', () => {
+    const calls: string[] = []
+    goToCell(
+      'export',
+      false,
+      (cell) => calls.push(`open ${cell}`),
+      (cell) => calls.push(`land ${cell}`),
+    )
+    expect(calls).toEqual(['open export', 'land export'])
+  })
+
+  it('lands on an open cell without opening it again', () => {
+    const onOpen = vi.fn()
+    const land = vi.fn()
+    goToCell('export', true, onOpen, land)
+    expect(onOpen).not.toHaveBeenCalled()
+    expect(land).toHaveBeenCalledWith('export')
   })
 })
