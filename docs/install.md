@@ -10,12 +10,15 @@ computer will warn you before it opens the app the first time, and this page
 shows you how to get past that warning on each system. To get a newer version,
 download it from the Releases page and install it over the old one; your
 projects and settings stay where they are.
+[Updating from an earlier release](#updating-from-an-earlier-release) says
+what is different the first time you open the new one.
 
 - [What you need](#what-you-need)
 - [Which file to download](#which-file-to-download)
 - [Check the download (optional)](#check-the-download-optional)
 - [Install on a Mac](#install-on-a-mac)
 - [Install on Windows](#install-on-windows)
+- [Updating from an earlier release](#updating-from-an-earlier-release)
 - [What the app writes, and where](#what-the-app-writes-and-where)
 - [Uninstall completely](#uninstall-completely)
 - [Report a problem](#report-a-problem)
@@ -161,6 +164,50 @@ check it as described above. If it happens again, [report it](#report-a-problem)
 
 After that, open Legible Cities from the Start menu or the desktop
 shortcut.
+
+## Updating from an earlier release
+
+Install the new version over the old one, as the steps above say: quit the
+app first, and on a Mac choose **Replace**. Your projects, feeds and
+settings stay where [What the app writes, and where](#what-the-app-writes-and-where)
+puts them. Four things are different the first time you open the new
+version.
+
+**Each project is redrawn once.** The first time you open a project that
+has a map, the app draws that map again with the engine in the new version,
+from the layout the project already stored. Nothing is laid out again, so
+the layout does not move. The map on screen is replaced when the redraw has
+finished, and the project's picture in the Library follows. It happens once
+for each project, and a project with no map yet is left alone. If the
+redraw fails, cell 03 (Frame and service day) says that the map could not be
+redrawn as the project opened, gives the engine's reason, and the old map
+stays on screen.
+
+**Projects saved by the new version open read-only in 0.1.0.** Each project
+is kept in a record that has a version number. The first release, 0.1.0,
+reads version 1; the new version writes version 2, and 0.1.0 opens a record
+of a higher version read-only. That includes a project the new version has
+redrawn, and any project it has saved, so after you have opened your
+projects once, going back to 0.1.0 shows them marked read-only in the
+Library: 0.1.0 cannot change or export them there, and can still delete
+them. A project the new version has not saved is still version 1. If you
+may go back, quit the app and copy the engine's data folder (the row in
+the tables below that names it, which Settings shows as the **Engine data
+folder**) to somewhere safe before you open your projects in the new
+version; the copy holds them as 0.1.0 left them.
+
+**The warnings come back.** The new installer is not signed either, so macOS
+or Windows warns again, as it did the first time. Follow
+[Install on a Mac](#install-on-a-mac) or
+[Install on Windows](#install-on-windows) again; a Mac needs it once for
+each version you install (see [After the first time](#after-the-first-time)).
+
+**The engine is newer.** The engine inside the app draws the maps, and
+0.1.0 carried engine v0.10.1; the release's notes name the one the new
+version carries. Because every map is redrawn, it is drawn as the newer
+engine draws it, and the names on it, and how they are placed, may look
+different from before. Exports are still stills, videos and GIFs, and the
+ones you made before stay where they are.
 
 ## What the app writes, and where
 
