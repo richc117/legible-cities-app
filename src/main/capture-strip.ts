@@ -151,7 +151,7 @@ export async function readPng(bytes: Buffer): Promise<Png> {
     filtered = await inflated(Buffer.concat(data), { maxOutputLength: expected })
   } catch (error) {
     if ((error as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE')
-      throw new PngError('the image data of the frame is not the size its header says')
+      throw new PngError('the image data of the frame inflates past the size its header says')
     throw new PngError('the image data of the frame does not decompress')
   }
   if (filtered.length !== expected)

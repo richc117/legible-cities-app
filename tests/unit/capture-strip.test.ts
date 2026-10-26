@@ -4,6 +4,7 @@
 // the band the engine's page draws: sixteen bits from the most significant,
 // two blocks a bit across the width, white then black for a 1.
 
+import { crc32 } from 'node:zlib'
 import { describe, expect, it } from 'vitest'
 import {
   PngError,
@@ -216,7 +217,17 @@ describe('the crop', () => {
     const srgb = { type: 'sRGB', data: Buffer.from([0]) }
     const phys = { type: 'pHYs', data: Buffer.from([0, 0, 11, 19, 0, 0, 11, 19, 1]) }
     const { png, keep } = shot({ count: 3, extra: [srgb, phys] })
-    const kept = await readPng(await cropPng(await readPng(png), keep))
+    const bytes = await cropPng(await readPng(png), keep)
+    // Every chunk's checksum is the format's: over its type and its data.
+    for (let at = 8; at < bytes.length;) {
+      const length = bytes.readUInt32BE(at)
+      const typeAndData = bytes.subarray(at + 4, at + 8 + length)
+      expect(bytes.readUInt32BE(at + 8 + length), bytes.toString('latin1', at + 4, at + 8)).toBe(
+        crc32(typeAndData) >>> 0,
+      )
+      at += 12 + length
+    }
+    const kept = await readPng(bytes)
     expect(kept.height).toBe(keep)
     expect(kept.before.map((c) => [c.type, [...c.data]])).toEqual([
       ['sRGB', [0]],
@@ -278,7 +289,9 @@ describe('a shot it cannot read', () => {
         b.writeUInt32BE(2, 8 + 8 + 4)
         return b
       },
-      /not the size its header says/,
+      // Mutation: the inflate unbounded - the whole stream is inflated and
+      // then found the wrong size, with the other sentence.
+      /inflates past the size its header says/,
     ],
     [
       'a header that says more rows than there are',
