@@ -10,7 +10,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { addressFor, wantedAddress } from '../../src/renderer/src/viewerAddress'
 import { roleOfAddress } from '../../src/main/viewer'
-import type { Theme } from '../../src/shared/project'
+import type { Theme } from '../../src/shared/project/types'
 
 const PROJECT = { id: 'abcdefghijk1', feed: 'la-metro-rail', theme: 'warm-dark' as Theme }
 

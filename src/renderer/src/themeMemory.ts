@@ -1,4 +1,4 @@
-import type { Theme } from '../../shared/project'
+import type { Theme } from '../../shared/project/types'
 
 // The theme the app last wrote to a project's record, kept where the viewer's
 // restore can read it at the moment it sends a call (issue 349).

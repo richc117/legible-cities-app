@@ -25,7 +25,7 @@ It refuses:
 - a project with no stored layout ("lay the project out first").
 
 It writes `lineOrder` and `modified`, and nothing else. The same validator
-(`validateLineOrder` in `src/shared/project.ts`) runs in the panel, in the
+(`validateLineOrder` in `src/shared/project/validate.ts`) runs in the panel, in the
 main-side handler and in the store: the panel so a move is never made that
 the store would reject, the handler because the argument came from another
 process, the store because it is the trusted layer and has callers of its

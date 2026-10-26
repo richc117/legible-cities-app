@@ -21,13 +21,13 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
+import { RECORD_VERSION } from '../../src/main/record/parse'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
   DEFAULT_THEME,
-  RECORD_VERSION,
   type ProjectRecord,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 import { compareDecoded, TOLERANCE } from '../support/frames'
 import { openCell } from '../support/project'
 

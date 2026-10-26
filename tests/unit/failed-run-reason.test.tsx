@@ -42,7 +42,7 @@ import type { ProjectState } from '../../src/renderer/src/notebook/useProjectSta
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { ERROR_CODES, withoutPaths, type EngineState } from '../../src/shared/engine'
 import { composeJobLog, runFailureSentence, screenPaths, type Job } from '../../src/shared/jobs'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
 const WINDOWS = ['C:', 'Users', 'someone', 'AppData', 'engine-home', 'feeds', 'la-metro.zip'].join(

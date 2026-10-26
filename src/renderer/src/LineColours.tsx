@@ -10,7 +10,8 @@ import {
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
-import { paletteOf, type Palette, type ProjectRecord } from '../../shared/project'
+import { type Palette, type ProjectRecord } from '../../shared/project/types'
+import { paletteOf } from './record'
 import {
   feedWords,
   hasOverride,

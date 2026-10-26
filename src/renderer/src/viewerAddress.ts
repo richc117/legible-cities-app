@@ -1,4 +1,4 @@
-import type { ProjectRecord, Theme } from '../../shared/project'
+import type { ProjectRecord, Theme } from '../../shared/project/types'
 
 // The address the map's frame is sent to, and when it is sent somewhere new.
 //

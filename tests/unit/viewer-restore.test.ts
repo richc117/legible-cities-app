@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { restoreCalls, type ViewerCall } from '../../src/renderer/src/viewerRestore'
-import { THEMES } from '../../src/shared/project'
+import { THEMES } from '../../src/shared/project/types'
 import { isViewerMethod } from '../../src/shared/viewer'
 
 /** What the engine's page actually answers from `state()`. */

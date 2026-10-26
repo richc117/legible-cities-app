@@ -27,7 +27,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { CAPTURE_PARTITION } from '../../src/main/capture'
-import { RECORD_VERSION } from '../../src/shared/project'
+import { RECORD_VERSION } from '../../src/main/record/parse'
 import { cellLabel } from '../support/project'
 
 const repoRoot = resolve(__dirname, '../..')

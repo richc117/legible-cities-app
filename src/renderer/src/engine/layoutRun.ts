@@ -5,10 +5,8 @@ import {
   ERROR_CODES,
   type EngineState,
 } from '../../../shared/engine'
+import { drawnDate } from '../../../shared/project/helpers'
 import {
-  drawnDate,
-  orderOf,
-  paletteOf,
   type LineOrder,
   type Palette,
   type ProjectLines,
@@ -16,8 +14,8 @@ import {
   type ProjectStyle,
   type SentSet,
   type ServiceWindow,
-  sentSet,
-} from '../../../shared/project'
+} from '../../../shared/project/types'
+import { orderOf, paletteOf, sentSet } from '../record'
 import {
   failureOf,
   runFailureSentence,
@@ -336,7 +334,7 @@ export interface RunOptions {
       /** The stations the map was drawn with, for cell 03's trip (issue 272); absent when unread. */
       stations?: Station[]
       /** The tuning graph.build was sent (issue 385); absent for a run sent none. */
-      tuning?: import('../../../shared/project').ProjectTuning
+      tuning?: import('../../../shared/project/types').ProjectTuning
       /** What the run's map.build was sent (spec 037), which the record keeps as `drawn`. */
       sent: SentSet
     },

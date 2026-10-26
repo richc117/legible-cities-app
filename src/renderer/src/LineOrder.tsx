@@ -13,13 +13,9 @@ import {
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
-import {
-  orderOf,
-  paletteOf,
-  validateLineOrder,
-  type LineOrder as Order,
-  type ProjectRecord,
-} from '../../shared/project'
+import { type LineOrder as Order, type ProjectRecord } from '../../shared/project/types'
+import { validateLineOrder } from '../../shared/project/validate'
+import { orderOf, paletteOf } from './record'
 import { linesOf, REDRAW_DELAY, shownColour, type Line } from './colours'
 import { keepDismissed, keyOf, useDismissalWatch } from './dismissal'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'

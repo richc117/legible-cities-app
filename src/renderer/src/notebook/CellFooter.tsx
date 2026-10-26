@@ -1,7 +1,7 @@
 import { Fragment, type JSX } from 'react'
 import { withoutPaths, type EngineState } from '../../../shared/engine'
 import { shortLayoutId } from '../../../shared/layout'
-import type { ProjectRecord } from '../../../shared/project'
+import type { ProjectRecord } from '../../../shared/project/types'
 import type { ExportSnapshot } from '../engine/exportRun'
 import { describeInputs } from '../LayoutRun'
 import Time from './Time'

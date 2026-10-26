@@ -28,7 +28,7 @@ It refuses:
 - a project with no stored layout ("lay the project out first").
 
 It writes `colors`, `defaultColor` and `modified`, and nothing else. The
-same validator (`validatePalette` in `src/shared/project.ts`) runs in the
+same validator (`validatePalette` in `src/main/record/validate.ts`) runs in the
 form, in the main-side handler and in the store: the form for a sentence,
 the handler because the argument came from another process, the store
 because it is the trusted layer and has callers of its own.

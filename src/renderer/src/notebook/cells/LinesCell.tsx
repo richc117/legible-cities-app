@@ -1,5 +1,5 @@
 import { useRef, type JSX } from 'react'
-import { DEFAULT_COLOR, type ProjectRecord } from '../../../../shared/project'
+import { DEFAULT_COLOR, type ProjectRecord } from '../../../../shared/project/types'
 import LineColours from '../../LineColours'
 import LineOrderPanel from '../../LineOrder'
 import Cell from '../Cell'

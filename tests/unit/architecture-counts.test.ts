@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { RECORD_VERSION } from '../../src/shared/project'
+import { RECORD_VERSION } from '../../src/main/record/parse'
 
 // docs/ARCHITECTURE.md used to state counts that the code outgrew: fourteen
 // bridge methods when there were seventeen, `version: 1` when the record was

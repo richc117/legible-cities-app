@@ -55,7 +55,7 @@ import {
   type ExportChoice,
   type ExportProgress,
 } from '../../src/shared/export'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import type { CaptureJob as PlannedJob, Preset } from '../../src/shared/protocol'
 import { FOLDERS_TIMEOUT_MS, realOrResolved } from '../../src/main/settings'
 import { FAKE_ENGINE, findPython } from '../support/python'

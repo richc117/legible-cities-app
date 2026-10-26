@@ -22,13 +22,13 @@ import { engineCommand, engineEnvironment } from '../../src/main/interpreter'
 import { Sidecar } from '../../src/main/sidecar'
 import type { EnginePin } from '../../src/shared/engine'
 import { isLayoutId } from '../../src/shared/layout'
+import { RECORD_VERSION } from '../../src/main/record/parse'
 import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
   DEFAULT_THEME,
-  RECORD_VERSION,
   type ProjectRecord,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 import type { FeedsServiceResult, MapBuildResult } from '../../src/shared/protocol'
 
 /** The committed fixture: `data/feeds/bart.zip` and one stored layout under `data/graphs/bart/`. */

@@ -119,16 +119,16 @@ Each is refused with its sentence, and nothing on disk changes.
 
 ### User Story 5 - The record's code is split by what it is (Priority: P3)
 
-As a contributor reading or changing the record, I want its types, its parsing, its validators, its sentences and its helpers each in a module of their own, imported only by the process that uses them, so that a change to one is not a change to a 2,154-line file every process imports.
+As a contributor reading or changing the record, I want its types, its parsing, its validators, its sentences and its helpers each in a module of their own, imported only by the process that uses them, so that a change to one is not a change to a 2,154-line file every process imports (2,321 lines and 136 exports when it was split, issue 492).
 
 **Why this priority**: it is enabling work for the rest of this spec and for any future record field. It changes no behaviour.
 
-**Independent Test**: an import-graph unit test that fails if the renderer imports a main-only module, if main imports a renderer-only one, or if a value cycle with `shared/export.ts` returns.
+**Independent Test**: an import-graph unit test that fails if the renderer imports a main-only module, if main imports a renderer-only one, if shared code imports either, if a value cycle with `shared/export.ts` returns, or if `shared/project.ts` comes back (`tests/unit/import-graph.test.ts`).
 
 **Acceptance Scenarios**:
 
-1. **Given** the split, **Then** `shared/project.ts`'s 130 exports live in modules grouped as research-426.md section 6 lists them: types; parse and persistence (main only); field and whole-object validators; sentences; and derived helpers, one module per process where only one imports them. No export is lost, and none is duplicated.
-2. **Given** the 24 exports nothing else under `src/` imports, **Then** each is either deleted or kept with a comment saying who uses it (a test, or the generator).
+1. **Given** the split, **Then** `shared/project.ts`'s exports (130 when this was written, 136 at the split) live in modules grouped as research-426.md section 6 lists them: types; parse and persistence (main only); field and whole-object validators; sentences; and derived helpers, one module per process where only one imports them. No export is lost, and none is duplicated. `shared/project.ts` itself is deleted, with no re-export left behind (research R7).
+2. **Given** the exports nothing else under `src/` imports (24 when this was written, 25 at the split), **Then** each is either deleted, made private to its module, or kept with a comment saying who uses it (a test, or the generator).
 3. **Given** the build and the unit suite, **Then** both pass with no behaviour change.
 
 ### Edge Cases

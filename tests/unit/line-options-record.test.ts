@@ -10,27 +10,21 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { linesParams } from '../../src/renderer/src/lineOptions'
+import { parseRecord, RECORD_VERSION, readLines } from '../../src/main/record/parse'
+import { validateLineChoice, validateLines } from '../../src/main/record/validate'
+import { sameLines } from '../../src/renderer/src/record'
+import { linesAreSet, linesSent, settledLine } from '../../src/shared/project/helpers'
+import { lineNameSentence, pythonRepr } from '../../src/shared/project/sentences'
 import {
   CASING_WIDTH_RANGE,
   DEFAULT_CASING_COLOR,
   DEFAULT_LINE,
-  isLineName,
   LINE_DASHES,
   LINE_NAME_MAX,
   LINE_WIDTH_RANGE,
-  lineNameSentence,
-  linesAreSet,
-  linesSent,
-  parseRecord,
-  pythonRepr,
-  RECORD_VERSION,
-  readLines,
-  sameLines,
-  settledLine,
-  validateLineChoice,
-  validateLines,
   type ProjectRecord,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
+import { isLineName } from '../../src/shared/project/validate'
 import { drawnOf } from '../support/sent'
 
 const ID = 'kq7x2mzp4dna'

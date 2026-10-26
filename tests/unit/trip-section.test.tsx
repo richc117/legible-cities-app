@@ -18,7 +18,7 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { DRAW_AGAIN, NOT_LAID_OUT, TRIP_INTRO } from '../../src/renderer/src/tripWords'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 import type { Station } from '../../src/shared/trip'
 

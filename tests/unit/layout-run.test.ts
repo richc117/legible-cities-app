@@ -46,7 +46,8 @@ import { styleParams } from '../../src/renderer/src/styleRules'
 import { cellOfRun, runGraph } from '../../src/renderer/src/runGraph'
 import { LAYOUT_STAGES } from '../../src/shared/layout'
 import { cameTooLate, ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import { drawnDate, type ProjectRecord } from '../../src/shared/project'
+import { drawnDate } from '../../src/shared/project/helpers'
+import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf, sentOf } from '../support/sent'
 
 interface Pending {

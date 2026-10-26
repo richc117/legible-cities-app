@@ -23,7 +23,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import * as themePictures from '../../src/renderer/src/themePictures'
-import { THEMES, type Theme } from '../../src/shared/project'
+import { THEMES, type Theme } from '../../src/shared/project/types'
 
 const root = resolve(__dirname, '../../src/renderer/src')
 const tokens = readFileSync(resolve(root, 'styles/tokens.css'), 'utf8')

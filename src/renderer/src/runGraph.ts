@@ -1,10 +1,6 @@
-import {
-  sameLines,
-  sameStyle,
-  sameTuning,
-  styleSent,
-  type ProjectRecord,
-} from '../../shared/project'
+import { sameTuning, styleSent } from '../../shared/project/helpers'
+import { type ProjectRecord } from '../../shared/project/types'
+import { sameLines, sameStyle } from './record'
 import type { ExportSnapshot } from './engine/exportRun'
 import { downloading, kindOfRun, type RunSnapshot } from './engine/layoutRun'
 import { sameOrder } from './order'

@@ -15,7 +15,7 @@ import {
   type StoredOpening,
   type StoryboardBeats,
 } from './opening'
-import { COLORS_MAX, validateLineLabel } from './project'
+import { COLORS_MAX, validateLineLabel } from './project/validate'
 import type {
   ClockCorner,
   ExportOptions,

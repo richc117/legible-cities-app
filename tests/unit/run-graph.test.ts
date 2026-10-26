@@ -11,7 +11,7 @@ import {
   type ExportFacts,
   type RunFacts,
 } from '../../src/renderer/src/runGraph'
-import { type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 
 // The run graph (A5.5-04, ADR-045, specs/028-the-notebook/contracts/run-graph.md).

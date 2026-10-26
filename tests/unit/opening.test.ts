@@ -31,7 +31,7 @@ import {
   openingView,
   PAGE_START,
 } from '../../src/shared/opening'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import type {
   CaptureJob as PlannedJob,
   Preset,

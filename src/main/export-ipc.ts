@@ -20,7 +20,7 @@ import {
   type ExportPreview,
   type ExportSettled,
 } from '../shared/export'
-import { validateId } from '../shared/project'
+import { validateId } from './record/validate'
 import type { Destinations, Exporter } from './export'
 import type { StoreBlocked } from './ipc'
 import { badCall, redactShape, refusal, TOKEN, toShape, type PathRoots } from './ipc-shape'

@@ -35,7 +35,7 @@ import {
   withShown,
   withWidth,
 } from '../../src/renderer/src/lineOptions'
-import { DEFAULT_CASING_COLOR } from '../../src/shared/project'
+import { DEFAULT_CASING_COLOR } from '../../src/shared/project/types'
 
 describe('what a collapsed row says', () => {
   it('says Default for a line that holds nothing, or only the engine’s own', () => {

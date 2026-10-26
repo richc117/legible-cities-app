@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
 import ServiceDay from '../../src/renderer/src/ServiceDay'
 import type { EngineState } from '../../src/shared/engine'
-import { type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 import { find } from '../support/element-tree'
 

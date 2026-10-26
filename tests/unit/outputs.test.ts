@@ -19,7 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Outputs, SCAN_MAX, SIDECAR_MAX, registerOutputHandlers } from '../../src/main/outputs'
 import { CHANNELS } from '../../src/shared/api'
 import { OUTPUTS_MAX } from '../../src/shared/export'
-import type { ProjectRecord } from '../../src/shared/project'
+import type { ProjectRecord } from '../../src/shared/project/types'
 
 /** An `ipcMain.handle` handler, as this file calls one back. */
 type Handler = (event: unknown, ...args: unknown[]) => Promise<unknown>

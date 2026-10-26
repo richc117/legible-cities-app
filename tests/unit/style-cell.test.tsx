@@ -47,7 +47,7 @@ import {
   type ProjectRecord,
   type ProjectStyle,
   type Theme,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'style') as Cell
 

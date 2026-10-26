@@ -13,7 +13,7 @@ import {
 } from '../../src/main/ipc'
 import type { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
-import { validateMade } from '../../src/shared/project'
+import { validateMade } from '../../src/main/record/validate'
 import { sentOf } from '../support/sent'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>

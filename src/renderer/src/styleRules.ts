@@ -1,28 +1,28 @@
 import type { MapBuildParams, MapStyle } from '../../shared/protocol'
+import { settledStyle, styleSent } from '../../shared/project/helpers'
+import { styleRangeSentence } from '../../shared/project/sentences'
 import {
   CHOICE_KEYS,
   DEFAULT_STYLE,
   FIGURE_KEYS,
-  inStyleRange,
-  radiiRefusal,
-  settledStyle,
-  sizesAreSet,
   STYLE_CHOICES,
   STYLE_KEYS,
   STYLE_RANGES,
-  styleRangeSentence,
-  styleRefusals,
-  styleSent,
   TRAIN_KEYS,
   TRAIN_RANGES,
-  styleIsSet,
   type ChoiceKey,
   type FigureKey,
   type ProjectStyle,
   type StyleKey,
-  type StyleRefusals,
   type TrainKey,
-} from '../../shared/project'
+} from '../../shared/project/types'
+import {
+  inStyleRange,
+  radiiRefusal,
+  styleRefusals,
+  type StyleRefusals,
+} from '../../shared/project/validate'
+import { sizesAreSet, styleIsSet } from './record'
 
 // The map's sizes (issue 350, ADR-049), and since issue 391 its markers, its
 // label face and its trains (spec 034): what `map.build` is sent for them,
@@ -31,7 +31,7 @@ import {
 // of `LineOrder.tsx`: pure, so that what a field refuses and what a commit
 // sends can be held to a unit test without rendering.
 //
-// What a style sends is decided in `shared/project.ts`, beside the record,
+// What a style sends is decided in `shared/project/helpers.ts`, beside the record,
 // because the main process needs the same rule to record what a draw carried
 // (`styleSent`): the fields a person chose, none at the engine's own value,
 // both radii whenever either, and nothing at all for a style the engine would

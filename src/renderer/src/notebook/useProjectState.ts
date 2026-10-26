@@ -3,12 +3,8 @@ import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../../shared/ac
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
 import type { ExportChoice } from '../../../shared/export'
-import {
-  validateName,
-  type ProjectInputs,
-  type ProjectTuning,
-  type Theme,
-} from '../../../shared/project'
+import { type ProjectInputs, type ProjectTuning, type Theme } from '../../../shared/project/types'
+import { validateName } from '../../../shared/project/validate'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'

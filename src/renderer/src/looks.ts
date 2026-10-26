@@ -1,19 +1,17 @@
 import type { StylePresets } from '../../shared/protocol'
+import { settledStyle } from '../../shared/project/helpers'
 import {
   CHOICE_KEYS,
   DEFAULT_STYLE,
   FIGURE_KEYS,
-  inStyleRange,
-  isStyleChoice,
-  radiiRefusal,
-  settledStyle,
   STYLE_CHOICES,
   STYLE_KEYS,
   STYLE_RANGES,
   type ChoiceKey,
   type FigureKey,
   type ProjectStyle,
-} from '../../shared/project'
+} from '../../shared/project/types'
+import { inStyleRange, isStyleChoice, radiiRefusal } from '../../shared/project/validate'
 import { fieldText, type View } from './styleRules'
 
 // Cell 04's Look (issue 391, spec 034 FR-001): the engine's named looks,

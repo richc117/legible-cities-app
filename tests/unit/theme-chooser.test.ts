@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Theme } from '../../src/shared/project'
+import type { Theme } from '../../src/shared/project/types'
 import { createThemeChooser } from '../../src/renderer/src/themeChooser'
 
 // What the theme switch does with a choice, driven with writes that resolve

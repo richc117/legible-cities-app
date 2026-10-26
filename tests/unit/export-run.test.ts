@@ -13,7 +13,7 @@ import {
 import { ENCODE_UNFINISHED, unfinishedSentence } from '../../src/renderer/src/ExportRun'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
 import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
 

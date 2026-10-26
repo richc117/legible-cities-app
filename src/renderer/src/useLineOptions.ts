@@ -1,12 +1,8 @@
 import { useRef, useState } from 'react'
 import type { EngineState } from '../../shared/engine'
-import {
-  linesSent,
-  sameLines,
-  type LineChoice,
-  type ProjectLines,
-  type ProjectRecord,
-} from '../../shared/project'
+import { linesSent } from '../../shared/project/helpers'
+import { type LineChoice, type ProjectLines, type ProjectRecord } from '../../shared/project/types'
+import { sameLines } from './record'
 import { REDRAW_DELAY } from './colours'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import { linesWith } from './lineOptions'

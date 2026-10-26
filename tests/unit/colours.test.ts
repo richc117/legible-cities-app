@@ -22,14 +22,11 @@ import {
   withoutOverride,
   type Line,
 } from '../../src/renderer/src/colours'
-import {
-  DEFAULT_COLOR,
-  LABEL_MAX,
-  parseRecord,
-  paletteOf,
-  validatePalette,
-  type Palette,
-} from '../../src/shared/project'
+import { parseRecord } from '../../src/main/record/parse'
+import { validatePalette } from '../../src/main/record/validate'
+import { paletteOf } from '../../src/renderer/src/record'
+import { DEFAULT_COLOR, type Palette } from '../../src/shared/project/types'
+import { LABEL_MAX } from '../../src/shared/project/validate'
 import type { Inspection, Route, RouteType } from '../../src/shared/protocol'
 
 const palette = (over: Partial<Palette> = {}): Palette => ({

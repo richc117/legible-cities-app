@@ -37,7 +37,7 @@ import {
   type ProjectRecord,
   type ProjectTuning,
   type TuningKey,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 
 describe('what graph.build is sent for a tuning', () => {
   it('is nothing at all for a project that never tuned, or tuned to LOOM’s own', () => {

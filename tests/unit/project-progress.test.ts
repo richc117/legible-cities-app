@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { progressWords } from '../../src/renderer/src/projectProgress'
 import type { RunFacts } from '../../src/renderer/src/runGraph'
-import { type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 
 // A project's row on the front door says how far it has got (A5.6-04), from

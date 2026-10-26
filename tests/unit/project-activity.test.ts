@@ -32,7 +32,7 @@ import {
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import type { ExportChoice } from '../../src/shared/export'
-import { DEFAULT_STYLE } from '../../src/shared/project'
+import { DEFAULT_STYLE } from '../../src/shared/project/types'
 
 const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))

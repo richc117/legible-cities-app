@@ -1,4 +1,4 @@
-import type { Theme } from '../../shared/project'
+import type { Theme } from '../../shared/project/types'
 
 // What the theme switch does with a choice, with no React in it (A7-13,
 // issue 285): which theme the record will hold once the writes asked for

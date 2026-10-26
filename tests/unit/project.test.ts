@@ -1,37 +1,39 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { drawnFromSent } from '../../src/main/record/drawn'
+import { summarise } from '../../src/main/record/helpers'
+import { RECORD_VERSION, parseRecord } from '../../src/main/record/parse'
 import {
-  DEFAULT_COLOR,
-  DEFAULT_MODE,
-  DEFAULT_STYLE,
-  DEFAULT_THEME,
-  drawnFromSent,
   ID_PATTERN,
-  RECORD_VERSION,
-  parseRecord,
-  summarise,
-  validateAgency,
-  validateFeedKey,
   validateId,
-  validateMode,
-  validateName,
-  validateLineOrder,
   validateServiceWindow,
   validateTheme,
   validateDestination,
-  withinWindow,
-  type ProjectRecord,
-  AGENCY_MAX,
-  MODE_PATTERN,
-  uniqueName,
-  sentSet,
   validateLines,
   validateMade,
   validatePalette,
   validateSent,
   validateStyle,
-} from '../../src/shared/project'
+} from '../../src/main/record/validate'
+import { uniqueName, sentSet } from '../../src/renderer/src/record'
+import { withinWindow } from '../../src/shared/project/helpers'
+import {
+  DEFAULT_COLOR,
+  DEFAULT_MODE,
+  DEFAULT_STYLE,
+  DEFAULT_THEME,
+  type ProjectRecord,
+} from '../../src/shared/project/types'
+import {
+  validateAgency,
+  validateFeedKey,
+  validateMode,
+  validateName,
+  validateLineOrder,
+  AGENCY_MAX,
+  MODE_PATTERN,
+} from '../../src/shared/project/validate'
 import { drawnOf } from '../support/sent'
 
 const WINDOW = {

@@ -27,7 +27,8 @@ import SampleCities, {
   sampleStatus,
 } from '../../src/renderer/src/SampleCities'
 import { samplePicture } from '../../src/renderer/src/samplePictures'
-import { summarise, type DrawnFrom, type ProjectRecord } from '../../src/shared/project'
+import { summarise } from '../../src/main/record/helpers'
+import { type DrawnFrom, type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 import type { FeedRecord } from '../../src/shared/protocol'
 

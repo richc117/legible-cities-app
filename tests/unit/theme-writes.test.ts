@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import type { Theme } from '../../src/shared/project'
+import type { Theme } from '../../src/shared/project/types'
 import { lacksTheSeam, writeThenRestyle } from '../../src/renderer/src/themeWrites'
 import { MISSING_METHOD } from '../../src/shared/viewer'
 

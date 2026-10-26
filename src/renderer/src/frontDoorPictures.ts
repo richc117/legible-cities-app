@@ -1,4 +1,4 @@
-import type { DrawnFrom } from '../../shared/project'
+import type { DrawnFrom } from '../../shared/project/types'
 
 // The pictures on the front door's cards (ADR-047, issue 287). Every one is
 // a file the engine wrote, shown in an image: a project's is the thumbnail

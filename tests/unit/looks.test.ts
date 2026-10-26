@@ -29,7 +29,8 @@ import {
   type LooksClient,
 } from '../../src/renderer/src/looks'
 import { draftsOf, viewOf } from '../../src/renderer/src/styleRules'
-import { DEFAULT_STYLE, styleRangeSentence, type ProjectStyle } from '../../src/shared/project'
+import { styleRangeSentence } from '../../src/shared/project/sentences'
+import { DEFAULT_STYLE, type ProjectStyle } from '../../src/shared/project/types'
 import type { StylePresets } from '../../src/shared/protocol'
 
 /** `style.presets` as engine v0.15.0 answers it. */

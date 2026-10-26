@@ -25,15 +25,15 @@ import {
   type Rename,
   type Wait,
 } from '../../src/main/replace-file'
+import { RECORD_VERSION } from '../../src/main/record/parse'
+import { ID_PATTERN } from '../../src/main/record/validate'
+import { drawnDate } from '../../src/shared/project/helpers'
 import {
   DEFAULT_COLOR,
   DEFAULT_THEME,
-  ID_PATTERN,
-  RECORD_VERSION,
-  drawnDate,
   type ProjectRecord,
   type SentSet,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 import { drawsOn, sentOf } from '../support/sent'
 
 let home: string

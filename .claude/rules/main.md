@@ -57,7 +57,12 @@ call, or a call sent later can reach the queue first
 (`tests/unit/ipc.test.ts` reads the handlers for one). A writer changes the
 fields it names and no other, and `drawn` is made from what the run sent
 (`SentSet`, validated field by field), never from the record at the write.
-docs/ARCHITECTURE.md, "The record session" (spec 037).
+docs/ARCHITECTURE.md, "The record session" (spec 037). The record's code is
+split by process (issue 492): `src/shared/project/` for what both use,
+`src/main/record/` for what main alone does with it - the parser, what it
+carries, the whole-object validators, `drawnFromSent`. Nothing under
+`src/shared/` may import from here, and `tests/unit/import-graph.test.ts`
+says so.
 
 ## Where things are written
 

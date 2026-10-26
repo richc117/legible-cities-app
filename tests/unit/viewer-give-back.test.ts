@@ -7,7 +7,7 @@
 // then send the old theme on top of it.
 
 import { describe, expect, it } from 'vitest'
-import type { Theme } from '../../src/shared/project'
+import type { Theme } from '../../src/shared/project/types'
 import { rememberTheme, themeAsItStands } from '../../src/renderer/src/themeMemory'
 import type { Remembered } from '../../src/renderer/src/transportState'
 import { giveBack, type GiveBack } from '../../src/renderer/src/viewerGiveBack'

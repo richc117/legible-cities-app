@@ -12,7 +12,7 @@
 import { randomBytes } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { basename, dirname, isAbsolute, join, parse, resolve, sep } from 'node:path'
-import { NAME_MAX } from '../shared/project'
+import { NAME_MAX } from '../shared/project/validate'
 import {
   DEFAULT_SETTINGS,
   parseSettings,

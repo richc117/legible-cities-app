@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { EngineState } from '../../../shared/engine'
-import type { ProjectRecord } from '../../../shared/project'
+import type { ProjectRecord } from '../../../shared/project/types'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import { mustWait, refusedAtStart, stoppedNow } from '../panelRelease'
 import { usePutBack } from '../usePutBack'

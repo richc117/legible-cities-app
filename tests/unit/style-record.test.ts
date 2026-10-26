@@ -11,33 +11,27 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { parseRecord, RECORD_VERSION } from '../../src/main/record/parse'
+import { validateStyle } from '../../src/main/record/validate'
+import { sameStyle, sizesAreSet, styleIsSet } from '../../src/renderer/src/record'
+import { settledStyle, styleSent } from '../../src/shared/project/helpers'
+import { styleChoiceSentence, styleRangeSentence } from '../../src/shared/project/sentences'
 import {
   CHOICE_KEYS,
   DEFAULT_STYLE,
-  inStyleRange,
   INTERCHANGE_SHAPES,
   LABEL_FONTS,
-  parseRecord,
-  RECORD_VERSION,
-  sameStyle,
-  settledStyle,
-  sizesAreSet,
   STATION_SHAPES,
   STYLE_CHOICES,
   STYLE_GROUP,
   STYLE_KEYS,
   STYLE_RANGES,
-  styleChoiceSentence,
-  styleIsSet,
-  styleRangeSentence,
-  styleRefusals,
-  styleSent,
   TRAIN_KEYS,
   TRAIN_RANGES,
-  validateStyle,
   type ProjectRecord,
   type ProjectStyle,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
+import { inStyleRange, styleRefusals } from '../../src/shared/project/validate'
 import { drawnOf } from '../support/sent'
 
 const ID = 'kq7x2mzp4dna'

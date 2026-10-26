@@ -1,12 +1,9 @@
 import type { EngineState } from '../../../shared/engine'
 import { screenPaths } from '../../../shared/jobs'
-import {
-  drawnDate,
-  engineBefore,
-  isEngineVersion,
-  serviceDayRefusal,
-  type ProjectRecord,
-} from '../../../shared/project'
+import { drawnDate, serviceDayRefusal } from '../../../shared/project/helpers'
+import { type ProjectRecord } from '../../../shared/project/types'
+import { isEngineVersion } from '../../../shared/project/validate'
+import { engineBefore } from '../record'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import type { RunAllPlan } from '../runAll'
 import { cellOfRun, type RunFacts } from '../runGraph'

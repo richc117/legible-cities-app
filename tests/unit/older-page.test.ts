@@ -22,7 +22,7 @@ import {
   type FrameFailureFacts,
   type OnOpenFacts,
 } from '../../src/renderer/src/notebook/olderPage'
-import type { DrawnFrom, ProjectRecord, ServiceWindow } from '../../src/shared/project'
+import type { DrawnFrom, ProjectRecord, ServiceWindow } from '../../src/shared/project/types'
 import {
   PAGE_SEAMS,
   SEAMS_MAX,

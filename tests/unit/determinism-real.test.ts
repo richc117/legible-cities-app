@@ -18,7 +18,7 @@ import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { resolveConfig } from '../../src/main/config'
 import { resolveInterpreter } from '../../src/main/interpreter'
-import { parseRecord } from '../../src/shared/project'
+import { parseRecord } from '../../src/main/record/parse'
 import {
   ANCHOR,
   FEED,

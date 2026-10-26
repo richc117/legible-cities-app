@@ -59,7 +59,7 @@ setDate(id: string, date: string): Promise<ProjectRecord>
 The day a person chose, written the moment it is chosen and before
 anything is drawn for it, as the inputs and the theme are. It refuses
 exactly what `completeRebuild` refuses, in the same sentences
-(`serviceDayRefusal` in `src/shared/project.ts`), and writes `date` and
+(`serviceDayRefusal` in `src/shared/project/helpers.ts`), and writes `date` and
 `modified` and nothing else. It draws nothing and starts nothing.
 
 It is the one writer of `date` that does **not** set `drawn`, and that is
