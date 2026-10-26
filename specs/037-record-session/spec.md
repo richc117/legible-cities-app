@@ -185,6 +185,8 @@ As a contributor reading or changing the record, I want its types, its parsing, 
 
   A fourth refusal the spec did not foresee: a `map.build` for a project is refused with "This project is being deleted." while its deletion runs, so it cannot write into the folder being removed (issue 491).
 
+  Two more, which close what issue 491 left to the screen (issue 505): a `map.build` for a project whose export is running is refused with "This project is exporting. Wait for the export to finish or cancel it, then try again."; and a `map.build` whose `out` names no project record - a layout's closing `map.build` after its project was deleted while `graph.build` ran - is refused with "This project has been deleted.", or with "This project could not be found in time. Try again." when the store does not answer within `FOLDERS_TIMEOUT_MS`. A record that is there but cannot be read is let through. The bridge marks the request before it asks, so an export or a deletion begun while it asks is refused. Only a layout's earlier steps, which name a feed and not a project, are still the screen's alone, and they write nothing of the project's.
+
   Each refusal uses User Story 4's sentence, and nothing changes on disk. The renderer's disabled states stay as the first line, and `remove.confirm` re-reads the run state at the moment of confirming.
 
 **The split**

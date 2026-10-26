@@ -270,6 +270,7 @@ const NOT_WRITERS: Record<string, string> = {
   list: 'reads every record',
   destinations: 'reads every record',
   get: 'reads a record',
+  recordGone: 'asks the disk whether a record is there',
   create: 'writes a new record, which no other build has written',
   delete: 'removes the record whole',
 }

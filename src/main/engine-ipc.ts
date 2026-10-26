@@ -56,11 +56,13 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
+import { REQUEST_FOR_NO_PROJECT, REQUEST_UNCHECKED } from '../shared/activity'
 import { ERROR_CODES, type EngineState, type JobLog, type JobProgress } from '../shared/engine'
 import type { Method } from '../shared/protocol'
 import { badCall, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { ProjectActivity, projectNamedBy } from './projectActivity'
 import { redactUrls } from './redact'
+import { FOLDERS_TIMEOUT_MS, inTime, LAPSED } from './settings'
 import type { Notification } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
@@ -82,6 +84,17 @@ export type Guard = (
   method: string,
   params: Record<string, unknown> | undefined,
 ) => Promise<string | null>
+
+/**
+ * What the bridge asks the project store before a request may write a
+ * project's folder (issue 505): `ProjectStore.recordGone`, or a test's fake.
+ */
+export interface RecordLookup {
+  recordGone(id: string): Promise<boolean>
+}
+
+/** A request the supervisor would not send; why is in the log. */
+export const NOT_SENT = 'The request could not be sent to the engine.'
 
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
@@ -131,6 +144,13 @@ export function registerEngineHandlers(
    * that dropped it would be a type error and not a rule held by nothing.
    */
   activity: ProjectActivity,
+  /**
+   * Whether a project still has a record, for a request that writes its
+   * folder (issue 505). Required, as `activity` is.
+   */
+  records: RecordLookup,
+  /** How long that lookup may take; a test shortens it. */
+  lookupMs: number = FOLDERS_TIMEOUT_MS,
 ): () => void {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
@@ -167,23 +187,37 @@ export function registerEngineHandlers(
     // the request however it ends (issue 491): before the guard's await, so
     // a deletion confirmed while the guard thinks is already refused.
     const named = projectNamedBy(method, params as Record<string, unknown> | undefined)
-    // Not into a folder whose deletion has begun: the removal is walking it.
+    // Not into a folder whose deletion has begun, the removal walking it, nor
+    // one whose export is running, capturing the page (issue 505).
     const stopped = named === null ? null : activity.requestRefusal(named)
     if (stopped !== null) {
       idOf.delete(token)
       return badCall(stopped, roots)
     }
+    // Marked in the same turn as the check above and before any await, so an
+    // export or a deletion that starts while the lookup or the guard thinks
+    // meets the mark (`projectActivity.ts`, "Mark first, then ask").
     const release = named === null ? () => {} : activity.beginRequest(named)
-    // The gate: what may be asked of the registry on a person's behalf is
-    // decided here, with what the main process knows (the paths its own
-    // chooser answered, the feeds its projects name), never on the page.
     let refused: string | null
     try {
-      refused = await guard(method, params as Record<string, unknown> | undefined)
+      // Not for a project that has no record (issue 505): a run whose
+      // project was deleted under it would make `out/<id>` again. A lookup
+      // the disk did not answer in time is a refusal; nothing has been sent.
+      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)
+      const lookup = gone === LAPSED ? REQUEST_UNCHECKED : gone ? REQUEST_FOR_NO_PROJECT : null
+      // The gate: what may be asked of the registry on a person's behalf is
+      // decided here, with what the main process knows (the paths its own
+      // chooser answered, the feeds its projects name), never on the page.
+      // Asked after the lookup and whatever it answered, so the guard's own
+      // last look at the reset comes after every await, and its sentence
+      // wins: a reset that has removed `projects/` is said as the reset, not
+      // as a deletion. Asking it for a gone project costs nothing: for a
+      // map.build the registry's gate answers null and spends nothing.
+      refused = (await guard(method, params as Record<string, unknown> | undefined)) ?? lookup
     } catch (error) {
-      // A guard that fails answers nothing, so neither the held token nor a
-      // cancel made meanwhile may outlive the request; the page's invoke
-      // rejects as it always did.
+      // A guard or a lookup that fails answers nothing, so neither the held
+      // token nor a cancel made meanwhile may outlive the request; the
+      // page's invoke rejects as it always did.
       idOf.delete(token)
       cancelledEarly.delete(token)
       release()
@@ -208,9 +242,11 @@ export function registerEngineHandlers(
       idOf.delete(token)
       cancelledEarly.delete(token)
       release()
+      // The thrown message goes to the log and not to the page: it is
+      // whatever the supervisor threw, and a refusal is shown as it is.
       const what = error instanceof Error ? error.message : String(error)
       log(`refused ${method} before sending it: ${what}`)
-      return badCall(`the request could not be sent: ${what}`, roots)
+      return badCall(NOT_SENT, roots)
     }
     const { id, result } = sent
     if (id !== 0) {
