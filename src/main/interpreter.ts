@@ -72,8 +72,7 @@ export function resolveInterpreter(input: ResolveInput): Resolution {
   if (input.exists(bundled)) return { interpreter: bundled, origin: 'bundled runtime' }
   return {
     interpreter: null,
-    reason:
-      'Reinstall the app; if it happens again, use Copy diagnostics in Settings. The bundled Python runtime is missing.',
+    reason: 'Reinstall the app: the bundled Python runtime is missing.',
     detail: `no bundled runtime at ${bundled}`,
   }
 }

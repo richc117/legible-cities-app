@@ -196,13 +196,14 @@ export const SAMPLES_AWAY =
   'The sample cities are listed once the engine is ready; the status line above says what it is doing.'
 
 /**
- * What it says when the engine is not coming back by itself (unavailable, or
- * stopped after failing too often): no promise of a wait, the next step
- * first, and then why, in full, since the status line cuts a long reason
- * short (issue 547).
+ * What follows the engine's reason when it is not coming back by itself
+ * (unavailable, or stopped after failing too often): no promise of a wait,
+ * and where to go if it keeps happening (issue 547). The reason comes first,
+ * in full, since the status line cuts a long one short, and a packaged
+ * app's reason leads with its own next step.
  */
 export const SAMPLES_ENGINE_DOWN =
-  'Open Settings and press Copy diagnostics, then reinstall the app if this keeps happening: the engine is not running, so the sample cities cannot be listed.'
+  'The sample cities cannot be listed until the engine runs. If this keeps happening, open Settings, press Copy diagnostics and paste what it copies into a new issue.'
 
 /** What it says when the engine is ready and its answer to `feeds.list` failed. */
 export const SAMPLES_UNREAD =
@@ -219,7 +220,7 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  */
 export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
   if (engine?.state === 'unavailable' || engine?.state === 'stopped')
-    return `${SAMPLES_ENGINE_DOWN} ${engine.reason}`
+    return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
   if (engine?.state !== 'ready') return SAMPLES_AWAY
   if (read === 'failed') return SAMPLES_UNREAD
   if (read === 'listed') return SAMPLES_NONE

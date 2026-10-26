@@ -90,8 +90,7 @@ const STDERR_TAIL = 20
  * What the operating system said goes to the log either way.
  */
 export function interpreterFailedReason(what: string, isPackaged: boolean): string {
-  if (isPackaged)
-    return 'Reinstall the app; if it happens again, use Copy diagnostics in Settings. The bundled engine could not be started.'
+  if (isPackaged) return 'Reinstall the app: the bundled engine could not be started.'
   return `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`
 }
 

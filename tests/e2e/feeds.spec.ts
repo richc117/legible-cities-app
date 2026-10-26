@@ -834,14 +834,12 @@ test('without an engine the New project sheet takes a typed key, as before', asy
     await expect(page.getByRole('region', { name: 'Sample cities' }).getByRole('list')).toHaveCount(
       0,
     )
-    // An engine that is not coming back is not promised: the next step, and
-    // the whole reason, which the status line cuts short (issue 547).
-    await expect(page.getByRole('region', { name: 'Sample cities' })).toContainText(
-      'Open Settings and press Copy diagnostics',
-    )
-    await expect(page.getByRole('region', { name: 'Sample cities' })).not.toContainText(
-      'once the engine is ready',
-    )
+    // An engine that is not coming back is not promised: the whole reason,
+    // which the status line cuts short, then where to go (issue 547).
+    const samplesRegion = page.getByRole('region', { name: 'Sample cities' })
+    await expect(samplesRegion).toContainText('LEGIBLE_ENGINE_PYTHON names an interpreter')
+    await expect(samplesRegion).toContainText('Copy diagnostics')
+    await expect(samplesRegion).not.toContainText('once the engine is ready')
     await page.getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog', { name: 'New project' })
     await expect(dialog.getByLabel('Feed key')).toHaveValue('la-metro-rail')

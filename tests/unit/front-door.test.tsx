@@ -174,15 +174,15 @@ describe('what the samples region says when it has no presets to draw', () => {
       const sentence = samplesSentence(engine, 'unread')
       expect(sentence).not.toBeNull()
       expect(sentence).not.toContain('once the engine is ready')
-      // The next step comes first, and says where to go.
-      expect(sentence?.startsWith('Open Settings and press Copy diagnostics')).toBe(true)
-      expect(sentence?.startsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
+      expect(sentence).toContain('Copy diagnostics')
     }
   })
 
-  it('carries the whole reason, which the status line cuts short', () => {
-    expect(samplesSentence(unavailable, 'unread')).toContain(unavailable.reason)
+  it('carries the whole reason, first, which the status line cuts short', () => {
+    expect(samplesSentence(unavailable, 'unread')?.startsWith(unavailable.reason)).toBe(true)
+    expect(samplesSentence(stopped, 'unread')?.startsWith(stopped.reason)).toBe(true)
     expect(samplesSentence(stopped, 'unread')).toContain('It failed 3 times in a row.')
+    expect(samplesSentence(stopped, 'unread')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
   })
 
   it('draws that sentence in the region', () => {

@@ -351,7 +351,6 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(missing.state.reason).not.toContain('checkout')
     // The next step first.
     expect(missing.state.reason.startsWith('Reinstall the app')).toBe(true)
-    expect(missing.state.reason).toContain('Copy diagnostics')
     // What the system said is kept for the log, not the screen.
     expect(log.join('\n')).toContain('the interpreter could not be started: ENOENT')
     await missing.stop()

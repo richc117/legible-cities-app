@@ -116,7 +116,7 @@ describe('resolveInterpreter', () => {
     })
     expect(missing.interpreter).toBeNull()
     if (missing.interpreter === null) {
-      expect(missing.reason).toContain('Reinstall the app')
+      expect(missing.reason.startsWith('Reinstall the app')).toBe(true)
       // An installed app's person has no environment to look at (issue 547).
       expect(missing.reason).not.toMatch(/LEGIBLE_/)
     }
