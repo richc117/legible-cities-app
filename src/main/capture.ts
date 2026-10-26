@@ -85,9 +85,18 @@ export const CAPTURE_TIMEOUTS = { page: 60_000, frame: 30_000 } as const
  */
 export const FRESH_TRIES = 4
 
-/** The sentence a capture fails with when no shot of a frame showed its own paint. */
+/**
+ * The sentence a capture fails with when no shot of a frame showed its own
+ * paint. Frames are numbered as their files are, from 0, as the sentence for
+ * a frame that could not be written numbers them.
+ */
 export function staleFrame(frame: number, tries = FRESH_TRIES): string {
-  return `frame ${frame} was never painted after its step: ${tries} shots in a row showed an earlier picture`
+  return `frame ${frame} was never painted after its step: ${tries} shots in a row showed an earlier picture; export again, with less running on this machine`
+}
+
+/** The sentence a capture fails with when no shot of a frame showed a count at all. */
+export function unreadFrame(frame: number, tries = FRESH_TRIES): string {
+  return `the frame counter could not be read in any of ${tries} shots of frame ${frame}; draw the map again, then export again`
 }
 
 /** A message for a person; `cancelled` distinguishes the one that is not a failure. */
@@ -125,6 +134,13 @@ export interface CaptureOptions {
   /** The waits, injected so a test can assert what precedes the settle. */
   wait?: (ms: number) => Promise<void>
   timeouts?: { page: number; frame: number }
+  /**
+   * The job is a still, whose one frame may be the deliverable itself (a PNG
+   * still kept as it was captured), so a proven frame is compressed at
+   * zlib's default; a video's frames are intermediates ffmpeg decodes, and are
+   * compressed at the fastest level.
+   */
+  still?: boolean
 }
 
 export interface CaptureResult {
@@ -135,6 +151,12 @@ export interface CaptureResult {
   height: number
   /** The page's state after the settle, before the first beat. */
   first: PresentState
+  /**
+   * Whether every frame was proven fresh by the page's frame counter: false
+   * for a page an older engine drew, which has none, and was captured as
+   * before the proof.
+   */
+  proven: boolean
 }
 
 /**
@@ -329,15 +351,15 @@ function asClip(value: unknown): Clip {
  * asked for, or not a PNG the capture reads, fails the capture in a sentence:
  * that is no late paint, and taking it again would not mend it.
  */
-function freshness(
+async function freshness(
   bytes: Buffer,
   width: number,
   height: number,
   keep: number,
-): { png: Png; count: number | null } {
+): Promise<{ png: Png; count: number | null }> {
   let png: Png
   try {
-    png = readPng(bytes)
+    png = await readPng(bytes)
   } catch (error) {
     if (error instanceof PngError)
       throw new CaptureError(`the frame could not be read: ${error.message}`)
@@ -367,11 +389,12 @@ const STRIP_RECT = rectOf('present-strip')
 
 /**
  * Whether the page took the address's `strip`: the attribute the page's boot
- * script sets when it does, and the band's element. A page an older engine
- * drew has neither.
+ * script sets when it does, and the band's element; and whether it counts
+ * its draws at all, which is what tells a page an older engine drew (none of
+ * the three) from a page that counts and drew no band for this address.
  */
 const STRIP_TAKEN =
-  '(function () { return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip") } })()'
+  '(function () { var counts = false; try { counts = typeof window.__present.state().draws === "number" } catch (e) {} return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip"), counts: counts } })()'
 
 /** How many times the page has drawn, which its band shows modulo 65536. */
 const DRAWS = 'window.__present.state().draws'
@@ -560,12 +583,21 @@ export async function runCapture(
     const taken = (await evaluate('asking for the frame counter', STRIP_TAKEN)) as {
       strip?: unknown
       band?: unknown
+      counts?: unknown
     } | null
     const proven = taken?.strip === String(STRIP_PX) && taken.band === true
     if (!proven) {
       if (taken?.strip != null || taken?.band === true)
         throw new CaptureError(
           'the page drew a frame counter other than the one the capture asked for',
+        )
+      // A page that counts its draws is no older engine's: it was drawn by
+      // one that has the band, and drew none for this address (one without
+      // `present=1`, or a band the page no longer names as the capture
+      // does). Captured unproven, it would pass for an older page silently.
+      if (taken?.counts === true)
+        throw new CaptureError(
+          'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; draw the map again',
         )
       log(
         'capture: the page has no frame counter (an older engine drew it); its frames are not proven fresh',
@@ -672,6 +704,7 @@ export async function runCapture(
         // only where its band shows the count the page had reached, and is
         // otherwise taken again after another wait.
         let kept: Buffer | null = null
+        let counted = false
         for (let tries = 1; kept === null; tries++) {
           await evaluate('waiting for the paint', TWO_FRAMES)
           const draws = proven ? asDraws(await evaluate('reading the frame count', DRAWS)) : null
@@ -691,16 +724,18 @@ export async function runCapture(
             kept = bytes
             break
           }
-          const shown = freshness(bytes, width, shotHeight, height)
+          const shown = await freshness(bytes, width, shotHeight, height)
           if (shown.count === draws % STRIP_MODULUS) {
-            kept = cropPng(shown.png, height)
+            kept = await cropPng(shown.png, height, options.still === true ? {} : { level: 1 })
             break
           }
+          counted ||= shown.count !== null
           log(
-            `capture: frame ${written + 1}'s band showed ${shown.count ?? 'no count'} where the page had drawn ${draws % STRIP_MODULUS}` +
+            `capture: frame ${written}'s band showed ${shown.count ?? 'no count'} where the page had drawn ${draws % STRIP_MODULUS}` +
               (tries < FRESH_TRIES ? '; taking it again' : ''),
           )
-          if (tries >= FRESH_TRIES) throw new CaptureError(staleFrame(written + 1))
+          if (tries >= FRESH_TRIES)
+            throw new CaptureError(counted ? staleFrame(written) : unreadFrame(written))
           retaken++
         }
         try {
@@ -716,7 +751,7 @@ export async function runCapture(
       `capture: ${written} frames written` +
         (proven ? `, each proven fresh (${retaken} taken again)` : ', not proven fresh'),
     )
-    return { frames: written, width, height, first }
+    return { frames: written, width, height, first, proven }
   } catch (error) {
     try {
       await rm(options.frames, { recursive: true, force: true })

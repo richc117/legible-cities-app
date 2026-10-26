@@ -196,8 +196,10 @@ Every capture, without exception:
   `state().draws` read after the step - never predicted - else it is taken
   again after another wait, `FRESH_TRIES` shots in all, then refused in a
   sentence; every change to the page comes before the step whose count is
-  read, and a page with no band (an older engine's) is loaded again at the
-  job's own size and captured unproven.
+  read, and a page with no band and no `draws` (an older engine's) is loaded
+  again at the job's own size and captured unproven, which the export says
+  (`proven`, `UNPROVEN_FRAMES`), while one that counts and drew no band is
+  refused.
 - Compare in RGB with a channel tolerance of 8: never RGBA, never equality.
 
 How the frames are taken is **ADR-024**, and every clause of it was paid

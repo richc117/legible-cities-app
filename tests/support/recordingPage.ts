@@ -81,8 +81,8 @@ export class RecordingPage implements CapturePage {
     if (code.includes('getAttribute("data-strip")'))
       return Promise.resolve(
         this.paint.options.strip
-          ? { strip: String(STRIP_PX), band: true }
-          : { strip: null, band: false },
+          ? { strip: String(STRIP_PX), band: true, counts: true }
+          : { strip: null, band: false, counts: false },
       )
     if (code.includes('getElementById("present-strip")'))
       return Promise.resolve(

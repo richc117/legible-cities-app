@@ -210,6 +210,16 @@ export function jobOf(plan: PlannedJob): CaptureJob {
   }
 }
 
+/**
+ * Said beside the encode's first sentence when the capture could not prove
+ * its frames fresh (app issue 100): the page on disk was drawn by an engine
+ * before v0.20.0, which draws no frame counter, so its frames were captured
+ * as every export's were before the proof. Drawing the map again draws it
+ * with the counter.
+ */
+export const UNPROVEN_FRAMES =
+  'They could not be proven fresh, because an older engine drew this map; draw the map again to prove them.'
+
 /** The one frame a still's capture writes, which is what `export.encode` takes as its source. */
 export const STILL_FRAME = '000000.png'
 
@@ -675,13 +685,23 @@ export class Exporter {
       this.#emit(token, 'capture', 0, `Capturing ${total} frames.`)
       const captured = await capture(job, {
         frames,
+        still,
         signal: control.abort.signal,
         onProgress: (done, of) =>
           this.#emit(token, 'capture', done / of, `Captured ${done} of ${of} frames.`),
       })
       this.#stopIfCancelled(control)
 
-      this.#emit(token, 'encode', 0, `Encoding ${captured.frames} frames.`)
+      // An unproven capture is said where the plan's notes are said, beside
+      // a stage's sentence, and so in the job's log; the export goes on.
+      this.#emit(
+        token,
+        'encode',
+        0,
+        captured.proven
+          ? `Encoding ${captured.frames} frames.`
+          : `Encoding ${captured.frames} frames. ${UNPROVEN_FRAMES}`,
+      )
       // A video is encoded from the folder of frames; a still from its one
       // frame, which is the file `export.encode` takes for a still plan.
       const encodeParams = {

@@ -438,7 +438,13 @@ function exporter(choice: ExportChoice, storyboards: unknown[] = TABLES.storyboa
     capture: async (job: CaptureJob, options: CaptureOptions): Promise<CaptureResult> => {
       jobs.push(job)
       void options
-      return { frames: 30, width: 2160, height: 3840, first: { now: 0, clock: '08:00', shown: 1 } }
+      return {
+        frames: 30,
+        width: 2160,
+        height: 3840,
+        first: { now: 0, clock: '08:00', shown: 1 },
+        proven: true,
+      }
     },
     framesRoot: join(root, 'frames'),
     exportFolder: () => join(root, 'exports'),

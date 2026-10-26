@@ -62,21 +62,21 @@ function shot(
 }
 
 describe('the band', () => {
-  it.each([0, 1, 2, 12_345, 32_768, 65_534, 65_535])('reads %i exactly', (count) => {
+  it.each([0, 1, 2, 12_345, 32_768, 65_534, 65_535])('reads %i exactly', async (count) => {
     const { png, keep } = shot({ count })
-    expect(stripOf(readPng(png), keep)).toBe(count)
+    expect(stripOf(await readPng(png), keep)).toBe(count)
   })
 
-  it('reads a count modulo 65536, as the page draws it', () => {
+  it('reads a count modulo 65536, as the page draws it', async () => {
     // The page draws `draws % 65536`; the band cannot say more.
     expect(STRIP_MODULUS).toBe(65_536)
     const { png, keep } = shot({ count: 65_536 + 7 })
-    expect(stripOf(readPng(png), keep)).toBe(7)
+    expect(stripOf(await readPng(png), keep)).toBe(7)
     const wrap = shot({ count: 65_536 })
-    expect(stripOf(readPng(wrap.png), wrap.keep)).toBe(0)
+    expect(stripOf(await readPng(wrap.png), wrap.keep)).toBe(0)
   })
 
-  it('reads a band at 2x and 3x, its blocks blended at their edges, at a width that is no multiple of 32', () => {
+  it('reads a band at 2x and 3x, its blocks blended at their edges, at a width that is no multiple of 32', async () => {
     // Mutation: a block read at its edge rather than its middle reads grey.
     for (const scale of [2, 3]) {
       for (const width of [540 * scale, 333 * scale]) {
@@ -87,60 +87,60 @@ describe('the band', () => {
           count: 40_961,
           edges: true,
         })
-        expect(stripOf(readPng(png), keep), `${width} wide at ${scale}x`).toBe(40_961)
+        expect(stripOf(await readPng(png), keep), `${width} wide at ${scale}x`).toBe(40_961)
       }
     }
   })
 
-  it('reads grey, grey and alpha, and RGB shots as it reads RGBA', () => {
+  it('reads grey, grey and alpha, and RGB shots as it reads RGBA', async () => {
     for (const colourType of [0, 2, 4] as const) {
       const { png, keep } = shot({ count: 4660, colourType })
-      expect(stripOf(readPng(png), keep), `colour type ${colourType}`).toBe(4660)
+      expect(stripOf(await readPng(png), keep), `colour type ${colourType}`).toBe(4660)
     }
   })
 
-  it('says no number for a band with a block neither white nor black', () => {
+  it('says no number for a band with a block neither white nor black', async () => {
     // Mutation: a threshold at half brightness alone - mid grey reads as a bit.
     const width = 540
     const row = bandRow(width, 4, 12_345)
     const block = Math.floor((3.5 * width) / 32)
     for (let c = 0; c < 3; c++) row[block * 4 + c] = 128
     const { png, keep } = shot({ count: 0, bandAt: () => row })
-    expect(stripOf(readPng(png), keep)).toBeNull()
+    expect(stripOf(await readPng(png), keep)).toBeNull()
   })
 
-  it('says no number for a pair of blocks of one kind, a band of one colour, or no band at all', () => {
+  it('says no number for a pair of blocks of one kind, a band of one colour, or no band at all', async () => {
     const width = 540
     const both = bandRow(width, 4, 0)
     // For a 0 a pair is black then white; whiten the first block, so pair 0
     // is white and white.
     for (let x = 0; x < Math.floor(width / 32); x++)
       for (let c = 0; c < 3; c++) both[x * 4 + c] = 255
-    expect(stripOf(readPng(shot({ count: 0, bandAt: () => both }).png), 60)).toBeNull()
+    expect(stripOf(await readPng(shot({ count: 0, bandAt: () => both }).png), 60)).toBeNull()
     for (const rgba of [
       [0, 0, 0, 255],
       [255, 255, 255, 255],
       [30, 120, 200, 255],
     ]) {
       const flat = flatRow(width, 4, rgba)
-      expect(stripOf(readPng(shot({ count: 0, bandAt: () => flat }).png), 60)).toBeNull()
+      expect(stripOf(await readPng(shot({ count: 0, bandAt: () => flat }).png), 60)).toBeNull()
     }
     // The stage's noise where the band should be.
-    expect(stripOf(readPng(shot({ count: 99, band: 0, stage: 68 }).png), 60)).toBeNull()
+    expect(stripOf(await readPng(shot({ count: 99, band: 0, stage: 68 }).png), 60)).toBeNull()
   })
 
-  it('reads the band half way down, so a band whose first rows are torn still reads', () => {
+  it('reads the band half way down, so a band whose first rows are torn still reads', async () => {
     const width = 540
     const good = bandRow(width, 4, 513)
     const torn = flatRow(width, 4, [128, 128, 128, 255])
     const { png, keep } = shot({ count: 0, bandAt: (y) => (y < 2 ? torn : good) })
-    expect(stripOf(readPng(png), keep)).toBe(513)
+    expect(stripOf(await readPng(png), keep)).toBe(513)
   })
 
-  it('takes nothing it cannot read as a number: too narrow, or no row of band', () => {
+  it('takes nothing it cannot read as a number: too narrow, or no row of band', async () => {
     expect(readStrip(new Uint8Array(31 * 4), 31, 1, 4, 3)).toBeNull()
     const { png, keep } = shot({ count: 5 })
-    const read = readPng(png)
+    const read = await readPng(png)
     expect(stripOf(read, read.height)).toBeNull()
     expect(stripOf(read, 0)).toBeNull()
     expect(stripOf(read, keep)).toBe(5)
@@ -148,7 +148,7 @@ describe('the band', () => {
 })
 
 describe('the rows', () => {
-  it('unfilters every filter the format has, as an independent reader does', () => {
+  it('unfilters every filter the format has, as an independent reader does', async () => {
     // Mutations: any filter's arithmetic changed (Average's floor, Paeth's
     // tie order); the search for a row to start from going past one that
     // reads the row above it.
@@ -163,7 +163,7 @@ describe('the rows', () => {
       (y: number) => (y < 10 ? 1 : 4),
     ]) {
       const { png } = shot({ width: 97, stage: 23, count: 777, filter })
-      const read = readPng(png)
+      const read = await readPng(png)
       const theirs = readPngRows(png).rows
       for (const from of [0, 1, 22, 23, 30]) {
         const ours = rowsFrom(read, from)
@@ -175,7 +175,7 @@ describe('the rows', () => {
 })
 
 describe('the crop', () => {
-  it('is the frame a shot without the band would have been, pixel for pixel, for every filter', () => {
+  it('is the frame a shot without the band would have been, pixel for pixel, for every filter', async () => {
     // Mutations: the header's height left as it was; a row of the band
     // kept; the filtered bytes decoded and filtered again some other way.
     for (const filter of [
@@ -186,7 +186,7 @@ describe('the crop', () => {
       (y: number) => [4, 3, 2, 1, 0][y % 5],
     ]) {
       const { png, stage, keep } = shot({ width: 101, stage: 37, count: 31_337, filter })
-      const kept = cropPng(readPng(png), keep)
+      const kept = await cropPng(await readPng(png), keep)
       const without = writePng({
         width: 101,
         height: keep,
@@ -195,7 +195,10 @@ describe('the crop', () => {
         filter,
       })
       // Read strictly, its image data exactly the rows its header says.
-      expect(readPng(kept).height).toBe(keep)
+      expect((await readPng(kept)).height).toBe(keep)
+      // At the fastest level, as a video's frames are kept, the same pixels.
+      const fast = readPngRows(await cropPng(await readPng(png), keep, { level: 1 }))
+      expect(fast.rows.every((r, y) => Buffer.from(r).equals(Buffer.from(stage[y])))).toBe(true)
       const theirs = readPngRows(kept)
       expect(theirs.width).toBe(101)
       expect(theirs.height).toBe(keep)
@@ -209,11 +212,11 @@ describe('the crop', () => {
     }
   })
 
-  it('keeps the chunks around the image data, a colour chunk included, and reads back as a PNG of its own', () => {
+  it('keeps the chunks around the image data, a colour chunk included, and reads back as a PNG of its own', async () => {
     const srgb = { type: 'sRGB', data: Buffer.from([0]) }
     const phys = { type: 'pHYs', data: Buffer.from([0, 0, 11, 19, 0, 0, 11, 19, 1]) }
     const { png, keep } = shot({ count: 3, extra: [srgb, phys] })
-    const kept = readPng(cropPng(readPng(png), keep))
+    const kept = await readPng(await cropPng(await readPng(png), keep))
     expect(kept.height).toBe(keep)
     expect(kept.before.map((c) => [c.type, [...c.data]])).toEqual([
       ['sRGB', [0]],
@@ -223,10 +226,10 @@ describe('the crop', () => {
     expect(stripOf(kept, keep - 8)).toBeNull()
   })
 
-  it('refuses a height it cannot keep', () => {
-    const read = readPng(shot({ count: 1 }).png)
-    expect(() => cropPng(read, 0)).toThrow(PngError)
-    expect(() => cropPng(read, read.height + 1)).toThrow(PngError)
+  it('refuses a height it cannot keep', async () => {
+    const read = await readPng(shot({ count: 1 }).png)
+    await expect(cropPng(read, 0)).rejects.toThrow(PngError)
+    await expect(cropPng(read, read.height + 1)).rejects.toThrow(PngError)
   })
 })
 
@@ -268,6 +271,16 @@ describe('a shot it cannot read', () => {
       /kind of PNG/,
     ],
     [
+      // Bounded by the header: never inflated past the frame it says it is.
+      'image data that inflates past the size its header says',
+      () => {
+        const b = Buffer.from(good)
+        b.writeUInt32BE(2, 8 + 8 + 4)
+        return b
+      },
+      /not the size its header says/,
+    ],
+    [
       'a header that says more rows than there are',
       () => {
         const b = Buffer.from(good)
@@ -276,8 +289,8 @@ describe('a shot it cannot read', () => {
       },
       /not the size its header says/,
     ],
-  ])('refuses %s in a sentence', (_what, bytes, sentence) => {
-    expect(() => readPng(bytes())).toThrow(PngError)
-    expect(() => readPng(bytes())).toThrow(sentence)
+  ])('refuses %s in a sentence', async (_what, bytes, sentence) => {
+    await expect(readPng(bytes())).rejects.toThrow(PngError)
+    await expect(readPng(bytes())).rejects.toThrow(sentence)
   })
 })

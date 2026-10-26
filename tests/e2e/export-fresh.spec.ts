@@ -41,6 +41,8 @@ interface Home {
   exportFolder: string
   /** Where the app keeps a copy of each export's captured frames (LEGIBLE_KEEP_FRAMES). */
   kept: string
+  /** The app's own profile for this test, so its logs are this test's alone (LEGIBLE_USER_DATA). */
+  userData: string
 }
 
 function home(): Home {
@@ -53,7 +55,7 @@ function home(): Home {
   )
   const kept = join(dir, 'kept')
   mkdirSync(kept)
-  return { engineHome, exportFolder: join(dir, 'exports'), kept }
+  return { engineHome, exportFolder: join(dir, 'exports'), kept, userData: join(dir, 'profile') }
 }
 
 const deliverable = (h: Home): string => join(h.exportFolder, 'Los Angeles', REEL)
@@ -73,6 +75,7 @@ async function withApp(h: Home, run: (page: Page, app: ElectronApplication) => P
       SCHEMATIC_HOME: h.engineHome,
       LEGIBLE_EXPORT_FOLDER: h.exportFolder,
       LEGIBLE_KEEP_FRAMES: h.kept,
+      LEGIBLE_USER_DATA: h.userData,
       LEGIBLE_ENGINE_PYTHON: PYTHON as string,
       PYTHONPATH: FAKE_ENGINE,
     } as Record<string, string>,
@@ -130,13 +133,19 @@ test('an export of a page that draws its frame counter keeps every frame, the ba
     expect(existsSync(deliverable(h)), 'the file is under the export folder').toBe(true)
     expect(framesLeft(h), 'the frames are gone').toEqual([])
   })
+  // The capture says in the log that it proved every frame: a capture that
+  // fell back, as for a page an older engine drew, says otherwise, and fails
+  // this. The profile is this test's own, so no other launch wrote it.
+  const mainLog = readFileSync(join(h.userData, 'logs', 'main.log'), 'utf8')
+  expect(mainLog).toContain(', each proven fresh (')
+  expect(mainLog).not.toContain('not proven fresh')
   // The stand-in engine plans the reel at half its size, at scale 1: 540 by
   // 960, which the shot was the band taller than.
   const [copy] = readdirSync(h.kept)
   const frames = readdirSync(join(h.kept, copy)).filter((n) => n.endsWith('.png'))
   expect(frames.length, 'a second of the reel').toBeGreaterThan(0)
   for (const name of frames) {
-    const png = readPng(readFileSync(join(h.kept, copy, name)))
+    const png = await readPng(readFileSync(join(h.kept, copy, name)))
     expect([png.width, png.height], name).toEqual([540, 960])
     // The foot of a kept frame is the stage, not the band.
     expect(stripOf(png, png.height - 8), name).toBeNull()
@@ -149,7 +158,7 @@ test('an export of a page that never paints its step fails with the capture’s 
     await laidOutProject(page, h, { late: true })
     await page.getByRole('button', { name: 'Export', exact: true }).click()
     // As the export's other failures are read (export.spec.ts): the sentence, anywhere on screen.
-    await expect(page.getByText(staleFrame(1))).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByText(staleFrame(0))).toBeVisible({ timeout: 60_000 })
     expect(existsSync(deliverable(h)), 'no file').toBe(false)
     expect(existsSync(deliverable(h) + '.json'), 'no sidecar').toBe(false)
     expect(framesLeft(h), 'no frames').toEqual([])

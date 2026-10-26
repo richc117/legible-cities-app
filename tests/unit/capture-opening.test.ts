@@ -96,7 +96,7 @@ const fromSettle = (page: RecordingPage): string[] => {
 /** The page's scripts the proof adds, word for word. */
 const READY = '!!(window.__present && window.__present.state)'
 const STRIP_TAKEN =
-  '(function () { return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip") } })()'
+  '(function () { var counts = false; try { counts = typeof window.__present.state().draws === "number" } catch (e) {} return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip"), counts: counts } })()'
 const STAGE =
   '(function () { var el = document.getElementById("stage"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()'
 const BAND =

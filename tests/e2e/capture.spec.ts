@@ -32,7 +32,13 @@ const fixture = resolve(__dirname, '../fixtures/capture-page.html')
 
 interface Outcome {
   ok: boolean
-  result?: { frames: number; width: number; height: number; first: { clock: string } }
+  result?: {
+    frames: number
+    width: number
+    height: number
+    first: { clock: string }
+    proven: boolean
+  }
   message?: string
   cancelled?: boolean
   progress?: Array<[number, number]>
@@ -126,14 +132,16 @@ function identical(a: string, b: string): { frames: number; differing: string[] 
 }
 
 test('two captures of the same job are byte-identical, and leave no window', async () => {
-  const { dir, url } = home(fixture, 'stand-in.html')
+  const { dir, url } = standInHome()
   await withHarness(dir, async (app) => {
     const h = drive(app)
     const first = await h.capture(job(url), join(dir, 'a'))
     const second = await h.capture(job(url), join(dir, 'b'))
     expect(first.ok, first.message).toBe(true)
     expect(second.ok, second.message).toBe(true)
-    expect(first.result).toMatchObject({ frames: 60, width: 1080, height: 1920 })
+    // The page draws its frame counter, so every frame was proven fresh.
+    expect(first.result).toMatchObject({ frames: 60, width: 1080, height: 1920, proven: true })
+    expect(second.result?.proven).toBe(true)
     expect(first.result?.first.clock).toBe('08:00')
     expect(first.progress?.[59]).toEqual([60, 60])
     const { frames, differing } = identical(join(dir, 'a'), join(dir, 'b'))
@@ -149,8 +157,28 @@ test('two captures of the same job are byte-identical, and leave no window', asy
   })
 })
 
-test('a zoom level persisted in the interface’s session never reaches the capture', async () => {
+// The fallback, on purpose: the fixture is a page from before engine v0.20.0,
+// with no frame counter, so the capture loads it again at the job's own size
+// and captures it as every capture did before the proof.
+test('a page an older engine drew is captured as before, unproven, byte-identical run to run', async () => {
   const { dir, url } = home(fixture, 'stand-in.html')
+  await withHarness(dir, async (app) => {
+    const h = drive(app)
+    const first = await h.capture(job(url), join(dir, 'a'))
+    const second = await h.capture(job(url), join(dir, 'b'))
+    expect(first.ok, first.message).toBe(true)
+    expect(second.ok, second.message).toBe(true)
+    expect(first.result).toMatchObject({ frames: 60, width: 1080, height: 1920, proven: false })
+    const { frames, differing } = identical(join(dir, 'a'), join(dir, 'b'))
+    expect(frames).toBe(60)
+    expect(differing).toEqual([])
+    expect(pngSize(join(dir, 'a', '000000.png'))).toEqual({ width: 1080, height: 1920 })
+    expect(first.windows).toBe(0)
+  })
+})
+
+test('a zoom level persisted in the interface’s session never reaches the capture', async () => {
+  const { dir, url } = standInHome()
   await withHarness(dir, async (app) => {
     const h = drive(app)
     const seeded = await h.seedZoom(url, 2)
@@ -159,13 +187,14 @@ test('a zoom level persisted in the interface’s session never reaches the capt
     expect(out.ok, out.message).toBe(true)
     // At 200% the stage would measure 270 by 480 CSS pixels and the frame
     // 540 by 960; spike A0-07 lost two sessions to exactly that.
-    expect(out.result).toMatchObject({ width: 1080, height: 1920 })
+    // The window is the band taller, and the zoom reaches neither.
+    expect(out.result).toMatchObject({ width: 1080, height: 1920, proven: true })
     expect(pngSize(join(dir, 'zoomed', '000000.png'))).toEqual({ width: 1080, height: 1920 })
   })
 })
 
 test('a cancel between frames leaves no window, no debugger and no frames', async () => {
-  const { dir, url } = home(fixture, 'stand-in.html')
+  const { dir, url } = standInHome()
   await withHarness(dir, async (app) => {
     const out = await drive(app).cancelAfter(job(url), join(dir, 'cut'), 10)
     expect(out.ok).toBe(false)
@@ -193,7 +222,7 @@ test('a clock outside the service day is refused with the engine’s sentence, b
 })
 
 test('the emulated scale factor is the one used, at 1 and at 3', async () => {
-  const { dir, url } = home(fixture, 'stand-in.html')
+  const { dir, url } = standInHome()
   await withHarness(dir, async (app) => {
     const h = drive(app)
     const one = await h.capture(
@@ -206,13 +235,16 @@ test('the emulated scale factor is the one used, at 1 and at 3', async () => {
     )
     expect(one.ok, one.message).toBe(true)
     expect(three.ok, three.message).toBe(true)
+    // The band read and cropped at 1 and at 3.
+    expect(one.result?.proven).toBe(true)
+    expect(three.result?.proven).toBe(true)
     expect(pngSize(join(dir, 's1', '000000.png'))).toEqual({ width: 540, height: 960 })
     expect(pngSize(join(dir, 's3', '000000.png'))).toEqual({ width: 1620, height: 2880 })
   })
 })
 
 test('a refused job costs no window, and a missing page fails fast', async () => {
-  const { dir, url } = home(fixture, 'stand-in.html')
+  const { dir, url } = standInHome()
   await withHarness(dir, async (app) => {
     const h = drive(app)
     const refused = await h.capture(job(url, { scale: 4 }), join(dir, 'refused'))
@@ -236,12 +268,12 @@ test('a refused job costs no window, and a missing page fails fast', async () =>
 })
 
 test('a page that opens windows or navigates itself gets nowhere, and is still captured', async () => {
-  const { dir } = home(fixture, 'stand-in.html')
+  const { dir } = standInHome()
   // After the page's own script, and deferred: a navigation started while
   // the parser is still running stops the parser, so a page that did that
   // would never expose its seam and the capture would give up on it. What a
   // hostile name in a feed could do is this.
-  const hostile = readFileSync(fixture, 'utf8').replace(
+  const hostile = capturedStandInSource().replace(
     '</body>',
     [
       '<script>',
@@ -262,12 +294,13 @@ test('a page that opens windows or navigates itself gets nowhere, and is still c
     )
     expect(out.ok, out.message).toBe(true)
     expect(out.result?.frames).toBe(15)
+    expect(out.result?.proven).toBe(true)
     expect(out.windows, 'nothing the page opened is left').toBe(0)
   })
 })
 
 test('a window destroyed from outside, as a quit does, ends its capture and leaves nothing', async () => {
-  const { dir, url } = home(fixture, 'stand-in.html')
+  const { dir, url } = standInHome()
   await withHarness(dir, async (app) => {
     const out = await drive(app).abortMidway(job(url), join(dir, 'quit'), 10)
     expect(out.ok).toBe(false)
@@ -335,7 +368,7 @@ test('a frame proven by its band is the frame a capture without the band takes',
     height: 1920,
   })
   // Nothing of the band is left at the foot of a kept frame.
-  const kept = readPng(readFileSync(join(a, '000030.png')))
+  const kept = await readPng(readFileSync(join(a, '000030.png')))
   expect(stripOf(kept, kept.height - 16)).toBeNull()
   const apart = pixelsApart(a, join(older.dir, 'b'))
   expect(apart.frames).toBe(60)
@@ -354,7 +387,7 @@ test('a page whose band never shows its own paint fails the capture in its sente
     const out = await drive(app).capture(job(url), join(dir, 'late'))
     expect(out.ok).toBe(false)
     expect(out.cancelled).toBe(false)
-    expect(out.message).toBe(staleFrame(1))
+    expect(out.message).toBe(staleFrame(0))
     expect(existsSync(join(dir, 'late'))).toBe(false)
     expect(out.windows).toBe(0)
     expect(out.live).toBe(0)
@@ -383,11 +416,14 @@ function realPage(): string | null {
 
 const REAL = realPage()
 
-test.skip(
-  REAL === null,
-  'no engine checkout with a generated Los Angeles page beside this repository',
-)
+// The skip is this test's own: at file scope it skipped every test above it
+// whenever no engine checkout held a generated Los Angeles page, which is
+// every run but a person's.
 test('sixty frames of the Los Angeles page, captured twice, are byte-identical', async () => {
+  test.skip(
+    REAL === null,
+    'no engine checkout with a generated Los Angeles page beside this repository',
+  )
   const { dir, url } = home(REAL as string, 'la-metro-rail.html')
   await withHarness(dir, async (app) => {
     const h = drive(app)

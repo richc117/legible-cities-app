@@ -31,6 +31,7 @@ import {
   normalise,
   pageUrl,
   themeFor,
+  UNPROVEN_FRAMES,
   type ExportEngine,
 } from '../../src/main/export'
 import { ProjectActivity } from '../../src/main/projectActivity'
@@ -224,7 +225,7 @@ const plan = (over: Partial<PlannedJob> = {}): PlannedJob => ({
 interface CaptureCall {
   job: CaptureJob
   options: CaptureOptions
-  finish(frames?: number): void
+  finish(frames?: number, proven?: boolean): void
   fail(error: Error): void
 }
 
@@ -238,13 +239,14 @@ function fakeCapture() {
       const call: CaptureCall = {
         job,
         options,
-        finish: (frames = 60) => {
+        finish: (frames = 60, proven = true) => {
           options.onProgress?.(frames, frames)
           resolve({
             frames,
             width: 2160,
             height: 3840,
             first: { now: 0, clock: '08:00', shown: 1 },
+            proven,
           })
         },
         fail: (error) => {
@@ -484,6 +486,27 @@ describe('the export, step by step', () => {
       'Encoded 30 of 60 frames.',
     ])
     for (const p of h.progress) expect(p.message).not.toMatch(/[/\\]/)
+  })
+
+  it('says beside the encode that the frames could not be proven, when the capture could not prove them', async () => {
+    // Mutations: the note left out, or said whatever the capture answered.
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    // A video's frames are intermediates, compressed for speed.
+    expect(h.cap.calls[0].options.still).toBe(false)
+    h.cap.calls[0].finish(60, false)
+    await until('the encode', () => h.eng.requests.length === 2)
+    const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
+    h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1 }], sidecar: {} })
+    await result
+    const encoding = h.progress.find((p) => p.stage === 'encode')
+    expect(encoding?.message).toBe(`Encoding 60 frames. ${UNPROVEN_FRAMES}`)
+    expect(UNPROVEN_FRAMES).toBe(
+      'They could not be proven fresh, because an older engine drew this map; draw the map again to prove them.',
+    )
   })
 
   it("puts the plan's notes beside the planned sentence, with any path taken out", async () => {
@@ -1024,6 +1047,8 @@ describe('what the export tab chooses', () => {
       },
     ])
     expect(h.progress[1].message).toBe('Planned la-metro-rail-instagram-post.png: a still.')
+    // A still's one frame may be the deliverable: compressed at zlib's default.
+    expect(h.cap.calls[0].options.still).toBe(true)
     h.cap.calls[0].finish(1)
     await settle()
     expect(h.eng.requests[1].params).toMatchObject({

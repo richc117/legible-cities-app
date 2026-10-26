@@ -18,15 +18,26 @@
 // above it, so the stage's rows are the shot's own filtered bytes, unchanged,
 // under a header that says fewer rows - the same pixels the capture wrote
 // before the band existed, with nothing decoded and encoded again in between.
+//
+// Off the main thread's back where it can be: the inflate and the deflate are
+// zlib's own, asynchronous, on the thread pool; the inflate is bounded by the
+// size the header says, so a shot can never decompress into more than a frame;
+// and only the unfiltering of the rows down to the band, and the reading of 32
+// pixels, are done here in script.
 
-import { deflateSync, inflateSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { crc32, deflate, inflate } from 'node:zlib'
+
+const inflated = promisify(inflate)
+const deflated = promisify(deflate)
 
 /**
  * The band's height in CSS pixels. Small, because it is only read once and
  * cropped, and every pixel of it is a row the shot carries and the crop
- * throws away; big enough that the row read, half way down, is four device
- * pixels from either edge at the smallest scale (1), far from any blending
- * where the band meets the stage. The page takes 1 to 256.
+ * throws away; big enough that at the smallest scale (1) the row read, half
+ * way down the band's eight rows, has four rows of the band above it and
+ * three below, far from any blending where the band meets the stage. The
+ * page takes 1 to 256.
  */
 export const STRIP_PX = 8
 
@@ -82,12 +93,15 @@ const LAYOUT: Record<number, { channels: number; colours: number }> = {
   6: { channels: 4, colours: 3 },
 }
 
+/** The largest image data a shot may inflate to: a frame of 8192 by 8192 at scale 3, in RGBA. */
+const MAX_IMAGE_BYTES = 2 ** 31 - 1
+
 /**
  * Read a PNG's header and image data. Takes what Chromium's screenshots are:
  * 8-bit grey, grey and alpha, RGB or RGBA, not interlaced; refuses anything
  * else, a palette included, with a `PngError`.
  */
-export function readPng(bytes: Buffer): Png {
+export async function readPng(bytes: Buffer): Promise<Png> {
   if (bytes.length < SIGNATURE.length + 12 || !bytes.subarray(0, 8).equals(SIGNATURE))
     throw new PngError('the frame is not a PNG')
   let at = 8
@@ -128,13 +142,19 @@ export function readPng(bytes: Buffer): Png {
   if (depth !== 8 || layout === undefined || compression !== 0 || filter !== 0 || interlace !== 0)
     throw new PngError('the frame is a kind of PNG the capture does not read')
   if (width === 0 || height === 0) throw new PngError('the frame is empty')
+  const expected = height * (1 + width * layout.channels)
+  if (expected > MAX_IMAGE_BYTES) throw new PngError('the frame is larger than any frame can be')
   let filtered: Buffer
   try {
-    filtered = inflateSync(Buffer.concat(data))
-  } catch {
+    // Never more than the header says: a stream that would inflate past it
+    // is refused before it is held.
+    filtered = await inflated(Buffer.concat(data), { maxOutputLength: expected })
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 'ERR_BUFFER_TOO_LARGE')
+      throw new PngError('the image data of the frame is not the size its header says')
     throw new PngError('the image data of the frame does not decompress')
   }
-  if (filtered.length !== height * (1 + width * layout.channels))
+  if (filtered.length !== expected)
     throw new PngError('the image data of the frame is not the size its header says')
   return { width, height, ...layout, filtered, header, before, after }
 }
@@ -165,34 +185,32 @@ export function rowsFrom(png: Png, from: number): Uint8Array {
   let prev = new Uint8Array(stride)
   let cur = new Uint8Array(stride)
   for (let y = start; y < height; y++) {
-    const base = y * line
-    const kind = filtered[base]
-    for (let x = 0; x < stride; x++) {
-      const raw = filtered[base + 1 + x]
-      const left = x >= channels ? cur[x - channels] : 0
-      const up = prev[x]
-      const corner = x >= channels ? prev[x - channels] : 0
-      let value: number
-      switch (kind) {
-        case 0:
-          value = raw
-          break
-        case 1:
-          value = raw + left
-          break
-        case 2:
-          value = raw + up
-          break
-        case 3:
-          value = raw + ((left + up) >> 1)
-          break
-        case 4:
-          value = raw + paeth(left, up, corner)
-          break
-        default:
-          throw new PngError('the frame has a row with no filter the format has')
-      }
-      cur[x] = value & 0xff
+    const base = y * line + 1
+    // One loop a filter, chosen once a row: most of a shot's rows are Up.
+    // A row's first pixel has nothing to its left, which reads as 0.
+    switch (filtered[base - 1]) {
+      case 0:
+        cur.set(filtered.subarray(base, base + stride))
+        break
+      case 1:
+        for (let x = 0; x < channels; x++) cur[x] = filtered[base + x]
+        for (let x = channels; x < stride; x++) cur[x] = filtered[base + x] + cur[x - channels]
+        break
+      case 2:
+        for (let x = 0; x < stride; x++) cur[x] = filtered[base + x] + prev[x]
+        break
+      case 3:
+        for (let x = 0; x < channels; x++) cur[x] = filtered[base + x] + (prev[x] >> 1)
+        for (let x = channels; x < stride; x++)
+          cur[x] = filtered[base + x] + ((cur[x - channels] + prev[x]) >> 1)
+        break
+      case 4:
+        for (let x = 0; x < channels; x++) cur[x] = filtered[base + x] + prev[x]
+        for (let x = channels; x < stride; x++)
+          cur[x] = filtered[base + x] + paeth(cur[x - channels], prev[x], prev[x - channels])
+        break
+      default:
+        throw new PngError('the frame has a row with no filter the format has')
     }
     if (y >= from) out.set(cur, (y - from) * stride)
     const swap = prev
@@ -249,29 +267,18 @@ export function stripOf(png: Png, keep: number): number | null {
   return readStrip(rowsFrom(png, keep), png.width, png.height - keep, png.channels, png.colours)
 }
 
-const CRC_TABLE = (() => {
-  const table = new Uint32Array(256)
-  for (let n = 0; n < 256; n++) {
-    let c = n
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[n] = c >>> 0
-  }
-  return table
-})()
-
-function crc32(bytes: Buffer): number {
-  let c = 0xffffffff
-  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-
 function chunk(type: string, data: Buffer): Buffer {
   const head = Buffer.alloc(8)
   head.writeUInt32BE(data.length, 0)
   head.write(type, 4, 'latin1')
   const crc = Buffer.alloc(4)
-  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])), 0)
+  crc.writeUInt32BE(crc32(data, crc32(head.subarray(4))) >>> 0, 0)
   return Buffer.concat([head, data, crc])
+}
+
+/** How hard the crop compresses: zlib's level, 1 (fastest) to 9; zlib's default where left out. */
+export interface CropOptions {
+  level?: number
 }
 
 /**
@@ -281,17 +288,21 @@ function chunk(type: string, data: Buffer): Buffer {
  * only the rows above it, so not one pixel of them is decoded and encoded
  * again: the frame kept is the frame a shot without the band would have been.
  */
-export function cropPng(png: Png, keep: number): Buffer {
+export async function cropPng(png: Png, keep: number, options: CropOptions = {}): Promise<Buffer> {
   if (!Number.isInteger(keep) || keep < 1 || keep > png.height)
     throw new PngError('the frame has fewer rows than the stage')
   const header = Buffer.from(png.header)
   header.writeUInt32BE(keep, 4)
   const line = 1 + png.width * png.channels
+  const data = await deflated(
+    png.filtered.subarray(0, keep * line),
+    options.level === undefined ? {} : { level: options.level },
+  )
   return Buffer.concat([
     SIGNATURE,
     chunk('IHDR', header),
     ...png.before.map((c) => chunk(c.type, c.data)),
-    chunk('IDAT', deflateSync(png.filtered.subarray(0, keep * line))),
+    chunk('IDAT', data),
     ...png.after.map((c) => chunk(c.type, c.data)),
     chunk('IEND', Buffer.alloc(0)),
   ])
