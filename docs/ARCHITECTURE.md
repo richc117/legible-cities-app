@@ -187,13 +187,16 @@ refuses any other caller, which is another web contents: a second window,
 a webview. It could not distinguish a same-origin iframe calling
 `parent.api`, because the bridge's functions run in the top frame that
 exposed them; that is why the viewer's frame is sandboxed to an opaque
-origin and never shares the interface's (ADR-028). No method takes a
-filesystem path the renderer chose, and the only paths that come back out
-are ones a person must see or hand on: the zip `feeds.pickZip` answered,
-which goes back only as the source of a `feeds.add` the main process holds
-to its own dialog's answer ("The feeds"), and the folders a person chose,
-which Settings and cell 06 show to the person whose folders they are. The
-renderer addresses a project by its identifier only. Each addition is a
+origin and never shares the interface's (ADR-028). Nothing that crosses the
+bridge, in either direction, is a filesystem path the renderer did not ask
+for, and no method takes one the renderer chose. What does carry a path is
+named: the engine's answers, which `engine.request` hands on unchanged and
+which the renderer keeps off the screen (`graph.build`'s stage graphs, the
+folder the write stage reports; "The layout run"); the zip `feeds.pickZip`
+answered, which goes back only as the source of a `feeds.add` the main
+process holds to its own dialog's answer ("The feeds"); and the folders a
+person chose, which Settings and cell 06 show to the person whose folders
+they are. The renderer addresses a project by its identifier only. Each addition is a
 reviewed change to the type, the preload and the main-side handler
 together. Contracts: `specs/003-project/contracts/bridge.md`,
 `specs/004-sidecar-supervisor/contracts/bridge.md`,
@@ -432,7 +435,8 @@ path.
 
 **Until the first layout**, `date` and `layout` are `null`: the project's
 card on the front door says it is "not laid out yet", and cell 02 says
-"This project is not laid out yet." where its footer would be. The service
+"This project is not laid out yet." at the top of the cell's body, where
+it has no footer to draw. The service
 day is resolved once, at the project's first layout, as the engine's choice,
 and stored then; it is never re-resolved silently, and changing it is an
 explicit action (ADR-031, which amends ADR-023 on the moment; "The service
@@ -552,7 +556,8 @@ panel's cell, each row watched failing under a mutation of the hook.
 
 A project's screen is a notebook of six numbered cells in one scrolling
 column, read top to bottom in the order the work runs, with the map between
-cells 02 and 03 and nothing pinned but the header (ADR-045, ADR-046;
+cells 02 and 03 and nothing pinned but the window's header
+(`.app-header`; ADR-045, ADR-046;
 `docs/DESIGN.md` sections 8.2 and 9). Its one specification is
 `specs/028-the-notebook/contracts/run-graph.md`: which cell a run belongs
 to, what `drawn` records, when a cell is stale and why a cheap edit never
@@ -610,9 +615,9 @@ either failed; a rebuild for the record's day from the stored layout where
 only the cells below are behind - a day chosen and not drawn, or a redraw
 of cell 03, 04 or 05 that failed; and nothing otherwise. It is never
 a re-layout, which stays behind its warning (ADR-033), and **it never runs
-cell 06**: an export writes a named file and can take minutes, the header
-says so beside the button, and the `export.plan` assertions in
-`tests/e2e/layout.spec.ts` hold it. The button is drawn only while the plan
+cell 06**: an export writes a named file and can take minutes. Nothing on
+screen says so (the sentence that did went in issue 276); the `export.plan`
+assertions in `tests/e2e/layout.spec.ts` hold it. The button is drawn only while the plan
 has something to run, and not while a run or an export goes, while a
 finished run's record is read back, or for a read-only project
 (`runAllOffered`); while the project's run goes it gives way to Stop, the
@@ -665,9 +670,11 @@ whether or not there is a map. A project with no layout gets a shorter box
 saying "This project has no map yet." with a way to cell 02, so a map
 arriving later fills room kept for it, and the sentence sits in a status
 region that is never removed, so the map's arrival is heard. "Skip past the
-map" (`SkipPastMap.tsx`, issue 106) sits immediately before it and lands on
-the foot's toolbar (`notebook/ProjectFooter.tsx`), where the project is
-renamed and deleted.
+map" (`SkipPastMap.tsx`, issue 106) sits immediately before it and moves
+focus to cell 03's heading, which is there whether the cell is open or not,
+falling back to the screen's own heading (`skipPastMap` in
+`notebook/useProjectState.ts`). The project is renamed and deleted in the
+foot (`notebook/ProjectFooter.tsx`).
 
 Cell 06's preview of the export is a frame of its own (`ExportPreview.tsx`),
 mounted while the cell is open and gone when it closes, and the map's frame
@@ -1162,7 +1169,8 @@ confirmation; a preset has no Remove, and the engine refuses one anyway.
 Two things only the main process can do sit in front of this. The file
 chooser is the platform's, opened by the main process and parented to the
 window, as the rules keep a native dialog for choosing a file or a folder
-and for nothing else; the path it answers is
+(the one other is the unparented box shown when the window's renderer
+dies, `crashBox`, issue 432); the path it answers is
 remembered, and a `feeds.add` that names any other path is refused before
 the engine sees it. And a `feeds.remove` of a feed any project still
 names is refused, naming how many, because the engine would take the
@@ -1236,7 +1244,10 @@ a new layout draw fewer lines here, from the new layout's set.
 
 While a layout run goes, the pane draws the layout as it solves (issue 382,
 spec 032): each of the four stages as the run reports it, asked of the
-engine with the run's layout and no day, and asked again, where the engine
+engine with the run's layout and without a service day, since a day makes
+the answer wait on octi (spec 032, FR-004), so its words carry no minutes;
+the day is part of a drawing's cache key, and a run's drawings are cached
+under no day and the run's own identity. Each is asked again, where the engine
 answered that a stage is not there yet, when the stage it waits on is
 reported; the reports are the clock and nothing is asked on a timer
 (`engine/stages.ts`). Once the run has finished and its record has been read
@@ -2586,7 +2597,7 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 | Run all running the export | `runAll.ts`: an export writes a named file and can take minutes, so a button that promises everything must not do that as a side effect |
 | A Revert in cells 04 and 05 | `specs/028-the-notebook/contracts/run-graph.md`, "Revert": their choices are written with `drawn` once the map carries them, so there is nothing to go back to |
 | A trip in the record | ADR-048, spec 030: a trip is view state, and kept it would be an input to exports that never asked for it |
-| The build's diagnostics in the record | ADR-056: the figures go stale when another project re-lays out the set ("What the build had to fudge") |
+| The build's diagnostics in the record | A3-03, `specs/017-diagnostics`: the figures go stale when another project re-lays out the set ("What the build had to fudge") |
 | `topo` and `octi` offered in the geographic view; they are drawn only while a run solves | Issue 282 |
 | Counts on the sample cities' cards, or any feed fetched to draw one | ADR-047: a card asks the engine for the list and nothing else |
 | LOOM's optional solvers | ADR-019: the layout passes no optimisation flags, so the binaries are built without them |

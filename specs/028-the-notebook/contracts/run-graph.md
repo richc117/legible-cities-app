@@ -13,11 +13,11 @@ in `tests/unit/run-graph.test.ts`.
 
 | # | id | Name | Holds |
 | --- | --- | --- | --- |
-| 01 | `data` | Data | the feed, the mode and the operator (A5.5-09) |
-| 02 | `process` | Process | the layout run and its stages (A5.5-10) |
-| 03 | `frame` | Frame and service day | the service day (A5.5-15) |
-| 04 | `style` | Style | the project's map theme (A5.5-17) and the map's sizes (issue 350) |
-| 05 | `lines` | Lines | the line colours and the line order (A5.5-18) |
+| 01 | `data` | Data | the feed, the mode and the operator (A5.5-09), the geographic view, and the feed's download (issue 178) |
+| 02 | `process` | Process | the layout run and its stages (A5.5-10), the layout's tuning (issue 385), the engine's log and the diagnostics |
+| 03 | `frame` | Frame and service day | the service day (A5.5-15), the transport (A5.5-16) and the trip (issue 272) |
+| 04 | `style` | Style | the project's map theme (A5.5-17), the map's sizes (issue 350), and the looks, markers, label face and trains (issue 391) |
+| 05 | `lines` | Lines | the line colours and the line order (A5.5-18), and each line's options (issue 394) |
 | 06 | `export` | Export | the presets, the options, where the file goes, and the export (A5.5-19) |
 
 The order is the order the work runs in, and the numbering is fixed
@@ -267,8 +267,8 @@ the trail go to `map.build` beside `style` and not inside it.
 
 *As of 10 Oct 2026* (issue 394, spec 036): a line's options - its name, hidden,
 its width, a casing and a dash - are cheap edits of the colours' kind: they
-raise no source, redraw through `redrawLines` from the stored layout as the
-colours' kind of run (`recoloured`, so `cellOfRun` answers `lines`), and are
+raise no source, redraw through `redrawLines` from the stored layout as a
+run of their own kind (`optioned`, which `cellOfRun` answers as `lines`), and are
 written only once the map carries them, with `drawn.lines` the options as
 sent.
 

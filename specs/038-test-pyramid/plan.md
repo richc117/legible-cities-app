@@ -34,7 +34,7 @@ Part 2 (a spiked DOM layer, then the source-regex sites replaced) and Part 3 (a 
 - no third-party action beyond those already pinned;
 - no network beyond the engine install `determinism.yml` already does: no agency feed downloads.
 
-**Scale/Scope**: `ci.yml` (one workflow), `determinism.yml` (one step), seven real suites, one shape test file, `docs/repository-settings.md`, `docs/ARCHITECTURE.md:1269`, and branch protection.
+**Scale/Scope**: `ci.yml` (one workflow), `determinism.yml` (one step), seven real suites, one shape test file, `docs/repository-settings.md`, `docs/ARCHITECTURE.md`'s "Checks", and branch protection.
 
 ## Constitution Check
 
@@ -90,7 +90,7 @@ tests/support/
 
 docs/
 ├── repository-settings.md      # the seven required checks
-└── ARCHITECTURE.md             # "The smoke test" at :1269 corrected
+└── ARCHITECTURE.md             # "The smoke test", in "Checks", corrected
 ```
 
 **Structure Decision**: tests and workflows only. A shared helper in `tests/support/` is made only if three or more real suites would otherwise repeat the interpreter resolution and the fixture seeding.
