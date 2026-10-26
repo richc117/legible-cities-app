@@ -159,6 +159,41 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(alive(h.pid())).toBe(true)
   })
 
+  // Issue 529: a slow first start is a number in the log, not a guess. The
+  // stand-in waits 400 ms before it answers, so the number has a floor to be
+  // held to; a line that always said 0, or the limit, would not clear it.
+  it('logs how long the handshake took, from the spawn to the answer', async () => {
+    const h = harness({ handshake_delay_ms: 400 })
+    h.sidecar.start()
+    await h.until(ready)
+    const lines = h.log.filter((l) => l.startsWith('handshake:'))
+    expect(lines, h.log.join('\n')).toHaveLength(1)
+    const match = /^handshake: answered in (\d+) ms \(limit 10000 ms\)$/.exec(lines[0])
+    expect(match, lines[0]).not.toBeNull()
+    const took = Number(match?.[1])
+    expect(took).toBeGreaterThanOrEqual(400)
+    expect(took).toBeLessThan(9_000)
+    // Before the engine is called ready, so a log read top to bottom has the cost first.
+    const at = (prefix: string): number => h.log.findIndex((l) => l.startsWith(prefix))
+    expect(at('handshake:')).toBeLessThan(at('ready:'))
+  })
+
+  // Issue 529: and when it does not come, how long the app waited.
+  it('logs how long it waited when the handshake timed out', async () => {
+    const h = harness({ mute: true }, { handshakeMs: 300 })
+    h.sidecar.start()
+    await h.until((s) => s.state === 'restarting')
+    const lines = h.log.filter((l) => l.startsWith('handshake:'))
+    expect(lines.length, h.log.join('\n')).toBeGreaterThanOrEqual(1)
+    const match = /^handshake: no answer after (\d+) ms \(limit 300 ms\)$/.exec(lines[0])
+    expect(match, lines[0]).not.toBeNull()
+    const waited = Number(match?.[1])
+    // A timer may fire a millisecond early against a different clock; never by much.
+    expect(waited).toBeGreaterThanOrEqual(295)
+    expect(waited).toBeLessThan(5_000)
+    expect(lines.some((l) => l.includes('answered in'))).toBe(false)
+  })
+
   // Issue 494: the version the store stamps on a map as the engine that drew
   // it. A draw's completion reaches the store after its build was answered,
   // and the engine may have gone between the two, so it outlives the process.

@@ -2633,7 +2633,18 @@ engine test runs the app against the stand-in engine and checks the status
 line, a request and an error from the page, a restart after the engine is
 killed, that nothing survives the quit, the mismatch state, and the app
 with no interpreter at all; `tests/e2e/` holds the rest of the suite, a
-spec per feature. Unit tests cover, among much else (`tests/unit/` is the
+spec per feature. The suite's global setup starts the stand-in engine once
+and stops it before any worker launches the app (`tests/support/warm-engine.ts`),
+so the run's first launch is as warm as the rest: a cold first start twice
+missed the supervisor's 10 s handshake and the first test's wait ended
+inside the restart (issue 529). The supervisor logs every handshake's time
+(`handshake: answered in N ms`, or `no answer after N ms`) in `engine.log`,
+which is how a cold first launch is told from a warm one, and the helpers'
+wait for "ready" is `READY_DEADLINE_MS` (`tests/support/ready.ts`), a
+handshake, the failed engine's ending (`shutdownMs`), the first restart
+delay and a second handshake from the supervisor's own bounds. With
+`LEGIBLE_KEEP_LOGS` set, which only the loop workflow does, the teardown
+copies the run's logs into `test-results/logs/` so the artefact has them. Unit tests cover, among much else (`tests/unit/` is the
 list), the traversal matrix,
 configuration parsing, the tokens, the record's validators and versioning,
 the store against a temporary directory, the JSON-RPC framing, the

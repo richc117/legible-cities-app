@@ -101,6 +101,9 @@ export function engineWorkRefusal(engine: { inFlight: number; abandoned: number 
   return null
 }
 
+/** Whole milliseconds since a `performance.now()` reading. */
+const elapsedMs = (since: number): number => Math.round(performance.now() - since)
+
 export function describeExit(code: number | null, signal: NodeJS.Signals | null): string {
   if (signal !== null) return `ended by signal ${signal}`
   return `exited with code ${code ?? 'unknown'}`
@@ -369,6 +372,10 @@ export class Sidecar {
     this.log(`starting, attempt ${attempt}: ${command.join(' ')}`)
 
     let child: ChildProcess
+    // The handshake's clock starts here, at the spawn: what a cold start
+    // costs is the interpreter, its imports and the disk, all before the
+    // engine can answer (issue 529).
+    const spawnedAt = performance.now()
     try {
       child = spawn(command[0], command.slice(1), {
         env: this.options.env,
@@ -477,13 +484,22 @@ export class Sidecar {
     })
     child.once('close', report)
 
-    this.handshake(client, child)
+    this.handshake(client, child, spawnedAt)
   }
 
-  private handshake(client: JsonRpcClient, child: ChildProcess): void {
+  /**
+   * Ask who the engine is, bounded by `handshakeMs`. The log says how long
+   * it took from the spawn to the answer, or how long the app waited before
+   * giving up, so a slow first start is a number in `engine.log` and not a
+   * guess (issue 529).
+   */
+  private handshake(client: JsonRpcClient, child: ChildProcess, spawnedAt: number): void {
     const { id, result } = client.request('engine.info')
     const seconds = Math.round(this.bounds.handshakeMs / 1000)
     const timer = setTimeout(() => {
+      this.log(
+        `handshake: no answer after ${elapsedMs(spawnedAt)} ms (limit ${this.bounds.handshakeMs} ms)`,
+      )
       client.fail(
         id,
         new EngineError(ERROR_CODES.inactive, `no answer to the handshake within ${seconds} s`),
@@ -493,6 +509,9 @@ export class Sidecar {
       (info) => {
         clearTimeout(timer)
         if (this.child !== child) return
+        this.log(
+          `handshake: answered in ${elapsedMs(spawnedAt)} ms (limit ${this.bounds.handshakeMs} ms)`,
+        )
         this.checkIdentity(info, child)
       },
       (error: EngineError) => {

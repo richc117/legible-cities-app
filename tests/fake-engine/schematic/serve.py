@@ -11,6 +11,9 @@ writes before the app starts (every key optional):
     ignore_shutdown   true: answer engine.shutdown and keep running
     silent            true: long requests send no progress and never answer
     mute              true: answer nothing at all, not even engine.info
+    handshake_delay_ms  wait this long before answering every engine.info (the handshake's, and
+                      any later one), so the supervisor's log of how long the handshake took
+                      has a number to be held to
     spawn_child       true: start a child that sleeps (pid in fake-engine.child.pid), as
                       the engine starts a layout tool; ended on engine.shutdown
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
@@ -1480,6 +1483,7 @@ class Engine:
             error(msg_id, -32602, problem, "params")
             return True
         if method == "engine.info":
+            time.sleep(self.control.get("handshake_delay_ms", 0) / 1000)
             write({"jsonrpc": "2.0", "id": msg_id, "result": self.info()})
             if self.control.get("exit") == "after-handshake":
                 sys.stderr.write("fake engine: exiting after the handshake as told\n")
