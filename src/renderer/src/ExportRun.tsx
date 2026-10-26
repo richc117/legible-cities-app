@@ -55,9 +55,9 @@ export default function ExportRun({
     state,
   )
   // One call to action on a screen (DESIGN.md section 8.2): Export is the
-  // primary button before and during a run, and when a run has ended without
-  // a file; once a file is written Reveal is the way on, a text button, and
-  // Export is the secondary one beside it.
+  // primary button before a run and when a run has ended without a file.
+  // Once a file is written there is none: Reveal and Export are both the
+  // default button, so neither competes with the other.
   const exportButton = (
     <Button
       variant={state === 'done' ? 'secondary' : 'primary'}
@@ -113,7 +113,7 @@ export default function ExportRun({
               Exported {file}.
             </p>
             <div className="toolbar">
-              <Button variant="ghost" ref={revealRef} onClick={() => run.reveal()}>
+              <Button ref={revealRef} onClick={() => run.reveal()}>
                 <Icon name="forward" />
                 Reveal
               </Button>

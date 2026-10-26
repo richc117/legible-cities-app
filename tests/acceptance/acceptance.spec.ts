@@ -385,15 +385,25 @@ const messageOf = (error: unknown): string =>
 async function installRecorder(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded')
   await page.evaluate(() => {
-    const holder = window as unknown as { __said?: string[] }
+    const holder = window as unknown as { __said?: string[]; __line?: string[] }
     if (holder.__said !== undefined) return
     const said: string[] = []
     holder.__said = said
+    // The export's line for the eye, which is not a live region since issue
+    // 542 (it changes with every frame): what it shows is kept apart from
+    // what is spoken, so the count going up is still seen.
+    const line: string[] = []
+    holder.__line = line
     const last = new WeakMap<Element, string>()
     const scan = (): void => {
-      for (const element of document.querySelectorAll('[role="status"], [role="alert"]')) {
+      for (const element of document.querySelectorAll(
+        '[role="status"], [role="alert"], .export-run .progress-message',
+      )) {
         const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
-        if (text !== '' && last.get(element) !== text) said.push(text)
+        if (text !== '' && last.get(element) !== text) {
+          const spoken = element.matches('[role="status"], [role="alert"]')
+          ;(spoken ? said : line).push(text)
+        }
         last.set(element, text)
       }
     }
@@ -428,6 +438,10 @@ async function bringToFront(app: ElectronApplication, page: Page): Promise<strin
 
 const saidSoFar = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { __said?: string[] }).__said ?? [])
+
+/** What the export's line for the eye has shown, in order (not spoken: see `installRecorder`). */
+const lineSoFar = (page: Page): Promise<string[]> =>
+  page.evaluate(() => (window as unknown as { __line?: string[] }).__line ?? [])
 
 /** Poll until `probe` answers something other than undefined, or throw `what` at the deadline. */
 async function until<T>(
@@ -2457,6 +2471,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         },
       )
       const mark = (await saidSoFar(window)).length
+      const lineMark = (await lineSoFar(window)).length
       const pressed = Date.now()
       // Watched beside the export rather than after it: these hold only while
       // it runs. The outcome is kept, never left as a rejection nobody holds.
@@ -2515,6 +2530,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
       // reports, each replaced by the next: a short one can be gone before it
       // is drawn, so each is recorded as seen or not, and none is required.
       const said = (await saidSoFar(window)).slice(mark)
+      const shown = (await lineSoFar(window)).slice(lineMark)
+      // Two lines, two recorders: what is spoken is the status out of sight,
+      // at each stage and at each tenth of the frames; what is shown is the
+      // line beside the progress line, with every frame (issue 542). A
+      // sentence is heard or shown, and the frame counts are the shown ones.
       const sentences: [string, RegExp][] = [
         ['Planning the export.', /^Planning the export\.$/],
         [
@@ -2525,13 +2545,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ['Captured … of …', /^Captured \d+ of \d+ frames\.$/],
         ['Encoding …', /^Encoding \d+ frames\.$/],
         ['Encoded … of …', /^Encoded \d+ of \d+ frames\.$/],
+        ['… percent of the frames', /^(Captured|Encoded) \d+ percent of the frames\.$/],
       ]
-      const seen = sentences.filter(([, pattern]) => said.some((t) => pattern.test(t)))
-      const missed = sentences.filter(([, pattern]) => !said.some((t) => pattern.test(t)))
+      const heard = [...said, ...shown]
+      const seen = sentences.filter(([, pattern]) => heard.some((t) => pattern.test(t)))
+      const missed = sentences.filter(([, pattern]) => !heard.some((t) => pattern.test(t)))
       log.note(
         `Sentences seen beside the line: ${seen.map(([name]) => `"${name}"`).join(', ') || 'none'}; not caught: ${missed.map(([name]) => `"${name}"`).join(', ') || 'none'}.`,
       )
-      const capturedSeen = said.some((t) => /^Captured \d+ of \d+ frames\.$/.test(t))
+      const capturedSeen = shown.some((t) => /^Captured \d+ of \d+ frames\.$/.test(t))
       if (visibilities.size === 1 && visibilities.has('visible')) {
         if (!capturedSeen) {
           log.problems.push(

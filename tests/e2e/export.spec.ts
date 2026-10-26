@@ -398,7 +398,7 @@ test("a failed encode shows the engine's own sentence and leaves nothing", async
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText('the stand-in could not encode')).toBeVisible({
+    await expect(exportLine(page, /^the stand-in could not encode/)).toBeVisible({
       timeout: 30_000,
     })
     await expect(

@@ -306,7 +306,7 @@ describe('the export run, for a screen reader while it captures', () => {
     expect(html).not.toMatch(/<p class="progress-message"[^>]*role=/)
   })
 
-  it('says a failure at once, in the hidden status as well as to the eye', () => {
+  it('draws a refused start’s sentence in the line and in the hidden status alike', () => {
     // A refused start is a failure with a sentence of its own.
     const refused = new Run({
       run: () => ({ id: 'x', result: new Promise<ExportResult>(() => undefined) }),
@@ -343,12 +343,12 @@ describe('the export run, with one call to action', () => {
       /\bvariant="([^"]*)"/.exec(match[1])?.[1] ?? null,
     ])
 
-  it('holds no primary button once the export has finished, and Reveal is a text button', () => {
+  it('holds no primary button once the export has finished, and Reveal is no weaker than Export', () => {
     // Mutation: Reveal's variant put back to "primary" - and, separately,
     // the Export beside it - each leaves a filled button in the finished state.
     const html = draw('done')
     expect(variants(html)).toEqual([
-      ['Reveal', 'ghost'],
+      ['Reveal', 'secondary'],
       ['Export', 'secondary'],
     ])
     expect(html).not.toContain('variant="primary"')
