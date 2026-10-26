@@ -76,15 +76,15 @@ describe('vendor/python-requirements.txt', () => {
 })
 
 describe('vendor/pins.json, for the lock', () => {
-  // Measured with `git rev-parse v0.19.0^{commit}` in the engine's own
-  // repository and with `gh api repos/richc117/legible-cities/git/ref/tags/v0.19.0`
-  // on 23 Oct 2026. The manifest test above holds its header to whatever
+  // Measured with `git rev-parse v0.20.0^{commit}` in the engine's own
+  // repository and with `gh api repos/richc117/legible-cities/git/ref/tags/v0.20.0`
+  // on 25 Oct 2026. The manifest test above holds its header to whatever
   // the pins say, so only a value measured elsewhere catches a commit
   // copied wrong into both. A pin that moves edits this too.
-  it("names the commit engine v0.19.0's tag names", () => {
-    expect(pins.engine.tag).toBe('v0.19.0')
+  it("names the commit engine v0.20.0's tag names", () => {
+    expect(pins.engine.tag).toBe('v0.20.0')
     expect(pins.engine.commit).toMatch(/^[0-9a-f]{40}$/)
-    expect(pins.engine.commit).toBe('4d604b45e7a1956ef897ccec8fbdfdff5e70e635')
+    expect(pins.engine.commit).toBe('5145a2c17fac65ab2dc099d8e4c91f2cf4c6001d')
   })
 
   it('pins pip to one version, by the hash of its wheel', () => {
