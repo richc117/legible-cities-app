@@ -38,7 +38,7 @@ import {
   WINDOWS_RETRY_CODES,
   type Rename,
 } from '../../src/main/replace-file'
-import { NAME_MAX, validateName } from '../../src/shared/project'
+import { NAME_MAX, validateName } from '../../src/shared/project/validate'
 import { DEFAULT_SETTINGS, SETTINGS_VERSION } from '../../src/shared/settings'
 
 let dir: string

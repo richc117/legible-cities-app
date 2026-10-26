@@ -39,7 +39,7 @@ import {
   type Reveal,
 } from '../../src/renderer/src/engine/stages'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import type { ProjectRecord } from '../../src/shared/project'
+import type { ProjectRecord } from '../../src/shared/project/types'
 import type { RenderStageParams, RenderStageResult, StageName } from '../../src/shared/protocol'
 
 // ------------------------------------------------------------ the snapshot

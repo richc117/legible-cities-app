@@ -10,25 +10,20 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { progressWords } from '../../src/renderer/src/projectProgress'
+import { summarise, withTuning } from '../../src/main/record/helpers'
+import { parseRecord, readTuning } from '../../src/main/record/parse'
+import { validateTuning } from '../../src/main/record/validate'
+import { sameTuning, settledTuning, tuningIsSet } from '../../src/shared/project/helpers'
+import { GRID_SENTENCE, tuningRangeSentence } from '../../src/shared/project/sentences'
 import {
   DEFAULT_TUNING,
-  GRID_SENTENCE,
   GRIDS,
-  inTuningRange,
-  parseRecord,
   PENALTY_KEYS,
-  readTuning,
-  sameTuning,
-  settledTuning,
-  summarise,
   TUNING_KEYS,
   TUNING_RANGES,
-  tuningIsSet,
-  tuningRangeSentence,
-  validateTuning,
-  withTuning,
   type ProjectRecord,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
+import { inTuningRange } from '../../src/shared/project/validate'
 import { drawnOf } from '../support/sent'
 
 const ID = 'kq7x2mzp4dna'

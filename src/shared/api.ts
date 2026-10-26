@@ -31,7 +31,7 @@ import type {
   RebuildDone,
   SentSet,
   Theme,
-} from './project'
+} from './project/types'
 
 export type {
   CreateProjectInput,
@@ -42,7 +42,7 @@ export type {
   ProjectSummary,
   RebuildDone,
   ServiceWindow,
-} from './project'
+} from './project/types'
 export type { EngineState, JobLog, JobProgress } from './engine'
 export type {
   ExportChoice,

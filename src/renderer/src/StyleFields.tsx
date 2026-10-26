@@ -1,13 +1,13 @@
 import { useId, useRef, useState, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
 import {
-  isStyleChoice,
-  sameStyle,
   type ChoiceKey,
   type FigureKey,
   type ProjectRecord,
   type ProjectStyle,
-} from '../../shared/project'
+} from '../../shared/project/types'
+import { isStyleChoice } from '../../shared/project/validate'
+import { sameStyle } from './record'
 import { REDRAW_DELAY } from './colours'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'

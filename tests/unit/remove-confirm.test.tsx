@@ -19,7 +19,7 @@ import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutR
 import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../src/shared/activity'
 import type { EngineState } from '../../src/shared/engine'
-import type { ProjectRecord } from '../../src/shared/project'
+import type { ProjectRecord } from '../../src/shared/project/types'
 
 const runs = vi.hoisted(() => ({
   layout: null as unknown,

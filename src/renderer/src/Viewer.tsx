@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type SyntheticEvent } from 'react'
-import type { ProjectRecord, Theme } from '../../shared/project'
+import type { ProjectRecord, Theme } from '../../shared/project/types'
 import { VIEWER_SANDBOX, readSeams, type ViewerRole } from '../../shared/viewer'
 import { themeAsItStands } from './themeMemory'
 import { transportFor, withRemembered } from './transportState'

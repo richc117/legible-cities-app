@@ -1,5 +1,5 @@
 import { useRef, type JSX } from 'react'
-import type { ProjectRecord } from '../../../../shared/project'
+import type { ProjectRecord } from '../../../../shared/project/types'
 import ServiceDay, { dayUndrawn } from '../../ServiceDay'
 import Transport from '../../Transport'
 import Trip from '../../Trip'

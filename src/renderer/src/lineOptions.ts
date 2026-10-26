@@ -1,16 +1,15 @@
 import type { MapBuildParams } from '../../shared/protocol'
+import { linesSent, settledLine } from '../../shared/project/helpers'
+import { lineNameSentence } from '../../shared/project/sentences'
 import {
   DEFAULT_CASING_COLOR,
   DEFAULT_LINE,
-  isLineName,
   LINE_NAME_MAX,
-  lineNameSentence,
-  linesSent,
-  settledLine,
   type LineChoice,
   type LineDash,
   type ProjectLines,
-} from '../../shared/project'
+} from '../../shared/project/types'
+import { isLineName } from '../../shared/project/validate'
 
 // Cell 05's line options, with no React in it (issue 394, spec 036): the
 // steps each select offers, the sentences the section says, the summary a

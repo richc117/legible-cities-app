@@ -23,7 +23,7 @@ import CellFooter, {
   SIDECAR_NOTE,
 } from '../../src/renderer/src/notebook/CellFooter'
 import type { EngineState } from '../../src/shared/engine'
-import type { ProjectRecord, ServiceWindow } from '../../src/shared/project'
+import type { ProjectRecord, ServiceWindow } from '../../src/shared/project/types'
 
 const renderer = resolve(__dirname, '../../src/renderer/src')
 

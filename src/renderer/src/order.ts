@@ -1,4 +1,4 @@
-import type { LineOrder } from '../../shared/project'
+import type { LineOrder } from '../../shared/project/types'
 import type { Line } from './colours'
 
 // The line order, with no React in it: which lines a project draws in which

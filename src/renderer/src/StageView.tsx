@@ -11,7 +11,8 @@ import {
 import type { EngineState } from '../../shared/engine'
 import { withoutPaths } from '../../shared/engine'
 import type { RenderStageResult, StageName } from '../../shared/protocol'
-import { drawnDate, type ProjectRecord } from '../../shared/project'
+import { drawnDate } from '../../shared/project/helpers'
+import { type ProjectRecord } from '../../shared/project/types'
 import {
   DRAW_WIDTH,
   LAYOUT_ORDER,

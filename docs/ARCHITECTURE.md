@@ -140,7 +140,8 @@ event on the same ordered channel as its progress and log lines, after
 them, because Electron does not order an invoke's reply against events.
 
 Every argument is validated on the main side, with the validators in
-`src/shared/project.ts` that the form also uses; a refusal is a rejected
+`src/shared/project/validate.ts` that the form also uses and those only main
+runs in `src/main/record/validate.ts`; a refusal is a rejected
 promise whose message is the sentence a person reads, never a path. Every
 handler checks that `event.senderFrame` is the window's top frame and
 refuses any other caller, which is another web contents: a second window,
@@ -293,7 +294,27 @@ feature usually changes a value, not the shape. A field added since is optional 
 own and are stored as data, not interpreted. Contract:
 `specs/003-project/contracts/record.md`.
 
-**Versioning.** Every record carries a `version`, the number `RECORD_VERSION` in `src/shared/project.ts` (the contract in `specs/003-project/contracts/record.md` says what each number changed). The version moves when what an existing field means changes, and for no other reason: a field that is only added, optional, does not move it. A record from an earlier
+**Where the record's code lives** (spec 037, User Story 5). By what it
+holds and by which process uses it, with no module every process imports
+whole:
+
+| Where | What |
+| --- | --- |
+| `src/shared/project/types.ts` | the record's types, the lists they are made from, the engine's tables and the defaults |
+| `src/shared/project/validate.ts` | the validators and predicates both processes run |
+| `src/shared/project/sentences.ts` | the engine's refusal sentences, word for word |
+| `src/shared/project/helpers.ts` | what both derive: a style, a tuning and a line's options as sent, the day drawn, a day's refusal |
+| `src/main/record/` | main only: `parse.ts` (the version, the parser and its readers), `carried.ts` (what a later build wrote, ADR-056), `validate.ts` (whole objects and a run's facts), `drawn.ts` (`drawnFromSent`), `helpers.ts` (the writers' and the list's) |
+| `src/renderer/src/record.ts` | the interface only: the palette, the order, a free name, a run's sent set, the older-page check |
+
+`tests/unit/import-graph.test.ts` holds the boundaries: nothing under
+`src/renderer/` or `src/preload/` imports from `src/main/`, nothing under
+`src/main/` or `src/preload/` from `src/renderer/`, nothing under
+`src/shared/` from either, no value import cycle among `src/shared/`'s
+modules (a type-only import is not one), and `src/shared/project.ts` is
+gone for good.
+
+**Versioning.** Every record carries a `version`, the number `RECORD_VERSION` in `src/main/record/parse.ts` (the contract in `specs/003-project/contracts/record.md` says what each number changed). The version moves when what an existing field means changes, and for no other reason: a field that is only added, optional, does not move it. A record from an earlier
 version is read with its missing fields at their defaults and written back
 in the current form only when something else changes. A record from a
 later version - a higher number - is read-only: the Library lists it, the
@@ -913,7 +934,7 @@ the read, so it is in what the run sends. The run is `running` from the
 press, so Cancel is there while it reads, and a cancel ends the read.
 
 **`drawn` is what the run sent.** Every completion carries its sent set
-(`SentSet` in `src/shared/project.ts`): the layout and its `made`, the
+(`SentSet` in `src/shared/project/types.ts`): the layout and its `made`, the
 day, the palette, the order, the style and the line options exactly as
 `map.build` was built from them, made once in `#draw`. The store makes
 `drawn` from that alone (`drawnFromSent`), with the theme from the record
@@ -1241,7 +1262,7 @@ a completion reaches the store after its build was answered and the engine
 may have gone between; and every process that passes the handshake answered
 the pin's version exactly, so it is the version of whichever engine answered
 the build. The renderer compares it with the running engine's, from the
-ready state's `version` (`engineBefore` in `src/shared/project.ts`): three
+ready state's `version` (`engineBefore` in `src/renderer/src/record.ts`): three
 whole numbers. A running version that is not one - a pre-release, a local
 suffix - says nothing, and the seam decides. A record's own value that is
 not one is dropped as the record is read, so it is the same as none. Every

@@ -27,7 +27,7 @@
 // specs/029-the-map-in-the-flow (FR-006).
 
 import type { WebContents, WebFrameMain } from 'electron'
-import { COLORS_MAX, LABEL_MAX, isTheme } from '../shared/project'
+import { COLORS_MAX, LABEL_MAX, isTheme } from '../shared/project/validate'
 import { isStationId } from '../shared/trip'
 import {
   EXPORT_FRAME_METHODS,

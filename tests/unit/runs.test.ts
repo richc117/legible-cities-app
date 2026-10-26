@@ -8,7 +8,7 @@ import { ExportRun, type ExportBridge } from '../../src/renderer/src/engine/expo
 import { JobRegistry, type JobSource } from '../../src/renderer/src/engine/runs'
 import { ERROR_CODES } from '../../src/shared/engine'
 import type { ExportProgress, ExportResult } from '../../src/shared/export'
-import type { ProjectRecord } from '../../src/shared/project'
+import type { ProjectRecord } from '../../src/shared/project/types'
 import { MAX_FINISHED, nextJobId, type Job, type JobState } from '../../src/shared/jobs'
 
 /** A run reduced to what the registry reads: a job, a way to hear it change, and cancel. */

@@ -1,20 +1,18 @@
 import type { LayoutPenalties, LayoutTuning } from '../../shared/protocol'
+import { sameTuning, settledTuning, tuningIsSet } from '../../shared/project/helpers'
+import { tuningRangeSentence } from '../../shared/project/sentences'
 import {
   DEFAULT_TUNING,
   GRIDS,
-  inTuningRange,
   PENALTY_KEYS,
-  sameTuning,
-  settledTuning,
   TUNING_KEYS,
   TUNING_RANGES,
-  tuningIsSet,
-  tuningRangeSentence,
   type Grid,
   type ProjectRecord,
   type ProjectTuning,
   type TuningKey,
-} from '../../shared/project'
+} from '../../shared/project/types'
+import { inTuningRange } from '../../shared/project/validate'
 import { parseFigure } from './styleRules'
 
 // The layout's tuning (issue 385, spec 033): what `graph.build` is sent for
@@ -28,7 +26,7 @@ import { parseFigure } from './styleRules'
 // Windows do not tell apart.
 //
 // What a tuning *is* - the ranges, LOOM's own numbers, the four grids, what
-// the record keeps - is decided in `shared/project.ts`, beside the record,
+// the record keeps - is decided in `shared/project/`, beside the record,
 // because the main process judges the same things. This module only puts it
 // in the engine's names and on the screen.
 

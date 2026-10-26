@@ -31,7 +31,9 @@ import {
   type ExportStage,
   type ListedStoryboard,
 } from '../shared/export'
-import { drawnDate, validateDestination, type ProjectRecord, type Theme } from '../shared/project'
+import { drawnDate } from '../shared/project/helpers'
+import { type ProjectRecord, type Theme } from '../shared/project/types'
+import { validateDestination } from './record/validate'
 import type {
   CaptureJob as PlannedJob,
   ExportEncodeParams,

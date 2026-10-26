@@ -17,7 +17,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Inspect from '../../src/renderer/src/Inspect'
 import type { EngineState } from '../../src/shared/engine'
-import type { ProjectInputs, ProjectRecord } from '../../src/shared/project'
+import type { ProjectInputs, ProjectRecord } from '../../src/shared/project/types'
 import type { Inspection } from '../../src/shared/protocol'
 import { find, text } from '../support/element-tree'
 

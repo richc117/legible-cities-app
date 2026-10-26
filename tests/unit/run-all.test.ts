@@ -6,7 +6,7 @@ import {
   runAllPlan,
 } from '../../src/renderer/src/runAll'
 import { runGraph, type RunFacts } from '../../src/renderer/src/runGraph'
-import { type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 
 // Run all and the header's sentence (A5.5-22). A table of records, as the

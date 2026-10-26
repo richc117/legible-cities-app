@@ -13,7 +13,7 @@ import {
   dispatcher,
   roleOfAddress,
 } from '../../src/main/viewer'
-import { COLORS_MAX, LABEL_MAX } from '../../src/shared/project'
+import { COLORS_MAX, LABEL_MAX } from '../../src/shared/project/validate'
 import {
   MISSING_METHOD,
   PAGE_SEAMS,

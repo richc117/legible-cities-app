@@ -29,7 +29,7 @@ import Inspect from '../../src/renderer/src/Inspect'
 import StageView from '../../src/renderer/src/StageView'
 import Cell from '../../src/renderer/src/notebook/Cell'
 import type { RunReport } from '../../src/renderer/src/engine/layoutRun'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
 const record: ProjectRecord = {
   version: 1,

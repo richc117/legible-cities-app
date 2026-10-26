@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
-import type { ProjectRecord } from '../../shared/project'
+import type { ProjectRecord } from '../../shared/project/types'
 import { caveatsSentence, copyText, metrics } from './engine/diagnostics'
 import {
   isTuningRedraw,

@@ -16,7 +16,7 @@ import {
   type OfferedPreset,
   type Quality,
 } from '../../shared/export'
-import type { ProjectLines } from '../../shared/project'
+import type { ProjectLines } from '../../shared/project/types'
 import type { ClockCorner, Preset, Storyboard, View } from '../../shared/protocol'
 import { debounce, type Debounced } from './debounce'
 import { isHidden } from './lineOptions'

@@ -41,7 +41,7 @@ import type { ProjectState } from '../../src/renderer/src/notebook/useProjectSta
 import { freshStages, type LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { composeJobLog, MAX_LOG_LINES, type Job } from '../../src/shared/jobs'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
 const job = (over: Partial<Job> = {}): Job => ({
   id: 'job-1',

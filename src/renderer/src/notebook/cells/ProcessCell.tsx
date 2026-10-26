@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import type { ProjectRecord } from '../../../../shared/project'
+import type { ProjectRecord } from '../../../../shared/project/types'
 import DiagnosticsView from '../../Diagnostics'
 import LayoutRunView from '../../LayoutRun'
 import { isTuningRedraw } from '../../engine/layoutRun'

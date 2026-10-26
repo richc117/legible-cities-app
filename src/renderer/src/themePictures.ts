@@ -1,4 +1,4 @@
-import type { Theme } from '../../shared/project'
+import type { Theme } from '../../shared/project/types'
 
 // The two pictures cell 04 offers a theme by (A7-13, issue 285).
 //

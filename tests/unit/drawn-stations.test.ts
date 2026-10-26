@@ -25,13 +25,10 @@ import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutR
 import type { EngineState } from '../../src/shared/engine'
 import { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
-import {
-  drawnFromSent,
-  parseRecord,
-  summarise,
-  type ProjectRecord,
-  type SentSet,
-} from '../../src/shared/project'
+import { drawnFromSent } from '../../src/main/record/drawn'
+import { summarise } from '../../src/main/record/helpers'
+import { parseRecord } from '../../src/main/record/parse'
+import { type ProjectRecord, type SentSet } from '../../src/shared/project/types'
 import { readStations, type Station } from '../../src/shared/trip'
 import { drawnOf, drawsOn, sentOf } from '../support/sent'
 

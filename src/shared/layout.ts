@@ -40,9 +40,9 @@ export interface LayoutDone {
   /** When the layout was made, as the engine wrote it beside the set (meta.made). */
   made: string
   /** The mode and agency the engine made it with (meta.mode, meta.agency). */
-  built: import('./project').ProjectInputs
+  built: import('./project/types').ProjectInputs
   /** The feed's window and the engine's day, as feeds.service answered them. */
-  service: import('./project').ServiceWindow
+  service: import('./project/types').ServiceWindow
   /**
    * The stations map.build answered for the map the run drew (issue 272),
    * which the record keeps in `drawn` for cell 03's Trip section. Left out
@@ -55,18 +55,18 @@ export interface LayoutDone {
    * tuning committed while it ran does not change. Written as the record's
    * `laidOutWith`; left out for a run sent none, which is LOOM's defaults.
    */
-  tuning?: import('./project').ProjectTuning
+  tuning?: import('./project/types').ProjectTuning
   /**
    * What the run's `map.build` was sent (spec 037, FR-002), which the record
    * keeps as `drawn`: the layout just answered, the run's own day, and the
    * palette, order, style and line options the run read at its start.
    */
-  sent: import('./project').SentSet
+  sent: import('./project/types').SentSet
 }
 
 /** What the main process answers with once a run's record is written. */
 export interface LayoutResult {
-  record: import('./project').ProjectRecord
+  record: import('./project/types').ProjectRecord
   /** True when the project had a different layout stored before this run. */
   changed: boolean
   /**

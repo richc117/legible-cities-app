@@ -11,33 +11,17 @@ import type { Dirent } from 'node:fs'
 import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
-  Carried,
+  drawnDate,
+  sameTuning,
+  serviceDayRefusal,
+  settledStyle,
+  styleSent,
+  linesSent,
+} from '../shared/project/helpers'
+import {
   DEFAULT_COLOR,
   DEFAULT_MODE,
   DEFAULT_THEME,
-  drawnDate,
-  drawnFromSent,
-  openedOrder,
-  ID_PATTERN,
-  RECORD_VERSION,
-  nextRevision,
-  parseRecord,
-  summarise,
-  validateAgency,
-  validateFeedKey,
-  validateMode,
-  validateName,
-  validateLineOrder,
-  validateLines,
-  validatePalette,
-  validateStyle,
-  validateTheme,
-  validateTuning,
-  validateDestination,
-  validateSent,
-  sameTuning,
-  withLines,
-  withTuning,
   type CreateProjectInput,
   type DeleteResult,
   type LineOrder,
@@ -49,17 +33,33 @@ import {
   type ProjectSummary,
   type ProjectTuning,
   type RebuildDone,
-  type RecordFact,
   type SentSet,
   type Theme,
-  validateMade,
-  serviceDayRefusal,
-  settledStyle,
-  styleSent,
-  linesSent,
+} from '../shared/project/types'
+import {
+  validateAgency,
+  validateFeedKey,
+  validateMode,
+  validateName,
+  validateLineOrder,
   validateServiceDate,
+} from '../shared/project/validate'
+import { Carried, type RecordFact } from './record/carried'
+import { drawnFromSent } from './record/drawn'
+import { openedOrder, summarise, withLines, withTuning } from './record/helpers'
+import { RECORD_VERSION, nextRevision, parseRecord } from './record/parse'
+import {
+  ID_PATTERN,
+  validateLines,
+  validatePalette,
+  validateStyle,
+  validateTheme,
+  validateTuning,
+  validateDestination,
+  validateSent,
+  validateMade,
   validateServiceWindow,
-} from '../shared/project'
+} from './record/validate'
 import {
   copyChoice,
   DEFAULT_CHOICE,

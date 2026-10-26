@@ -42,7 +42,8 @@ import {
   openingFallback,
 } from '../../src/renderer/src/notebook/olderPage'
 import { END, OLD_PAGE, START, TRIP } from '../../src/renderer/src/tripWords'
-import { isTheme, type Theme } from '../../src/shared/project'
+import { type Theme } from '../../src/shared/project/types'
+import { isTheme } from '../../src/shared/project/validate'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,

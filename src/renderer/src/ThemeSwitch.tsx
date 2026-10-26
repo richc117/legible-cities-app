@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type JSX, type RefObject } from 'react'
-import { THEMES, isTheme, type ProjectRecord, type Theme } from '../../shared/project'
+import { THEMES, type ProjectRecord, type Theme } from '../../shared/project/types'
+import { isTheme } from '../../shared/project/validate'
 import { themePicture } from './themePictures'
 import { createThemeChooser, type ThemeChooser } from './themeChooser'
 

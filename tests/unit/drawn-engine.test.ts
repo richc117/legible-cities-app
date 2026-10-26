@@ -18,13 +18,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ProjectStore } from '../../src/main/projects'
-import {
-  drawnFromSent,
-  engineBefore,
-  isEngineVersion,
-  parseRecord,
-  type SentSet,
-} from '../../src/shared/project'
+import { drawnFromSent } from '../../src/main/record/drawn'
+import { parseRecord } from '../../src/main/record/parse'
+import { engineBefore } from '../../src/renderer/src/record'
+import { type SentSet } from '../../src/shared/project/types'
+import { isEngineVersion } from '../../src/shared/project/validate'
 import { drawsOn } from '../support/sent'
 
 const WINDOW = {

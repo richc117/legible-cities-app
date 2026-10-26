@@ -46,7 +46,7 @@ Stories: US1 (`drawn` is true), US2 (a choice is never lost), US3 (the cheap edi
 
 - [x] T016 [US3] #490: `useCheapEdit` per research R5, with the four panels moved onto it and one rendered table per panel.
 - [x] T017 [US4] #491: `ProjectActivity` per research R6; `Exporter.start` and `ProjectStore.delete` consult it; three main-side tests. Issue 505 closes the two overlaps it left to the screen: the bridge refuses a `map.build` while the project exports and for an `out` with no record, with main-side tests.
-- [ ] T018 [US5] #492: the split per research R7, with the import-graph test.
+- [x] T018 [US5] #492: the split per research R7, with the import-graph test.
 
 ## Dependencies
 

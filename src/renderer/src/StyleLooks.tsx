@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
-import { DEFAULT_STYLE, type ChoiceKey, type ProjectStyle } from '../../shared/project'
+import { DEFAULT_STYLE, type ChoiceKey, type ProjectStyle } from '../../shared/project/types'
 import { engineClient } from './engine/runs'
 import Select from './kit/Select'
 import {

@@ -24,7 +24,8 @@ import { join } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS } from '../shared/api'
 import { OUTPUTS_MAX, type ExportOutput } from '../shared/export'
-import { validateId, type ProjectRecord } from '../shared/project'
+import { type ProjectRecord } from '../shared/project/types'
+import { validateId } from './record/validate'
 import { folderName } from './export'
 
 /** What the engine names a sidecar: the deliverable's own name and this. */

@@ -26,12 +26,8 @@ import {
   viewOf,
   type Drafts,
 } from '../../src/renderer/src/styleRules'
-import {
-  DEFAULT_STYLE,
-  styleRangeSentence,
-  type ProjectStyle,
-  type StyleKey,
-} from '../../src/shared/project'
+import { styleRangeSentence } from '../../src/shared/project/sentences'
+import { DEFAULT_STYLE, type ProjectStyle, type StyleKey } from '../../src/shared/project/types'
 
 const COLOURS = ['background', 'station_fill', 'station_stroke_color', 'label_color']
 

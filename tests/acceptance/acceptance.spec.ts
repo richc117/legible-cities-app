@@ -66,7 +66,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
-import type { ProjectRecord } from '../../src/shared/project'
+import type { ProjectRecord } from '../../src/shared/project/types'
 import {
   cell,
   cellHandback,

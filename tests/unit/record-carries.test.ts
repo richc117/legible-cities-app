@@ -18,12 +18,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { registerProjectHandlers } from '../../src/main/ipc'
 import { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
-import {
-  parseRecord,
-  RECORD_FACTS,
-  RECORD_VERSION,
-  type RecordFact,
-} from '../../src/shared/project'
+import { RECORD_FACTS, type RecordFact } from '../../src/main/record/carried'
+import { parseRecord, RECORD_VERSION } from '../../src/main/record/parse'
 import { drawsOn, sentOf } from '../support/sent'
 
 let home: string

@@ -1,4 +1,5 @@
-import { DEFAULT_COLOR, isHexColor, validateLineLabel, type Palette } from '../../shared/project'
+import { DEFAULT_COLOR, type Palette } from '../../shared/project/types'
+import { isHexColor, validateLineLabel } from '../../shared/project/validate'
 import type { Inspection, Route } from '../../shared/protocol'
 import { keeps, routesOf } from './Inspect'
 

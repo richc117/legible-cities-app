@@ -147,7 +147,10 @@ start, after `beforeStart` has flushed whatever a control holds back on a
 timer. A run is never handed a record to trust, and nothing waits for a
 write before a run may start (the old `run.writing`, `#afterWrites` and
 three serialisers are gone, spec 037). docs/ARCHITECTURE.md, "The record
-session", has the rule in full.
+session", has the rule in full. What only the interface derives from a
+record is `src/renderer/src/record.ts`; what both processes use is
+`src/shared/project/`; and nothing here imports from `src/main/`, the
+parser and its validators included (`tests/unit/import-graph.test.ts`).
 
 ## Accessibility is not a later pass
 

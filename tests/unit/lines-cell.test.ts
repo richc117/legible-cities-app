@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { linesSummary } from '../../src/renderer/src/notebook/cells/LinesCell'
-import { DEFAULT_COLOR } from '../../src/shared/project'
+import { DEFAULT_COLOR } from '../../src/shared/project/types'
 
 type Lines = Parameters<typeof linesSummary>[0]
 

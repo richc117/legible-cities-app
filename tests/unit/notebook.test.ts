@@ -22,7 +22,7 @@ import {
   DEFAULT_THEME,
   type DrawnFrom,
   type ProjectRecord,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 import { DEFAULT_CHOICE } from '../../src/shared/export'
 
 // A function of the record since ADR-046 (specs/029 FR-010): the map sits

@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
+import { sameTuning } from '../../shared/project/helpers'
 import {
   DEFAULT_TUNING,
-  isGrid,
   PENALTY_KEYS,
-  sameTuning,
   type ProjectRecord,
   type ProjectTuning,
   type TuningKey,
-} from '../../shared/project'
+} from '../../shared/project/types'
+import { isGrid } from '../../shared/project/validate'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'

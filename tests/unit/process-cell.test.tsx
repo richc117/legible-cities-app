@@ -32,7 +32,7 @@ import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import type { EngineState } from '../../src/shared/engine'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'process') as Cell
 

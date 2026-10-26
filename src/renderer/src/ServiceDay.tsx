@@ -9,7 +9,9 @@ import {
   type RefObject,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
-import { validateServiceDate, withinWindow, type ProjectRecord } from '../../shared/project'
+import { withinWindow } from '../../shared/project/helpers'
+import { type ProjectRecord } from '../../shared/project/types'
+import { validateServiceDate } from '../../shared/project/validate'
 import { debounce, type Debounced } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Icon from './icons/Icon'

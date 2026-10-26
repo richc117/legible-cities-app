@@ -38,7 +38,7 @@ import {
   type ProjectLines,
   type ProjectRecord,
   type ProjectStyle,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 import type { Inspection } from '../../src/shared/protocol'
 import { REDRAW_DELAY } from '../../src/renderer/src/colours'
 import type { LayoutRun, RunSnapshot } from '../../src/renderer/src/engine/layoutRun'

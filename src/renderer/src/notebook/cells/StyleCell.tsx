@@ -1,5 +1,5 @@
 import { useRef, type JSX } from 'react'
-import type { ProjectRecord } from '../../../../shared/project'
+import type { ProjectRecord } from '../../../../shared/project/types'
 import { isTuningRedraw } from '../../engine/layoutRun'
 import StyleFields from '../../StyleFields'
 import ThemeSwitch, { themeWord } from '../../ThemeSwitch'

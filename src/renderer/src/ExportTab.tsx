@@ -22,7 +22,8 @@ import {
   type ExportPreview,
   type Quality,
 } from '../../shared/export'
-import { drawnDate, type ProjectRecord } from '../../shared/project'
+import { drawnDate } from '../../shared/project/helpers'
+import { type ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
 import { linesOf } from './colours'
 import { engineClient } from './engine/runs'

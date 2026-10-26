@@ -6,10 +6,10 @@
 // drawn record as a fixture builds its block from it.
 
 import type { LayoutDone, LayoutResult } from '../../src/shared/layout'
+import { drawnFromSent } from '../../src/main/record/drawn'
+import { sentSet } from '../../src/renderer/src/record'
+import { drawnDate } from '../../src/shared/project/helpers'
 import {
-  drawnDate,
-  drawnFromSent,
-  sentSet,
   type DrawnFrom,
   type LineOrder,
   type Palette,
@@ -18,7 +18,7 @@ import {
   type ProjectStyle,
   type RebuildDone,
   type SentSet,
-} from '../../src/shared/project'
+} from '../../src/shared/project/types'
 import type { Station } from '../../src/shared/trip'
 
 /** The fields of a record a draw reads; anything else is ignored. */

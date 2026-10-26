@@ -7,7 +7,7 @@ import {
 } from '../../../shared/export'
 import { failureOf, runFailureSentence, LogBuffer, nextJobId, type Job } from '../../../shared/jobs'
 import type { RunState } from '../../../shared/layout'
-import type { ProjectRecord } from '../../../shared/project'
+import type { ProjectRecord } from '../../../shared/project/types'
 import type { Stage } from '../ProgressLine'
 
 // One export for one project, seen from the page, with no React in it. The

@@ -20,7 +20,7 @@ import FrameCell from '../../src/renderer/src/notebook/cells/FrameCell'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
-import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project'
+import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import {
   NO_TRIP_ON_IT,
   ON_SCREEN_AS_IT_WAS,

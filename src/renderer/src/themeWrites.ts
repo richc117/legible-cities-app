@@ -1,4 +1,4 @@
-import type { Theme } from '../../shared/project'
+import type { Theme } from '../../shared/project/types'
 import { MISSING_METHOD } from '../../shared/viewer'
 
 // The theme switch's own pieces of logic, with no React in them: what a

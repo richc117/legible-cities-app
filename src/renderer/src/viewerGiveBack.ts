@@ -1,4 +1,4 @@
-import type { Theme } from '../../shared/project'
+import type { Theme } from '../../shared/project/types'
 import type { ViewerMethod } from '../../shared/viewer'
 import { asDispatchedTheme } from './themeMemory'
 import { asDispatched, type Remembered } from './transportState'

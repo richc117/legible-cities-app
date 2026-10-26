@@ -40,7 +40,7 @@ import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import { type ProjectRecord } from '../../src/shared/project'
+import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 
 const runs = vi.hoisted(() => ({

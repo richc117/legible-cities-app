@@ -1,4 +1,4 @@
-import type { Theme } from '../../shared/project'
+import type { Theme } from '../../shared/project/types'
 import { isStationId } from '../../shared/trip'
 import type { ViewerMethod } from '../../shared/viewer'
 

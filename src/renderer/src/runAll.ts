@@ -1,4 +1,4 @@
-import type { ProjectRecord } from '../../shared/project'
+import type { ProjectRecord } from '../../shared/project/types'
 import {
   CELL_LIST,
   cellOfRun,

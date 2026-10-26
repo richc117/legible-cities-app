@@ -1,5 +1,5 @@
 import { Fragment, useLayoutEffect, useState, type JSX } from 'react'
-import type { ProjectRecord } from '../../../shared/project'
+import type { ProjectRecord } from '../../../shared/project/types'
 import { CELL_LIST, runGraph, type CellId } from '../runGraph'
 import { CELL_VIEWS } from './cells'
 import { useProject } from './context'

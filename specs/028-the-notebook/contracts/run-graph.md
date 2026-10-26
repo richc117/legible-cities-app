@@ -381,7 +381,7 @@ press that closes it. `completeRebuild` still writes the day as well, so a
 rebuild whose choice never landed still ends with the two agreeing.
 
 Both writers refuse the same days for the same reasons, in the same
-sentence (`serviceDayRefusal` in `src/shared/project.ts`): a real calendar
+sentence (`serviceDayRefusal` in `src/shared/project/helpers.ts`): a real calendar
 day, a project that has been laid out, and the day inside the window the
 engine answered. A day that could be chosen but never drawn would be a
 project stuck stale.

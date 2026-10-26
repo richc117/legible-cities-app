@@ -1,11 +1,8 @@
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode, type RefObject } from 'react'
-import {
-  DEFAULT_LINE,
-  EVERY_LINE_HIDDEN,
-  isLineDash,
-  settledLine,
-  type LineChoice,
-} from '../../shared/project'
+import { settledLine } from '../../shared/project/helpers'
+import { DEFAULT_LINE, type LineChoice } from '../../shared/project/types'
+import { isLineDash } from '../../shared/project/validate'
+import { EVERY_LINE_HIDDEN } from './record'
 import { useColourPanel } from './ColourChip'
 import Icon from './icons/Icon'
 import Button from './kit/Button'

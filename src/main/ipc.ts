@@ -9,17 +9,6 @@
 import type { IpcMain, IpcMainInvokeEvent, WebContents } from 'electron'
 import { CHANNELS } from '../shared/api'
 import {
-  validateAgency,
-  validateFeedKey,
-  validateId,
-  validateMode,
-  validateName,
-  validateLineOrder,
-  validateLines,
-  validatePalette,
-  validateStyle,
-  validateTheme,
-  validateTuning,
   STYLE_GROUP,
   TUNING_KEYS,
   type CreateProjectInput,
@@ -33,11 +22,26 @@ import {
   type ProjectTuning,
   type RebuildDone,
   type SentSet,
+} from '../shared/project/types'
+import {
+  validateAgency,
+  validateFeedKey,
+  validateMode,
+  validateName,
+  validateLineOrder,
+  validateServiceDate,
+} from '../shared/project/validate'
+import {
+  validateId,
+  validateLines,
+  validatePalette,
+  validateStyle,
+  validateTheme,
+  validateTuning,
   validateMade,
   validateSent,
-  validateServiceDate,
   validateServiceWindow,
-} from '../shared/project'
+} from './record/validate'
 import { copyChoice, validateExportChoice, type ExportChoice } from '../shared/export'
 import { isLayoutId, type LayoutDone } from '../shared/layout'
 import { readStations, type Station } from '../shared/trip'

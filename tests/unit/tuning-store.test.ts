@@ -18,7 +18,7 @@ import { ProjectStore } from '../../src/main/projects'
 import { CHANNELS } from '../../src/shared/api'
 import type { LayoutDone } from '../../src/shared/layout'
 import { drawsOn, sentOf } from '../support/sent'
-import { GRID_SENTENCE, tuningRangeSentence } from '../../src/shared/project'
+import { GRID_SENTENCE, tuningRangeSentence } from '../../src/shared/project/sentences'
 
 let home: string
 let store: ProjectStore
