@@ -191,8 +191,11 @@ origin and never shares the interface's (ADR-028). Nothing that crosses the
 bridge, in either direction, is a filesystem path the renderer did not ask
 for, and no method takes one the renderer chose. What does carry a path is
 named: the engine's answers, which `engine.request` hands on unchanged and
-which the renderer keeps off the screen (`graph.build`'s stage graphs, the
-folder the write stage reports; "The layout run"); the zip `feeds.pickZip`
+whose paths the renderer keeps off the screen (`graph.build`'s stage
+graphs, the folder the write stage reports; "The layout run"); the engine's
+`job/log` lines (`engine.onLog`), which cell 02 draws as they come and
+which are redacted for URLs only, so an engine path can reach the screen
+there ("The log files"); the zip `feeds.pickZip`
 answered, which goes back only as the source of a `feeds.add` the main
 process holds to its own dialog's answer ("The feeds"); and the folders a
 person chose, which Settings and cell 06 show to the person whose folders
@@ -1066,8 +1069,9 @@ anything is matched or drawn, and refuses a map with every line hidden
 
 Every option is a cheap edit of the colours' kind, held by `useLineOptions`
 through `useCheapEdit`: shown at once, drawn after the delay from the stored
-layout (`LayoutRun.redrawLines`, a run of its own kind, `optioned`, which is
-cell 05's), and written through `completeLines` only once the map carries
+layout (`LayoutRun.redrawLines`, the colours' kind of run refined: its
+snapshot carries both `recoloured` and `optioned`, `kindOfRun` answers
+`options` and `cellOfRun` cell 05's `lines`), and written through `completeLines` only once the map carries
 it - the whole set the cell showed, the record keeping only the fields away
 from the engine's own. A casing's colour is built at a gesture's end, as a
 line's own colour is (issue 262). The main process checks every label and
