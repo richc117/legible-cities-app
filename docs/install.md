@@ -10,12 +10,15 @@ computer will warn you before it opens the app the first time, and this page
 shows you how to get past that warning on each system. To get a newer version,
 download it from the Releases page and install it over the old one; your
 projects and settings stay where they are.
+[Updating from an earlier release](#updating-from-an-earlier-release) says
+what is different the first time you open the new one.
 
 - [What you need](#what-you-need)
 - [Which file to download](#which-file-to-download)
 - [Check the download (optional)](#check-the-download-optional)
 - [Install on a Mac](#install-on-a-mac)
 - [Install on Windows](#install-on-windows)
+- [Updating from an earlier release](#updating-from-an-earlier-release)
 - [What the app writes, and where](#what-the-app-writes-and-where)
 - [Uninstall completely](#uninstall-completely)
 - [Report a problem](#report-a-problem)
@@ -161,6 +164,61 @@ check it as described above. If it happens again, [report it](#report-a-problem)
 
 After that, open Legible Cities from the Start menu or the desktop
 shortcut.
+
+## Updating from an earlier release
+
+If you may go back to 0.1.0, quit the app and copy the engine's data folder
+somewhere safe before you install the new version. It is the row in the
+tables below that names it, which Settings shows as the **Engine data
+folder**. The copy holds your projects as 0.1.0 left them. To go back, quit
+the new version and remove it (step 2 of
+[Uninstall completely](#uninstall-completely); removing the app leaves its
+data where it is), install 0.1.0, and put the copy in place of the engine
+data folder: move or delete that folder first rather than copying over it.
+Anything you made in the new version is lost.
+
+Install the new version over the old one, as the steps above say: quit the
+app first, and on a Mac choose **Replace**. Your projects, feeds and
+settings stay where [What the app writes, and where](#what-the-app-writes-and-where)
+puts them. Four things are different the first time you open the new
+version.
+
+**A project with a map is redrawn once.** The first time you open a
+project that has a map, the app draws that map again with the engine in the
+new version, from the layout the project already stored. Nothing is laid out
+again, so the layout does not move. The map on screen is replaced when the
+redraw has finished, and the project's picture in the Library follows. A
+project with no map yet is left alone. So is one that cell 02 or cell 03
+says is out of date, for example a day you chose and have not drawn, or a
+layout that was made again since the map was drawn: it stays as it was drawn
+until you run it. If a redraw fails, cell 03 (Frame and service day) says
+that the map could not be redrawn as the project opened, gives the engine's
+reason, and the old map stays on screen. The redraw is tried again the next
+time the project opens.
+
+**Projects you open or change in the new version open read-only in 0.1.0.**
+Each project is kept in a record that has a version number. The first
+release, 0.1.0, reads version 1; the new version writes version 2, and
+0.1.0 opens a record of a higher version read-only. Redrawing a project
+writes its record, so every project with a map is version 2 once it has
+opened and been redrawn, and so is any project you change. Going back to
+0.1.0 then shows it marked read-only in the Library: 0.1.0 cannot change or
+export it there, and can still delete it. A project with no map that you
+open without changing anything, and one whose redraw failed, are still
+version 1.
+
+**The warnings come back.** The new installer is not signed either, so macOS
+or Windows warns again, as it did the first time. Follow
+[Install on a Mac](#install-on-a-mac) or
+[Install on Windows](#install-on-windows) again; a Mac needs it once for
+each version you install (see [After the first time](#after-the-first-time)).
+
+**The engine is newer.** The engine inside the app draws the maps, and
+0.1.0 carried engine v0.10.1; the release's notes name the one the new
+version carries. A map that is redrawn is drawn as the newer engine draws
+it, and the names on it, and how they are placed, may look different from
+before. Exports are still stills, videos and GIFs, and the ones you made
+before stay where they are.
 
 ## What the app writes, and where
 

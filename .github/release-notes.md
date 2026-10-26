@@ -18,6 +18,10 @@ The Mac app is not signed with an Apple Developer ID or notarised, and the Windo
 
 The app does not check for updates. A newer version is on this repository's Releases page, and you install it over the old one.
 
+## Updating
+
+If you are updating from 0.1.0, [Updating from an earlier release]({{install_url}}#updating-from-an-earlier-release) says what to expect: a project with a map is redrawn once, the first time it opens, with the engine in this release; projects you open or change in this release open read-only in 0.1.0; and the installer's warnings return.
+
 ## What is inside
 
 | Component | Version | Licence |
