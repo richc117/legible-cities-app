@@ -1,7 +1,7 @@
 # NNN - <feature name>
 
 - **Issue:** #<number> (<planned code, such as A2-03, if it has one>)
-- **Status:** Draft | Ready | Implemented
+- **Status:** Draft | Ready | Implemented YYYY-MM-DD (#PR) | Partly implemented (which parts are built, with their pull requests)
 - **Date:** YYYY-MM-DD
 
 ## Summary

@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#81)
 
 **Input**: Planned issue A3-03 (#25). Engine v0.8.0 answers `map.build`
 with three things beside the files: `diagnostics`, the build's numbers as

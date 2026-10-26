@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-13
 
-**Status**: Draft
+**Status**: Implemented 2026-09-13 (#112)
 
 **Input**: Issue #108, "Ship the bundled Python runtime's library licence texts in the installers". The installers carry python-build-standalone's `install_only` runtime (release 20260901, CPython 3.12.14) for darwin-arm64, darwin-x64 and win-x64. CPython's `LICENSE.txt` ships inside it; the licence texts of the libraries python-build-standalone links statically (OpenSSL, libffi, xz, bzip2, zlib, mpdecimal, expat, Tcl/Tk and others) live only in the project's `full` archive's `licenses/` folder, which is not shipped. Their licences require the notices to accompany the binaries. `THIRD_PARTY_NOTICES.md` and ADR-035 also say the installed app shows its notices in a Licences screen, which does not exist.
 

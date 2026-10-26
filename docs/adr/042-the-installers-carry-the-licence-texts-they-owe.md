@@ -7,8 +7,10 @@
 - **Amends:** [ADR-035](035-installers-are-built-from-the-same-runs-vendor-artefacts.md):
   the licence texts its Consequences left to "the Licences screen and
   A6-01" ship inside every installer, and the screen is a section of
-  Settings. It also corrects what ADR-020 and ADR-038 imply the runtime
-  carries: CPython's `LICENSE.txt` and, since this record, the texts below.
+  Settings. It also amends [ADR-020](020-sidecar-packaging.md) and
+  [ADR-038](038-the-sidecar-runtime-measured-on-three-targets.md), correcting
+  what they imply the runtime carries: CPython's `LICENSE.txt` and, since
+  this record, the texts below.
 
 ## Context
 

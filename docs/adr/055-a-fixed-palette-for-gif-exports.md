@@ -2,7 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-10-06
-- **Supersedes:** none
+- **Supersedes:** [ADR-039](039-the-determinism-gate-judges-the-capture.md), in part (the GIFs)
 - **Superseded by:** none
 
 ## Context

@@ -16,7 +16,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Clarified 2026-09-07. The seven open questions are answered below under [Clarifications](#clarifications-2026-09-07); the installers and the vendored components moved to `specs/002-vendored-components-and-installers/` (planned issue A0-10).
+**Status**: Implemented 2026-09-07 (769eed1, committed to `main` before pull requests were required). Clarified 2026-09-07. The seven open questions are answered below under [Clarifications](#clarifications-2026-09-07); the installers and the vendored components moved to `specs/002-vendored-components-and-installers/` (planned issue A0-10).
 
 **Input**: Planned issue A0-09. The desktop application has no code yet; this feature is the empty shell everything later is built inside — a window that opens, a single origin the engine's animation page can eventually be embedded from, a development loop against a local engine checkout, and an automated check on all three platforms.
 

@@ -8,7 +8,7 @@
 
 **Created**: 2026-09-12
 
-**Status**: Draft
+**Status**: Implemented 2026-09-12 (#96)
 
 **Input**: Planned issue A1-03, "Jobs drawer: progress, cancellation, logs
 and errors for people". Three kinds of long work exist today, each with its

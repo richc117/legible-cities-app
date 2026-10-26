@@ -40,7 +40,7 @@ Stories: US1 (`drawn` is true), US2 (a choice is never lost), US3 (the cheap edi
 
 ## Phase 5: Part 1, verification
 
-- [ ] T015 The coordinator runs the full end-to-end suite against the pinned engine, then `e2e-loop` with load on `tuning`, `inspect`, `layout`, `colours`, `order` and `style`, 10 times per platform (SC-004).
+- [x] T015 The coordinator runs the full end-to-end suite against the pinned engine, then `e2e-loop` with load on `tuning`, `inspect`, `layout`, `colours`, `order` and `style`, 10 times per platform (SC-004). *As of 25 Oct 2026:* run on `main` at 5cb7793, after all four parts merged, on macOS and Windows: 2,340 passed, 0 failed, 0 flaky (runs 40261293603 to 40261314881). Each part's full suite had passed before its merge.
 
 ## Phases 6-8: Parts 2-4 (planned again when each starts)
 

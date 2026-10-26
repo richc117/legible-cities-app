@@ -9,26 +9,49 @@ import { describe, expect, it } from 'vitest'
 const dir = join(__dirname, '..', '..', 'docs', 'adr')
 const lead = (status: string): string => status.trim().split(/[;,\s]/)[0] ?? ''
 
+// Number | Title | Status | Relations: four cells, no `|` inside a title.
 const rows = new Map<string, string>()
+const relations = new Map<string, string>()
 for (const line of readFileSync(join(dir, 'README.md'), 'utf8').split('\n')) {
-  const m = /^\| (\d{3}) \|.*\| ([^|]*?) \|$/.exec(line)
-  if (m) rows.set(m[1]!, m[2]!)
+  const num = /^\| (\d{3}) \|/.exec(line)
+  if (!num) continue
+  const cells = line.slice(1, -1).split('|')
+  expect(cells.length, `the index row for ADR-${num[1]} has four cells: ${line}`).toBe(4)
+  rows.set(num[1]!, cells[2]!.trim())
+  relations.set(num[1]!, cells[3]!.trim())
 }
 
 const files = new Map<string, string>()
+// The ADR numbers each record's Supersedes / Superseded by / Amends / Amended by /
+// See also header lines name (a line and its indented continuation, up to the first heading).
+const named = new Map<string, Set<string>>()
+const RELATION =
+  /^(?:- \*\*)?(Supersedes|Superseded by|Amends|Amended by|See also):(?:\*\*)? ?(.*)$/
 for (const name of readdirSync(dir)) {
   const m = /^(\d{3})-.*\.md$/.exec(name)
   // 000 is the template, which the index lists as n/a.
   if (!m || m[1] === '000') continue
-  const status = /^(?:- \*\*Status:\*\*|Status:) (.+)$/m.exec(readFileSync(join(dir, name), 'utf8'))
+  const text = readFileSync(join(dir, name), 'utf8')
+  const status = /^(?:- \*\*Status:\*\*|Status:) (.+)$/m.exec(text)
   expect(status, `${name} has a Status line`).not.toBeNull()
   files.set(m[1]!, status![1]!)
+  const set = new Set<string>()
+  let inRelation = false
+  for (const line of text.split('\n')) {
+    if (line.startsWith('## ')) break
+    const r = RELATION.exec(line)
+    if (r) inRelation = true
+    else if (!/^\s+\S/.test(line)) inRelation = false
+    if (inRelation) for (const n of line.matchAll(/ADR-(\d{3})/g)) set.add(n[1]!)
+  }
+  named.set(m[1]!, set)
 }
 
 describe('docs/adr index', () => {
   it('reads both sides', () => {
     expect(rows.size).toBeGreaterThan(50)
     expect(files.size).toBeGreaterThan(35)
+    expect([...named.values()].reduce((n, set) => n + set.size, 0)).toBeGreaterThan(20)
   })
 
   it('has a row for every record, and for every number below the highest', () => {
@@ -43,6 +66,25 @@ describe('docs/adr index', () => {
   it('gives each record the status its file gives it', () => {
     for (const [n, status] of files) {
       expect(lead(rows.get(n) ?? ''), `ADR-${n}`).toBe(lead(status))
+    }
+  })
+
+  it('shows in each row exactly the records its header lines name', () => {
+    for (const [n, set] of named) {
+      const cell = relations.get(n) ?? ''
+      const shown = new Set([...cell.matchAll(/\d{3}/g)].map((x) => x[0]))
+      for (const other of set) {
+        expect(
+          shown.has(other),
+          `ADR-${n}'s header names ADR-${other}; its Relations cell says "${cell}"`,
+        ).toBe(true)
+      }
+      for (const other of shown) {
+        expect(
+          set.has(other),
+          `ADR-${n}'s Relations cell says "${cell}", but its header does not name ADR-${other}`,
+        ).toBe(true)
+      }
     }
   })
 })

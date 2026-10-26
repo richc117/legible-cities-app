@@ -1,4 +1,33 @@
 <!--
+Sync Impact Report (1.3.0)
+- Version change: 1.2.0 -> 1.3.0
+- Bump rationale: MINOR. The Workflow section's guidance is materially
+  expanded and one step of it is relaxed: for work built as a lane, `plan.md`
+  and `tasks.md` become optional, and a spec's Status is now kept true (it
+  moves to Implemented, with the date and the pull request, when the last
+  part merges, and a spec built in parts says which parts are built). No
+  principle is removed or redefined, so it is not MAJOR. The test this
+  project uses is whether work that complied before now fails: it does not.
+  The relaxation permits what specs 029 to 036 already did, which were built
+  as lanes with a `spec.md` alone; the one new duty, keeping Status true, is
+  discharged for every spec that has a `spec.md` in the same change (issue
+  428). MAJOR is defined over the principles, and Workflow is not one, so
+  the bump is MINOR and is not arguable.
+- Modified principles: none
+- Modified sections: Workflow
+- Added sections: none
+- Removed sections: none
+- Templates requiring updates, each checked: `.specify/templates/plan-template.md`
+  derives its Constitution Check gates from the principles, which are
+  unchanged: no change. `spec-template.md` opens a spec at `Draft`, which is
+  where a spec starts under the new rule: no change. `tasks-template.md` is
+  used when tasks are generated, which stays optional for a lane and
+  required otherwise: no change. `checklist-template.md` and
+  `constitution-template.md` do not mention the order of work: no change.
+- Follow-up TODOs: none for this file. `CONTRIBUTING.md` and `CLAUDE.md`
+  describe the workflow and are brought into line by the same issue's other
+  lane, in these words.
+
 Sync Impact Report (1.2.0)
 - Version change: 1.1.0 -> 1.2.0
 - Bump rationale: MINOR. A constraint's reasoning was **replaced**, not
@@ -152,10 +181,16 @@ the day it surprises you, while you still know why.
 
 ## Workflow
 
-Features are specified before they are built: a spec under `specs/` with
-user stories and acceptance criteria, then a plan, then tasks, then code.
-The acceptance criteria are written so a test could assert them; where only
-a person can check something, the spec says so.
+Spec first. `spec.md` is the durable record of a feature. For work built as
+a lane, `plan.md` and `tasks.md` are optional: the plan and the tasks may
+live in the lane's brief instead. A spec's Status moves to Implemented, with
+the date and the pull request, when its last part merges; a spec built in
+parts says which parts are built.
+
+A spec under `specs/` holds user stories and acceptance criteria. The
+acceptance criteria are written so a test could assert them; where only a
+person can check something, the spec says so. Work that is not built as a
+lane (ADR-034) keeps the order of spec, plan, tasks, code.
 
 Decisions get a record. Spikes get a question and a timebox before they get
 a branch. Documentation changes with the code that made it wrong.
@@ -198,4 +233,4 @@ moved.
 Complexity is justified in the pull request or removed. "We might need it"
 is not a justification.
 
-**Version**: 1.2.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-09-08
+**Version**: 1.3.0 | **Ratified**: 2026-09-07 | **Last Amended**: 2026-10-25

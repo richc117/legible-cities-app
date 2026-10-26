@@ -16,7 +16,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Clarified 2026-09-07; the two questions the engine's absence forced are answered under [Clarifications](#clarifications-2026-09-07)
+**Status**: Implemented 2026-09-07 (#41). Clarified 2026-09-07; the two questions the engine's absence forced are answered under [Clarifications](#clarifications-2026-09-07)
 
 **Input**: Planned issue A1-05. Later features assume an object nobody had defined: the viewer loads a project's page, the style screen persists into a project, the export passes a project, and the MVP's fourth capability says style persists *per project*. Since the re-plan of 7 September, the project is also the unit of determinism (ADR-023): it carries its stored layout and its service date. This feature defines that object, the Library that lists it, and the four things a person can do to it before any engine is connected: create, open, rename, delete.
 

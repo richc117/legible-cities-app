@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-08
 
-**Status**: Draft
+**Status**: Implemented 2026-09-08 (#51)
 
 **Input**: Planned issue A3-01, "Run the four LOOM stages and the map build with per-stage progress; cache reuse; force rebuild".
 

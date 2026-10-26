@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-07
 
-**Status**: Draft
+**Status**: Implemented 2026-09-07 (#49)
 
 **Input**: Planned issue A1-02, "Typed protocol client generated from the engine's JSON Schema, with contract tests against the real sidecar".
 

@@ -56,8 +56,11 @@ Add one row to the table at the end of `docs/adr/README.md`, in number
 order, linking the file:
 
 ```
-| 013 | [The generated animation page is the viewer](013-page-is-the-viewer.md) | Accepted |
+| 013 | [The generated animation page is the viewer](013-page-is-the-viewer.md) | Accepted | Amended by 028 |
 ```
+
+The last cell is the record's relations, copied from its header lines
+(Supersedes, Superseded by, Amends, Amended by, See also), or `-` for none.
 
 ## Before you finish
 
@@ -67,7 +70,11 @@ notes about audience, money or timelines, and no link to a tool session.
 Those belong in the maintainer's private notes. Run `bin/preflight` when you
 are done.
 
-A record is not rewritten after it is accepted. The only line that changes
-is its status, and a changed decision is a **new** record that names the one
-it supersedes - fill in `Supersedes:` on the new record and
-`Superseded by:` on the old one, and update both rows in the index.
+A record's decision is not rewritten after it is accepted. Three things
+change in an accepted record, and only these: its status; the header lines that name a
+related record (Supersedes, Superseded by, Amends, Amended by, See also); and
+"As of" paragraphs appended to it, dated, saying what changed and where when
+a later change makes its description out of date without reversing it
+(`docs/adr/README.md` has the rule). A changed decision is a **new** record
+that names the one it supersedes - fill in `Supersedes:` on the new record
+and `Superseded by:` on the old one, and update both rows in the index.

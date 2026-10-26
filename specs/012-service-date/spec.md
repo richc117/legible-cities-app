@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-11
 
-**Status**: Draft
+**Status**: Implemented 2026-09-11 (#71)
 
 **Input**: Planned issue A3-04, "Service date: busiest weekday by default, a
 picker bounded by the service window, times past midnight preserved".

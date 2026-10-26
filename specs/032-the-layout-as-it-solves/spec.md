@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-09
 
-**Status**: Draft
+**Status**: Implemented 2026-10-09 (#387)
 
 **Input**: Issue 382, "Draw the layout as it solves: cell 02 shows each stage as the run reaches it (the app half of engine 43)"; engine issue 43 (E27), released in engine v0.14.0, which the app pins since 1d90b66. The issue's title says cell 02; the coordinator settled cell 01, where the stages are drawn (FR-001).
 

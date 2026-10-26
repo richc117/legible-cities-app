@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-10
 
-**Status**: Draft
+**Status**: Implemented 2026-09-10 (#64)
 
 **Input**: Planned issue A5-02b, "Export one preset: plan → capture →
 encode, with progress, cancellation, the sidecar JSON and reveal in

@@ -5,6 +5,8 @@
 - **Supersedes:** none
 - **Superseded by:** none
 - **Amended by:** [ADR-038](038-the-sidecar-runtime-measured-on-three-targets.md);
+  [ADR-042](042-the-installers-carry-the-licence-texts-they-owe.md), which
+  corrects what this record implies the runtime carries;
   [ADR-057](057-the-shipped-python-runtime-is-locked-and-attested.md): the
   runtime's packages are the engine's lock, installed by their hashes, with
   pip and the engine's commit pinned

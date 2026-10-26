@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-01
 
-**Status**: Draft
+**Status**: Implemented 2026-10-06 (#303)
 
 **Input**: Issue 286 (A7-14), "The map in the notebook's flow: a preview
 where it is made, and another for the export", and ADR-046, which this

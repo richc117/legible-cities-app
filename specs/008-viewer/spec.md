@@ -4,7 +4,7 @@
 
 **Created**: 2026-09-08
 
-**Status**: Draft
+**Status**: Implemented 2026-09-08 (#52)
 
 **Input**: Planned issue A3-02, "Viewer: the generated animation page embedded, four views, theme follows the app".
 
