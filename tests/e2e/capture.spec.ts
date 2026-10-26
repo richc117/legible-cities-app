@@ -20,7 +20,11 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test'
+import { staleFrame } from '../../src/main/capture'
+import { readPng, stripOf } from '../../src/main/capture-strip'
 import type { CaptureJob } from '../../src/shared/capture'
+import { readPngRows } from '../support/frames'
+import { capturedStandInSource, type CapturedStandInOptions } from '../support/standInPage'
 
 const repoRoot = resolve(__dirname, '../..')
 const harness = resolve(__dirname, 'capture-harness.cjs')
@@ -269,6 +273,89 @@ test('a window destroyed from outside, as a quit does, ends its capture and leav
     expect(out.ok).toBe(false)
     expect(out.message).toMatch(/the window was destroyed/)
     expect(existsSync(join(dir, 'quit'))).toBe(false)
+    expect(out.windows).toBe(0)
+    expect(out.live).toBe(0)
+  })
+})
+
+/** A home with one project whose page is the captured stand-in, as `options` asks. */
+function standInHome(options: CapturedStandInOptions = {}): { dir: string; url: string } {
+  const dir = mkdtempSync(join(tmpdir(), 'legible-cities-capture-'))
+  mkdirSync(join(dir, 'out', 'p1'), { recursive: true })
+  writeFileSync(join(dir, 'out', 'p1', 'stand-in.html'), capturedStandInSource(options))
+  return { dir, url: 'app://local/projects/p1/stand-in.html' }
+}
+
+/** The largest difference in any colour channel between two folders of frames, and how many frames differ at all. */
+function pixelsApart(a: string, b: string): { frames: number; differing: number; max: number } {
+  const names = readdirSync(a).sort()
+  expect(readdirSync(b).sort()).toEqual(names)
+  let differing = 0
+  let max = 0
+  for (const name of names) {
+    const x = readPngRows(readFileSync(join(a, name)))
+    const y = readPngRows(readFileSync(join(b, name)))
+    expect([y.width, y.height], name).toEqual([x.width, x.height])
+    let worst = 0
+    for (let r = 0; r < x.rows.length; r++)
+      for (let i = 0; i < x.rows[r].length; i++) {
+        // RGB, never alpha (the constitution's measure).
+        if (x.channels === 4 && i % 4 === 3) continue
+        worst = Math.max(worst, Math.abs(x.rows[r][i] - y.rows[r][i]))
+      }
+    if (worst > 0) differing++
+    max = Math.max(max, worst)
+  }
+  return { frames: names.length, differing, max }
+}
+
+// Each frame proven fresh (app issue 100, engine v0.20.0): the page draws its
+// count of draws in a band under the stage, the capture reads it out of the
+// shot it takes and crops the band away. What only a real window can show is
+// that the frame kept is the frame a capture without the band takes: the
+// same page, made to ignore the band as a page an older engine drew does, is
+// loaded again at the job's own size and captured as every capture was
+// before, and the two sets of frames are the same, pixel for pixel. The
+// engine measured 0; the tolerance is 8.
+test('a frame proven by its band is the frame a capture without the band takes', async () => {
+  const proven = standInHome()
+  const older = standInHome({ older: true })
+  await withHarness(proven.dir, async (app) => {
+    const out = await drive(app).capture(job(proven.url), join(proven.dir, 'a'))
+    expect(out.ok, out.message).toBe(true)
+    expect(out.result).toMatchObject({ frames: 60, width: 1080, height: 1920 })
+  })
+  await withHarness(older.dir, async (app) => {
+    const out = await drive(app).capture(job(older.url), join(older.dir, 'b'))
+    expect(out.ok, out.message).toBe(true)
+  })
+  const a = join(proven.dir, 'a')
+  expect(pngSize(join(a, '000000.png')), 'the band is cropped away').toEqual({
+    width: 1080,
+    height: 1920,
+  })
+  // Nothing of the band is left at the foot of a kept frame.
+  const kept = readPng(readFileSync(join(a, '000030.png')))
+  expect(stripOf(kept, kept.height - 16)).toBeNull()
+  const apart = pixelsApart(a, join(older.dir, 'b'))
+  expect(apart.frames).toBe(60)
+  expect(apart.max, 'within the tolerance of 8, in RGB').toBeLessThanOrEqual(8)
+  // The train moved, so the comparison is of a running clock.
+  expect(readFileSync(join(a, '000000.png')).equals(readFileSync(join(a, '000059.png')))).toBe(
+    false,
+  )
+})
+
+test('a page whose band never shows its own paint fails the capture in its sentence, and leaves nothing', async () => {
+  // The stand-in told to be late always: its band is one draw behind the
+  // count it reports, as a page whose paint never caught up would be.
+  const { dir, url } = standInHome({ late: true })
+  await withHarness(dir, async (app) => {
+    const out = await drive(app).capture(job(url), join(dir, 'late'))
+    expect(out.ok).toBe(false)
+    expect(out.cancelled).toBe(false)
+    expect(out.message).toBe(staleFrame(1))
+    expect(existsSync(join(dir, 'late'))).toBe(false)
     expect(out.windows).toBe(0)
     expect(out.live).toBe(0)
   })

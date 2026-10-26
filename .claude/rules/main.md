@@ -189,6 +189,15 @@ Every capture, without exception:
   returns the last *painted* frame, not the state just set; without the
   wait one frame in sixty differs, intermittently, which is the worst way
   to be wrong.
+- **And the shot proves it** (issue 100, engine v0.20.0): the address asks
+  for `strip=STRIP_PX`, the window and viewport are that much taller, and a
+  shot of the stage and the band is kept, the band cropped away exactly,
+  only where the count the band shows (`capture-strip.ts`) equals
+  `state().draws` read after the step - never predicted - else it is taken
+  again after another wait, `FRESH_TRIES` shots in all, then refused in a
+  sentence; every change to the page comes before the step whose count is
+  read, and a page with no band (an older engine's) is loaded again at the
+  job's own size and captured unproven.
 - Compare in RGB with a channel tolerance of 8: never RGBA, never equality.
 
 How the frames are taken is **ADR-024**, and every clause of it was paid

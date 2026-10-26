@@ -25,11 +25,47 @@
 // first and then draws the network to `i / (n - 1)`. A job with neither flag
 // makes exactly the calls it made before the opening, script for script,
 // but for the settle being waited for (`tests/unit/capture-opening.test.ts`).
+//
+// Every frame is proven fresh, not waited for and hoped (app issue 100,
+// engine v0.20.0's issue 85). The address asks the page for its frame counter
+// (`strip=`, `STRIP_PX` tall), the window and the emulated viewport are that
+// much taller, and the page lays its frame out in the viewport less the band,
+// so the stage is the size it always was and the band sits under it. After
+// each step and the paint wait the capture reads `state().draws`, takes the
+// stage and the band in one shot, reads the band's count out of the shot
+// (`capture-strip.ts`) and keeps the frame only where the two agree; otherwise
+// it waits for the paint again and takes it again, `FRESH_TRIES` shots in all,
+// and then fails in a sentence of its own. The band is cropped away before the
+// frame is written, exactly: the kept frame is the frame a shot without the
+// band would have been, so every size downstream and the determinism gate are
+// untouched. Every change to the page is made before the step whose count is
+// read - a beat's `setLabels` and views before its first step, the card at the
+// beat's start, the draw-in's `setDrawn` after the step but drawing itself -
+// because a call that does not draw can change the picture without moving the
+// count.
+//
+// A page an older engine drew has no counter, and an export can still reach
+// one: a project whose page was drawn before the pin moved and has not been
+// redrawn (a record that cannot say what drew it, a day chosen and not drawn,
+// a redraw that failed; `olderPage.ts` in the renderer) exports the page on
+// disk, and stale never blocks an export (ADR-045). Such a page ignores
+// `strip=` and lays out in the taller viewport, so the capture loads it again
+// at the job's own size and address and captures it as it did before the
+// proof, saying so in the log.
 
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import type { BrowserWindowConstructorOptions } from 'electron'
 import { VIEWS, frameTotal, type Beat, type CaptureJob, type PresentState } from '../shared/capture'
+import {
+  PngError,
+  STRIP_MODULUS,
+  STRIP_PX,
+  cropPng,
+  readPng,
+  stripOf,
+  type Png,
+} from './capture-strip'
 import { isValidProjectId } from './paths'
 
 /**
@@ -41,6 +77,18 @@ export const CAPTURE_PARTITION = 'capture'
 
 /** Milliseconds the page gets to expose `__present`, and each frame gets to paint and capture. */
 export const CAPTURE_TIMEOUTS = { page: 60_000, frame: 30_000 } as const
+
+/**
+ * Shots a frame gets before the capture gives up on it: the first, and three
+ * taken again after waiting for the paint each time. A page late once is
+ * retaken and kept; a page that never paints the step it was asked for fails.
+ */
+export const FRESH_TRIES = 4
+
+/** The sentence a capture fails with when no shot of a frame showed its own paint. */
+export function staleFrame(frame: number, tries = FRESH_TRIES): string {
+  return `frame ${frame} was never painted after its step: ${tries} shots in a row showed an earlier picture`
+}
 
 /** A message for a person; `cancelled` distinguishes the one that is not a failure. */
 export class CaptureError extends Error {
@@ -100,7 +148,8 @@ export function captureWindowOptions(job: CaptureJob): BrowserWindowConstructorO
   return {
     show: false,
     width: job.width,
-    height: job.height,
+    // The frame and, below it, the band the page draws its frame counter in.
+    height: job.height + STRIP_PX,
     useContentSize: true,
     webPreferences: {
       offscreen: true,
@@ -250,7 +299,8 @@ interface Clip {
   height: number
 }
 
-function asClip(value: unknown): Clip {
+/** A rect the page measured, checked before it is trusted; null for anything else. */
+function asRect(value: unknown): Clip | null {
   const c = value as Record<string, unknown> | null
   const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
   if (
@@ -263,8 +313,41 @@ function asClip(value: unknown): Clip {
     c.width <= 0 ||
     c.height <= 0
   )
-    throw new CaptureError('the page has no stage to capture')
+    return null
   return { x: c.x, y: c.y, width: c.width, height: c.height }
+}
+
+function asClip(value: unknown): Clip {
+  const clip = asRect(value)
+  if (clip === null) throw new CaptureError('the page has no stage to capture')
+  return clip
+}
+
+/**
+ * What a shot's band says: the shot read, and the count below its first
+ * `keep` rows, or null where the band says none. A shot that is not the size
+ * asked for, or not a PNG the capture reads, fails the capture in a sentence:
+ * that is no late paint, and taking it again would not mend it.
+ */
+function freshness(
+  bytes: Buffer,
+  width: number,
+  height: number,
+  keep: number,
+): { png: Png; count: number | null } {
+  let png: Png
+  try {
+    png = readPng(bytes)
+  } catch (error) {
+    if (error instanceof PngError)
+      throw new CaptureError(`the frame could not be read: ${error.message}`)
+    throw error
+  }
+  if (png.width !== width || png.height !== height)
+    throw new CaptureError(
+      `the frame came back ${png.width}x${png.height}, not the ${width}x${height} asked for`,
+    )
+  return { png, count: stripOf(png, keep) }
 }
 
 /** Two animation frames, so the capture reads the state just set and not the last painted one. */
@@ -274,8 +357,43 @@ const TWO_FRAMES =
 /** Wait, with the clock stopped, for the page's first geometry pass and its fonts. */
 const FONTS_READY = 'document.fonts ? document.fonts.ready.then(function () { return true }) : true'
 
-const STAGE_RECT =
-  '(function () { var el = document.getElementById("stage"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()'
+const rectOf = (id: string): string =>
+  `(function () { var el = document.getElementById(${JSON.stringify(id)}); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()`
+
+const STAGE_RECT = rectOf('stage')
+
+/** The band the page draws its frame counter in (engine v0.20.0). */
+const STRIP_RECT = rectOf('present-strip')
+
+/**
+ * Whether the page took the address's `strip`: the attribute the page's boot
+ * script sets when it does, and the band's element. A page an older engine
+ * drew has neither.
+ */
+const STRIP_TAKEN =
+  '(function () { return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip") } })()'
+
+/** How many times the page has drawn, which its band shows modulo 65536. */
+const DRAWS = 'window.__present.state().draws'
+
+/**
+ * The job's address with the band asked for: `strip=` added to its query, the
+ * rest of the address exactly as the engine wrote it. One the engine already
+ * gave a `strip` keeps it, and the page's own answer then says it is not ours.
+ */
+export function withStrip(url: string): string {
+  const hash = url.indexOf('#')
+  const head = hash < 0 ? url : url.slice(0, hash)
+  const tail = hash < 0 ? '' : url.slice(hash)
+  return `${head}${head.includes('?') ? '&' : '?'}strip=${STRIP_PX}${tail}`
+}
+
+/** What the page says it has drawn, checked before it is trusted. */
+function asDraws(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0)
+    throw new CaptureError('the page did not say how many times it has drawn')
+  return value
+}
 
 /**
  * The page's settle, waited for, by every capture (spec 035): since engine
@@ -391,21 +509,38 @@ export async function runCapture(
     } catch {
       throw new CaptureError('the frames directory could not be created')
     }
+    const emulate = (height: number) =>
+      step(
+        'emulating the frame',
+        () =>
+          page.send('Emulation.setDeviceMetricsOverride', {
+            width: job.width,
+            height,
+            deviceScaleFactor: job.scale,
+            mobile: false,
+          }),
+        timeouts.frame,
+      )
+    const seam = async () => {
+      const started = Date.now()
+      for (;;) {
+        const ready = await evaluate(
+          'waiting for the page',
+          '!!(window.__present && window.__present.state)',
+        )
+        if (ready === true) break
+        if (Date.now() - started > timeouts.page)
+          throw new CaptureError('the page never exposed its presentation seam')
+        await step('waiting for the page', () => wait(50), timeouts.frame)
+      }
+    }
+
     // A document first: emulating a web contents that has never navigated
-    // is a null dereference that takes the whole process down.
-    await step('loading the page', () => page.navigate(job.url), timeouts.page)
+    // is a null dereference that takes the whole process down. The address
+    // asks for the frame counter's band, and the viewport is the band taller.
+    await step('loading the page', () => page.navigate(withStrip(job.url)), timeouts.page)
     page.attach()
-    await step(
-      'emulating the frame',
-      () =>
-        page.send('Emulation.setDeviceMetricsOverride', {
-          width: job.width,
-          height: job.height,
-          deviceScaleFactor: job.scale,
-          mobile: false,
-        }),
-      timeouts.frame,
-    )
+    await emulate(job.height + STRIP_PX)
     // The machine's own preference must not snap every transition.
     await step(
       'emulating the media',
@@ -415,17 +550,29 @@ export async function runCapture(
         }),
       timeouts.frame,
     )
+    await seam()
 
-    const started = Date.now()
-    for (;;) {
-      const ready = await evaluate(
-        'waiting for the page',
-        '!!(window.__present && window.__present.state)',
+    // Whether the page drew the band. One that did not is a page an older
+    // engine drew (see the top of this file), laid out in a viewport the
+    // band taller than its frame, so it is loaded again at the job's own size
+    // and address, as every capture loaded it before the band, and captured
+    // without the proof. Navigated already, so emulating first is safe.
+    const taken = (await evaluate('asking for the frame counter', STRIP_TAKEN)) as {
+      strip?: unknown
+      band?: unknown
+    } | null
+    const proven = taken?.strip === String(STRIP_PX) && taken.band === true
+    if (!proven) {
+      if (taken?.strip != null || taken?.band === true)
+        throw new CaptureError(
+          'the page drew a frame counter other than the one the capture asked for',
+        )
+      log(
+        'capture: the page has no frame counter (an older engine drew it); its frames are not proven fresh',
       )
-      if (ready === true) break
-      if (Date.now() - started > timeouts.page)
-        throw new CaptureError('the page never exposed its presentation seam')
-      await step('waiting for the page', () => wait(50), timeouts.frame)
+      await emulate(job.height)
+      await step('loading the page', () => page.navigate(job.url), timeouts.page)
+      await seam()
     }
 
     // Stop the page's own clock before anything waits, stills included: the
@@ -447,6 +594,25 @@ export async function runCapture(
       throw new CaptureError(`no trains at ${first.clock}; this feed runs ${hms(t0)}-${hms(t1)}`)
 
     const clip = asClip(await evaluate('measuring the stage', STAGE_RECT))
+    // The shot: the stage, and with the proof the band right under it, as
+    // wide as the stage, which is where the page draws it.
+    let shotClip = clip
+    if (proven) {
+      const band = asRect(await evaluate('measuring the frame counter', STRIP_RECT))
+      const near = (a: number, b: number) => Math.abs(a - b) <= 0.5
+      if (
+        band === null ||
+        !near(band.x, clip.x) ||
+        !near(band.width, clip.width) ||
+        !near(band.y, clip.y + clip.height) ||
+        !near(band.height, STRIP_PX)
+      )
+        throw new CaptureError('the page did not draw its frame counter under the stage')
+      shotClip = { ...clip, height: clip.height + STRIP_PX }
+    }
+    const width = Math.round(clip.width * job.scale)
+    const height = Math.round(clip.height * job.scale)
+    const shotHeight = Math.round(shotClip.height * job.scale)
     // The opening the job plays, if any (spec 035): a job with neither flag
     // asks nothing of it.
     const carded = job.beats.some((b) => b.card === true)
@@ -468,7 +634,11 @@ export async function runCapture(
     // The network is undrawn on every beat before its draw-in.
     if (drawsIn) await evaluate('undrawing the network', setDrawn(0))
 
-    log(`capture: ${total} frames of ${clip.width}x${clip.height} at ${job.scale}x, ${job.fps} fps`)
+    log(
+      `capture: ${total} frames of ${clip.width}x${clip.height} at ${job.scale}x, ${job.fps} fps` +
+        (proven ? ", each proven by the page's frame counter" : ''),
+    )
+    let retaken = 0
     for (const beat of job.beats) {
       if (ended !== null) throw ended
       const frames = Math.round(beat.secs * job.fps)
@@ -498,23 +668,43 @@ export async function runCapture(
         // so the beat's last frame is the network whole.
         if (beat.draw_in === true)
           await evaluate('drawing the network in', setDrawn(frames > 1 ? i / (frames - 1) : 1))
-        await evaluate('waiting for the paint', TWO_FRAMES)
-        const shot = (await step(
-          'taking the frame',
-          () =>
-            page.send('Page.captureScreenshot', {
-              format: 'png',
-              clip: { ...clip, scale: 1 },
-              captureBeyondViewport: false,
-            }),
-          timeouts.frame,
-        )) as { data?: unknown }
-        if (typeof shot?.data !== 'string') throw new CaptureError('the frame came back empty')
-        try {
-          await writeFile(
-            join(options.frames, `${String(written).padStart(6, '0')}.png`),
-            Buffer.from(shot.data, 'base64'),
+        // The paint wait, then the shot; with the proof, the shot is kept
+        // only where its band shows the count the page had reached, and is
+        // otherwise taken again after another wait.
+        let kept: Buffer | null = null
+        for (let tries = 1; kept === null; tries++) {
+          await evaluate('waiting for the paint', TWO_FRAMES)
+          const draws = proven ? asDraws(await evaluate('reading the frame count', DRAWS)) : null
+          const shot = (await step(
+            'taking the frame',
+            () =>
+              page.send('Page.captureScreenshot', {
+                format: 'png',
+                clip: { ...shotClip, scale: 1 },
+                captureBeyondViewport: false,
+              }),
+            timeouts.frame,
+          )) as { data?: unknown }
+          if (typeof shot?.data !== 'string') throw new CaptureError('the frame came back empty')
+          const bytes = Buffer.from(shot.data, 'base64')
+          if (draws === null) {
+            kept = bytes
+            break
+          }
+          const shown = freshness(bytes, width, shotHeight, height)
+          if (shown.count === draws % STRIP_MODULUS) {
+            kept = cropPng(shown.png, height)
+            break
+          }
+          log(
+            `capture: frame ${written + 1}'s band showed ${shown.count ?? 'no count'} where the page had drawn ${draws % STRIP_MODULUS}` +
+              (tries < FRESH_TRIES ? '; taking it again' : ''),
           )
+          if (tries >= FRESH_TRIES) throw new CaptureError(staleFrame(written + 1))
+          retaken++
+        }
+        try {
+          await writeFile(join(options.frames, `${String(written).padStart(6, '0')}.png`), kept)
         } catch {
           throw new CaptureError(`frame ${written} could not be written`)
         }
@@ -522,13 +712,11 @@ export async function runCapture(
         options.onProgress?.(written, total)
       }
     }
-    log(`capture: ${written} frames written`)
-    return {
-      frames: written,
-      width: Math.round(clip.width * job.scale),
-      height: Math.round(clip.height * job.scale),
-      first,
-    }
+    log(
+      `capture: ${written} frames written` +
+        (proven ? `, each proven fresh (${retaken} taken again)` : ', not proven fresh'),
+    )
+    return { frames: written, width, height, first }
   } catch (error) {
     try {
       await rm(options.frames, { recursive: true, force: true })

@@ -4,8 +4,15 @@
 // a window with nothing in it for the page to reach. Each of those was paid
 // for in spike A0-07, and each is silent when it regresses, which is why the
 // fake page below records what was asked of it and in what order.
+//
+// The paint wait used to be held only by its place in that order, which a
+// test of the order cannot show does anything (app issue 100). The fake now
+// paints as a page does (`PaintedFrames`): a shot shows what the last paint
+// wait painted, and the band under the stage carries the count of draws it
+// was painted at. So a capture without the wait, or without the comparison,
+// keeps a frame from the wrong paint, and the tests under "the proof" fail.
 
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -13,17 +20,19 @@ import { frameTotal, type CaptureJob } from '../../src/shared/capture'
 import {
   CAPTURE_PARTITION,
   CaptureError,
+  FRESH_TRIES,
   captureWindowOptions,
   runCapture,
+  staleFrame,
   validateCaptureJob,
+  withStrip,
   type CapturePage,
 } from '../../src/main/capture'
-
-// A 1x1 PNG, which is all a frame needs to be here.
-const PNG =
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+import { STRIP_PX } from '../../src/main/capture-strip'
+import { PaintedFrames, readPngRows, stageColour, writePng } from '../support/frames'
 
 const URL = 'app://local/projects/p1/stand-in.html?present=1'
+const STRIPPED = `${URL}&strip=${STRIP_PX}`
 
 function job(over: Partial<CaptureJob> = {}): CaptureJob {
   return {
@@ -41,6 +50,9 @@ function job(over: Partial<CaptureJob> = {}): CaptureJob {
 /** What an evaluation was for, from the script the orchestrator sent. */
 function label(code: string): string {
   if (code.includes('!!(window.__present')) return 'ready?'
+  if (code.includes('getAttribute("data-strip")')) return 'strip?'
+  if (code.includes('getElementById("present-strip")')) return 'band'
+  if (code.includes('state().draws')) return 'draws'
   if (code.includes('setCapture(true)')) return 'setCapture'
   if (code.includes('document.fonts')) return 'fonts'
   if (code.includes('bounds()')) return 'bounds'
@@ -67,6 +79,18 @@ class FakePage implements CapturePage {
   gone: ((reason: string) => void) | null = null
   /** A hook a test sets to interfere at a given screenshot. */
   onScreenshot: ((n: number) => void) | null = null
+  readonly paint: PaintedFrames
+  scale = 1
+  /** Where the page says its band is; the stage's foot, as the engine's page draws it, unless a test moves it. */
+  band: (() => unknown) | null = null
+  /** What the page answers for its draws; the count, unless a test says otherwise. */
+  draws: (() => unknown) | null = null
+  /** What a shot is, unless a test replaces it. */
+  shot: ((clip: { width: number; height: number }) => string) | null = null
+
+  constructor(options: { strip?: boolean; lateAt?: (step: number) => number } = {}) {
+    this.paint = new PaintedFrames({ strip: options.strip ?? true, lateAt: options.lateAt })
+  }
 
   navigate(url: string): Promise<void> {
     this.calls.push(`navigate ${url}`)
@@ -78,10 +102,15 @@ class FakePage implements CapturePage {
   send(method: string, params?: Record<string, unknown>): Promise<unknown> {
     this.calls.push(`send ${method}`)
     this.sent.push({ method, params })
+    if (method === 'Emulation.setDeviceMetricsOverride')
+      this.scale = Number(params?.deviceScaleFactor ?? 1)
     if (method === 'Page.captureScreenshot') {
       this.screenshots++
       this.onScreenshot?.(this.screenshots)
-      return Promise.resolve({ data: PNG })
+      const clip = params?.clip as { width: number; height: number }
+      return Promise.resolve({
+        data: this.shot?.(clip) ?? this.paint.shot(clip, this.scale, STRIP_PX),
+      })
     }
     return Promise.resolve({})
   }
@@ -91,6 +120,36 @@ class FakePage implements CapturePage {
     switch (what) {
       case 'ready?':
         return Promise.resolve(this.readyAfter-- <= 0)
+      case 'strip?':
+        return Promise.resolve(
+          this.paint.options.strip
+            ? { strip: String(STRIP_PX), band: true }
+            : { strip: null, band: false },
+        )
+      case 'band':
+        return Promise.resolve(
+          this.band?.() ??
+            (this.paint.options.strip
+              ? {
+                  x: this.clip.x,
+                  y: this.clip.y + this.clip.height,
+                  width: this.clip.width,
+                  height: STRIP_PX,
+                }
+              : null),
+        )
+      case 'draws':
+        return Promise.resolve(this.draws?.() ?? this.paint.draws)
+      case 'paint':
+        this.paint.paint()
+        return Promise.resolve(true)
+      case 'settle':
+        // A settle with a face to fit again draws twice, as the engine's does.
+        this.paint.drew(2)
+        return Promise.resolve(true)
+      case 'beat':
+        if (/"at":[0-9]/.test(code)) this.paint.drew()
+        return Promise.resolve(true)
       case 'bounds':
         return Promise.resolve(this.bounds)
       case 'state':
@@ -105,10 +164,12 @@ class FakePage implements CapturePage {
       case 'advance': {
         const dt = Number(/advance\(([^)]+)\)/.exec(code)?.[1])
         this.now += dt * 120
+        this.paint.drew(1, true)
         return Promise.resolve(true)
       }
       case 'seek': {
         this.now = Number(/seek\(([^)]+)\)/.exec(code)?.[1])
+        this.paint.drew(1, true)
         return Promise.resolve(true)
       }
       default:
@@ -152,13 +213,13 @@ describe('the window', () => {
     )
   })
 
-  it('is offscreen, never shown, never throttled, and the job’s size in CSS pixels', () => {
+  it('is offscreen, never shown, never throttled, and the job’s size in CSS pixels, the band taller', () => {
     const options = captureWindowOptions(job())
     expect(options.show).toBe(false)
     expect(options.webPreferences?.offscreen).toBe(true)
     expect(options.webPreferences?.backgroundThrottling).toBe(false)
     expect(options.width).toBe(540)
-    expect(options.height).toBe(960)
+    expect(options.height).toBe(960 + STRIP_PX)
     expect(options.useContentSize).toBe(true)
   })
 })
@@ -225,10 +286,16 @@ describe('the sequence', () => {
       },
     })
     const at = (entry: string) => page.calls.indexOf(entry)
-    expect(at(`navigate ${URL}`)).toBeGreaterThanOrEqual(0)
-    expect(at('attach'), 'the debugger attaches only once a document exists').toBeGreaterThan(
-      at(`navigate ${URL}`),
+    expect(page.calls[0], 'the page is loaded first, with the band asked for').toBe(
+      `navigate ${STRIPPED}`,
     )
+    expect(at('attach'), 'the debugger attaches only once a document exists').toBeGreaterThan(
+      at(`navigate ${STRIPPED}`),
+    )
+    expect(
+      page.calls.filter((c) => c.startsWith('navigate')),
+      'one load',
+    ).toHaveLength(1)
     expect(at('send Emulation.setDeviceMetricsOverride')).toBeGreaterThan(at('attach'))
     expect(at('send Emulation.setEmulatedMedia')).toBeGreaterThan(at('attach'))
     expect(
@@ -269,8 +336,11 @@ describe('the sequence', () => {
       .filter((i) => i >= 0)
     expect(shots).toHaveLength(60)
     for (const i of shots) {
-      expect(page.calls[i - 1], 'a paint wait precedes every frame').toBe('evaluate paint')
-      expect(page.calls[i - 2], 'and a step precedes the wait').toBe('evaluate advance')
+      expect(page.calls[i - 1], 'the count of draws is read just before every shot').toBe(
+        'evaluate draws',
+      )
+      expect(page.calls[i - 2], 'after the paint wait').toBe('evaluate paint')
+      expect(page.calls[i - 3], 'and a step precedes the wait').toBe('evaluate advance')
     }
     // The beat's `at` is a seek, before the first frame and after the settle.
     expect(page.calls.indexOf('evaluate beat')).toBeGreaterThan(
@@ -281,22 +351,19 @@ describe('the sequence', () => {
     expect(result.first.clock).toBe('08:00')
   })
 
-  it('takes each frame as a CSS-pixel clip of the stage at scale 1, never the window', async () => {
+  it('takes each frame as a CSS-pixel clip of the stage and the band at scale 1, never the window', async () => {
     const page = new FakePage()
     await runCapture(page, job(), { frames: frames(), ...noWait })
     const shot = page.sent.find((s) => s.method === 'Page.captureScreenshot')
     expect(shot?.params).toEqual({
       format: 'png',
-      clip: { x: 10, y: 20, width: 540, height: 960, scale: 1 },
+      clip: { x: 10, y: 20, width: 540, height: 960 + STRIP_PX, scale: 1 },
       captureBeyondViewport: false,
     })
-    const metrics = page.sent.find((s) => s.method === 'Emulation.setDeviceMetricsOverride')
-    expect(metrics?.params).toEqual({
-      width: 540,
-      height: 960,
-      deviceScaleFactor: 2,
-      mobile: false,
-    })
+    const metrics = page.sent.filter((s) => s.method === 'Emulation.setDeviceMetricsOverride')
+    expect(metrics.map((m) => m.params)).toEqual([
+      { width: 540, height: 960 + STRIP_PX, deviceScaleFactor: 2, mobile: false },
+    ])
   })
 
   it('sweeps a span by seeking, and a sweep in hours from wherever the clock is', async () => {
@@ -392,5 +459,232 @@ describe('cancel and failure', () => {
     await expect(runCapture(page, job(), { frames: 'frames', ...noWait })).rejects.toThrow(
       /absolute/,
     )
+  })
+})
+
+/** A written frame's size and the colour of its first pixel, and whether every pixel is that colour. */
+function keptFrame(file: string): { width: number; height: number; rgba: number[]; flat: boolean } {
+  const { width, height, channels, rows } = readPngRows(readFileSync(file))
+  const rgba = Array.from(rows[0].subarray(0, channels))
+  const flat = rows.every((row) => row.every((v, i) => v === rgba[i % channels]))
+  return { width, height, rgba, flat }
+}
+
+const frameFile = (dir: string, n: number) => join(dir, `${String(n).padStart(6, '0')}.png`)
+
+describe('the proof', () => {
+  /** Half a second at thirty: fifteen frames, which is all the proof needs. */
+  const short = () =>
+    job({ beats: [{ secs: 0.5, view: 'map', at: 8 * 3600, speed: 120, tween: 0 }] })
+
+  it('keeps every frame from a shot whose band shows the count the page reached, the band cropped away', async () => {
+    // Mutations: the paint wait removed - the fake paints only on it, so
+    // every band shows an earlier count and the capture fails; the crop
+    // removed - the frames are the band taller.
+    const page = new FakePage()
+    const dir = frames()
+    const counts: number[] = []
+    page.onScreenshot = () => counts.push(page.paint.draws)
+    const result = await runCapture(page, short(), { frames: dir, ...noWait })
+    expect(result.frames).toBe(15)
+    expect(page.screenshots, 'a page that paints in time is taken once a frame').toBe(15)
+    for (const n of [0, 1, 7, 14]) {
+      const kept = keptFrame(frameFile(dir, n))
+      expect(kept, `frame ${n}`).toEqual({
+        width: 1080,
+        height: 1920,
+        rgba: stageColour(counts[n]),
+        flat: true,
+      })
+    }
+  })
+
+  it('takes a frame again when the page painted it late, and keeps the fresh shot', async () => {
+    // Mutation: the comparison removed, or its answer ignored - the first
+    // shot of frame 6, painted one step behind, is kept as it is.
+    const log: string[] = []
+    const page = new FakePage({ lateAt: (step) => (step === 6 ? 1 : 0) })
+    const dir = frames()
+    const counts: number[] = []
+    page.onScreenshot = () => counts.push(page.paint.draws)
+    const result = await runCapture(page, short(), {
+      frames: dir,
+      ...noWait,
+      log: (m) => log.push(m),
+    })
+    expect(result.frames).toBe(15)
+    expect(page.screenshots, 'one shot taken again').toBe(16)
+    expect(page.paint.shots[6], 'the first shot of frame 6 showed the frame before').toBe(
+      page.paint.shots[5],
+    )
+    expect(keptFrame(frameFile(dir, 6)).rgba, 'the frame kept is the fresh one').toEqual(
+      stageColour(counts[7]),
+    )
+    expect(keptFrame(frameFile(dir, 6)).rgba).not.toEqual(keptFrame(frameFile(dir, 5)).rgba)
+    expect(log.filter((m) => m.includes('taking it again'))).toHaveLength(1)
+    expect(log.at(-1)).toBe('capture: 15 frames written, each proven fresh (1 taken again)')
+  })
+
+  it('takes every frame of a page always one paint late a second time, and keeps them all', async () => {
+    const page = new FakePage({ lateAt: () => 1 })
+    const result = await runCapture(page, short(), { frames: frames(), ...noWait })
+    expect(result.frames).toBe(15)
+    expect(page.screenshots).toBe(30)
+  })
+
+  it(`fails in a sentence when ${FRESH_TRIES} shots of one frame never show its paint, and leaves nothing`, async () => {
+    // Mutation: the retakes unbounded - the capture waits for ever; the
+    // sentence its own - the export says something else.
+    const page = new FakePage({ lateAt: (step) => (step === 3 ? FRESH_TRIES : 0) })
+    const dir = frames()
+    const run = runCapture(page, short(), { frames: dir, ...noWait })
+    await expect(run).rejects.toThrow(CaptureError)
+    await expect(run).rejects.toThrow(staleFrame(4))
+    expect(staleFrame(4)).toBe(
+      'frame 4 was never painted after its step: 4 shots in a row showed an earlier picture',
+    )
+    expect(page.screenshots, 'three frames, and four shots of the fourth').toBe(3 + FRESH_TRIES)
+    expect(existsSync(dir)).toBe(false)
+    expect(page.destroyed).toBe(true)
+  })
+
+  it('fails on the first frame of a page that never paints what it was asked', async () => {
+    const page = new FakePage({ lateAt: () => Infinity })
+    await expect(runCapture(page, short(), { frames: frames(), ...noWait })).rejects.toThrow(
+      staleFrame(1),
+    )
+    expect(page.screenshots).toBe(FRESH_TRIES)
+  })
+
+  it('reads a band that says no number as a stale shot, never a crash', async () => {
+    // The band painted over in grey, as a shot of the wrong region would be.
+    const page = new FakePage()
+    page.shot = (clip) => {
+      const width = Math.round(clip.width * page.scale)
+      const height = Math.round(clip.height * page.scale)
+      const row = new Uint8Array(width * 4).fill(128)
+      return writePng({ width, height, colourType: 6, row: () => row }).toString('base64')
+    }
+    await expect(runCapture(page, short(), { frames: frames(), ...noWait })).rejects.toThrow(
+      staleFrame(1),
+    )
+    expect(page.screenshots).toBe(FRESH_TRIES)
+  })
+
+  it('compares the count modulo 65536, across the wrap', async () => {
+    const page = new FakePage()
+    page.paint.draws = 65_536 - 8
+    const result = await runCapture(page, short(), { frames: frames(), ...noWait })
+    expect(result.frames).toBe(15)
+    expect(page.screenshots).toBe(15)
+    expect(page.paint.draws).toBeGreaterThan(65_536)
+  })
+
+  it('reads the count after the step, whatever the step drew', async () => {
+    // A step that draws three times (a page's setRoutes with lines hidden
+    // draws more than once): one more than before would be wrong.
+    // Mutation: the count predicted as the last one plus one.
+    const page = new FakePage()
+    const evaluate = page.evaluate.bind(page)
+    page.evaluate = (code: string) => {
+      if (code.startsWith('window.__present.advance(')) page.paint.drew(2)
+      return evaluate(code)
+    }
+    const result = await runCapture(page, short(), { frames: frames(), ...noWait })
+    expect(result.frames).toBe(15)
+    expect(page.screenshots).toBe(15)
+  })
+
+  it('refuses a count that is not a whole number, a band not under the stage, and a shot of the wrong size', async () => {
+    const bad = new FakePage()
+    bad.draws = () => 'many'
+    await expect(runCapture(bad, short(), { frames: frames(), ...noWait })).rejects.toThrow(
+      'the page did not say how many times it has drawn',
+    )
+    const moved = new FakePage()
+    moved.band = () => ({ x: 10, y: 0, width: 540, height: STRIP_PX })
+    await expect(runCapture(moved, short(), { frames: frames(), ...noWait })).rejects.toThrow(
+      'the page did not draw its frame counter under the stage',
+    )
+    expect(moved.screenshots).toBe(0)
+    const small = new FakePage()
+    small.shot = () =>
+      writePng({ width: 4, height: 4, colourType: 6, row: () => new Uint8Array(16) }).toString(
+        'base64',
+      )
+    await expect(runCapture(small, short(), { frames: frames(), ...noWait })).rejects.toThrow(
+      'the frame came back 4x4, not the 1080x1936 asked for',
+    )
+  })
+
+  it('refuses a page that drew a frame counter other than the one asked for', async () => {
+    const page = new FakePage()
+    const evaluate = page.evaluate.bind(page)
+    page.evaluate = (code: string) =>
+      code.includes('getAttribute("data-strip")')
+        ? Promise.resolve({ strip: '24', band: true })
+        : evaluate(code)
+    await expect(runCapture(page, short(), { frames: frames(), ...noWait })).rejects.toThrow(
+      'the page drew a frame counter other than the one the capture asked for',
+    )
+  })
+
+  it('asks for the band on the address the engine wrote, and nothing else of it', () => {
+    expect(withStrip(URL)).toBe(STRIPPED)
+    expect(withStrip('app://local/projects/p1/a.html')).toBe(
+      `app://local/projects/p1/a.html?strip=${STRIP_PX}`,
+    )
+    expect(withStrip('app://local/projects/p1/a.html?frame=1080:1920&caption=a+b#x')).toBe(
+      `app://local/projects/p1/a.html?frame=1080:1920&caption=a+b&strip=${STRIP_PX}#x`,
+    )
+  })
+})
+
+describe('a page an older engine drew', () => {
+  it('is loaded again at the job’s own size and address, and captured as before, unproven', async () => {
+    // Mutations: the page captured where it loaded, in a viewport the band
+    // taller; loaded again with the band still asked for or before the
+    // viewport is the job's own; the proof's reads made of a page with none.
+    const log: string[] = []
+    const page = new FakePage({ strip: false })
+    const shots: string[] = []
+    const send = page.send.bind(page)
+    page.send = async (method, params) => {
+      const answer = await send(method, params)
+      if (method === 'Page.captureScreenshot') shots.push((answer as { data: string }).data)
+      return answer
+    }
+    const dir = frames()
+    const result = await runCapture(page, job(), {
+      frames: dir,
+      ...noWait,
+      log: (m) => log.push(m),
+    })
+    expect(result).toMatchObject({ frames: 60, width: 1080, height: 1920 })
+    expect(page.calls.slice(0, 9)).toEqual([
+      `navigate ${STRIPPED}`,
+      'attach',
+      'send Emulation.setDeviceMetricsOverride',
+      'send Emulation.setEmulatedMedia',
+      'evaluate ready?',
+      'evaluate strip?',
+      'send Emulation.setDeviceMetricsOverride',
+      `navigate ${URL}`,
+      'evaluate ready?',
+    ])
+    expect(page.calls[9]).toBe('evaluate setCapture')
+    expect(
+      page.sent
+        .filter((s) => s.method === 'Emulation.setDeviceMetricsOverride')
+        .map((s) => s.params?.height),
+    ).toEqual([960 + STRIP_PX, 960])
+    expect(page.calls.filter((c) => c === 'evaluate draws' || c === 'evaluate band')).toEqual([])
+    const shot = page.sent.find((s) => s.method === 'Page.captureScreenshot')
+    expect(shot?.params?.clip).toEqual({ x: 10, y: 20, width: 540, height: 960, scale: 1 })
+    expect(page.screenshots).toBe(60)
+    // The frame written is the shot, byte for byte, as every frame was before the proof.
+    expect(readFileSync(frameFile(dir, 7)).equals(Buffer.from(shots[7], 'base64'))).toBe(true)
+    expect(log[0]).toMatch(/no frame counter/)
+    expect(log.at(-1)).toBe('capture: 60 frames written, not proven fresh')
   })
 })
