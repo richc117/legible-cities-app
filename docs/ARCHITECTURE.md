@@ -1916,6 +1916,20 @@ child it started.
 The Settings screen (`Settings.tsx`; `src/main/settings.ts` and
 `src/main/settings-ipc.ts` behind it) holds the app's own settings, which
 are one file, `settings.json`, directly under the user-data folder: the two folders a person chose and the interface's theme.
+It also holds the app window's place - its bounds in the normal state and
+whether it was maximised (issue 549) - which is not a setting a person sees:
+the screen never shows it. `createWindow` opens the window there only when
+one attached display holds the whole of it, raised to the minimum of 640 by
+480 first, and otherwise at 1100 by 720 in the platform's place; maximised
+is restored after the window is shown, either way (`src/main/window-bounds.ts`,
+the pure rule). The place is written half a second after the window comes to
+rest and once more as it closes, through `SettingsService.keepWindow` and the
+store's `update`, so it and the screen's presses are one writer; it is not
+written while a reset runs, a write that fails is a log line and nothing on
+the screen, and a quit waits for the last one, bounded. The capture window
+and the export preview are never stored. A file with no place, or one of the
+wrong shape, opens at the default; and since the parser drops a key it does
+not know, a file written with a place still opens in a build before it.
 It is written the way a project record is - a fresh temporary name, then a
 rename over the old file - and read the way a record is read, so a file
 that is half written, hand edited or from a newer app starts the app with

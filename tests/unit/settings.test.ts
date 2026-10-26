@@ -12,6 +12,7 @@ import {
   isAppTheme,
   isStorableFolder,
   parseSettings,
+  parseWindowBounds,
   SETTINGS_VERSION,
   themeAttribute,
   THEME_LABELS,
@@ -59,6 +60,7 @@ describe('parseSettings', () => {
     engineFolder: posix('data', 'engine'),
     exportFolder: posix('data', 'exports'),
     theme: 'sepia',
+    window: { x: -1200, y: 40, width: 1280, height: 800, maximized: false },
   }
 
   it('reads a whole file', () => {
@@ -94,6 +96,51 @@ describe('parseSettings', () => {
     const nasty = { version: {}, engineFolder: [], exportFolder: 0, theme: [] }
     expect(() => parseSettings(nasty)).not.toThrow()
     expect(parseSettings(nasty)).toEqual(DEFAULT_SETTINGS)
+  })
+  // Every file written before issue 549 has no window, and an older app
+  // reads a newer file by dropping what it does not know.
+  it('reads a file with no window as no window, and drops a key it does not know', () => {
+    const before: Record<string, unknown> = { ...full }
+    delete before.window
+    expect(parseSettings(before)).toEqual({ ...full, window: null })
+    expect(parseSettings({ ...full, sidebar: { open: true } })).toEqual(full)
+  })
+
+  it('reads a window of the wrong shape as none, and keeps everything else', () => {
+    const good = full.window as NonNullable<AppSettings['window']>
+    const wrong: unknown[] = [
+      'left',
+      7,
+      [],
+      [good.x, good.y, good.width, good.height],
+      {},
+      { ...good, x: '10' },
+      { ...good, y: null },
+      { ...good, width: 0 },
+      { ...good, height: -480 },
+      { ...good, width: 1280.5 },
+      { ...good, x: Number.NaN },
+      { ...good, y: Number.POSITIVE_INFINITY },
+      { ...good, x: 1e12 },
+      { ...good, maximized: 'yes' },
+      { x: good.x, y: good.y, width: good.width, height: good.height },
+    ]
+    for (const window of wrong) {
+      expect(() => parseSettings({ ...full, window }), JSON.stringify(window)).not.toThrow()
+      expect(parseSettings({ ...full, window }), JSON.stringify(window)).toEqual({
+        ...full,
+        window: null,
+      })
+    }
+  })
+
+  it('reads a window whole, and carries nothing else that was beside it', () => {
+    const good = full.window as NonNullable<AppSettings['window']>
+    expect(parseWindowBounds({ ...good, display: 2 })).toEqual(good)
+    expect(
+      parseWindowBounds({ ...good, width: 1, height: 1 }),
+      'a small one is raised later',
+    ).toEqual({ ...good, width: 1, height: 1 })
   })
 })
 

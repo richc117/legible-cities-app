@@ -1,7 +1,8 @@
 // The settings file, the engine home's size, and the reset.
 //
 // The file is one small JSON object beside the engine's home under the
-// user-data folder, written the way a project record is - a fresh
+// user-data folder - the two folders, the theme and the app window's place
+// (issue 549) - written the way a project record is - a fresh
 // temporary name, then a rename over the old file - so a crash mid-write
 // leaves the previous settings whole, and read the way a record is read:
 // every field that is missing or wrong takes its default and the app
@@ -109,6 +110,11 @@ export class SettingsStore {
       if (raw[field] != null && parsed[field] !== raw[field]) {
         this.log(`settings: ${field} was not usable; its default is in force`)
       }
+    }
+    // The window's place is an object, so it is never the same one twice:
+    // what was dropped is one that was there and was not read.
+    if (raw.window != null && parsed.window === null) {
+      this.log("settings: the window's place was not usable; it opens at its default")
     }
     this.#loaded = true
     this.#settings = parsed

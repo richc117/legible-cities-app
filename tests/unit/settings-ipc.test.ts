@@ -29,7 +29,7 @@ import {
   type Which,
 } from '../../src/main/settings-ipc'
 import { CHANNELS } from '../../src/shared/api'
-import type { FolderSource, ResetOutcome } from '../../src/shared/settings'
+import type { FolderSource, ResetOutcome, WindowBounds } from '../../src/shared/settings'
 import type { FirstRunResult } from '../../src/shared/first-run'
 
 /** A check that found LOOM missing and ffmpeg running, as the copy says it (A6-02). */
@@ -1705,5 +1705,96 @@ describe('copying diagnostics', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// The app window's place (issue 549) is written through the settings file's
+// one queue, so the Settings screen and the window are one writer; it is
+// never written while a reset runs, and a write that fails is a log line
+// and nothing a person sees.
+describe("keeping the window's place", () => {
+  const place: WindowBounds = { x: 80, y: 40, width: 1280, height: 800, maximized: false }
+
+  const onDisk = async (h: { userData: string }): Promise<Record<string, unknown>> =>
+    JSON.parse(await readFile(join(h.userData, 'settings.json'), 'utf8'))
+
+  /** Every rename the store made, and whether the window's write is held a while first. */
+  function renames(holdWindow = false) {
+    const seen: Record<string, unknown>[] = []
+    let release: () => void = () => undefined
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const replace: ReplaceOptions = {
+      rename: async (from, to) => {
+        const written = JSON.parse(await readFile(from, 'utf8')) as Record<string, unknown>
+        seen.push(written)
+        if (holdWindow && written.window !== null && written.theme === 'system') await held
+        await rename(from, to)
+      },
+    }
+    return { replace, seen, release: () => release() }
+  }
+
+  it('writes it to the settings file, and reads it back from there', async () => {
+    const h = await harness()
+    expect(h.settings.storedWindow(), 'nothing kept yet').toBeNull()
+    await h.settings.keepWindow(place)
+    expect((await onDisk(h)).window).toEqual(place)
+    expect(h.settings.storedWindow()).toEqual(place)
+    const again = new SettingsStore(h.userData, () => undefined)
+    expect((await again.load()).window).toEqual(place)
+  })
+
+  it('keeps a theme pressed while it is being written, and is kept by it', async () => {
+    const r = renames(true)
+    const h = await harness({ replace: r.replace })
+    const window = h.settings.keepWindow(place)
+    const theme = h.settings.setTheme('sepia')
+    // The window's write is still held: the theme waits in the same queue.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(r.seen, 'only the window has reached the disk').toHaveLength(1)
+    r.release()
+    await Promise.all([window, theme])
+    expect(await onDisk(h)).toMatchObject({ theme: 'sepia', window: place })
+    await h.settings.setTheme('warm-dark')
+    expect((await onDisk(h)).window, 'a later press keeps the place too').toEqual(place)
+  })
+
+  it('writes nothing for the place it already holds', async () => {
+    const r = renames()
+    const h = await harness({ replace: r.replace })
+    await h.settings.keepWindow(place)
+    await h.settings.keepWindow({ ...place })
+    expect(r.seen).toHaveLength(1)
+    await h.settings.keepWindow({ ...place, maximized: true })
+    expect(r.seen).toHaveLength(2)
+  })
+
+  it('is refused while a reset runs, with a log line, and written once it is over', async () => {
+    const r = renames()
+    const h = await harness({ replace: r.replace })
+    await mkdir(h.engineHome, { recursive: true })
+    const running = h.call(CHANNELS.settingsResetEngineData)
+    expect(h.settings.resetting).toBe(true)
+    await expect(h.settings.keepWindow(place)).resolves.toBeUndefined()
+    await running
+    expect(r.seen, 'nothing was written while it ran').toEqual([])
+    expect(h.logs.join(' ')).toMatch(/window's place was not kept: the engine data is being reset/)
+    await h.settings.keepWindow(place)
+    expect((await onDisk(h)).window).toEqual(place)
+  })
+
+  it('logs a write that fails and never throws it', async () => {
+    const h = await harness({
+      replace: {
+        rename: async () => {
+          throw Object.assign(new Error('EXDEV: cross-device link'), { code: 'EXDEV' })
+        },
+      },
+    })
+    await expect(h.settings.keepWindow(place)).resolves.toBeUndefined()
+    expect(h.logs.join(' ')).toMatch(/window's place could not be kept/)
+    expect(h.settings.storedWindow(), 'a failed write is not in force').toBeNull()
   })
 })
