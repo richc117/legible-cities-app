@@ -81,6 +81,14 @@ steps are composed in words by the app. The map's `stations` are kept with
 the record's `drawn`, so a reopened project offers its pickers; **a trip is
 never written to the record.**
 
+## The jobs
+
+A running job is derived from its run's snapshot each time it is read, so
+the inspector and the run's own view cannot disagree; a finished job is a
+copy the registry keeps (`JobRegistry` in `src/renderer/src/engine/runs.ts`,
+`src/shared/jobs.ts`). Tracking a run is silent, because `layoutRunFor` is
+called while a screen renders.
+
 ## Components
 
 Keep components pure and push logic into functions that can be called
@@ -98,11 +106,13 @@ component.** The app's own rules are `styles/app.css` (the shell),
 modules and no CSS-in-JS, because both move values out of the single
 cascade `tests/unit/contrast.test.ts` reads. A region earns its own file
 once its rules pass roughly two hundred lines; a component's rules live in
-its region's file. The four token files stay the only place a literal may
-appear (A5.5-07).
+its region's file. The three token files stay the only place a literal may
+appear (A5.5-07), beside `tokens.css`, the engine page's drift-tested copy,
+which nothing loads and the literal test also exempts.
 
 Every colour, size and duration is a token from `docs/DESIGN.md`, declared
-in the four token files under `src/renderer/src/styles/`; a literal in a
+in the three token files under `src/renderer/src/styles/` (`theme.css`,
+`scale.css`, `figui-adapter.css`); a literal in a
 component file fails `tests/unit/no-literals.test.ts`, and every new text
 or control pair goes into `tests/unit/contrast.test.ts`. The control kit is
 FigUI3's MIT core only, imported from `kit/index.ts` and nowhere else, and

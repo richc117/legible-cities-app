@@ -19,9 +19,9 @@ installers for both Macs and for Windows are built in CI, attached to a
 GitHub Release drafted from its tag, and then installed and driven through
 most of [the acceptance checklist](docs/acceptance.md) on a macOS and a
 Windows runner. 0.1.0 passed that run on both, and the runs of its release
-gate that only a person can make were done on 8 October 2026 with no issue
-noted. The installers are unsigned and the app does not update itself: a
-new version is a new download from the Releases page. Work goes on through
+gate that only a person can make were reported done on 8 October 2026 with
+no issue noted. The installers are unsigned and the app does not update
+itself: a new version is a new download from the Releases page. Work goes on through
 the issues and milestones on this repository.
 
 ## What it does

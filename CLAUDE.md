@@ -90,7 +90,7 @@ npm ci && npx install-electron --no   # install; the Electron binary is fetched 
 npm run dev                           # the app against the sibling engine checkout; interface changes hot-reload
 npm run lint                          # eslint and prettier --check
 npm run format                        # prettier --write over what lint checks
-npm run typecheck                     # tsc over the node and the web project
+npm run typecheck                     # tsc over the node, the web and the tests project
 npm test                              # vitest; the supervisor runs against a stand-in engine (needs a python3 on PATH)
 npm run build                         # electron-vite build into out/
 npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
@@ -130,9 +130,10 @@ gitignored.
   loaded when matching files are read (in a sibling worktree, read them).
 - `skills/` - `/adr` writes and indexes a decision record, `/spike` sets up
   a timeboxed experiment, `/spec` scaffolds a spec from an issue, `/lanes`
-  builds several issues at once (ADR-034). `speckit-*` are Spec Kit's, as
-  is `.specify/` (committed but for its local `feature.json`); `specify
-  init` regenerates them.
+  builds several issues at once (ADR-034). `skills/speckit-*` are Spec
+  Kit's: leave them alone; `specify init` regenerates them. `.specify/`
+  holds the project's constitution, the templates and Spec Kit's scripts,
+  committed but for its local `feature.json`.
 
 ## Conventions
 
@@ -171,8 +172,10 @@ gitignored.
   electron-builder copies every production dependency into the app whole,
   so a split-licensed package in `dependencies` ships the half we refuse.
 - **Interface changes are drawn in the design system.** `docs/DESIGN.md` is
-  the source; the tokens are the four stylesheets under
-  `src/renderer/src/styles/`, the controls the wrappers in
+  the source; the tokens are three stylesheets under
+  `src/renderer/src/styles/` (`theme.css`, `scale.css`, `figui-adapter.css`;
+  `tokens.css` beside them is the engine page's drift-tested copy, which
+  nothing loads), the controls the wrappers in
   `src/renderer/src/kit/`. No colour, size or duration literal in a
   component file (a unit test refuses them); a new text or control pair
   goes into the contrast test; a component the document does not cover yet
@@ -218,7 +221,11 @@ carry them at length.
   `setCapture(true)` before any wait, stills included, then `settle()`
   before the first captured frame; step the clock by `1/fps`; wait for the
   paint (two animation frames) before every capture; compare renders in RGB
-  with a channel tolerance of 8, never RGBA, never exact equality.
+  with a channel tolerance of 8, never RGBA, never exact equality. The
+  delivered GIFs are judged otherwise (ADR-055): by their colour tables,
+  and by differing only on pixels the captures differ on, exactly - never
+  at the tolerance of 8, since a pixel near the boundary between two
+  entries flips by the gap between them.
 - **Frames come from an offscreen window through the debugger** (ADR-024):
   navigate first and emulate second, since emulating a web contents that
   has never navigated crashes the process; `Page.captureScreenshot` at a
@@ -242,15 +249,17 @@ carry them at length.
 A checkout of the engine sits beside this repository, its path a personal
 setting (`CLAUDE.local.md`, then `.env.local`). The pin is `engine` in
 `vendor/pins.json`; the handshake refuses any other version or protocol. A
-new pin moves `engine.tag`, `.version` and `.commit`, then runs
+new pin moves `engine.tag`, `.version` and `.commit` (and `.protocol` when
+the protocol changes), then runs
 `scripts/pin-engine.sh <tag>`, which makes the engine's worktree at the tag
 (`lc-engine-<tag>`, beside the engine repository) with a venv, `data` and
 `out`, and moves the link `lc-engine-current` beside this checkout, which
 `.env.local` names as `LEGIBLE_ENGINE_CHECKOUT` once (it refuses a tag that
 is not `engine.tag` without `--force`); then `scripts/lock-python.sh` on
-that checkout, moving `python.requirements.sha256` to the hash it prints
-(ADR-057); then `npm run typegen`, which writes the protocol, its
-fingerprint and the types, all three or none. The engine's own notes
+that checkout, committing the `vendor/python-requirements.txt` it writes
+and moving `python.requirements.sha256` to the hash it prints (ADR-057);
+then `npm run typegen`, which writes the protocol, its fingerprint and the
+types, all three or none. The engine's own notes
 explain the pipeline (`gtfs2graph → topo → loom → octi`, then render,
 schedule, animate, export). Anything the app needs from the pipeline is a
 change to the engine, versioned and tagged, never a copy.
