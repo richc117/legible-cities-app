@@ -90,10 +90,21 @@ import {
  * The theme is the record's at the write, because no draw sends one: the
  * page is told it in place (issue 349). `stations` is what the build answered
  * for the map it drew (issue 272); without it, the list the record had stays
- * where the layout is the one it was listed for (`drawnFromSent`).
+ * where the layout is the one it was listed for (`drawnFromSent`). `engine`
+ * is the version of the engine that answered the draw (issue 494), the
+ * store's `drawnBy` asked at the write; never anything the renderer sent.
  */
-function drew(record: ProjectRecord, before: ProjectRecord, sent: SentSet, stations?: Station[]) {
-  return { ...record, drawn: drawnFromSent(sent, record.theme, before.drawn, listed(stations)) }
+function drew(
+  record: ProjectRecord,
+  before: ProjectRecord,
+  sent: SentSet,
+  stations: Station[] | undefined,
+  engine: string | null,
+) {
+  return {
+    ...record,
+    drawn: drawnFromSent(sent, record.theme, before.drawn, listed(stations), engine),
+  }
 }
 
 /**
@@ -223,13 +234,17 @@ export class ProjectStore {
   /**
    * Both folders derive from the engine home, so neither can be handed a
    * stray path. `replace` is the rename a write ends with, and its wait
-   * between attempts; a test makes the platform refuse it.
+   * between attempts; a test makes the platform refuse it. `drawnBy` is the
+   * version of the engine that answers draws (the supervisor's
+   * `readyVersion`, issue 494), asked at each draw's write and stamped on
+   * `drawn`; null, the default, stamps nothing.
    */
   constructor(
     home: string,
     private readonly log: (message: string) => void,
     private readonly replace: ReplaceOptions = {},
     private readonly activity: ProjectActivity = new ProjectActivity(() => 0),
+    private readonly drawnBy: () => string | null = () => null,
   ) {
     this.root = join(home, 'projects')
     this.output = join(home, 'out')
@@ -774,6 +789,7 @@ export class ProjectStore {
       record,
       done.sent,
       done.stations,
+      this.drawnBy(),
     )
     const written = await this.#save(id, updated, carried, A_LAYOUT)
     // A different id is a different layout. The same id with a different
@@ -813,6 +829,7 @@ export class ProjectStore {
       record,
       done.sent,
       done.stations,
+      this.drawnBy(),
     )
     return this.#save(id, updated, carried, A_DRAW)
   }
@@ -899,6 +916,7 @@ export class ProjectStore {
       record,
       sent,
       stations,
+      this.drawnBy(),
     )
     return this.#save(id, updated, carried, A_DRAW)
   }
@@ -945,6 +963,7 @@ export class ProjectStore {
       record,
       sent,
       stations,
+      this.drawnBy(),
     )
     return this.#save(id, updated, carried, A_DRAW)
   }
@@ -998,6 +1017,7 @@ export class ProjectStore {
       record,
       sent,
       stations,
+      this.drawnBy(),
     )
     return this.#save(id, updated, carried, A_DRAW)
   }
@@ -1045,6 +1065,7 @@ export class ProjectStore {
       record,
       sent,
       stations,
+      this.drawnBy(),
     )
     return this.#save(id, updated, carried, A_DRAW)
   }

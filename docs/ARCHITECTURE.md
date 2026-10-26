@@ -108,7 +108,7 @@ app's own settings under `api.settings`:
 | `viewer.attach(projectId, role)` | holds the project page's frame in a role, `map` or `export`, by identity once it has loaded, and answers whether it did (ADR-028). The role is read from the address once, here: `safe=1` is always the export's, the app's own `controls=1` the map's, and anything else under the project's folder a planned page without safe zones, the export's; the frame the other role holds is never taken (ADR-046) |
 | `viewer.release(role)` | lets that role's frame go, and keeps the other |
 | `viewer.call(role, method, ...args)` | one of the page's `__present` methods by name, run in the frame held for the role from the main process; a name outside the shared list is refused, and the export's frame is asked `state` (whether it loaded) and refused everything else |
-| `viewer.seams()` | the names of the functions on the map's page's `__present`, or null where it did not say, listed by a fixed script that calls none of them and read as data in both processes (`readSeams`); it takes nothing, is asked of the map's frame only, and rejects while no map is held. It is how a page an older engine drew is told (issue 465) |
+| `viewer.seams()` | the names of the functions on the map's page's `__present`, or null where it did not say, listed by a fixed script that calls none of them and read as data in both processes (`readSeams`); it takes nothing, is asked of the map's frame only, and rejects while no map is held. It is how a page an older engine drew is told (issue 465), beside the version `drawn.engine` names (issue 494) |
 
 | `engine.state()` | the engine's state: starting, ready, restarting, unavailable, mismatched or stopped, with a reason where there is one |
 | `engine.request(method, params?)` | a request to the engine, as `{ id, result }`: the id is a token the preload mints, the result settles with the engine's answer or its error (`code`, `message`, `data: { kind, detail, hint }`) unchanged |
@@ -1231,23 +1231,45 @@ address being made and its document arriving, or while the restore is being
 sent, is never lost.
 
 A page an older engine drew is redrawn when its project opens (issue 465).
-Neither the page nor the record says which engine drew it, so the page's
-seam is asked instead: once the first page the map's frame loads has been
-given back its state, the main process lists the functions on its
-`window.__present` by a fixed script that calls none of them
-(`Viewer.seams`, `viewer.seams()` on the bridge). **Older means lacking a
-seam the pinned engine's page has** (`PAGE_SEAMS` in `src/shared/viewer.ts`,
-held to the engine's template by `tests/unit/viewer-real.test.ts`),
-whichever seam it lacks, and nothing else: a page an engine drew after its
-last new seam and before the pin has every seam and counts as current,
-since nothing records which engine drew a page. The screen then asks for the
+**Older means drawn by an engine below the running one, by the version the
+record names, or by an engine the record does not name, or lacking a seam
+the pinned engine's page has**; any one is enough. Since issue 494 every draw's `drawn` names the engine that answered
+it (`drawn.engine`): the store asks the supervisor at each draw's write for
+the version the last engine to pass the handshake answered
+(`Sidecar.readyVersion`), which is kept through a restart and a stop, since
+a completion reaches the store after its build was answered and the engine
+may have gone between; and every process that passes the handshake answered
+the pin's version exactly, so it is the version of whichever engine answered
+the build. The renderer compares it with the running engine's, from the
+ready state's `version` (`engineBefore` in `src/shared/project.ts`): three
+whole numbers. A running version that is not one - a pre-release, a local
+suffix - says nothing, and the seam decides. A record's own value that is
+not one is dropped as the record is read, so it is the same as none. Every
+page waits for the engine's handshake before it is judged by version. The seam is asked of every page: once the first page
+the map's frame loads has been given back its state, the main process lists
+the functions on its `window.__present` by a fixed script that calls none
+of them (`Viewer.seams`, `viewer.seams()` on the bridge), and **a page
+lacking a seam the pinned engine's page has** (`PAGE_SEAMS` in
+`src/shared/viewer.ts`, held to the engine's template by
+`tests/unit/viewer-real.test.ts`), whichever seam it lacks, is older
+whatever version its record names. **A `drawn` that names no engine counts
+as older** (decided by the maintainer, 25 Oct 2026): every record drawn
+before issue 494 is one, so every existing project is redrawn once, the
+first time it opens after the update. That is what reaches the pages engine
+v0.15.0 to v0.18.x drew, which have every seam and draw what the engine has
+since changed (engine issue 76's label face). A record with no `drawn` at
+all has drawn nothing and is never redrawn. The redraw's own write names
+the running engine, so it happens once; a build from before issue 425 that
+writes the record afterwards drops the field again, and the next opening
+here redraws it once more. The screen then asks for the
 rebuild cell 03 makes for a day, for the day the record holds and the map
 already shows: a `map.build` from the stored layout with the record's
 colours, order, style and line options, never a re-layout (ADR-023), shown
 and written as that rebuild always is, and failing as cell 03's own -
 where cell 03 says, in words for a person who pressed nothing, that the map
 could not be redrawn as the project opened, the engine's reason, and what
-still holds of the map on screen for the seams it lacks (issue 517,
+still holds of the map on screen for the seams it lacks, which for a page
+older only by version is that the map stays as it was (issue 517,
 `frameFailure` in `notebook/olderPage.ts`). It is
 started through Run all's machinery rather than as cell 03's press, so the
 day is decided from the record once the writes on their way have landed: a

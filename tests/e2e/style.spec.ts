@@ -382,7 +382,10 @@ test('a project made before this change opens with every size unset and draws wi
       .not.toBeNull()
 
     // The record as v0.1.0-rc.7 wrote it: version 1, the four numbers it
-    // stored at creation and never sent, and a `drawn` without a style.
+    // stored at creation and never sent, and a `drawn` without a style. Its
+    // `drawn.engine` is kept as this build's layout wrote it, which rc.7's
+    // was not: a `drawn` naming no engine is redrawn as it opens (issue 494),
+    // and that draw is not what this test is about.
     const file = recordFile(engineHome)
     const old = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>
     const drawn = { ...(old.drawn as Record<string, unknown>) }

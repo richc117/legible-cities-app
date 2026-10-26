@@ -290,6 +290,59 @@ export interface DrawnFrom {
    * trip is never written here or anywhere in the record (FR-001).
    */
   stations?: Station[]
+  /**
+   * The version of the engine that drew the map, as its handshake answered
+   * it (`engine.info`'s `engine`, which the supervisor holds equal to the
+   * pin's), written by main at every draw and never sent by the renderer
+   * (issue 494). It is how a page an older engine drew is told by version:
+   * one drawn below the running engine's is redrawn as its project opens,
+   * even where its seam has every method the pinned page has, since the
+   * engine can change what it draws without adding one (engine issue 76's
+   * embedded label face).
+   *
+   * Absent for a map drawn before it was kept, and for a value that is not
+   * the engine's version as `isEngineVersion` reads it, which is dropped and
+   * leaves the rest of the block as it was. A page whose `drawn` names no
+   * engine counts as older (decided by the maintainer, 25 Oct 2026), so it is
+   * redrawn once as its project opens and named then (`redrawOnOpen`).
+   * Like the theme it describes the draw and raises no staleness. Added
+   * without moving `RECORD_VERSION`
+   * (specs/028-the-notebook/contracts/run-graph.md, "Adding a field"),
+   * inside `drawn` because it is a fact of the draw and is renewed with it.
+   */
+  engine?: string
+}
+
+/**
+ * The engine's version as `engine.info` answers it and `vendor/pins.json`
+ * names it: three whole numbers with no leading zero, each of at most nine
+ * digits. The supervisor refuses any engine whose version is not the pin's
+ * exactly, and every pin has been of this form; anything else - a
+ * pre-release, a local build's suffix - is not read as a version here, and
+ * is never ordered by a guess at how the suffix orders: a running version
+ * of that kind leaves the judgement to the page's seam, and a recorded one
+ * is dropped as the record is read, as if none had been written.
+ */
+const ENGINE_VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/
+
+/** Whether a value is an engine's version this build can compare (`ENGINE_VERSION`). */
+export function isEngineVersion(value: unknown): value is string {
+  return typeof value === 'string' && ENGINE_VERSION.test(value)
+}
+
+/**
+ * Whether a map drawn by engine `drawn` was drawn by an engine older than
+ * `running` (issue 494): true where its version is below, false where it is
+ * the same or above, and null where either is not a version this build
+ * reads (`isEngineVersion`), absent included. What a record that names no
+ * engine means is its caller's to say (`redrawOnOpen` counts it as older).
+ */
+export function engineBefore(drawn: unknown, running: unknown): boolean | null {
+  if (!isEngineVersion(drawn) || !isEngineVersion(running)) return null
+  const a = drawn.split('.').map(Number)
+  const b = running.split('.').map(Number)
+  for (let at = 0; at < 3; at++) if (a[at] !== b[at]) return a[at] < b[at]
+  return false
 }
 
 export interface ProjectRecord {
@@ -1614,12 +1667,18 @@ export function validateSent(sent: unknown): string | null {
  * layout and its `made` are the ones it was listed for; from another
  * layout, or the same id laid out again since, it is left out rather than
  * claimed.
+ *
+ * `engine` is the version of the engine that answered the draw (issue 494),
+ * which main knows and the run does not send. Kept where it is a version
+ * (`isEngineVersion`), and left out otherwise - never carried from the
+ * block before, which another engine may have drawn.
  */
 export function drawnFromSent(
   sent: SentSet,
   theme: Theme,
   before: DrawnFrom | null,
   stations?: Station[],
+  engine?: string | null,
 ): DrawnFrom {
   const drawn: DrawnFrom = {
     layout: sent.layout,
@@ -1649,6 +1708,7 @@ export function drawnFromSent(
   ) {
     drawn.stations = before.stations.map((station) => ({ ...station }))
   }
+  if (isEngineVersion(engine)) drawn.engine = engine
   return drawn
 }
 
@@ -1823,6 +1883,7 @@ function shapeOfRecord(): Shape {
           style: true,
           lines: true,
           stations: true,
+          engine: true,
         }),
         inner: {
           style,
@@ -2196,6 +2257,11 @@ function readDrawn(value: unknown): DrawnFrom | null {
   // a trip may be picked from.
   const stations = readStations(value.stations)
   if (stations !== null) drawn.stations = stations
+  // The engine that drew it (issue 494), read on its own as the stations
+  // are: a value that is not a version is none, and leaves the block alone,
+  // because the block says whether the map is current and this says only
+  // which engine drew it, which the page's seam can still say in its place.
+  if (isEngineVersion(value.engine)) drawn.engine = value.engine
   return drawn
 }
 

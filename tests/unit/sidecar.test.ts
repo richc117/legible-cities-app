@@ -159,6 +159,29 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(alive(h.pid())).toBe(true)
   })
 
+  // Issue 494: the version the store stamps on a map as the engine that drew
+  // it. A draw's completion reaches the store after its build was answered,
+  // and the engine may have gone between the two, so it outlives the process.
+  it('says which version passed the handshake, and keeps it once that engine has gone', async () => {
+    const h = harness()
+    expect(h.sidecar.readyVersion, 'before any engine has answered').toBeNull()
+    h.sidecar.start()
+    await h.until(ready)
+    expect(h.sidecar.readyVersion).toBe('0.2.0')
+    await h.sidecar.stop()
+    expect(h.sidecar.state.state).toBe('stopped')
+    expect(h.sidecar.readyVersion, 'after the engine it names has stopped').toBe('0.2.0')
+  })
+
+  it('names no version an engine answered but the handshake refused', async () => {
+    // Mutation: the version kept before the identity is checked - a
+    // mismatched engine, which drew nothing, would be named.
+    const h = harness({ version: '0.1.0' })
+    h.sidecar.start()
+    await h.until((s) => s.state === 'mismatched')
+    expect(h.sidecar.readyVersion).toBeNull()
+  })
+
   it('refuses a wrong version or protocol: the state says both, the process gone, no restart', async () => {
     for (const control of [{ version: '0.1.0' }, { protocol: 2 }]) {
       const h = harness(control)
@@ -564,6 +587,9 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       expect(restarting.attempt).toBe(2)
       expect(restarting.reason).toMatch(/ended by signal SIGKILL|exited with code/)
     }
+    // The engine that answered before the exit is still the one named, for a
+    // draw whose write arrives while the next one starts (issue 494).
+    expect(h.sidecar.readyVersion, 'while the engine restarts').toBe('0.2.0')
     await h.until((s) => s.state === 'starting' && s.attempt === 2)
     await h.until(ready)
     expect(h.pid()).not.toBe(first)

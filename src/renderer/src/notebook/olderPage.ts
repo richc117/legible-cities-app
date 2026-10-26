@@ -1,6 +1,12 @@
 import type { EngineState } from '../../../shared/engine'
 import { screenPaths } from '../../../shared/jobs'
-import { drawnDate, serviceDayRefusal, type ProjectRecord } from '../../../shared/project'
+import {
+  drawnDate,
+  engineBefore,
+  isEngineVersion,
+  serviceDayRefusal,
+  type ProjectRecord,
+} from '../../../shared/project'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import type { RunAllPlan } from '../runAll'
 import { cellOfRun, type RunFacts } from '../runGraph'
@@ -8,10 +14,32 @@ import { cellOfRun, type RunFacts } from '../runGraph'
 // A project whose stored page an older engine drew is redrawn when it opens
 // (issue 465, decided 24 Oct 2026): a `map.build` from the stored layout,
 // never a re-layout (ADR-023), with the record's own colours, order, style
-// and line options, for the day the map already shows. Which pages are older
-// is the page's own seam's to say (`isOlderPage` in `src/shared/viewer.ts`);
-// whether to redraw one, and when, is this file's, with no React in it so the
-// rule is a table in a unit test (.claude/rules/renderer.md).
+// and line options, for the day the map already shows. A page is older where
+// the record says an engine below the running one drew it (`drawn.engine`,
+// issue 494, compared by `engineBefore`), where its `drawn` names no engine at
+// all, or where it lacks a seam the pinned engine's page has (`isOlderPage` in
+// `src/shared/viewer.ts`); whether to redraw one, and when, is this file's,
+// with no React in it so the rule is a table in a unit test
+// (.claude/rules/renderer.md).
+//
+// A `drawn` that names no engine counts as older (decided by the maintainer,
+// 25 Oct 2026): every record drawn before issue 494 is one, and among them
+// are the pages engine v0.15.0 to v0.18.x drew, which have every seam and
+// draw what the engine has since changed (engine issue 76's label face). So
+// every such project is redrawn once, the first time it opens after the
+// update, and its redraw's write then names the running engine. A value the
+// record's reader would not take (`isEngineVersion`) is dropped as it is
+// read, so by the time it reaches here it is the same as none, and is judged
+// the same: there is no way to tell the two apart after `readDrawn`, and a
+// value no engine of ours would write is no better evidence of a current
+// page than none. A running version this build does not read says nothing,
+// and the seam decides.
+//
+// The version is measured against the running engine's, from its handshake
+// (`EngineState`'s ready `version`), since that is the engine a redraw would
+// ask; the supervisor holds it equal to the pin's. A page older by version
+// alone has every seam, so where its redraw fails cell 03 says neither the
+// theme's nor the trip's sentence (`pageLacks`): it takes both in place.
 //
 // The redraw is the rebuild cell 03 already makes for a day, asked for the
 // day the record holds and the map already shows, so it is drawn and shown
@@ -69,6 +97,12 @@ export interface OnOpenFacts {
    * say (`isOlderPage`).
    */
   older: boolean | null
+  /**
+   * The running engine's version, as its handshake answered it (the ready
+   * `EngineState`'s `version`); null while it is not ready. What the
+   * record's `drawn.engine` is compared with (issue 494).
+   */
+  running: string | null
   project: Pick<ProjectRecord, 'layout' | 'made' | 'date' | 'drawn' | 'service'> & {
     readOnly: boolean
   }
@@ -91,8 +125,7 @@ const NEVER: OnOpen = { kind: 'never' }
 const WAIT: OnOpen = { kind: 'wait' }
 
 export function redrawOnOpen(facts: OnOpenFacts): OnOpen {
-  const { older, project, engineReady, busy, drawnHere } = facts
-  if (older !== true) return NEVER
+  const { older, running, project, engineReady, busy, drawnHere } = facts
   // A run has drawn the page since the screen opened: the page on screen is
   // the pinned engine's now, whatever the first one was.
   if (drawnHere > 0) return NEVER
@@ -113,6 +146,18 @@ export function redrawOnOpen(facts: OnOpenFacts): OnOpen {
   // A day the store would refuse to write: the map would be drawn, and the
   // record would not keep it.
   if (serviceDayRefusal(project, date) !== null) return NEVER
+  // Older by its seam, or by the engine the record says drew it (issue 494),
+  // a record naming none being older (see the top of this file). Where
+  // neither says so the page is current - except that the version cannot
+  // speak until the engine has answered its handshake, so the page waits for
+  // that rather than being judged by its seam alone, which would settle it
+  // for this screen.
+  const byVersion = !isEngineVersion(running)
+    ? null
+    : isEngineVersion(drawn.engine)
+      ? engineBefore(drawn.engine, running)
+      : true
+  if (older !== true && byVersion !== true) return running === null ? WAIT : NEVER
   if (!engineReady || busy) return WAIT
   return { kind: 'redraw', date }
 }
@@ -128,12 +173,13 @@ export function redrawOnOpen(facts: OnOpenFacts): OnOpen {
  * start itself where they are not.
  */
 export function openPlanOf(
-  facts: Pick<OnOpenFacts, 'older' | 'drawnHere'>,
+  facts: Pick<OnOpenFacts, 'older' | 'running' | 'drawnHere'>,
   readOnly: boolean,
 ): (record: ProjectRecord) => RunAllPlan {
   return (record) => {
     const now = redrawOnOpen({
       older: facts.older,
+      running: facts.running,
       project: { ...record, readOnly },
       engineReady: true,
       busy: false,
@@ -166,7 +212,7 @@ export function redrawPageOnOpen(
   run: Pick<LayoutRun, 'runAll' | 'job'>,
   project: ProjectRecord & { readOnly: boolean },
   engine: EngineState | null,
-  facts: Pick<OnOpenFacts, 'older' | 'drawnHere'>,
+  facts: Pick<OnOpenFacts, 'older' | 'running' | 'drawnHere'>,
 ): string | null {
   const before = run.job()?.id ?? null
   run.runAll(project, engine, openPlanOf(facts, project.readOnly))

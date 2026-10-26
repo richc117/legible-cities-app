@@ -108,6 +108,7 @@ export function describeExit(code: number | null, signal: NodeJS.Signals | null)
 
 export class Sidecar {
   private _state: EngineState = { state: 'starting', attempt: 1 }
+  private _readyVersion: string | null = null
   private child: ChildProcess | null = null
   private client: JsonRpcClient | null = null
   private exited: Promise<void> = Promise.resolve()
@@ -148,6 +149,21 @@ export class Sidecar {
 
   get state(): EngineState {
     return this._state
+  }
+
+  /**
+   * The version the last engine process to pass the handshake answered, or
+   * null before one has (issue 494). It is what the store stamps on a map as
+   * the engine that drew it, and it is kept through a restart, a mismatch
+   * and a stop, unlike `state`: a draw's completion reaches the store after
+   * its `map.build` was answered, and the engine may have gone between the
+   * two. Whatever answered that build passed the handshake, and every
+   * process that passes it answered the pin's version exactly
+   * (`checkIdentity`), so this is that engine's version whichever process
+   * answered and whatever has happened since.
+   */
+  get readyVersion(): string | null {
+    return this._readyVersion
   }
 
   onState(listener: (state: EngineState) => void): () => void {
@@ -504,6 +520,7 @@ export class Sidecar {
     this.log(
       `ready: engine ${version}, protocol ${protocol} (expected ${pin.version}, ${pin.protocol}); home ${home}`,
     )
+    this._readyVersion = version
     this.setState({ state: 'ready', version, protocol })
     this.armStable()
   }

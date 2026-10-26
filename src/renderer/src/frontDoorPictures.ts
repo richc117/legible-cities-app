@@ -49,6 +49,12 @@ type Pictured = {
  * draws them in each line's width, casing and dash, so a redraw that hides a
  * line, or thickens one, would otherwise leave the old picture on the card
  * until the document reloads. Sorted by label, each line as it was sent.
+ *
+ * The engine that drew the map is in it since issue 494: a project whose page
+ * an older engine drew is redrawn as it opens, with every field above as it
+ * was, and the thumbnails the newer engine writes beside the page would
+ * otherwise be kept off the card by the old address until the document
+ * reloads. A block that names none marks as the empty string.
  */
 function fingerprint(drawn: DrawnFrom): string {
   const colours = Object.keys(drawn.colors)
@@ -64,6 +70,7 @@ function fingerprint(drawn: DrawnFrom): string {
     colours.join(','),
     drawn.lineOrder.join(','),
     lines.join(','),
+    drawn.engine ?? '',
   ].join('|')
   let hash = 0x811c9dc5
   for (let at = 0; at < text.length; at++) {
