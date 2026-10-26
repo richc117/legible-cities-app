@@ -220,7 +220,11 @@ carry them at length.
   stored; renders and exports read it and never re-run it (ADR-023).
   `setCapture(true)` before any wait, stills included, then `settle()`
   before the first captured frame; step the clock by `1/fps`; wait for the
-  paint (two animation frames) before every capture; compare renders in RGB
+  paint (two animation frames) before every capture, and prove it: the page
+  draws its count of draws in a band under the stage (`strip=`, engine
+  v0.20.0), and a shot is kept, the band cropped away, only where the band
+  shows the count `state().draws` gave after the step, else taken again and
+  at last refused (`src/main/capture.ts`, issue 100); compare renders in RGB
   with a channel tolerance of 8, never RGBA, never exact equality. The
   delivered GIFs are judged otherwise (ADR-055): by their colour tables,
   and by differing only on pixels the captures differ on, exactly - never

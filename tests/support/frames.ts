@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process'
 import { readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import type { Readable } from 'node:stream'
+import { crc32, deflateSync, inflateSync } from 'node:zlib'
 
 /** The largest difference in one channel that still counts as the same pixel. */
 export const TOLERANCE = 8
@@ -534,4 +535,254 @@ export async function neighbours(
     cache.clear()
   }
   return out
+}
+
+// ------------------------------------------------- PNGs for the capture's tests
+//
+// What the capture's unit tests hand it as a shot (app issue 100): PNGs
+// written here from raw rows, by the format's own definition of each filter,
+// so the capture's reader (`src/main/capture-strip.ts`) is checked against a
+// writer it shares no code with; and the frame counter's band as engine
+// v0.20.0 draws it.
+
+/** Bytes a pixel takes by 8-bit colour type: grey, RGB, grey and alpha, RGBA. */
+const PNG_CHANNELS: Record<0 | 2 | 4 | 6, number> = { 0: 1, 2: 3, 4: 2, 6: 4 }
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const head = Buffer.alloc(8)
+  head.writeUInt32BE(data.length, 0)
+  head.write(type, 4, 'latin1')
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(Buffer.concat([head.subarray(4), data])) >>> 0, 0)
+  return Buffer.concat([head, data, crc])
+}
+
+function paethOf(a: number, b: number, c: number): number {
+  const p = a + b - c
+  const pa = Math.abs(p - a)
+  const pb = Math.abs(p - b)
+  const pc = Math.abs(p - c)
+  return pa <= pb && pa <= pc ? a : pb <= pc ? b : c
+}
+
+export interface PngSource {
+  width: number
+  height: number
+  colourType: 0 | 2 | 4 | 6
+  /** Row `y`'s raw pixels, `width` times the colour type's bytes. The same array for two rows marks them alike. */
+  row: (y: number) => Uint8Array
+  /** The filter row `y` is written with, 0 to 4; Up for every row when left out. */
+  filter?: (y: number) => number
+  /** Chunks written between the header and the image data, as Chromium may write a colour chunk. */
+  extra?: Array<{ type: string; data: Buffer }>
+}
+
+/** A PNG from raw rows, each filtered as the format defines it. */
+export function writePng(source: PngSource): Buffer {
+  const { width, height, colourType, row } = source
+  const bpp = PNG_CHANNELS[colourType]
+  const stride = width * bpp
+  const filtered = Buffer.alloc(height * (stride + 1))
+  let prev: Uint8Array = new Uint8Array(stride)
+  for (let y = 0; y < height; y++) {
+    const cur = row(y)
+    if (cur.length !== stride) throw new Error(`row ${y} is ${cur.length} bytes, not ${stride}`)
+    const kind = source.filter?.(y) ?? 2
+    const base = y * (stride + 1)
+    filtered[base] = kind
+    // A row like the one above it, filtered Up, is all zeros: left so.
+    if (!(kind === 2 && cur === prev)) {
+      for (let x = 0; x < stride; x++) {
+        const left = x >= bpp ? cur[x - bpp] : 0
+        const up = prev[x]
+        const corner = x >= bpp ? prev[x - bpp] : 0
+        const predicted =
+          kind === 0
+            ? 0
+            : kind === 1
+              ? left
+              : kind === 2
+                ? up
+                : kind === 3
+                  ? (left + up) >> 1
+                  : paethOf(left, up, corner)
+        filtered[base + 1 + x] = (cur[x] - predicted) & 0xff
+      }
+    }
+    prev = cur
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = colourType
+  return Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header),
+    ...(source.extra ?? []).map((c) => pngChunk(c.type, c.data)),
+    // The fastest level: these are written for tests, many a run.
+    pngChunk('IDAT', deflateSync(filtered, { level: 1 })),
+    pngChunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+/** A PNG's rows, decoded by inflating and unfiltering it here, independently of the capture. */
+export function readPngRows(bytes: Buffer): {
+  width: number
+  height: number
+  channels: number
+  rows: Uint8Array[]
+} {
+  let at = 8
+  let width = 0
+  let height = 0
+  let channels = 0
+  const data: Buffer[] = []
+  while (at < bytes.length) {
+    const length = bytes.readUInt32BE(at)
+    const type = bytes.toString('latin1', at + 4, at + 8)
+    const body = bytes.subarray(at + 8, at + 8 + length)
+    if (type === 'IHDR') {
+      width = body.readUInt32BE(0)
+      height = body.readUInt32BE(4)
+      channels = PNG_CHANNELS[body[9] as 0 | 2 | 4 | 6]
+    }
+    if (type === 'IDAT') data.push(body)
+    at += 12 + length
+  }
+  const filtered = inflateSync(Buffer.concat(data))
+  const stride = width * channels
+  const rows: Uint8Array[] = []
+  let prev = new Uint8Array(stride)
+  for (let y = 0; y < height; y++) {
+    const base = y * (stride + 1)
+    const kind = filtered[base]
+    const cur = new Uint8Array(stride)
+    for (let x = 0; x < stride; x++) {
+      const left = x >= channels ? cur[x - channels] : 0
+      const up = prev[x]
+      const corner = x >= channels ? prev[x - channels] : 0
+      const predicted =
+        kind === 0
+          ? 0
+          : kind === 1
+            ? left
+            : kind === 2
+              ? up
+              : kind === 3
+                ? (left + up) >> 1
+                : paethOf(left, up, corner)
+      cur[x] = (filtered[base + 1 + x] + predicted) & 0xff
+    }
+    rows.push(cur)
+    prev = cur
+  }
+  return { width, height, channels, rows }
+}
+
+/**
+ * One row of the frame counter's band as engine v0.20.0 draws it: `count`
+ * modulo 65536 as sixteen bits from the most significant, two blocks a bit
+ * across the whole width, white then black for a 1, black then white for a
+ * 0. The blocks are the page's flex items, so at a width that is not a
+ * multiple of 32 their edges fall inside a pixel, which is drawn grey here as
+ * a browser blends it; `edges` greys every pixel that touches an edge, which
+ * is what scaling does to them.
+ */
+export function bandRow(
+  width: number,
+  channels: number,
+  count: number,
+  options: { edges?: boolean; alpha?: number } = {},
+): Uint8Array {
+  const out = new Uint8Array(width * channels)
+  const n = count % 65536
+  const colours = channels >= 3 ? 3 : 1
+  for (let x = 0; x < width; x++) {
+    const block = Math.min(31, Math.floor(((x + 0.5) * 32) / width))
+    const bit = (n >> (15 - (block >> 1))) & 1
+    const white = (block & 1) === 0 ? bit === 1 : bit === 0
+    const start = (block * width) / 32
+    const end = ((block + 1) * width) / 32
+    const onEdge = options.edges === true && (x < start + 1 || x + 1 > end)
+    const value = onEdge ? 128 : white ? 255 : 0
+    for (let c = 0; c < colours; c++) out[x * channels + c] = value
+    if (channels === 2 || channels === 4) out[x * channels + channels - 1] = options.alpha ?? 255
+  }
+  return out
+}
+
+/** A row of one colour, `channels` bytes a pixel (RGBA when four). */
+export function flatRow(width: number, channels: number, rgba: number[]): Uint8Array {
+  const out = new Uint8Array(width * channels)
+  for (let x = 0; x < width; x++) for (let c = 0; c < channels; c++) out[x * channels + c] = rgba[c]
+  return out
+}
+
+/** The stage's colour in a shot of a page that has drawn `count` times: a different colour for every count. */
+export function stageColour(count: number): number[] {
+  return [(count * 37) % 256, (count * 101 + 13) % 256, (count * 7 + 200) % 256, 255]
+}
+
+/**
+ * A capture's fake page, as far as paint goes: it counts its draws, and a
+ * shot shows what was last painted, which is what the count was at the last
+ * paint wait - unless the page is told to paint a step late, when a step's
+ * draws reach the picture only that many paint waits later (`lateAt`, by the
+ * step's index from 0; Infinity for never). A shot is the stage in a colour
+ * of the painted count (`stageColour`) and, where the page took `strip`, the
+ * band below it carrying that count. Removing the capture's paint wait leaves
+ * the picture behind its count; removing its comparison keeps a stale shot.
+ */
+export class PaintedFrames {
+  draws = 0
+  painted = 0
+  steps = 0
+  /** Shots taken, and the count each showed. */
+  shots: number[] = []
+  owed = 0
+  constructor(
+    readonly options: {
+      strip: boolean
+      lateAt?: (step: number) => number
+      /** The band's height in CSS pixels the page took; the capture's own when left out. */
+      stripPx?: number
+    },
+  ) {}
+
+  /** The page drew, `times` times; a step is the clock's (an advance or a seek). */
+  drew(times = 1, step = false): void {
+    this.draws += times
+    if (step) {
+      this.owed = this.options.lateAt?.(this.steps) ?? 0
+      this.steps++
+    }
+  }
+
+  /** Two animation frames passed: the page paints, unless it owes the step a wait. */
+  paint(): void {
+    if (this.owed > 0) {
+      this.owed--
+      return
+    }
+    this.painted = this.draws
+  }
+
+  /** A shot of the clip, at the scale, as base64 PNG. */
+  shot(clip: { width: number; height: number }, scale: number, stripPx: number): string {
+    const width = Math.round(clip.width * scale)
+    const height = Math.round(clip.height * scale)
+    const band = this.options.strip ? Math.round(stripPx * scale) : 0
+    const keep = height - band
+    const stage = flatRow(width, 4, stageColour(this.painted))
+    const strip = bandRow(width, 4, this.painted, { edges: scale > 1 })
+    this.shots.push(this.painted)
+    return writePng({
+      width,
+      height,
+      colourType: 6,
+      row: (y) => (y < keep ? stage : strip),
+      filter: (y) => (y === 0 || y === keep ? 0 : 2),
+    }).toString('base64')
+  }
 }

@@ -1416,17 +1416,92 @@ before the pin is refused before any frame; after the settle, `setDrawn(0)`
 when any beat draws in; `setCard` at each beat's start when any beat has a
 card; and on each frame of the draw-in the step first and then
 `setDrawn(i / (n - 1))`. A job with neither flag makes exactly the calls it
-made before the opening but for the settle being waited for, held to a
-transcript by `tests/unit/capture-opening.test.ts`.
+made before the opening but for the settle being waited for and the proof
+below, held to a transcript by `tests/unit/capture-opening.test.ts`.
+
+**Every frame is proven fresh**, not waited for and hoped (issue 100,
+engine v0.20.0's issue 85). The page's script cannot say whether a
+screenshot shows the paint after the step, because the script is always
+current; only the picture can. So the capture adds `strip=8` to the
+address it loads, and makes its window and its emulated viewport 8 CSS
+pixels taller (`STRIP_PX`, small because the band is read once and thrown
+away; at scale 1 the row read, half way down its eight rows, has four rows
+of the band above it and three below). The page lays its stage, overlay and card out in the
+viewport less the band, so the stage is the size it always was, and draws
+in the band under it `state().draws` modulo 65536, sixteen bits as 32 black
+and white blocks. The capture asks once whether the page took the band
+(`data-strip` and `#present-strip`) and checks that the band sits right
+under the stage, as wide as it. Then, after each step and the paint wait,
+it reads `state().draws` - after the step, never predicted, since a call
+can draw more than once - takes the stage and the band in one
+`Page.captureScreenshot`, and reads the band out of the shot's own pixels:
+each block at its middle, half way down, white at 192 and over in every
+colour channel and black at 63 and under, every pair one of each, or no
+number at all (`src/main/capture-strip.ts`, no dependency). Where the band
+shows the count, the frame is kept; where it shows another, or none, the
+capture waits for the paint again and takes it again, four shots in all
+(`FRESH_TRIES`), and then fails the export in a sentence of its own
+(`staleFrame`; `unreadFrame` when no shot read a count at all, each with
+what to do next). The band is cropped before the frame is written, and
+exactly: a PNG row's filter reads only the rows above it, so the kept file
+is the shot's own filtered bytes for the stage's rows under a header that
+says fewer rows, with nothing decoded and encoded again. Not Electron's
+`nativeImage`, whose `toBitmap()` converts into sRGB by default and whose
+bitmap round trip premultiplies alpha. The inflate and the deflate are
+zlib's asynchronous ones, each a step of the capture's own, so a cancel or
+a page gone is answered at once; the inflate is bounded by the size the
+header says, and no header may say more than the shot of the largest job
+`validateCaptureJob` takes (`MAX_IMAGE_BYTES`);
+a video's frames are compressed at the fastest level, since ffmpeg decodes
+them, and a still's at zlib's default, since its PNG may be the deliverable
+(`still` in `CaptureOptions`). So every size downstream, the encode
+and the determinism gate are what they were. Every change to the page comes
+before the step whose count is read, because a call that does not draw
+(`setLabels`, `setView`) can change the picture without moving the count: a
+beat's settings are applied before its first step, the card at the beat's
+start, and the draw-in's `setDrawn` after the step but drawing itself; a
+still is one beat of one frame and is proven the same way. A one-off probe
+while it was built, not kept in the repository, drove `runCapture` through
+Playwright's Chromium (not Electron) against a small page engine v0.20.0
+drew, and compared the proven frames with the same page captured without
+the band, at scale 2: every channel of every pixel was the same, over a
+plain beat and over a title card, a draw-in and a view's tween. What the
+repository keeps is `tests/e2e/capture.spec.ts`, which makes the same
+comparison in a real offscreen window on the captured stand-in.
+
+A page an older engine drew has no band, and an export can still meet one:
+stale never blocks an export (ADR-045), and a project whose page was drawn
+before the pin moved and not redrawn - a record that cannot say what drew
+it, a day chosen and not drawn, a redraw on open that failed
+(`olderPage.ts`) - exports the page on disk. Such a page ignores `strip=`
+and lays out in the taller viewport, so the capture emulates the job's own
+size, loads the job's own address again, and captures it as every capture
+did before the proof. `CaptureResult.proven` is then false, and the export says so twice
+(`UNPROVEN_FRAMES` in `src/shared/export.ts`): on the capture's own stage,
+after its last sentence, so the line stays in the job's log when the
+encode's reports begin - the log keeps one line a stage and the page shows
+the newest sentence, so a line on the encode's stage would be gone at its
+first report - and, through the result's `unproven`, as the export
+finishes, in cell 06 beside "Exported" and in the jobs inspector.
+Only a page that does not count its draws is taken for an older engine's: a
+page whose `state().draws` is a number but which drew no band for the
+address is refused with a sentence, rather than captured unproven silently.
 
 `src/main/capture.ts` is the order, behind a `CapturePage` interface, so
-`tests/unit/capture.test.ts` asserts every step against a fake page;
+`tests/unit/capture.test.ts` asserts every step against a fake page, which
+paints as a page does: a shot shows what the last paint wait painted and
+its band the count it was painted at, so removing the paint wait or the
+comparison keeps a frame from the wrong paint and fails a test;
 `src/main/capture-window.ts` is the Electron half, and a second build
 entry, so `tests/e2e/capture-harness.cjs` can load it into a bare Electron
 and `tests/e2e/capture.spec.ts` can prove in a real window that two
 captures of one job are byte-identical, that a zoom level seeded in the
-default session changes nothing, and that a cancel leaves no window and no
-frames. The job's shape is the engine's recorder's (`src/shared/capture.ts`),
+default session changes nothing, that a cancel leaves no window and no
+frames, that a frame proven by its band is the frame a capture without
+the band takes, and that a page that never paints its step fails in the
+capture's sentence (the captured stand-in, `capturedStandInSource` in
+`tests/support/standInPage.ts`, which draws the band as the engine's page
+does); `tests/e2e/export-fresh.spec.ts` does the last two through cell 06. The job's shape is the engine's recorder's (`src/shared/capture.ts`),
 so `export.plan`'s answer maps onto it. A quit destroys any capture
 window before the engine is stopped.
 
@@ -1517,7 +1592,10 @@ with 107: the rule that the clock stops before any wait is tested. With the
 paint wait before each capture removed, the test **passed three runs of
 three** on the capture, with 94 to 101 files identical and no frame over
 8: the rule that every capture waits for the paint is **not** tested by
-this verdict (issue 100). Removing only the `cancelAnimationFrame` in the
+this verdict (issue 100). Since engine v0.20.0 the capture proves each
+frame fresh instead (above), and removing the wait fails the capture's
+unit tests; the verdict here is unchanged, since the band is cropped away
+exactly before a frame is kept. Removing only the `cancelAnimationFrame` in the
 page's `setCapture` was not run: it drops the one frame already queued,
 which fires during the settle, before `settle()` snaps the transitions and
 the first beat sets the clock, so it is not expected to change a frame.

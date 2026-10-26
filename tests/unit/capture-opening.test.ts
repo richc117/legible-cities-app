@@ -14,6 +14,15 @@
 // in; puts the card up or takes it down at every beat's start when any beat
 // has one; and on every frame of a draw-in steps the clock first and then
 // draws the network to `i / (n - 1)`.
+//
+// Since engine v0.20.0 every frame is proven fresh (app issue 100): the
+// transcript is the capture before the proof, and the calls are now that
+// transcript with exactly the proof's added - the band asked for on the
+// address, the viewport the band taller, the page asked whether it drew the
+// band and where, and before every shot the page's count of its draws, the
+// shot the band taller - and nothing else; for a page an older engine drew,
+// which has no band, they are the transcript itself after the page is loaded
+// again at the job's own size.
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -27,6 +36,7 @@ import {
   validateCaptureJob,
 } from '../../src/main/capture'
 import type { Beat, CaptureJob } from '../../src/shared/capture'
+import { STRIP_PX } from '../../src/main/capture-strip'
 import { named, RecordingPage, type Recorded } from '../support/recordingPage'
 
 const TRANSCRIPT = JSON.parse(
@@ -83,14 +93,75 @@ const fromSettle = (page: RecordingPage): string[] => {
   return names.slice(names.findIndex((n) => n.startsWith('settle')))
 }
 
+/** The page's scripts the proof adds, word for word. */
+const READY = '!!(window.__present && window.__present.state)'
+const STRIP_TAKEN =
+  '(function () { var counts = false; try { counts = typeof window.__present.state().draws === "number" } catch (e) {} return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip"), counts: counts } })()'
+const STAGE =
+  '(function () { var el = document.getElementById("stage"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()'
+const BAND =
+  '(function () { var el = document.getElementById("present-strip"); if (!el) return null; var r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } })()'
+const DRAWS = 'window.__present.state().draws'
+
+/** The transcript with the proof's calls added, and nothing else changed. */
+function withTheProof(calls: Recorded[]): Recorded[] {
+  const out: Recorded[] = []
+  for (const call of calls) {
+    if (call.kind === 'navigate') {
+      out.push({ kind: 'navigate', url: `${call.url}&strip=${STRIP_PX}` })
+      continue
+    }
+    if (call.kind === 'send' && call.method === 'Emulation.setDeviceMetricsOverride') {
+      const params = call.params as { height: number }
+      out.push({ ...call, params: { ...call.params, height: params.height + STRIP_PX } })
+      continue
+    }
+    if (call.kind === 'send' && call.method === 'Page.captureScreenshot') {
+      const clip = (call.params as { clip: { height: number } }).clip
+      out.push({ kind: 'evaluate', code: DRAWS })
+      out.push({
+        ...call,
+        params: { ...call.params, clip: { ...clip, height: clip.height + STRIP_PX } },
+      })
+      continue
+    }
+    out.push(call)
+    if (call.kind === 'evaluate' && call.code === READY)
+      out.push({ kind: 'evaluate', code: STRIP_TAKEN })
+    if (call.kind === 'evaluate' && call.code === STAGE) out.push({ kind: 'evaluate', code: BAND })
+  }
+  return out
+}
+
 describe('a job with neither flag', () => {
   for (const { name, job: recorded, calls } of TRANSCRIPT.jobs) {
-    it(`makes exactly the calls it made before, the settle awaited: ${name}`, async () => {
+    it(`makes exactly the calls it made before, and the proof's: ${name}`, async () => {
       // Mutations: any other change to the path - a script changed, a call
-      // added before the beats - and the transcript differs; and the settle
-      // not awaited, which puts the page's answer after the next call.
+      // added before the beats - and the transcript differs; the settle not
+      // awaited, which puts the page's answer after the next call; and any
+      // of the proof's calls moved, left out or added to.
       const page = await capture(recorded)
-      expect(page.calls).toEqual(calls)
+      expect(page.calls).toEqual(withTheProof(calls))
+    })
+
+    it(`makes exactly the calls it made before for a page an older engine drew: ${name}`, async () => {
+      // Mutations: the page not loaded again, or loaded again at the band's
+      // height or with the band asked for; the proof's calls made of a page
+      // that has no band.
+      const page = await capture(recorded, new RecordingPage({ strip: false }))
+      const metrics = calls.find(
+        (c) => c.kind === 'send' && c.method === 'Emulation.setDeviceMetricsOverride',
+      ) as Extract<Recorded, { kind: 'send' }>
+      const url = (calls[0] as Extract<Recorded, { kind: 'navigate' }>).url
+      const stopped = calls.findIndex((c) => c.kind === 'evaluate' && c.code.includes('setCapture'))
+      const probe = withTheProof(calls).slice(0, 6)
+      expect(page.calls).toEqual([
+        ...probe,
+        metrics,
+        { kind: 'navigate', url },
+        { kind: 'evaluate', code: READY },
+        ...calls.slice(stopped),
+      ])
     })
   }
 
@@ -160,13 +231,13 @@ describe('a job with a title card', () => {
       'settled',
       'setCard true',
       'beat',
-      ...Array(2).fill(['advance', 'paint', 'frame']).flat(),
+      ...Array(2).fill(['advance', 'paint', 'draws', 'frame']).flat(),
       'setCard false',
       'beat',
-      ...Array(2).fill(['advance', 'paint', 'frame']).flat(),
+      ...Array(2).fill(['advance', 'paint', 'draws', 'frame']).flat(),
       'setCard false',
       'beat',
-      ...Array(2).fill(['advance', 'paint', 'frame']).flat(),
+      ...Array(2).fill(['advance', 'paint', 'draws', 'frame']).flat(),
     ])
   })
 
@@ -249,21 +320,25 @@ describe('a job with a draw-in', () => {
       'advance',
       'setDrawn 0',
       'paint',
+      'draws',
       'frame',
       'advance',
       `setDrawn ${1 / 3}`,
       'paint',
+      'draws',
       'frame',
       'advance',
       `setDrawn ${2 / 3}`,
       'paint',
+      'draws',
       'frame',
       'advance',
       'setDrawn 1',
       'paint',
+      'draws',
       'frame',
       'beat',
-      ...Array(2).fill(['advance', 'paint', 'frame']).flat(),
+      ...Array(2).fill(['advance', 'paint', 'draws', 'frame']).flat(),
     ])
     expect(fromSettle(page)).not.toContain('setCard true')
   })
@@ -271,7 +346,7 @@ describe('a job with a draw-in', () => {
   it('draws a one-frame draw-in whole, as the recorder does', async () => {
     const page = await capture({ ...job([beat({ ...DRAW, secs: 1 }), FIRST]), fps: 1 })
     const names = fromSettle(page)
-    expect(names.slice(0, 8)).toEqual([
+    expect(names.slice(0, 9)).toEqual([
       'settle, awaited',
       'settled',
       'setDrawn 0',
@@ -279,6 +354,7 @@ describe('a job with a draw-in', () => {
       'advance',
       'setDrawn 1',
       'paint',
+      'draws',
       'frame',
     ])
   })
@@ -293,28 +369,32 @@ describe('a job with a title card and then a draw-in', () => {
       'setDrawn 0',
       'setCard true',
       'beat',
-      ...Array(2).fill(['advance', 'paint', 'frame']).flat(),
+      ...Array(2).fill(['advance', 'paint', 'draws', 'frame']).flat(),
       'setCard false',
       'beat',
       'advance',
       'setDrawn 0',
       'paint',
+      'draws',
       'frame',
       'advance',
       `setDrawn ${1 / 3}`,
       'paint',
+      'draws',
       'frame',
       'advance',
       `setDrawn ${2 / 3}`,
       'paint',
+      'draws',
       'frame',
       'advance',
       'setDrawn 1',
       'paint',
+      'draws',
       'frame',
       'setCard false',
       'beat',
-      ...Array(2).fill(['advance', 'paint', 'frame']).flat(),
+      ...Array(2).fill(['advance', 'paint', 'draws', 'frame']).flat(),
     ])
   })
 

@@ -12,7 +12,12 @@ import {
 } from '../../src/renderer/src/engine/exportRun'
 import { ENCODE_UNFINISHED, unfinishedSentence } from '../../src/renderer/src/ExportRun'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
-import type { ExportChoice, ExportProgress, ExportResult } from '../../src/shared/export'
+import {
+  UNPROVEN_FRAMES,
+  type ExportChoice,
+  type ExportProgress,
+  type ExportResult,
+} from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
@@ -203,6 +208,29 @@ describe('ExportRun', () => {
     await tick()
     expect(other.snapshot.state).toBe('done')
     expect(other.snapshot.message).not.toBe(EXPORT_KEPT)
+  })
+
+  // The finished sentence (app issue 100): what the result says beside
+  // "Exported", in cell 06 and the jobs inspector. Mutations: the unproven
+  // sentence dropped; the two joined the other way round.
+  it.each<[string, Partial<ExportResult>, string]>([
+    ['proven and not late, the last progress sentence', {}, 'Encoded 60 of 60 frames.'],
+    ['late only', { late: true }, EXPORT_KEPT],
+    ['unproven only', { unproven: true }, UNPROVEN_FRAMES],
+    [
+      'late and unproven, in that order',
+      { late: true, unproven: true },
+      `${EXPORT_KEPT} ${UNPROVEN_FRAMES}`,
+    ],
+  ])('finishes %s', async (_what, flags, said) => {
+    const stub = stubBridge()
+    const run = new ExportRun(stub.bridge)
+    run.start(project(), READY, REEL)
+    stub.report({ id: 'tok-1', stage: 'encode', fraction: 1, message: 'Encoded 60 of 60 frames.' })
+    stub.resolve({ file: 'x.mp4', bytes: 10, frames: 60, ...flags })
+    await tick()
+    expect(run.snapshot).toMatchObject({ state: 'done', file: 'x.mp4', message: said })
+    expect(run.job()?.message).toBe(said)
   })
 
   it('ends failed with the engine’s sentence for a destination that is its own source', async () => {

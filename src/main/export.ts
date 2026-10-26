@@ -24,6 +24,7 @@ import {
   openingList,
   planOptions,
   sentChoice,
+  UNPROVEN_FRAMES,
   type ExportChoice,
   type ExportPreview,
   type ExportProgress,
@@ -209,6 +210,9 @@ export function jobOf(plan: PlannedJob): CaptureJob {
     beats,
   }
 }
+
+/** The sentence for frames the capture could not prove fresh, which `src/shared/export.ts` owns. */
+export { UNPROVEN_FRAMES }
 
 /** The one frame a still's capture writes, which is what `export.encode` takes as its source. */
 export const STILL_FRAME = '000000.png'
@@ -675,12 +679,25 @@ export class Exporter {
       this.#emit(token, 'capture', 0, `Capturing ${total} frames.`)
       const captured = await capture(job, {
         frames,
+        still,
         signal: control.abort.signal,
         onProgress: (done, of) =>
           this.#emit(token, 'capture', done / of, `Captured ${done} of ${of} frames.`),
       })
       this.#stopIfCancelled(control)
 
+      // An unproven capture is said after the capture's last sentence, on
+      // the capture's stage: the page's log keeps one line a stage, the
+      // newest, so a line on the encode's stage would be replaced by its
+      // first progress report, and this one stays because the next stage's
+      // differs. The finished export says it again (`unproven`).
+      if (!captured.proven)
+        this.#emit(
+          token,
+          'capture',
+          1,
+          `Captured ${captured.frames} of ${captured.frames} frames. ${UNPROVEN_FRAMES}`,
+        )
       this.#emit(token, 'encode', 0, `Encoding ${captured.frames} frames.`)
       // A video is encoded from the folder of frames; a still from its one
       // frame, which is the file `export.encode` takes for a still plan.
@@ -725,6 +742,7 @@ export class Exporter {
           bytes,
           frames: captured.frames,
           ...(late ? { late: true as const } : {}),
+          ...(captured.proven ? {} : { unproven: true as const }),
         },
         path: dest,
       }

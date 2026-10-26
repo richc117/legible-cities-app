@@ -1,6 +1,7 @@
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
 import {
   EXPORT_STAGES,
+  UNPROVEN_FRAMES,
   type ExportProgress,
   type ExportChoice,
   type ExportResult,
@@ -235,11 +236,15 @@ export class ExportRun {
         // sidecar are at the destination. One the main process says the
         // cancel came too late for is said to be kept, read as data.
         const late = (result as { late?: unknown }).late === true
+        // One whose frames the capture could not prove fresh (app issue 100)
+        // says so as it finishes, beside "Exported", and so does its job.
+        const unproven = (result as { unproven?: unknown }).unproven === true
+        const said = [...(late ? [EXPORT_KEPT] : []), ...(unproven ? [UNPROVEN_FRAMES] : [])]
         this.#set({
           state: 'done',
           stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
           file: result.file,
-          ...(late ? { message: EXPORT_KEPT } : {}),
+          ...(said.length > 0 ? { message: said.join(' ') } : {}),
         })
       },
       (reason: unknown) => {
