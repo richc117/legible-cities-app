@@ -171,7 +171,9 @@ If you may go back to 0.1.0, quit the app and copy the engine's data folder
 somewhere safe before you install the new version. It is the row in the
 tables below that names it, which Settings shows as the **Engine data
 folder**. The copy holds your projects as 0.1.0 left them. To go back, quit
-the new version, install 0.1.0, and put the copy in place of the engine
+the new version and remove it (step 2 of
+[Uninstall completely](#uninstall-completely); removing the app leaves its
+data where it is), install 0.1.0, and put the copy in place of the engine
 data folder: move or delete that folder first rather than copying over it.
 Anything you made in the new version is lost.
 
@@ -202,7 +204,7 @@ writes its record, so every project with a map is version 2 once it has
 opened and been redrawn, and so is any project you change. Going back to
 0.1.0 then shows it marked read-only in the Library: 0.1.0 cannot change or
 export it there, and can still delete it. A project with no map that you
-open without changing anything, and one whose redraw failed, is still
+open without changing anything, and one whose redraw failed, are still
 version 1.
 
 **The warnings come back.** The new installer is not signed either, so macOS
