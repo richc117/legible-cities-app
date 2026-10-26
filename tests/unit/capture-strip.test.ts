@@ -175,7 +175,7 @@ describe('the rows', () => {
 })
 
 describe('the crop', () => {
-  it('is the frame a shot without the band would have been, byte for byte, for every filter', () => {
+  it('is the frame a shot without the band would have been, pixel for pixel, for every filter', () => {
     // Mutations: the header's height left as it was; a row of the band
     // kept; the filtered bytes decoded and filtered again some other way.
     for (const filter of [
@@ -194,6 +194,8 @@ describe('the crop', () => {
         row: (y) => stage[y],
         filter,
       })
+      // Read strictly, its image data exactly the rows its header says.
+      expect(readPng(kept).height).toBe(keep)
       const theirs = readPngRows(kept)
       expect(theirs.width).toBe(101)
       expect(theirs.height).toBe(keep)
