@@ -580,7 +580,7 @@ export default function NewProjectSheet({
                 disabled={adding || busy || picking}
                 aria-describedby={`${field('file')}-name ${field('file')}-message`}
               >
-                <Icon name="layers" />
+                <Icon name="zip" />
                 Choose a zip
               </Button>
               <span id={`${field('file')}-name`} className="hint" aria-live="polite">

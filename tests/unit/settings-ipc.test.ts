@@ -125,6 +125,8 @@ async function harness(
     logsFolder?: (root: string) => string
     /** The settings file's rename and its retry, for a file the platform holds. */
     replace?: ReplaceOptions
+    /** The version the app reports, where the default would be one a constant could match. */
+    appVersion?: string
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'legible-cities-settings-ipc-'))
@@ -177,7 +179,10 @@ async function harness(
     bundleRoots: [bundle],
     guards: { userData, homeDir: over.homeDir?.(root) ?? root },
     diagnostics: {
-      about: () => ABOUT,
+      about: () => ({
+        ...ABOUT,
+        app: { ...ABOUT.app, version: over.appVersion ?? ABOUT.app.version },
+      }),
       engineInfo: over.engineInfo ?? (async () => ({ engine: '0.0.0-test', protocol: 1 })),
       firstRun: () => FIRST_RUN,
       flushLogs: over.flushLogs ?? (async () => undefined),
@@ -266,13 +271,19 @@ describe('the handlers', () => {
     }
   })
 
-  it('answer the view with both folders, where each came from, and the theme', async () => {
+  it("answer the view with both folders, where each came from, the theme and the app's version", async () => {
     const h = await harness()
     expect(await h.call(CHANNELS.settingsRead)).toEqual({
+      appVersion: '0.0.0',
       theme: 'system',
       engine: { path: h.engineHome, source: 'default', pending: null, locked: false },
       export: { path: h.exportFolder, source: 'default', pending: null, locked: false },
     })
+  })
+
+  it('answer the version the main process reports, whatever it is, and not a constant', async () => {
+    const h = await harness({ appVersion: '3.14.1' })
+    expect(await h.call(CHANNELS.settingsRead)).toMatchObject({ appVersion: '3.14.1' })
   })
 })
 

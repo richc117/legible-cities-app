@@ -217,6 +217,7 @@ export class SettingsService {
     // session move with it.
     const nextStart = this.locked('engine') ? engineHome : (stored.engineFolder ?? defaults.engine)
     return {
+      appVersion: this.#deps.diagnostics.about().app.version,
       theme: stored.theme,
       engine: {
         path: engineHome,

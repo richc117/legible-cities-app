@@ -737,6 +737,15 @@ button:is(.cell-head):not([icon]):has(svg:first-child) {
   margin: 0 0 var(--space-4-3);
 }
 
+/* What stands directly in a section - the engine folder's size, a toolbar,
+   the sentence under it - keeps the rows' own gap, --space-4-3, so no
+   control sits flush against the sentence above or below it (issue 544).
+   A folder row's own toolbar is inside `.setting` and keeps its rule. */
+.settings section > .toolbar,
+.settings section > .message {
+  margin: 0 0 var(--space-4-3);
+}
+
 .setting {
   display: grid;
   gap: var(--space-2-2);

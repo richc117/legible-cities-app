@@ -181,6 +181,13 @@ const FEATURES = {
     commit: '8ac7b8ac7094f30a3a2280bd1443f4514fb60247',
     landed: 'pull request 243 (A5.6-06)',
   },
+  // Settings' Versions list names the app itself first (issue 544). The
+  // commit is the lane's own and is moved to the one on main when it merges.
+  appVersionRow: {
+    name: "the app's own row under Versions",
+    commit: '942858c8db55f0ae3ca95c2390fc128b42232bb1',
+    landed: 'pull request for issue 544',
+  },
 } satisfies Record<string, Feature>
 
 /** The release under test, by its tag; the workflow names it. */
@@ -1003,7 +1010,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       const versions = window.getByRole('region', { name: 'Versions' })
       await log.soft('Versions', async () => {
-        await expect(versions.locator('dl')).toBeVisible({ timeout: SHORT_MS })
+        // The list is there from the first frame with the app's own version; the
+        // engine's rows follow once it has answered (issue 544).
+        await expect(definition(versions, 'Engine')).toBeVisible({ timeout: SHORT_MS })
         const read = async (term: string): Promise<string> => text(definition(versions, term))
         const six = {
           Engine: await read('Engine'),
@@ -1029,6 +1038,35 @@ test('a release, installed, through docs/acceptance.md', async () => {
           !inside(six.ffmpeg, session.resources)
         ) {
           wrong.push(`ffmpeg is "${six.ffmpeg}", not the bundled one`)
+        }
+        // The app's own row comes last, so a release without it (or a read
+        // that fails) cannot take the engine's rows with it. It is read only
+        // when the tag is known to contain the change: a tag older than it
+        // has no such row, and git answering "cannot tell" (a commit this
+        // clone lacks, a shallow clone) is not a yes. It must then be the
+        // tag's version without any -rc.<N>, which is package.json's.
+        const contains = TAG === '' ? null : tagContains(FEATURES.appVersionRow)
+        if (TAG === '') {
+          log.notAutomated(
+            'whether the App row is the release under test: no tag was named (LEGIBLE_ACCEPTANCE_TAG).',
+          )
+        } else if (contains !== true) {
+          log.notAutomated(
+            contains === false
+              ? `the app's own version under Versions: ${TAG} was tagged before ${FEATURES.appVersionRow.landed}, so it has no such row.`
+              : `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.appVersionRow.commit.slice(0, 7)} (${FEATURES.appVersionRow.landed}): the commit is not in this clone, or the clone is shallow.`,
+          )
+        } else {
+          try {
+            const app = await read('App')
+            log.note(`App: ${app}`)
+            const expected = TAG.slice(1).replace(/-rc\.\d+$/, '')
+            if (app !== expected) wrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
+          } catch (error) {
+            wrong.push(
+              `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
         }
         if (wrong.length > 0) throw new Error(wrong.join('; '))
       })

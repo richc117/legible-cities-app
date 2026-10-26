@@ -3,7 +3,7 @@
 // notice travels with them.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ICON_NAMES, iconMarkup } from '../../src/renderer/src/icons/Icon'
 
@@ -18,6 +18,34 @@ describe('icons', () => {
     expect(iconMarkup('mark', 16)).toMatch(/^<svg/)
     expect(iconMarkup('play', 16, true)).toMatch(/^<svg/)
     expect(() => iconMarkup('train', 16, true)).toThrow('no icon file')
+  })
+  // One glyph, one meaning (issue 544): the header's Jobs toggle wears
+  // `layers`, so a folder control wears its own. Which controls wear which
+  // is read from the rendered Settings screen in settings-screen.test.tsx.
+  it('give a folder a glyph of its own, not the one the Jobs toggle wears', () => {
+    expect(iconMarkup('folder', 16)).not.toBe(iconMarkup('layers', 16))
+    expect(iconMarkup('folder', 24)).not.toBe(iconMarkup('layers', 24))
+    expect(iconMarkup('folder', 16)).not.toBe(iconMarkup('info', 16))
+  })
+  // The Jobs toggle in the header is the one place `layers` is drawn, so the
+  // glyph means one thing wherever it is seen (issue 544).
+  it('draw the layers glyph in exactly one place: the Jobs toggle', () => {
+    const root = resolve(__dirname, '../../src/renderer/src')
+    const found: string[] = []
+    const walk = (folder: string): void => {
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        const path = join(folder, entry.name)
+        if (entry.isDirectory()) walk(path)
+        else if (/\.tsx?$/.test(entry.name)) {
+          const uses = readFileSync(path, 'utf8').match(/['"]layers['"]/g) ?? []
+          found.push(...uses.map(() => relative(root, path).split(sep).join('/')))
+        }
+      }
+    }
+    walk(root)
+    // Icon.tsx names it in the list of names; App.tsx draws it for Jobs.
+    expect(found.sort()).toEqual(['App.tsx', 'icons/Icon.tsx'])
+    expect(readFileSync(join(root, 'App.tsx'), 'utf8')).toMatch(/<Icon name="layers" \/>\s*Jobs/)
   })
   it('are plain SVG files with no script and currentColor only', () => {
     const files = readdirSync(join(dir, 'phosphor')).filter((f) => f.endsWith('.svg'))

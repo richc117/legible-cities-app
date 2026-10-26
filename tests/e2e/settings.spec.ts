@@ -152,6 +152,32 @@ test('shows the folders, the size and the engine’s own versions', async () => 
   })
 })
 
+test('names the app’s own version, and files the logs and diagnostics under a heading of their own', async () => {
+  const appVersion = (
+    JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as { version: string }
+  ).version
+  await withApp(profile(), async (page) => {
+    await open(page)
+    // The app's version is the main process's own answer, the first row
+    // under Versions; the engine's rows come after it (issue 544).
+    const versions = page.getByRole('region', { name: 'Versions' })
+    await expect(definition(page, 'App')).toHaveText(appVersion)
+    await expect(versions.locator('dt').first()).toHaveText('App')
+
+    // The logs and Copy diagnostics are a section with its own heading, and
+    // Folders ends after the export folder.
+    await expect(
+      page.getByRole('heading', { level: 2, name: 'Logs and diagnostics' }),
+    ).toBeVisible()
+    const logs = page.getByRole('region', { name: 'Logs and diagnostics' })
+    await expect(logs.getByRole('button', { name: 'Open logs folder' })).toBeVisible()
+    await expect(logs.getByRole('button', { name: 'Copy diagnostics' })).toBeVisible()
+    const folders = page.getByRole('region', { name: 'Folders' })
+    await expect(folders.getByRole('button', { name: 'Copy diagnostics' })).toHaveCount(0)
+    await expect(folders.getByRole('button', { name: 'Open logs folder' })).toHaveCount(0)
+  })
+})
+
 test('keeps the theme and a chosen export folder across a relaunch', async () => {
   test.slow()
   const userData = profile()

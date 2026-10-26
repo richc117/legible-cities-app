@@ -22,6 +22,8 @@ headers; `<name>-fill.svg` is the **fill** weight for a toggled state.
 | back, forward               | arrow-left, arrow-right              |
 | up, down                    | arrow-up, arrow-down                 |
 | grip                        | dots-six-vertical                    |
+| folder                      | folder                               |
+| zip                         | file-zip                             |
 | spinner                     | spinner-gap                          |
 | chevron                     | caret-right                          |
 

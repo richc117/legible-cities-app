@@ -1421,8 +1421,9 @@ a table).
   "chosen here" and a button "Use the default export folder"; press it and
   listen for focus on "Choose the export folder" (D6). The engine folder's
   size is a status: "Measuring…" and then the size.
-- **Logs, Copy diagnostics.** **Open logs folder** opens the platform's file
-  browser. **Copy diagnostics** is read with its description "Copies what a
+- **Logs, Copy diagnostics.** Under the heading "Logs and diagnostics"
+  (issue 544), after "Folders": **Open logs folder** opens the platform's
+  file browser. **Copy diagnostics** is read with its description "Copies what a
   bug report needs: …"; press it and listen for "The diagnostics are on the
   clipboard, with your home folder written as ~. Nothing was sent
   anywhere."
@@ -1430,7 +1431,9 @@ a table).
   "Follow the system", "Night" and "Parchment" - the interface's own two,
   not the engine's, which a project's map switch still calls Warm dark and
   Sepia. Change it and listen for the new value; change it back.
-- **Versions.** A description list under "Versions": Engine, Protocol,
+- **Versions.** A description list under "Versions": App first (it is there
+  whether or not the engine is running, and then a status says why the
+  rest are not; issue 544), then Engine, Protocol,
   Python, LOOM backend, LOOM commit, ffmpeg, none read as empty.
 - **Reset engine data and its confirmation.** Last of all in the sitting.
   With a run going, listen for **Reset engine data** dimmed and read with
