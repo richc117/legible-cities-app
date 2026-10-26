@@ -15,6 +15,9 @@ export interface EnginePin {
   protocol: number
 }
 
+/** The stopped reason the supervisor sets for the app's own quit, which is not a failure. */
+export const QUITTING_REASON = 'The app is quitting.'
+
 export type EngineState =
   | { state: 'starting'; attempt: number }
   | { state: 'ready'; version: string; protocol: number }

@@ -31,7 +31,7 @@ import { samplePicture } from '../../src/renderer/src/samplePictures'
 import { summarise } from '../../src/main/record/helpers'
 import { type DrawnFrom, type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
-import type { EngineState } from '../../src/shared/engine'
+import { QUITTING_REASON, type EngineState } from '../../src/shared/engine'
 import type { FeedRecord } from '../../src/shared/protocol'
 
 // The screen's run helpers reach for the bridge when they are made. A
@@ -202,6 +202,12 @@ describe('what the samples region says when it has no presets to draw', () => {
     expect(samplesSentence(stopped, 'unread')).toContain(` ${stopped.reason} `)
     expect(samplesSentence(stopped, 'unread')).toContain('It failed 3 times in a row.')
     expect(samplesSentence(stopped, 'unread')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
+  })
+
+  it('does not report the app’s own quit as a failure', () => {
+    const quitting: EngineState = { state: 'stopped', reason: QUITTING_REASON }
+    expect(samplesSentence(quitting, 'unread')).toBe(SAMPLES_AWAY)
+    expect(samplesSentence(quitting, 'listed')).toBe(SAMPLES_AWAY)
   })
 
   it('draws that sentence in the region', () => {

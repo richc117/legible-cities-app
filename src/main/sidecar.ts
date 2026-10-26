@@ -11,6 +11,7 @@ import {
   describeState,
   EngineError,
   ERROR_CODES,
+  QUITTING_REASON,
   type EnginePin,
   type EngineState,
 } from '../shared/engine'
@@ -669,7 +670,7 @@ export class Sidecar {
     }
     this.clearStable()
     if (this._state.state !== 'unavailable' && this._state.state !== 'stopped') {
-      this.setState({ state: 'stopped', reason: 'The app is quitting.' })
+      this.setState({ state: 'stopped', reason: QUITTING_REASON })
     }
     // A failure or a mismatch may be ending a child right now: that is the
     // same work, so wait for it rather than quit past it.

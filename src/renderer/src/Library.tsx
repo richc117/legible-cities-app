@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
-import { ERROR_CODES, isEngineErrorShape, type EngineState } from '../../shared/engine'
+import {
+  ERROR_CODES,
+  isEngineErrorShape,
+  QUITTING_REASON,
+  type EngineState,
+} from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
 import { uniqueName } from './record'
 import Card from './Card'
@@ -223,7 +228,8 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  */
 export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
   if (engine?.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
-  if (engine?.state === 'stopped')
+  // The app's own quit stops the engine too, and is no failure to report.
+  if (engine?.state === 'stopped' && engine.reason !== QUITTING_REASON)
     return `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`
   // Ended at the handshake and never restarted: it has no reason of its own,
   // the dialog says which versions, and the status line the sentence.
