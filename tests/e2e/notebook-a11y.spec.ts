@@ -468,10 +468,12 @@ test("the project with the layout tuning and one line's options open", async () 
 
 // Mutations the coordinator runs this under, each of which must turn it red:
 // - `scroll-padding-top` deleted from `html` in app.css (or the token
-//   `--header-clearance` made 0): on main without the fix 16 of 250 stops
-//   were wholly under the header, among them a line's colour chip, the help
-//   buttons "What distinct paths means" and "What trips means", and cell
-//   01's heading; the failure names each and the header's box.
+//   `--header-clearance` made 0): on main without the fix, with these cells
+//   open at 1024x768, the walk read 108 stops and named, among others,
+//   `input "A"`, `button "Choose the colour of line A"` and `select
+//   "Interchange marker"`, each wholly under `header.app-header`. (The issue
+//   counted 16 of 250 stops, with a different set of cells open; the
+//   failure names each stop and the header's box.)
 // - `backBegin` in `tests/support/a11y.ts` not focusing the last control, or
 //   the walk pressing 'Tab' for 'Shift+Tab': it comes to no first control,
 //   or reads too few stops, and says so.
@@ -505,6 +507,16 @@ test('Shift+Tab up the notebook never leaves focus wholly under the sticky heade
         description: `got ${await page.evaluate(() => `${window.innerWidth}x${window.innerHeight}`)}`,
       })
     }
+
+    // That the page scrolls at all, said before the walk and apart from it,
+    // as `rail.spec.ts` says it: in a window too tall for the screen to
+    // scroll, nothing is ever scrolled to and the walk below would find
+    // nothing to be under the header. A window that could not be set to the
+    // size asked for fails here, by name, and not green.
+    expect(
+      await page.evaluate(() => document.documentElement.scrollHeight - window.innerHeight),
+      'the page scrolls, so a walk up it has focus to scroll to',
+    ).toBeGreaterThan(0)
 
     await expectNoFocusUnderPinned(page, 'the project, cells 02, 04, 05 and 06 open')
   })

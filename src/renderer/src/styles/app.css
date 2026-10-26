@@ -279,8 +279,10 @@ body {
    order until it holds focus, then a link-styled control over the top edge
    of the map. Absolute with no offsets, so it keeps its place just above
    the viewer and moves nothing when it appears or goes; scrolled clear of
-   the sticky header by the page's own `scroll-padding-top` (the `html` rule
-   above), which it once did with a margin of its own. No transition, at any motion setting. The ring is the
+   the sticky header at the top by the page's own `scroll-padding-top` (the
+   `html` rule above), and by a margin of its own at the foot, which it
+   always had and the page's padding does not give (it has none at the
+   foot). No transition, at any motion setting. The ring is the
    one every focusable element has, but it lies over the engine's page, which
    is drawn in the project's theme and not the interface's (A4-03): a halo of
    --surface under it, as wide as the offset and twice the ring, gives the
@@ -288,6 +290,7 @@ body {
 .skip-link {
   position: absolute;
   z-index: var(--layer-raised);
+  scroll-margin-bottom: var(--header-clearance);
   box-sizing: border-box;
   min-height: var(--target-min);
   padding: var(--space-4-1) var(--space-4-2);

@@ -19,6 +19,16 @@ import type { CellId } from '../runGraph'
 // and scrolls away with everything else, so the clearance is the header's
 // foot and nothing more, and issues 213 and 240 are not reachable.
 //
+// A step lands a cell at the header's foot (`rail.spec.ts` asserts it, to
+// two pixels), and the browser's own scrolls for focus keep a control
+// `--header-clearance` below the window's top, deeper by the room beyond the
+// header (issue 536). They are two different promises on purpose: this one
+// puts the cell as high as it can go, the other keeps a control that was
+// scrolled to out from under the header. The room is 16px and the heading's
+// own row is taller, so the first control after it is expected to sit below
+// the mark and a Tab after a press to ask the browser for no scroll; that is
+// reasoned from the geometry and has not been measured.
+//
 // It is still measured at the moment of the press rather than read from
 // `--header-height`: how the header's height and its one-pixel rule divide
 // between its box and its border is not something a stylesheet can say.

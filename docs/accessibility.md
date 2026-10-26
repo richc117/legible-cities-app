@@ -191,7 +191,7 @@ The two reader columns are a person's, recorded per run in
 | The map's frame, in the column after cell 02 (ADR-046) | the walk steps over the frame rather than through it (below) | pass (the frame's title: "`<project>`, animated") | engine's (F1) | engine's (F1) | engine's (F1) | engine's (F1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | The map's block before there is a map | swept (a link-styled button "Lay it out in cell 02." that moves focus to cell 02's heading; none on a read-only project) | pass (a `role="status"` region, always in the document, so "The map is drawn." is announced when it arrives) | swept | swept | pass (`--text-muted` on `--surface-sunken`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Cell 06's preview frame, while the cell is open (ADR-046) | takes no Tab stop: the engine's planned page has no controls (measured with a page the pinned engine wrote: none; `notebook-a11y.spec.ts` walks it and asserts fewer than five and that focus comes out), so it has no skip of its own | pass (the frame's title: "`<project>`, as the export will frame it"; a caption with the ratio and size) | n/a | engine's (F1) | engine's (F1) | engine's (F1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| A control scrolled behind the band | the band is gone (#213): since ADR-046 the map is in the column's flow and only the header is pinned. **The header itself could hide focus going backwards** (#536, found 25 Oct 2026: 16 of 250 stops wholly under it with Shift+Tab from the foot of the page, at 1024 wide), and is fixed 26 Oct 2026 by `scroll-padding-top: var(--header-clearance)` on `html` (the header's height and `--space-4-4`); `notebook-a11y.spec.ts` walks the notebook backwards in both themes and fails a stop wholly under a sticky or fixed box (WCAG 2.4.11) | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| A control scrolled behind the band | the band is gone (#213): since ADR-046 the map is in the column's flow and only the header is pinned. **The header itself could hide focus going backwards** (#536, found 25 Oct 2026 with Shift+Tab from the foot of the page at 1024 wide: the issue counted 16 of 250 stops wholly under it, with a different set of cells open; the sweep's own setup, cells 02, 04, 05 and 06 open, read 108 stops and named an input, a colour chip and a select), and is fixed 26 Oct 2026 by `scroll-padding-top: var(--header-clearance)` on `html` (the header's height and `--space-4-4`); `notebook-a11y.spec.ts` walks the notebook backwards in both themes and fails a stop wholly under a sticky or fixed box (WCAG 2.4.11) | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
 
 ### Project: the cells' rows
 
@@ -351,16 +351,23 @@ which it is.
 - **Occlusion by the header, going backwards** (#536, WCAG 2.4.11 Focus Not
   Obscured (Minimum)): reachable until 26 Oct 2026. The header is sticky and
   nothing set a scroll padding, so Shift+Tab to a control above the window
-  scrolled it to the window's top edge, under the header: 16 of 250 stops, 25
-  Oct 2026, among them a line's colour chip, the help buttons "What distinct
-  paths means" and "What trips means" and cell 01's heading. Every sweep
+  scrolled it to the window's top edge, under the header. The issue counted 16
+  of 250 stops on 25 Oct 2026 (a line's colour chip, the help buttons "What
+  distinct paths means" and "What trips means", cell 01's heading), with a
+  set of cells open that is not the sweep's; the sweep, with cells 02, 04, 05
+  and 06 open at 1024x768, read 108 stops and named `input "A"`, `button
+  "Choose the colour of line A"` and `select "Interchange marker"`. Every sweep
   tabbed forwards, where the browser scrolls a control to the foot of the
   window, which is why none saw it. Fixed by `scroll-padding-top` on `html`
   from `--header-clearance`. The notebook sweep now also walks backwards from
   the foot of the page (`expectNoFocusUnderPinned`, `tests/support/a11y.ts`),
   in both themes at 1024x768 with cells 02, 04, 05 and 06 open, and fails any
-  stop whose control is wholly under a sticky or fixed box, naming both
-  (`tests/support/obscured.ts`). What it still does not see: a box that is
+  stop whose control is wholly under a sticky or fixed box, or wholly outside
+  the window, naming both (`tests/support/obscured.ts`). What it still does
+  not see: focus the app moves itself with `preventScroll`, which the
+  browser's scroll padding does not govern and the walk, which only presses
+  Shift+Tab, does not make (`focusHandback.ts`, `keepFocusInCell` in
+  `olderPage.ts`, `landOnCell` in `Rail.tsx`, `FirstRunDialog.tsx`); a box that is
   neither sticky nor fixed but covers a control (a top-layer popover, which
   is closed by the walk), a control only partly covered (2.4.11 asks that a
   part be visible), the screens other than a project's notebook, and

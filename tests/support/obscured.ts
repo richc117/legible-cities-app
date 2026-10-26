@@ -33,6 +33,8 @@ export interface StopCover {
   /** What the control is called, as the forward walk names it. */
   control: string
   rect: Rect
+  /** The window's size, so that a stop wholly outside it is not read as clear. */
+  window: { width: number; height: number }
   /**
    * The pinned boxes that paint over the control's centre and are not
    * ancestors of it: a control inside the fixed rail is not covered by it.
@@ -61,15 +63,26 @@ export function boxWords(r: Rect): string {
 }
 
 /**
- * The stops whose control is wholly under one pinned box, each as one line
- * naming the stop, where it was, and the box. A control with no area is not
- * judged: it has nothing to cover.
+ * The stops a person cannot see, each as one line: whose control is wholly
+ * under one pinned box (naming the stop, where it was, and the box), or
+ * wholly outside the window, which no box covers and which is no better.
+ * Focus puts a control in the window when it takes it, so a stop outside
+ * the window means the walk read before the scroll landed or the page did
+ * not scroll to it. A control with no area is not judged: it has nothing to
+ * cover.
  */
 export function coveredStops(stops: readonly StopCover[]): string[] {
   const found: string[] = []
   for (const stop of stops) {
     const { rect } = stop
     if (rect.right <= rect.left || rect.bottom <= rect.top) continue
+    const { width, height } = stop.window
+    if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= width || rect.top >= height) {
+      found.push(
+        `${stop.control} at ${boxWords(rect)} is wholly outside the window, ${width}x${height}`,
+      )
+      continue
+    }
     const over = stop.over.find((box) => encloses(box.rect, rect))
     if (over !== undefined)
       found.push(

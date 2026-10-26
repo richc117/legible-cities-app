@@ -192,7 +192,7 @@ export interface BackAnswer {
   state: 'none' | 'frame' | 'stop' | 'repeat' | 'same'
   /** What holds focus, for the trace. */
   at: string
-  /** The stop's box and the pinned boxes painted over it; null unless it is a stop. */
+  /** The stop's box, the window and the pinned boxes painted over it; null unless it is a stop. */
   cover: StopCover | null
   /** The control is the first the walk wants: the walk has come to the top. */
   top: boolean
@@ -209,6 +209,8 @@ export type Probe = {
   backBegin(): number
   backRead(): Promise<BackAnswer>
   backOut(): string | null
+  /** How many distinct controls the walk has read, and the wanted ones it has not. */
+  backUnread(): { read: number; unread: string[] }
   begin(): number
   step(): StepAnswer
   /**
@@ -848,8 +850,19 @@ export function installProbe(): void {
       return {
         state: 'stop',
         at,
-        cover: { control: describe(control), rect, over },
+        cover: {
+          control: describe(control),
+          rect,
+          window: { width: innerWidth, height: innerHeight },
+          over,
+        },
         top: backWant.indexOf(control) === 0,
+      }
+    },
+    backUnread() {
+      return {
+        read: backSeen.size,
+        unread: backWant.filter((el) => el.isConnected && !backSeen.has(el)).map(describe),
       }
     },
     backOut() {
@@ -1482,6 +1495,8 @@ async function walkBackwards(page: Page, where: string): Promise<void> {
       page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backRead()),
     out: (): Promise<string | null> =>
       page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backOut()),
+    unread: (): Promise<{ read: number; unread: string[] }> =>
+      page.evaluate(() => (window as unknown as { __a11y: Probe }).__a11y.backUnread()),
   }
   await page.evaluate(installProbe)
   // The pointer out of the way, as `expectTabWalk` has it, so that no
@@ -1547,14 +1562,28 @@ async function walkBackwards(page: Page, where: string): Promise<void> {
     `${where}: the backwards walk did not come to the first control (${came}); ${story}`,
   ).toBe(true)
   // Most of the screen was read: a walk that went from the foot to the top
-  // in a few presses would have judged nothing.
+  // in a few presses would have judged nothing. Counted in distinct controls
+  // (`read`, from the probe's own set), not in readings, and the controls
+  // wanted and never read are named, whether the floor holds or not, so the
+  // number can be tightened to what is known. Why it is not "all": the
+  // wanted list is taken once, before the walk, and a control can leave the
+  // document while the walk goes (a panel that closes as focus moves on) or
+  // be one Tab never reaches in order (a radio that is not its group's stop
+  // is already excluded; the rest has not been seen on a run). 0.8 is a
+  // guess at that, to be replaced by the set the first runs print.
+  const { read, unread } = await probe.unread()
+  if (unread.length > 0)
+    test.info().annotations.push({
+      type: `backwards walk, ${where}: wanted and not read`,
+      description: unread.join('; '),
+    })
   expect(
-    stops.length,
-    `${where}: the backwards walk read ${stops.length} stops of ${wanted} wanted; ${story}`,
+    read,
+    `${where}: the backwards walk read ${read} distinct controls of ${wanted} wanted; not read: ${unread.join('; ') || 'none'}; ${story}`,
   ).toBeGreaterThanOrEqual(Math.floor(wanted * 0.8))
   expect(
     coveredStops(stops),
-    `${where}: focus stops wholly under a sticky or fixed box, going backwards (${stops.length} stops read)`,
+    `${where}: focus stops wholly under a sticky or fixed box, going backwards (${stops.length} stops read of ${wanted} wanted)`,
   ).toEqual([])
 }
 
