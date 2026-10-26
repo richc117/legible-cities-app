@@ -194,6 +194,40 @@ describe('shutDown', () => {
     expect(order.slice(-3)).toEqual(['error: stop failed: no answer', 'finished', 'quit'])
   })
 
+  it('reaches the stop and the final quit when the logger throws, or the failure cannot be read', async () => {
+    const { order, gate, deps } = setup({ throwing: ['the export'], stopFails: true })
+    gate.beforeQuit({ preventDefault: () => undefined }, true)
+    shutDown({
+      ...deps,
+      error: () => {
+        throw new Error('the log is gone')
+      },
+    })
+    await settle()
+    expect(order).toEqual([
+      'the export',
+      'the capture',
+      'the first-run check',
+      'stop',
+      'finished',
+      'quit',
+    ])
+
+    // A thrown value whose string form throws.
+    const unreadable = {
+      toString() {
+        throw new Error('no string')
+      },
+    }
+    const again = setup()
+    again.deps.aborts[0].run = () => {
+      throw unreadable
+    }
+    shutDown(again.deps)
+    await settle()
+    expect(again.order).toEqual(['the capture', 'the first-run check', 'stop', 'finished', 'quit'])
+  })
+
   it('does nothing past the aborts when there is no engine', async () => {
     const { order, deps } = setup({ noEngine: true })
     shutDown(deps)

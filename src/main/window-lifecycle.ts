@@ -103,6 +103,19 @@ export interface ShutdownDeps {
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
 /**
+ * A line that cannot throw: the message is built inside the guard (a thrown
+ * object whose string form throws) and so is the logger. Nothing here may
+ * stop the quit, which the gate is waiting on.
+ */
+function sayQuietly(error: (message: string) => void, message: () => string): void {
+  try {
+    error(message())
+  } catch {
+    // Nowhere left to say it.
+  }
+}
+
+/**
  * The first pass of a quit, after the gate has cancelled it: end what runs,
  * stop the engine, then let go. The gate keeps cancelling until `finished`,
  * so nothing here may throw past the stop: each abort has its own try, a
@@ -115,7 +128,7 @@ export function shutDown(deps: ShutdownDeps): void {
     try {
       abort.run()
     } catch (error) {
-      deps.error(`${abort.name} did not end on quit: ${reason(error)}`)
+      sayQuietly(deps.error, () => `${abort.name} did not end on quit: ${reason(error)}`)
     }
   }
   if (deps.stop === null) return
@@ -126,7 +139,7 @@ export function shutDown(deps: ShutdownDeps): void {
     stopping = Promise.reject(error)
   }
   void stopping
-    .catch((error: unknown) => deps.error(`stop failed: ${reason(error)}`))
+    .catch((error: unknown) => sayQuietly(deps.error, () => `stop failed: ${reason(error)}`))
     .finally(() => {
       deps.finished()
       deps.quit()
