@@ -10,24 +10,27 @@ Everything below is free for a public repository.
 
 ## Code security
 
-- [ ] **Secret scanning** on. It watches what has already been pushed, which
-      is the case the local hooks cannot cover.
-- [ ] **Push protection** on. It rejects a push containing a recognised
-      secret before it lands, so a bypassed hook is still stopped.
-- [ ] **Private vulnerability reporting** on. `SECURITY.md` and the issue
-      chooser both send people there; with it off, those links go nowhere.
-- [ ] **Dependabot alerts** on, and **Dependabot security updates** on.
-      `.github/dependabot.yml` handles version updates.
+- [x] **Secret scanning** on (checked 25 Oct 2026). It watches what has
+      already been pushed, which is the case the local hooks cannot cover.
+- [x] **Push protection** on (checked 25 Oct 2026). It rejects a push
+      containing a recognised secret before it lands, so a bypassed hook is
+      still stopped.
+- [x] **Private vulnerability reporting** on (checked 25 Oct 2026).
+      `SECURITY.md` and the issue chooser both send people there; with it off,
+      those links go nowhere.
+- [x] **Dependabot alerts** on, and **Dependabot security updates** on
+      (checked 25 Oct 2026). `.github/dependabot.yml` handles version updates.
 
 ## Actions
 
-- [ ] Workflow permissions: **read repository contents**. A job that needs
-      more asks for it in its own `permissions:` block.
-- [ ] Do not allow GitHub Actions to create or approve pull requests.
+- [x] Workflow permissions: **read repository contents** (checked 25 Oct 2026).
+      A job that needs more asks for it in its own `permissions:` block.
+- [x] Do not allow GitHub Actions to create or approve pull requests
+      (checked 25 Oct 2026).
 - [x] **Approval for running workflows from outside collaborators:
       "Require approval for first-time contributors"** (Settings, Actions,
       General, "Fork pull request workflows from outside collaborators"; the
-      API calls it `first_time_contributors`). Read on 2026-10-24. The
+      API calls it `first_time_contributors`) (checked 24 Oct 2026). The
       repository is open to outside contributors, and a workflow from a
       stranger's fork would otherwise run on the maintainer's runners
       unreviewed. With this setting a first pull request from a fork has its
