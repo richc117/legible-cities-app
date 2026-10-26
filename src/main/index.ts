@@ -41,7 +41,7 @@ import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
-import { onActivate, onAppWindowClosed } from './window-lifecycle'
+import { onActivate, onAppWindowClosed, quitGate } from './window-lifecycle'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
 import { engineWorkRefusal, Sidecar } from './sidecar'
@@ -181,7 +181,7 @@ let firstRun: FirstRunCheck | null = null
 // Held at this scope because the handlers registered before it exists ask
 // it whether a reset is under way; it is assigned once, during startup.
 let settings: SettingsService | null = null
-let quitting = false
+const quit = quitGate()
 
 /** Why nothing may write under the engine's home right now, or null. */
 const resetInProgress = (): string | null => settings?.refuseWhileResetting() ?? null
@@ -266,12 +266,12 @@ function createWindow(): BrowserWindow {
   window.on('page-title-updated', (event) => event.preventDefault())
   // Windows and Linux quit when the app's own window closes, whatever else
   // is open - an export's capture window, say - and the quit cancels the
-  // export (issue 537). Not once a quit is under way: a second app.quit()
-  // would pass before-quit's second pass before the engine had stopped.
+  // export (issue 537). `window-all-closed` asks again behind it; the quit
+  // gate cancels that pass while the engine stops.
   const quitWithTheWindow = onAppWindowClosed({
     platform: process.platform,
     quit: () => {
-      if (!quitting) app.quit()
+      if (!quit.quitting) app.quit()
     },
   })
   window.on('closed', () => {
@@ -821,8 +821,7 @@ if (!hasLock) {
   // then let Electron go (specs/004, FR-014). The first pass prevents the
   // default and comes back through here with the flag set.
   app.on('before-quit', (event) => {
-    if (quitting) return
-    quitting = true
+    if (quit.beforeQuit(event, sidecar !== null) === 'later') return
     // An export in flight is cancelled, and its capture window destroyed,
     // before the engine is asked to stop.
     exporter?.abortAll()
@@ -830,10 +829,12 @@ if (!hasLock) {
     // The first-run check's children, if any are still running, end now.
     firstRun?.abort()
     if (sidecar === null) return
-    event.preventDefault()
     const stopping = sidecar.stop()
     stopping.catch((error: Error) => log.error('engine', `stop failed: ${error.message}`))
-    void stopping.finally(() => app.quit())
+    void stopping.finally(() => {
+      quit.finished()
+      app.quit()
+    })
   })
 
   // The files close last. This runs only once the quit above has let

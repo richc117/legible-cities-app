@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import {
   _electron as electron,
   expect,
@@ -65,7 +65,7 @@ const framesLeft = (h: Home): string[] => {
   return existsSync(dir) ? readdirSync(dir).filter((name) => name !== '.legible-frames') : []
 }
 
-function launch(h: Home): Promise<ElectronApplication> {
+function launch(h: Home, extra: Record<string, string> = {}): Promise<ElectronApplication> {
   return electron.launch({
     args: ['.'],
     cwd: repoRoot,
@@ -75,6 +75,7 @@ function launch(h: Home): Promise<ElectronApplication> {
       LEGIBLE_EXPORT_FOLDER: h.exportFolder,
       LEGIBLE_ENGINE_PYTHON: PYTHON as string,
       PYTHONPATH: FAKE_ENGINE,
+      ...extra,
     } as Record<string, string>,
     timeout: 30_000,
   })
@@ -442,8 +443,13 @@ function closeAppWindow(app: ElectronApplication): Promise<void> {
 
 test('closing the window during an export quits at once, on Windows and Linux, and leaves nothing', async () => {
   test.skip(process.platform === 'darwin', 'macOS keeps running with no window')
-  const h = home({ export_seconds: 30 })
-  const app = await launch(h)
+  // Long enough that the export is certainly still running when the window
+  // closes, whatever the machine.
+  const h = home({ export_seconds: 120 })
+  // A profile of this test's own, so its logs are the only ones read below
+  // (LEGIBLE_USER_DATA moves the logs with it, src/main/index.ts).
+  const userData = join(dirname(h.engineHome), 'profile')
+  const app = await launch(h, { LEGIBLE_USER_DATA: userData })
   // Taken now: the application object is disposed once the process is gone.
   const child = app.process()
   try {
@@ -457,7 +463,7 @@ test('closing the window during an export quits at once, on Windows and Linux, a
     ).toBeGreaterThan(1)
 
     await closeAppWindow(app)
-    // Well inside the capture's 30 seconds: the quit is the window's, not
+    // Well inside the capture's 120 seconds: the quit is the window's, not
     // the capture's end. A deadline, and the process's own exit.
     await expect
       .poll(() => child.exitCode !== null || child.signalCode !== null, {
@@ -468,6 +474,12 @@ test('closing the window during an export quits at once, on Windows and Linux, a
     expect(existsSync(deliverable(h))).toBe(false)
     expect(existsSync(deliverable(h) + '.part')).toBe(false)
     expect(framesLeft(h), 'no frames are left').toEqual([])
+    // The supervisor stopped the engine before the app let go: its own line,
+    // written only when the stop ran to its end (FR-014). A close that
+    // quit twice used to leave with the stop half done and no such line.
+    const engineLog = join(userData, 'logs', 'engine.log')
+    expect(existsSync(engineLog), 'the engine log was written').toBe(true)
+    expect(readFileSync(engineLog, 'utf8')).toMatch(/ended on (request \(quit\)|terminate)/)
   } finally {
     await app.close().catch(() => undefined)
   }
@@ -514,6 +526,7 @@ test('closing the window during an export on macOS keeps the export going, and t
         message: 'the export finished with no window of the app open for a while',
       })
       .toBe(true)
-    expect(framesLeft(h)).toEqual([])
+    // The frames go in the exporter's finally, after the encode has answered.
+    await expect.poll(() => framesLeft(h)).toEqual([])
   })
 })

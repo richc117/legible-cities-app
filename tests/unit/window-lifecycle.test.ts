@@ -6,7 +6,7 @@
 // the app's window, which is what the old rule could not see.
 
 import { describe, expect, it, vi } from 'vitest'
-import { onActivate, onAppWindowClosed } from '../../src/main/window-lifecycle'
+import { onActivate, onAppWindowClosed, quitGate } from '../../src/main/window-lifecycle'
 
 /** The app as the handlers see it: the windows open, and which one is the app's own. */
 function app() {
@@ -73,5 +73,51 @@ describe('onActivate', () => {
     const handler = onActivate({ appWindow: () => world.appWindow, open: make })
     handler()
     expect(world.windowsMade).toBe(0)
+  })
+})
+
+describe('quitGate', () => {
+  /** An event that records whether Electron was told to stop the quit. */
+  const event = () => ({ cancelled: false, preventDefault: vi.fn() })
+
+  it('keeps cancelling every quit until the engine has stopped, then lets go', () => {
+    const gate = quitGate()
+    // The sequence of a window close on Windows and Linux: the window's
+    // closed handler quits, then window-all-closed quits again behind it.
+    const first = event()
+    expect(gate.beforeQuit(first, true)).toBe('first')
+    expect(first.preventDefault).toHaveBeenCalledTimes(1)
+    expect(gate.quitting).toBe(true)
+
+    const second = event()
+    expect(gate.beforeQuit(second, true)).toBe('later')
+    expect(second.preventDefault, 'the engine is still stopping').toHaveBeenCalledTimes(1)
+
+    // An exception or the crash box's Quit, mid-stop, is held as well.
+    const third = event()
+    expect(gate.beforeQuit(third, true)).toBe('later')
+    expect(third.preventDefault).toHaveBeenCalledTimes(1)
+
+    gate.finished()
+    const last = event()
+    expect(gate.beforeQuit(last, true)).toBe('later')
+    expect(last.preventDefault, 'the stop is done: Electron goes').not.toHaveBeenCalled()
+  })
+
+  it('cancels nothing when there is no engine to stop', () => {
+    const gate = quitGate()
+    const first = event()
+    expect(gate.beforeQuit(first, false)).toBe('first')
+    expect(first.preventDefault).not.toHaveBeenCalled()
+    const next = event()
+    expect(gate.beforeQuit(next, false)).toBe('later')
+    expect(next.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('reports a quit under way only after the first pass', () => {
+    const gate = quitGate()
+    expect(gate.quitting).toBe(false)
+    gate.beforeQuit(event(), true)
+    expect(gate.quitting).toBe(true)
   })
 })
