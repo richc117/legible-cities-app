@@ -41,6 +41,7 @@ import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
+import { onActivate, onAppWindowClosed } from './window-lifecycle'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
 import { engineWorkRefusal, Sidecar } from './sidecar'
@@ -263,8 +264,20 @@ function createWindow(): BrowserWindow {
   window.on('ready-to-show', () => window.show())
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
+  // Windows and Linux quit when the app's own window closes, whatever else
+  // is open - an export's capture window, say - and the quit cancels the
+  // export (issue 537). Not once a quit is under way: a second app.quit()
+  // would pass before-quit's second pass before the engine had stopped.
+  const quitWithTheWindow = onAppWindowClosed({
+    platform: process.platform,
+    quit: () => {
+      if (!quitting) app.quit()
+    },
+  })
   window.on('closed', () => {
-    if (mainWindow === window) mainWindow = null
+    if (mainWindow !== window) return
+    mainWindow = null
+    quitWithTheWindow()
   })
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
@@ -791,9 +804,17 @@ if (!hasLock) {
     )
     mainWindow = createWindow()
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
-    })
+    // The app's own window decides, not every window: an export's capture
+    // window is open while it runs (issue 537).
+    app.on(
+      'activate',
+      onActivate({
+        appWindow: () => mainWindow,
+        open: () => {
+          mainWindow = createWindow()
+        },
+      }),
+    )
   })
 
   // Quitting ends the engine first: ask, then terminate, then kill, and only
