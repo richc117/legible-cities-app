@@ -257,7 +257,7 @@ The two reader columns are a person's, recorded per run in
 | Caption, Clock corner, Alt text for the file's sidecar (issue 352) | not yet swept: drawn on the default reel, so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks them; the corner select is unavailable while the clock is off, and its list changes with the preset and the title | not yet swept (Caption and Alt text are named by a `<label for>`; Clock corner is the kit's select named by its `label`; a refused caption or alt text is `aria-invalid` and its sentence is the field's `aria-describedby` message) | not yet swept | not yet swept (nothing moves) | no new pair: `--text`, `--text-muted`, `--text-faint` and `--error` on `--surface-raised` and `--surface-sunken`, and the `--border-strong` edge, all held by `contrast.test.ts` | no new pair | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Opening, Card and Draw-in (issue 392) | not yet swept: Opening is drawn on the default reel, on "None", so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks it; Card and Draw-in are drawn only once an opening is chosen, which no sweep does | not yet swept (Opening is the kit's select named by its `label`, its sentence after it in the reading order, since the kit's select takes no description; Card and Draw-in are named by a `<label for>`, their rule the field's `aria-describedby` message, a refused number `aria-invalid` with its sentence in the message's place) | not yet swept | not yet swept (nothing in the interface moves; the card and the draw-in are the export's frames, the engine's page's) | no new pair: `--text`, `--text-muted` and `--error` on `--surface-raised` and `--surface-sunken`, held by `contrast.test.ts` | no new pair | not yet run: a person's (new after 0.1.0) | not yet run: a person's (new after 0.1.0) |
 | Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13) | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
+| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13); since issue 542 the line the eye follows (a sentence per frame) is not a live region, and a polite status out of sight beside it changes at each stage and at each tenth of the frames ("Captured 30 percent of the frames."), asserted in `export-run-region.test.tsx` | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 
 ### Project: the footer
 
@@ -1372,17 +1372,20 @@ a table).
 - **Export, its progress line, Cancel, Reveal.** Choose a still preset (it
   is quick) and press **Export**. Listen for focus moving to **Cancel**
   (D2), a region "Export run", an image "Running: `<sentence>`", and the
-  polite status reading the export's sentences, among them "Planning the
-  export.", "Capturing `<n>` frames.", "Captured `<n>` of `<n>` frames.",
-  "Encoding `<n>` frames." and "Encoded `<n>` of `<n>` frames."; the choices above are dimmed, with
+  polite status reading the export's sentences at each stage, among them
+  "Planning the export.", "Capturing `<n>` frames." and "Encoding `<n>`
+  frames.", and at each tenth of the frames in between, as "Captured 30
+  percent of the frames." and "Encoded 30 percent of the frames."; the
+  line beside the progress line shows "Captured `<n>` of `<n>` frames." with
+  every frame and is not read aloud; the choices above are dimmed, with
   the status "The choices wait until the export that is going has
   finished: it was planned from them." At the end listen for
   "Exported `<file>`.", the job-end announcement, and focus on **Reveal**.
   Press **Reveal**: the Finder or File Explorer opens, and the reader moves
   to it; switch back (Command-Tab or Alt-Tab) and listen for focus still on
-  **Reveal**. Then export the reel, and listen for whether the frame count
-  floods speech over its minutes: note it in the cell if it does. Start
-  another export and press **Cancel**: "The export was cancelled. Nothing
+  **Reveal**. Then export the reel, and listen for whether the tenths of the
+  frames flood speech over its minutes (about twenty announcements, none per
+  frame): note it in the cell if they do. Start another export and press **Cancel**: "The export was cancelled. Nothing
   was written." and focus on **Export**.
 - **Cell 06's preview.** With cell 06 open, a second frame in the cell,
   after its first sentence: listen for it named "`<project>`, as the

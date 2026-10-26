@@ -44,6 +44,12 @@ export interface ExportSnapshot {
    * written, whichever stage was running. Cleared at every start.
    */
   refused: boolean
+  /**
+   * What a screen reader is told of the progress: the last sentence, except
+   * that the per-frame counts become a tenth of the frames at a time
+   * (`announcement`). `message` is for the eye and changes every frame.
+   */
+  announced: string | null
 }
 
 /** What the page can do with an export, and no more; a test passes a stub. */
@@ -65,6 +71,27 @@ export function stagesAt(stages: Stage[], running: string): Stage[] {
     ...stage,
     state: i < at ? ('done' as const) : i === at ? ('running' as const) : ('pending' as const),
   }))
+}
+
+/** The per-frame sentences the main process sends: "Captured 18 of 108 frames.". */
+const FRAME_COUNT = /^(Captured|Encoded) (\d+) of (\d+) frames\.$/
+
+/**
+ * What a screen reader is told for a progress sentence. A reel reports every
+ * frame, hundreds of sentences in a few minutes, and a live region that
+ * changes with each of them is a running commentary (DESIGN.md section 12,
+ * WCAG 4.1.3). So a count of frames is spoken at each tenth of them -
+ * "Captured 30 percent of the frames." - and the sentence before it, the
+ * stage's own, stands until the first tenth is reached. Any other sentence is
+ * spoken as it is: they come once a stage.
+ */
+export function announcement(message: string, previous: string | null): string {
+  const count = FRAME_COUNT.exec(message)
+  if (count === null) return message
+  const of = Number(count[3])
+  if (!(of > 0)) return previous ?? message
+  const tenth = Math.min(10, Math.floor((Number(count[2]) * 10) / of))
+  return tenth === 0 ? (previous ?? message) : `${count[1]} ${tenth * 10} percent of the frames.`
 }
 
 /** The sentence a person reads for a failure: the engine's, or the app's; never a path. */
@@ -90,6 +117,7 @@ const IDLE: ExportSnapshot = {
   file: null,
   left: false,
   refused: false,
+  announced: null,
 }
 
 /** The engine's own code for parameters it refuses, before any work (JSON-RPC's invalid params). */
@@ -223,6 +251,7 @@ export class ExportRun {
       file: null,
       left: false,
       refused: false,
+      announced: null,
     })
 
     const request = this.#bridge.run(project.id, choice)
@@ -244,7 +273,7 @@ export class ExportRun {
           state: 'done',
           stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
           file: result.file,
-          ...(said.length > 0 ? { message: said.join(' ') } : {}),
+          ...(said.length > 0 ? { message: said.join(' '), announced: said.join(' ') } : {}),
         })
       },
       (reason: unknown) => {
@@ -284,6 +313,10 @@ export class ExportRun {
     this.#set({
       stages: stagesAt(this.#snapshot.stages, progress.stage),
       message: progress.message === '' ? this.#snapshot.message : progress.message,
+      announced:
+        progress.message === ''
+          ? this.#snapshot.announced
+          : announcement(progress.message, this.#snapshot.announced),
     })
   }
 

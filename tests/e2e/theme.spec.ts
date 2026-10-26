@@ -1550,7 +1550,9 @@ test('an export is planned in the theme the project is drawn in', async () => {
       )
       .toBe('1080:1920')
     await page.getByRole('button', { name: 'Export', exact: true }).click()
-    await expect(page.getByText(/Planning|Capturing|Encoding/)).toBeVisible({
+    await expect(
+      page.locator('.export-run .progress-message', { hasText: /Planning|Capturing|Encoding/ }),
+    ).toBeVisible({
       timeout: 30_000,
     })
     // The switch is out of reach while the export runs: the theme it was

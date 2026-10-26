@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   EXPORT_KEPT,
   ExportRun,
+  announcement,
   freshStages,
   sentenceFor,
   stagesAt,
@@ -231,6 +232,11 @@ describe('ExportRun', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', file: 'x.mp4', message: said })
     expect(run.job()?.message).toBe(said)
+    // What a screen reader is told is the same sentence, except that a
+    // count of frames is a share of them.
+    expect(run.snapshot.announced).toBe(
+      flags.late === true || flags.unproven === true ? said : 'Encoded 100 percent of the frames.',
+    )
   })
 
   it('ends failed with the engine’s sentence for a destination that is its own source', async () => {
@@ -383,6 +389,30 @@ describe('the small functions', () => {
     const same = freshStages()
     expect(stagesAt(same, 'nowhere')).toBe(same)
   })
+  it('announcement turns a count of frames into a tenth of them and leaves other sentences be', () => {
+    expect(announcement('Capturing 108 frames.', null)).toBe('Capturing 108 frames.')
+    // Before the first tenth the sentence already spoken stands.
+    expect(announcement('Captured 10 of 108 frames.', 'Capturing 108 frames.')).toBe(
+      'Capturing 108 frames.',
+    )
+    expect(announcement('Captured 11 of 108 frames.', 'Capturing 108 frames.')).toBe(
+      'Captured 10 percent of the frames.',
+    )
+    expect(announcement('Encoded 108 of 108 frames.', 'x')).toBe(
+      'Encoded 100 percent of the frames.',
+    )
+    // A still is one frame: it goes from nothing to all of it.
+    expect(announcement('Captured 1 of 1 frames.', 'Capturing 1 frames.')).toBe(
+      'Captured 100 percent of the frames.',
+    )
+    // The sentence that says the frames were not proven fresh is not a count.
+    const unproven = `Captured 108 of 108 frames. ${UNPROVEN_FRAMES}`
+    expect(announcement(unproven, 'x')).toBe(unproven)
+    // A count of nothing out of nothing cannot be a share of it.
+    expect(announcement('Captured 0 of 0 frames.', 'Capturing 0 frames.')).toBe(
+      'Capturing 0 frames.',
+    )
+  })
   it('sentenceFor prefers the hint, then the message, then a plain sentence', () => {
     expect(
       sentenceFor({ code: 1, message: 'm', data: { kind: 'io', detail: 'd', hint: 'h' } }),
@@ -469,7 +499,7 @@ describe('the export as a job', () => {
       hint: expect.stringMatching(/Lay the project out/),
     })
     expect(Object.keys(run.snapshot).sort()).toEqual(
-      ['state', 'stages', 'message', 'error', 'file', 'left', 'refused'].sort(),
+      ['state', 'stages', 'message', 'announced', 'error', 'file', 'left', 'refused'].sort(),
     )
   })
 })

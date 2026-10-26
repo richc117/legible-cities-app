@@ -668,7 +668,10 @@ next before it says what went wrong.
 - Live regions: the status line is polite; a finished or failed job is
   announced once; nothing else speaks unprompted, except cell 01's stage
   view during a layout run, which says each stage once, politely, as it is
-  drawn, and nothing at any other time (issue 382).
+  drawn, and nothing at any other time (issue 382); and the export's run,
+  whose line for the eye changes with every frame and is not a live region,
+  while a polite status out of sight beside it changes at each stage and at
+  each tenth of the frames (issue 542).
 - Targets ≥ 24 by 24 even at the dense control height.
 - Reduced motion turns all motion off; nothing is conveyed by motion
   alone.
