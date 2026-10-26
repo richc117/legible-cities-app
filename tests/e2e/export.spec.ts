@@ -445,7 +445,9 @@ test('closing the window during an export quits at once, on Windows and Linux, a
   test.skip(process.platform === 'darwin', 'macOS keeps running with no window')
   // Long enough that the export is certainly still running when the window
   // closes, whatever the machine.
-  const h = home({ export_seconds: 120 })
+  // The stand-in takes a moment to leave once asked, so a quit that did not
+  // wait for the stop would be gone before the supervisor's line is written.
+  const h = home({ export_seconds: 120, shutdown_delay_ms: 800 })
   // A profile of this test's own, so its logs are the only ones read below
   // (LEGIBLE_USER_DATA moves the logs with it, src/main/index.ts).
   const userData = join(dirname(h.engineHome), 'profile')

@@ -16,6 +16,8 @@ writes before the app starts (every key optional):
                       has a number to be held to
     spawn_child       true: start a child that sleeps (pid in fake-engine.child.pid), as
                       the engine starts a layout tool; ended on engine.shutdown
+    shutdown_delay_ms wait this long after answering engine.shutdown before exiting, so a
+                      test can tell a quit that waited for the stop from one that did not
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
     progress_delay_ms wait between the four progress notifications (default 30)
     map_draws         true: map.build draws (eight stages, three files); else it refuses
@@ -1494,6 +1496,7 @@ class Engine:
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
             if self.control.get("ignore_shutdown"):
                 return True
+            time.sleep(self.control.get("shutdown_delay_ms", 0) / 1000)
             if self.child is not None:
                 self.child.kill()
             self.end_children()

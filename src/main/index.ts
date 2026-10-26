@@ -41,7 +41,7 @@ import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
-import { onActivate, onAppWindowClosed, quitGate } from './window-lifecycle'
+import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
 import { engineWorkRefusal, Sidecar } from './sidecar'
@@ -823,17 +823,19 @@ if (!hasLock) {
   app.on('before-quit', (event) => {
     if (quit.beforeQuit(event, sidecar !== null) === 'later') return
     // An export in flight is cancelled, and its capture window destroyed,
-    // before the engine is asked to stop.
-    exporter?.abortAll()
-    abortCaptures()
-    // The first-run check's children, if any are still running, end now.
-    firstRun?.abort()
-    if (sidecar === null) return
-    const stopping = sidecar.stop()
-    stopping.catch((error: Error) => log.error('engine', `stop failed: ${error.message}`))
-    void stopping.finally(() => {
-      quit.finished()
-      app.quit()
+    // before the engine is asked to stop; the first-run check's children, if
+    // any are still running, end now. One failing does not skip the others
+    // or the stop, which the gate is waiting for.
+    shutDown({
+      aborts: [
+        { name: 'the export', run: () => exporter?.abortAll() },
+        { name: 'the capture', run: () => abortCaptures() },
+        { name: 'the first-run check', run: () => firstRun?.abort() },
+      ],
+      stop: sidecar === null ? null : () => (sidecar as Sidecar).stop(),
+      finished: () => quit.finished(),
+      quit: () => app.quit(),
+      error: (message) => log.error('engine', message),
     })
   })
 

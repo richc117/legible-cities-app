@@ -87,3 +87,48 @@ export function quitGate(): QuitGate {
     },
   }
 }
+
+export interface ShutdownDeps {
+  /** What ends at once on a quit, each named for the log: an export, the captures, the first-run check. */
+  aborts: { name: string; run: () => void }[]
+  /** The engine's stop, or null when there is no engine. */
+  stop: (() => Promise<void>) | null
+  /** The gate's `finished`. */
+  finished: () => void
+  /** The app's own quit, asked again once the stop has ended. */
+  quit: () => void
+  error: (message: string) => void
+}
+
+const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error))
+
+/**
+ * The first pass of a quit, after the gate has cancelled it: end what runs,
+ * stop the engine, then let go. The gate keeps cancelling until `finished`,
+ * so nothing here may throw past the stop: each abort has its own try, a
+ * failing one is logged and the others still run, and the stop is always
+ * reached, however it ends, because a throw that skipped it would leave a
+ * windowless process that no quit could end.
+ */
+export function shutDown(deps: ShutdownDeps): void {
+  for (const abort of deps.aborts) {
+    try {
+      abort.run()
+    } catch (error) {
+      deps.error(`${abort.name} did not end on quit: ${reason(error)}`)
+    }
+  }
+  if (deps.stop === null) return
+  let stopping: Promise<void>
+  try {
+    stopping = deps.stop()
+  } catch (error) {
+    stopping = Promise.reject(error)
+  }
+  void stopping
+    .catch((error: unknown) => deps.error(`stop failed: ${reason(error)}`))
+    .finally(() => {
+      deps.finished()
+      deps.quit()
+    })
+}

@@ -6,7 +6,7 @@
 // the app's window, which is what the old rule could not see.
 
 import { describe, expect, it, vi } from 'vitest'
-import { onActivate, onAppWindowClosed, quitGate } from '../../src/main/window-lifecycle'
+import { onActivate, onAppWindowClosed, quitGate, shutDown } from '../../src/main/window-lifecycle'
 
 /** The app as the handlers see it: the windows open, and which one is the app's own. */
 function app() {
@@ -119,5 +119,85 @@ describe('quitGate', () => {
     expect(gate.quitting).toBe(false)
     gate.beforeQuit(event(), true)
     expect(gate.quitting).toBe(true)
+  })
+})
+
+describe('shutDown', () => {
+  /** What the first pass is handed, with the order things happened in. */
+  function setup(options: { throwing?: string[]; stopFails?: boolean; noEngine?: boolean } = {}) {
+    const order: string[] = []
+    const gate = quitGate()
+    const deps = {
+      aborts: ['the export', 'the capture', 'the first-run check'].map((name) => ({
+        name,
+        run: () => {
+          order.push(name)
+          if (options.throwing?.includes(name)) throw new Error(`${name} broke`)
+        },
+      })),
+      stop: options.noEngine
+        ? null
+        : () => {
+            order.push('stop')
+            return options.stopFails ? Promise.reject(new Error('no answer')) : Promise.resolve()
+          },
+      finished: () => {
+        order.push('finished')
+        gate.finished()
+      },
+      quit: () => order.push('quit'),
+      error: (message: string) => order.push(`error: ${message}`),
+    }
+    return { order, gate, deps }
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+
+  it('ends what runs, stops the engine, then lets the gate go and quits', async () => {
+    const { order, deps } = setup()
+    shutDown(deps)
+    await settle()
+    expect(order).toEqual([
+      'the export',
+      'the capture',
+      'the first-run check',
+      'stop',
+      'finished',
+      'quit',
+    ])
+  })
+
+  it('still stops the engine and quits when an abort throws, and the others still run', async () => {
+    const { order, gate, deps } = setup({ throwing: ['the export', 'the capture'] })
+    gate.beforeQuit({ preventDefault: () => undefined }, true)
+    shutDown(deps)
+    await settle()
+    expect(order).toEqual([
+      'the export',
+      'error: the export did not end on quit: the export broke',
+      'the capture',
+      'error: the capture did not end on quit: the capture broke',
+      'the first-run check',
+      'stop',
+      'finished',
+      'quit',
+    ])
+    // The gate was let go, so the final quit passes.
+    const last = { preventDefault: vi.fn() }
+    gate.beforeQuit(last, true)
+    expect(last.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('lets go and quits when the stop itself fails', async () => {
+    const { order, deps } = setup({ stopFails: true })
+    shutDown(deps)
+    await settle()
+    expect(order.slice(-3)).toEqual(['error: stop failed: no answer', 'finished', 'quit'])
+  })
+
+  it('does nothing past the aborts when there is no engine', async () => {
+    const { order, deps } = setup({ noEngine: true })
+    shutDown(deps)
+    await settle()
+    expect(order).toEqual(['the export', 'the capture', 'the first-run check'])
   })
 })
