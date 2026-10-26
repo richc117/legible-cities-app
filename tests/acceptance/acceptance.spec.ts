@@ -182,11 +182,11 @@ const FEATURES = {
     landed: 'pull request 243 (A5.6-06)',
   },
   // Settings' Versions list names the app itself first (issue 544). The
-  // commit is the lane's own and is moved to the one on main when it merges.
+  // commit is the squash commit on main, as the checklist's is.
   appVersionRow: {
     name: "the app's own row under Versions",
-    commit: '942858c8db55f0ae3ca95c2390fc128b42232bb1',
-    landed: 'pull request for issue 544',
+    commit: 'c6eab22768c573d61b81a6dc20e6aab319729171',
+    landed: 'pull request 573',
   },
 } satisfies Record<string, Feature>
 
