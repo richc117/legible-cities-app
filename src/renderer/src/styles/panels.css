@@ -904,6 +904,14 @@ th .sort:focus-visible {
   grid-template-columns: repeat(5, max-content 1fr);
 }
 
+/* The pane's buttons (issue 546), a row above it: the toolbar's own layout
+   and wrapping, and the pane close under them so the two read as one. The
+   buttons are the kit's, at least a control's height, so every one clears
+   --target-min. */
+.stage-view .stage-controls {
+  margin: 0 0 var(--space-2-2);
+}
+
 .stage-pane {
   position: relative;
   aspect-ratio: 16 / 10;

@@ -559,8 +559,14 @@ describe('the stage view while a run reveals the layout, as it is first drawn', 
     )
     // The kit mirrors `aria-pressed` onto its inner button at run time, so
     // the markup says pressed by the variant the view chose.
-    expect(html.match(/variant="primary"/g), 'neither stage is pressed').toBeNull()
-    expect(html.match(/variant="secondary"/g)).toHaveLength(2)
+    // Only the stage group's: the pane's own buttons (issue 546) follow it.
+    const stages = html.slice(
+      html.indexOf('aria-label="Stage"'),
+      html.indexOf('aria-label="Pan and zoom"'),
+    )
+    expect(stages, 'the stage group is found').toContain('gtfs2graph')
+    expect(stages.match(/variant="primary"/g), 'neither stage is pressed').toBeNull()
+    expect(stages.match(/variant="secondary"/g)).toHaveLength(2)
     expect(html).not.toMatch(/disabled/)
     // The live region is there before anything is drawn, empty, so the
     // first stage drawn is said.

@@ -47,6 +47,8 @@ export const ICON_NAMES = [
   'check',
   'close',
   'add',
+  'minus',
+  'fit',
   'trash',
   'edit',
   'back',

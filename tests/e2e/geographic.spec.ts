@@ -170,6 +170,70 @@ test('pans and zooms by keyboard on the frame, not inside it', async () => {
   })
 })
 
+test('pans, zooms and fits by the buttons alone, with no key and no drag (issue 546)', async () => {
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page)
+    const view = panel(page, 'Where the routes run')
+    const frame = view.locator('iframe.stage-frame')
+    await expect(frame).toBeVisible()
+    const controls = view.getByRole('group', { name: 'Pan and zoom', exact: true })
+    const named = (name: string) => controls.getByRole('button', { name, exact: true })
+    // The frame's transform, as the numbers it is made of.
+    const read = async (): Promise<{ x: number; y: number; scale: number }> => {
+      const text = await frame.evaluate((el) => (el as HTMLElement).style.transform)
+      const [x, y, scale] = (text.match(/-?\d+(?:\.\d+)?(?:e-?\d+)?/g) ?? []).map(Number)
+      expect(text, 'a transform of the form translate(x, y) scale(s)').toMatch(/^translate\(/)
+      return { x, y, scale }
+    }
+    const fitted = await read()
+    const fittedText = await frame.evaluate((el) => (el as HTMLElement).style.transform)
+
+    // Seven buttons, each named and at least 24px in both directions
+    // (WCAG 2.5.8; DESIGN.md's --target-min).
+    const names = ['Zoom in', 'Zoom out', 'Fit', 'Pan left', 'Pan right', 'Pan up', 'Pan down']
+    await expect(controls.getByRole('button')).toHaveCount(names.length)
+    for (const name of names) {
+      const box = await named(name).boundingBox()
+      expect(box?.width ?? 0, `${name} is wide enough to hit`).toBeGreaterThanOrEqual(24)
+      expect(box?.height ?? 0, `${name} is tall enough to hit`).toBeGreaterThanOrEqual(24)
+    }
+
+    // Each pan moves the drawing the way the arrow key of the same name
+    // does, by the same step, and leaves the other axis and the scale alone.
+    await named('Pan left').click()
+    await expect.poll(async () => (await read()).x).toBeGreaterThan(fitted.x)
+    expect((await read()).y).toBe(fitted.y)
+    expect((await read()).scale).toBe(fitted.scale)
+    await named('Pan right').click()
+    await expect.poll(async () => (await read()).x).toBeCloseTo(fitted.x, 5)
+    await named('Pan up').click()
+    await expect.poll(async () => (await read()).y).toBeGreaterThan(fitted.y)
+    expect((await read()).x).toBe(fitted.x)
+    await named('Pan down').click()
+    await expect.poll(async () => (await read()).y).toBeCloseTo(fitted.y, 5)
+
+    // Zoom in grows the scale, zoom out brings it back.
+    await named('Zoom in').click()
+    await expect.poll(async () => (await read()).scale).toBeGreaterThan(fitted.scale)
+    await named('Zoom out').click()
+    await expect.poll(async () => (await read()).scale).toBeCloseTo(fitted.scale, 5)
+
+    // Fit after a pan and a zoom is the fitted transform again, exactly.
+    await named('Pan left').click()
+    await named('Pan up').click()
+    await named('Zoom in').click()
+    await expect.poll(async () => (await read()).scale).toBeGreaterThan(fitted.scale)
+    await named('Fit').click()
+    await expect
+      .poll(() => frame.evaluate((el) => (el as HTMLElement).style.transform))
+      .toBe(fittedText)
+
+    // The hint says the buttons are there.
+    await expect(view.locator('#stage-keys')).toContainText('or use the buttons.')
+  })
+})
+
 test('without the engine the view says so, and the rest of the screen works', async () => {
   const engineHome = home()
   const id = 'geoprojectx1'

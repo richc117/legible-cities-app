@@ -1430,7 +1430,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await window.keyboard.type('0')
         expect(await transform(), '0 fits again').toBe(fitted)
         await expect(stages.locator('#stage-keys')).toHaveText(
-          'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.',
+          'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit, or use the buttons.',
         )
       })
       await log.soft("Skip past the map, then cell 03's heading", async () => {
