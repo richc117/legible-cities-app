@@ -1014,27 +1014,6 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // engine's rows follow once it has answered (issue 544).
         await expect(definition(versions, 'Engine')).toBeVisible({ timeout: SHORT_MS })
         const read = async (term: string): Promise<string> => text(definition(versions, term))
-        // The app's own row, which a release tagged before issue 544 does not
-        // have: against one, it is written as not checked, never passed.
-        // With a tag it must be the tag's version without any -rc.<N>, which
-        // is package.json's; without one there is nothing to compare it with.
-        const appWrong: string[] = []
-        if (tagContains(FEATURES.appVersionRow) === false) {
-          log.notAutomated(
-            `the app's own version under Versions: ${TAG} was tagged before ${FEATURES.appVersionRow.landed}, so it has no such row.`,
-          )
-        } else {
-          const app = await read('App')
-          log.note(`App: ${app}`)
-          if (TAG === '') {
-            log.notAutomated(
-              'whether the App row is the release under test: no tag was named (LEGIBLE_ACCEPTANCE_TAG).',
-            )
-          } else {
-            const expected = TAG.slice(1).replace(/-rc\.\d+$/, '')
-            if (app !== expected) appWrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
-          }
-        }
         const six = {
           Engine: await read('Engine'),
           Protocol: await read('Protocol'),
@@ -1044,7 +1023,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           ffmpeg: await read('ffmpeg'),
         }
         record.versions(Object.entries(six).map(([term, value]) => `${term}: ${value}`))
-        const wrong: string[] = [...appWrong]
+        const wrong: string[] = []
         if (six.Engine !== pins.engine.version)
           wrong.push(`Engine is ${six.Engine}, not ${pins.engine.version}`)
         if (six.Protocol !== '1') wrong.push(`Protocol is ${six.Protocol}`)
@@ -1059,6 +1038,35 @@ test('a release, installed, through docs/acceptance.md', async () => {
           !inside(six.ffmpeg, session.resources)
         ) {
           wrong.push(`ffmpeg is "${six.ffmpeg}", not the bundled one`)
+        }
+        // The app's own row comes last, so a release without it (or a read
+        // that fails) cannot take the engine's rows with it. It is read only
+        // when the tag is known to contain the change: a tag older than it
+        // has no such row, and git answering "cannot tell" (a commit this
+        // clone lacks, a shallow clone) is not a yes. It must then be the
+        // tag's version without any -rc.<N>, which is package.json's.
+        const contains = TAG === '' ? null : tagContains(FEATURES.appVersionRow)
+        if (TAG === '') {
+          log.notAutomated(
+            'whether the App row is the release under test: no tag was named (LEGIBLE_ACCEPTANCE_TAG).',
+          )
+        } else if (contains !== true) {
+          log.notAutomated(
+            contains === false
+              ? `the app's own version under Versions: ${TAG} was tagged before ${FEATURES.appVersionRow.landed}, so it has no such row.`
+              : `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.appVersionRow.commit.slice(0, 7)} (${FEATURES.appVersionRow.landed}): the commit is not in this clone, or the clone is shallow.`,
+          )
+        } else {
+          try {
+            const app = await read('App')
+            log.note(`App: ${app}`)
+            const expected = TAG.slice(1).replace(/-rc\.\d+$/, '')
+            if (app !== expected) wrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
+          } catch (error) {
+            wrong.push(
+              `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
         }
         if (wrong.length > 0) throw new Error(wrong.join('; '))
       })

@@ -3,7 +3,7 @@
 // notice travels with them.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, relative, resolve, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ICON_NAMES, iconMarkup } from '../../src/renderer/src/icons/Icon'
 
@@ -38,7 +38,7 @@ describe('icons', () => {
         if (entry.isDirectory()) walk(path)
         else if (/\.tsx?$/.test(entry.name)) {
           const uses = readFileSync(path, 'utf8').match(/['"]layers['"]/g) ?? []
-          found.push(...uses.map(() => path.slice(root.length + 1)))
+          found.push(...uses.map(() => relative(root, path).split(sep).join('/')))
         }
       }
     }
