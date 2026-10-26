@@ -30,7 +30,7 @@ Everything below is free for a public repository.
 - [x] **Approval for running workflows from outside collaborators:
       "Require approval for first-time contributors"** (Settings, Actions,
       General, "Fork pull request workflows from outside collaborators"; the
-      API calls it `first_time_contributors`). Read on 2026-10-24. The
+      API calls it `first_time_contributors`) (checked 24 Oct 2026). The
       repository is open to outside contributors, and a workflow from a
       stranger's fork would otherwise run on the maintainer's runners
       unreviewed. With this setting a first pull request from a fork has its

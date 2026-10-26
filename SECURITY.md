@@ -2,7 +2,8 @@
 
 ## Supported versions
 
-Only the latest published release receives fixes. Older releases do not.
+Only the latest release (the one the Releases page marks Latest, never a
+release candidate) receives fixes. Older releases do not.
 
 A fix is a new release on the repository's Releases page. The app has no
 automatic update and does not tell anyone that a later version exists
@@ -61,5 +62,5 @@ security update Dependabot opens here against
 The settings that only the host can enforce - secret scanning, push
 protection, private vulnerability reporting, Dependabot alerts and security
 updates, branch protection on `main` - are listed in
-`docs/repository-settings.md`, with the date each was last read. Signing
-material, when it exists, will live only in CI secrets.
+`docs/repository-settings.md`, with the date each was applied or last
+checked. Signing material, when it exists, will live only in CI secrets.
