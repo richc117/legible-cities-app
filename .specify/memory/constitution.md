@@ -11,9 +11,8 @@ Sync Impact Report (1.3.0)
   The relaxation permits what specs 029 to 036 already did, which were built
   as lanes with a `spec.md` alone; the one new duty, keeping Status true, is
   discharged for every spec that has a `spec.md` in the same change (issue
-  428). The bump is arguable only in that a spec merged with Status left at
-  Draft would now be out of line; that is a duty added to guidance, not a
-  principle redefined, so MINOR stands.
+  428). MAJOR is defined over the principles, and Workflow is not one, so
+  the bump is MINOR and is not arguable.
 - Modified principles: none
 - Modified sections: Workflow
 - Added sections: none
@@ -191,7 +190,7 @@ parts says which parts are built.
 A spec under `specs/` holds user stories and acceptance criteria. The
 acceptance criteria are written so a test could assert them; where only a
 person can check something, the spec says so. Work that is not built as a
-lane keeps the order of spec, plan, tasks, code.
+lane (ADR-034) keeps the order of spec, plan, tasks, code.
 
 Decisions get a record. Spikes get a question and a timebox before they get
 a branch. Documentation changes with the code that made it wrong.

@@ -9,7 +9,8 @@
   platform and keep encoding in the engine - stands, and whose choice of
   where the binaries come from does not: third-party builds from builders
   who publish their scripts are replaced by a build of this repository's
-  own.
+  own; and [ADR-035](035-installers-are-built-from-the-same-runs-vendor-artefacts.md),
+  whose figures for the ffmpeg the installers carry no longer hold.
 
 ## Context
 
