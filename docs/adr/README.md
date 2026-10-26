@@ -2,7 +2,7 @@
 
 One file per decision, `docs/adr/NNN-short-title.md` with a three-digit
 number in order of acceptance and a kebab-case title. A record's decision is
-not rewritten after it is accepted. Three things change in a record, and only
+not rewritten after it is accepted. Three things change in an accepted record, and only
 these: its status; the header lines that name a related record (Supersedes,
 Superseded by, Amends, Amended by, See also); and "As of" paragraphs appended
 to it, below. A changed decision is a new record that names the one it
@@ -25,7 +25,7 @@ half of the work that landed. It says what is now true and where to look
 (the issue, the file or the engine version that made it so), and it leaves
 the text above it standing. It sits under the paragraph it corrects, or at
 the end of the section it concerns, and a record can carry several, from
-the time it is Proposed. For example, ADR-049, ADR-051, ADR-052 and ADR-053
+the time it is Proposed. For example, ADR-049, ADR-051 and ADR-052
 carry corrections of scope and of premise; ADR-048, ADR-051, ADR-052 and
 ADR-053 carry answers to questions they left open; ADR-037, ADR-046 and
 ADR-049 carry the paragraph that records an acceptance once the work
@@ -57,8 +57,8 @@ Accepted status and the table says "Accepted, in part superseded"), *Amends*
 and *Amended by* (the decision stands and something it said does not; see
 "Amending rather than superseding" below), and the *See also* lines some
 records carry. It is the place to look before relying on a record. A relation
-appears on both rows, because both records state it. When you add a row, fill
-this column from your record's header.
+other than See also appears on both rows, because both records state it. When
+you add a row, fill this column from your record's header.
 
 | Number | Title | Status | Relations |
 |---|---|---|---|

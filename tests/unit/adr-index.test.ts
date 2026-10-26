@@ -22,10 +22,11 @@ for (const line of readFileSync(join(dir, 'README.md'), 'utf8').split('\n')) {
 }
 
 const files = new Map<string, string>()
-// The ADR numbers each record's Supersedes / Superseded by / Amends / Amended by
-// header lines name (a line and its indented continuation, up to the first heading).
+// The ADR numbers each record's Supersedes / Superseded by / Amends / Amended by /
+// See also header lines name (a line and its indented continuation, up to the first heading).
 const named = new Map<string, Set<string>>()
-const RELATION = /^(?:- \*\*)?(Supersedes|Superseded by|Amends|Amended by):(?:\*\*)? ?(.*)$/
+const RELATION =
+  /^(?:- \*\*)?(Supersedes|Superseded by|Amends|Amended by|See also):(?:\*\*)? ?(.*)$/
 for (const name of readdirSync(dir)) {
   const m = /^(\d{3})-.*\.md$/.exec(name)
   // 000 is the template, which the index lists as n/a.
@@ -68,7 +69,7 @@ describe('docs/adr index', () => {
     }
   })
 
-  it('shows in each row every record its header lines name', () => {
+  it('shows in each row exactly the records its header lines name', () => {
     for (const [n, set] of named) {
       const cell = relations.get(n) ?? ''
       const shown = new Set([...cell.matchAll(/\d{3}/g)].map((x) => x[0]))
@@ -76,6 +77,12 @@ describe('docs/adr index', () => {
         expect(
           shown.has(other),
           `ADR-${n}'s header names ADR-${other}; its Relations cell says "${cell}"`,
+        ).toBe(true)
+      }
+      for (const other of shown) {
+        expect(
+          set.has(other),
+          `ADR-${n}'s Relations cell says "${cell}", but its header does not name ADR-${other}`,
         ).toBe(true)
       }
     }

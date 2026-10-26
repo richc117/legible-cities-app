@@ -71,7 +71,7 @@ Those belong in the maintainer's private notes. Run `bin/preflight` when you
 are done.
 
 A record's decision is not rewritten after it is accepted. Three things
-change in a record, and only these: its status; the header lines that name a
+change in an accepted record, and only these: its status; the header lines that name a
 related record (Supersedes, Superseded by, Amends, Amended by, See also); and
 "As of" paragraphs appended to it, dated, saying what changed and where when
 a later change makes its description out of date without reversing it
