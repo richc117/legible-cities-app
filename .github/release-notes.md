@@ -20,7 +20,7 @@ The app does not check for updates. A newer version is on this repository's Rele
 
 ## Updating
 
-If you have an earlier release, [Updating from an earlier release]({{install_url}}#updating-from-an-earlier-release) says what to expect: each project is redrawn once, the first time it opens, with the engine in this release; projects saved by this release open read-only in 0.1.0; and the installer's warnings return.
+If you are updating from 0.1.0, [Updating from an earlier release]({{install_url}}#updating-from-an-earlier-release) says what to expect: a project with a map is redrawn once, the first time it opens, with the engine in this release; projects you open or change in this release open read-only in 0.1.0; and the installer's warnings return.
 
 ## What is inside
 
