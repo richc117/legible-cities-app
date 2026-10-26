@@ -60,7 +60,7 @@ export function isViewerMethod(value: unknown): value is ViewerMethod {
  * more than the app drives on the map (`VIEWER_METHODS`): the capture's own
  * (`advance`, `setCapture`, `settle`, `setFrame`), the opening's (`setCard`,
  * `setDrawn`, engine v0.15.0) and the two axes beneath `showView`. As of
- * engine v0.19.0, `page/page.html`'s seam object, in its order.
+ * engine v0.20.0, `page/page.html`'s seam object, in its order.
  *
  * It is how a page an older engine drew is told from a current one (issue
  * 465). The page carries no version of the engine that drew it - its HTML

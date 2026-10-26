@@ -163,6 +163,14 @@ function locked(target: Target): { name: string; version: string }[] {
   return out
 }
 
+/**
+ * A pandas that no lock of the engine holds, so a runtime carrying it is at
+ * another version than the manifest pins whatever the pin is. It was once a
+ * real release, 3.0.6, until the engine's lock moved to that release and the
+ * fixture agreed with the manifest, which is no refusal.
+ */
+const OTHER_PANDAS = '2.2.3'
+
 /** A distribution's `.dist-info` folder name, as pip writes it: `-` in the name becomes `_`. */
 const distInfo = (name: string, version: string): string =>
   `${name.replace(/[-.]/g, '_')}-${version}.dist-info`
@@ -212,14 +220,17 @@ function packagesFor(target: Target, options: TreeOptions): { name: string; vers
       packages = packages.filter((p) => p.name !== 'requests')
       break
     case 'other-version':
-      // What the unlocked build shipped beside engine 0.10.1: pandas moved on.
-      packages = packages.map((p) => (p.name === 'pandas' ? { ...p, version: '3.0.6' } : p))
+      packages = packages.map((p) => (p.name === 'pandas' ? { ...p, version: OTHER_PANDAS } : p))
       break
     case 'unlisted':
       packages.push({ name: 'setuptools', version: '80.9.0' })
       break
     case 'tzdata-everywhere':
-      if (target !== 'win-x64') packages.push({ name: 'tzdata', version: '2026.3' })
+      // The manifest's own tzdata, which it lists for Windows alone.
+      if (target !== 'win-x64') {
+        const tzdata = locked('win-x64').find((p) => p.name === 'tzdata')
+        if (tzdata !== undefined) packages.push(tzdata)
+      }
       break
     case 'tzdata-nowhere':
       packages = packages.filter((p) => p.name !== 'tzdata')
@@ -594,7 +605,7 @@ describe('check-vendored.mjs, as the build runs it', () => {
 
     it('refuses a package at another version than the manifest pins', () => {
       expect(refused('win-x64', { packages: 'other-version' })).toContain(
-        `win-x64: python carries pandas 3.0.6; python-requirements.txt pins ${version('win-x64', 'pandas')}`,
+        `win-x64: python carries pandas ${OTHER_PANDAS}; python-requirements.txt pins ${version('win-x64', 'pandas')}`,
       )
     })
 
@@ -706,7 +717,7 @@ describe('check-vendored.mjs, as the build runs it', () => {
       const other = run(vendorTree('win-x64', { packages: 'other-version' }))
       expect(other.status).toBe(1)
       expect(other.stderr).toContain(
-        `  python carries pandas 3.0.6; python-requirements.txt pins ${version('win-x64', 'pandas')}`,
+        `  python carries pandas ${OTHER_PANDAS}; python-requirements.txt pins ${version('win-x64', 'pandas')}`,
       )
     })
   })
