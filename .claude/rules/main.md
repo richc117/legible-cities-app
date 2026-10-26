@@ -23,9 +23,11 @@ Every spawn, without exception:
 - a **clean shutdown on quit**, so nothing outlives the app.
 
 The first-run check (`src/main/first-run.ts`) runs the bundled tools on
-every start of a packaged app: `gtfs2graph`'s output must parse as a line
-graph, because a zero exit proves nothing, and a failure opens one dialog
-naming the tool, never over the mismatch dialog.
+every start of a packaged app, and only once the engine's first start has
+settled, so its spawns never compete with the handshake
+(`src/main/index.ts`): `gtfs2graph`'s output must parse as a line graph,
+because a zero exit proves nothing, and a failure opens one dialog naming
+the tool, never over the mismatch dialog.
 
 ## Native dialogs
 
