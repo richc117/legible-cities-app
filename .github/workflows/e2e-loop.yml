@@ -146,6 +146,8 @@ jobs:
           CI: 'true'
           # The app's logs are already redacted of URLs' user information,
           # query values and fragments, and this step holds no secret.
+          # Safe in a public artefact on GitHub-hosted runners only: the logs
+          # carry the runner's own paths, which a self-hosted one would make a person's.
           LEGIBLE_KEEP_LOGS: '1'
           SPEC: ${{ inputs.spec }}
           REPEATS: ${{ inputs.repeats }}

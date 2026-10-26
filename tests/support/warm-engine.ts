@@ -22,6 +22,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { engineEnvironment } from '../../src/main/interpreter'
 import { FrameReader, writeFrame } from '../../src/main/jsonrpc'
+import { DEFAULT_BOUNDS } from '../../src/main/sidecar'
 import { FAKE_ENGINE, PINNED_ENGINE } from './python'
 
 /** The longest the warm-up may take, the interpreter's slowest first start included. */
@@ -41,7 +42,7 @@ export interface WarmOptions {
   deadlineMs?: number
   /** After engine.shutdown, how long before the stand-in is terminated (the supervisor's `shutdownMs`). */
   shutdownMs?: number
-  /** After the terminate, how long before it is killed (the supervisor's `terminateMs`, shorter here). */
+  /** After the terminate, how long before it is killed (the supervisor's `terminateMs`). */
   terminateMs?: number
   /** Merged over the stand-in's control file; a test makes it hard to stop with this. */
   control?: Record<string, unknown>
@@ -65,8 +66,8 @@ const removeFolder = (path: string): void =>
  */
 export function warmEngine(python: string, options: WarmOptions = {}): Promise<Warmed> {
   const deadlineMs = options.deadlineMs ?? WARM_DEADLINE_MS
-  const shutdownMs = options.shutdownMs ?? 3_000
-  const terminateMs = options.terminateMs ?? 1_000
+  const shutdownMs = options.shutdownMs ?? DEFAULT_BOUNDS.shutdownMs
+  const terminateMs = options.terminateMs ?? DEFAULT_BOUNDS.terminateMs
   const remove = options.remove ?? removeFolder
   const home = mkdtempSync(join(tmpdir(), WARM_PREFIX))
   /** Remove the home; a failure is reported, never thrown. */
