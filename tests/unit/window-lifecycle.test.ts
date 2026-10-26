@@ -38,7 +38,10 @@ describe('onAppWindowClosed', () => {
       const quit = vi.fn()
       const handler = onAppWindowClosed({ platform, quit })
       close()
-      expect(world.open.map((w) => w.name), 'the capture is the window left').toEqual(['capture'])
+      expect(
+        world.open.map((w) => w.name),
+        'the capture is the window left',
+      ).toEqual(['capture'])
       handler()
       expect(quit).toHaveBeenCalledTimes(1)
     },

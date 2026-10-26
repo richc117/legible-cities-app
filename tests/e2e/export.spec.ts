@@ -423,3 +423,97 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
     expect(framesLeft(h)).toEqual([])
   })
 })
+
+// Closing the app's window during an export (issue 537). The export's
+// offscreen capture window is a window too, and the quit and the Dock icon
+// used to count every window: on Windows and Linux the app sat windowless
+// until the capture ended and then quit, cancelling the export at its encode
+// with nothing said; on macOS no window came back from the Dock until then.
+// The app's own window decides now. Both tests close the app's window with
+// the capture running, and tell it from the capture window by its address.
+
+/** Close the app's own window, not the capture's. */
+function closeAppWindow(app: ElectronApplication): Promise<void> {
+  return app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows())
+      if (window.webContents.getURL().startsWith('app://local/ui/')) window.close()
+  })
+}
+
+test('closing the window during an export quits at once, on Windows and Linux, and leaves nothing', async () => {
+  test.skip(process.platform === 'darwin', 'macOS keeps running with no window')
+  const h = home({ export_seconds: 30 })
+  const app = await launch(h)
+  // Taken now: the application object is disposed once the process is gone.
+  const child = app.process()
+  try {
+    const page = await ready(app)
+    await laidOutProject(page, h)
+    await exportButton(page).click()
+    await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
+    // The capture window is open, as the old rule counted it.
+    expect(
+      await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length),
+    ).toBeGreaterThan(1)
+
+    await closeAppWindow(app)
+    // Well inside the capture's 30 seconds: the quit is the window's, not
+    // the capture's end. A deadline, and the process's own exit.
+    await expect
+      .poll(() => child.exitCode !== null || child.signalCode !== null, {
+        timeout: 15_000,
+        message: 'the process quit when its window closed, though a capture window was open',
+      })
+      .toBe(true)
+    expect(existsSync(deliverable(h))).toBe(false)
+    expect(existsSync(deliverable(h) + '.part')).toBe(false)
+    expect(framesLeft(h), 'no frames are left').toEqual([])
+  } finally {
+    await app.close().catch(() => undefined)
+  }
+})
+
+test('closing the window during an export on macOS keeps the export going, and the Dock brings a window back', async () => {
+  test.skip(process.platform !== 'darwin', 'Windows and Linux quit with their window')
+  const h = home({ export_seconds: 6 })
+  await withApp(h, async (page, app) => {
+    await laidOutProject(page, h)
+    await exportButton(page).click()
+    await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
+
+    await closeAppWindow(app)
+    await expect
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().some((w) =>
+            w.webContents.getURL().startsWith('app://local/ui/'),
+          ),
+        ),
+      )
+      .toBe(false)
+
+    // The Dock icon, while the capture window is still open.
+    const reopened = app.waitForEvent('window', { timeout: 15_000 })
+    await app.evaluate(({ app: electron }) => {
+      electron.emit('activate')
+    })
+    await reopened
+    expect(
+      await app.evaluate(
+        ({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().filter((w) =>
+            w.webContents.getURL().startsWith('app://local/ui/'),
+          ).length,
+      ),
+    ).toBe(1)
+
+    // And the export, which nothing cancelled, finishes into its folder.
+    await expect
+      .poll(() => existsSync(deliverable(h)), {
+        timeout: 60_000,
+        message: 'the export finished with no window of the app open for a while',
+      })
+      .toBe(true)
+    expect(framesLeft(h)).toEqual([])
+  })
+})
