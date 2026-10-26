@@ -230,8 +230,13 @@ describe('the import graph under src/', () => {
     // Under src/ and wherever else code imports the record from: the tests
     // and the scripts. A re-export left behind would let every file keep
     // importing everything, which is the boundary this file holds.
-    expect(existsSync(join(root, 'src', 'shared', 'project.ts'))).toBe(false)
-    expect(existsSync(join(root, 'src', 'shared', 'project', 'index.ts'))).toBe(false)
+    const present = [
+      'src/shared/project.ts',
+      'src/shared/project.tsx',
+      'src/shared/project/index.ts',
+      'src/shared/project/index.tsx',
+    ].filter((path) => existsSync(join(root, ...path.split('/'))))
+    expect(present, `${present.join(', ')}: the split leaves no module in its place`).toEqual([])
     const everywhere = [
       ...edges,
       ...walk(join(root, 'tests')).flatMap(edgesOf),
