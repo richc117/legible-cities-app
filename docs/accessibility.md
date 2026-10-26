@@ -1014,7 +1014,7 @@ a table).
 
 #### Cell 01, Data
 
-- **Fields.** Listen for a description list: Feed, Mode and Agency, each
+- **Fields.** Listen for a description list: Feed, Mode and Operator, each
   term with its value.
 - **Inspect: mode, operator, the feed's entry.** Listen for the heading
   "In the feed", the status "Reading the feed, and downloading it first if
@@ -1403,9 +1403,10 @@ a table).
 - **Delete confirmation.** On the throwaway project, press
   **Delete project**. Listen for a dialog "Delete `<project>`?", the
   description "This removes the project and its generated output. The feed
-  stays.", and focus on **Cancel**. Press **Delete**: listen for the status
-  "Deleting `<project>`… It cannot be stopped." if it is long enough to
-  hear (D8), then the Library, with its heading read.
+  stays. Exported files stay where they are.", and focus on **Cancel**.
+  Press **Delete**: listen for the status "Deleting `<project>`… It cannot
+  be stopped." if it is long enough to hear (D8), then the Library, with
+  its heading read.
 
 ### Settings
 

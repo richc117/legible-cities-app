@@ -324,6 +324,27 @@ describe('the panel', () => {
     expect(html).toContain('Copy log')
   })
 
+  // Issue 543: the one disclosure in the notebook that drew no chevron, so
+  // it read as plain text under Layout tuning, which does. DESIGN.md 8.2
+  // already describes the network-words toggle as this one's toggle "with
+  // the cell row's chevron".
+  it('draws the cell row’s chevron inside its toggle, before the name', () => {
+    const html = renderToStaticMarkup(
+      <EngineLog projectName="Los Angeles" run={runWith(job({ log: ['[info] one'] }))} />,
+    )
+    const toggle = html.match(/<[^>]*class="[^"]*engine-log-toggle[^"]*"[^>]*>[\s\S]*?<\/button>/)
+    expect(toggle, 'the toggle is drawn').not.toBeNull()
+    expect(toggle![0]).toMatch(/class="[^"]*cell-chevron[^"]*"/)
+    expect(toggle![0].indexOf('cell-chevron')).toBeLessThan(toggle![0].indexOf('Engine log'))
+  })
+
+  it('turns that chevron a quarter when open, as every other toggle’s is', () => {
+    const css = readFileSync(resolve(__dirname, '../../src/renderer/src/styles/panels.css'), 'utf8')
+    expect(css).toMatch(
+      /\.engine-log-toggle\[aria-expanded='true'\] \.cell-chevron\s*\{[^}]*rotate\(90deg\)/,
+    )
+  })
+
   // The defect this file did not catch the first time, and the reason the
   // three end-to-end tests failed: the box of lines carried the disclosed
   // part's own name, so the same group name sat inside itself. A screen

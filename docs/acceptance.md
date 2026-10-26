@@ -285,8 +285,8 @@ it. Press Tab on through cell 02 until **Skip past the map** appears over the
 map's top edge, and then **Enter**.
 
 **See.**
-- The fields say Feed `la-metro-rail`, Mode `<the card's mode>` and Agency
-  `none`.
+- The fields say Feed `la-metro-rail`, Mode `<the card's mode>` and Operator
+  `every operator`.
 - **In the feed**: **Operators**, **Stops**, **Trips** and **Service**
   filled in; Service reads "`<start>` to `<end>`; the engine would draw
   `<day>`".
@@ -868,7 +868,7 @@ Metro** under **Feed**, leave the name, and press **Create**. Open it from
 foot of the notebook and **Delete** in the confirmation.
 
 **See.**
-- The sheet names it "Mexico City Metro". Its fields say Agency `METRO`,
+- The sheet names it "Mexico City Metro". Its fields say Operator `METRO`,
   and **In the feed** has an **Operator** select whose first option is
   "every operator", followed by the feed's operators. The routes table's
   caption reads "Routes of METRO: `<n>`".
@@ -878,7 +878,8 @@ foot of the notebook and **Delete** in the confirmation.
   area, a faint train, because no map has been drawn for it, while the
   **Mexico City Metro** card under **Sample cities** has its picture.
 - The confirmation is titled "Delete Mexico City Metro?", says "This
-  removes the project and its generated output. The feed stays.", and has
+  removes the project and its generated output. The feed stays. Exported
+  files stay where they are.", and has
   **Cancel** focused. After **Delete** the app goes back to the front door,
   and the project is gone from **Your projects**.
 

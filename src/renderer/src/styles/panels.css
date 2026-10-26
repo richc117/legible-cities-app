@@ -1031,6 +1031,10 @@ th .sort:focus-visible {
   outline-offset: var(--focus-ring-offset);
 }
 
+.engine-log-toggle[aria-expanded='true'] .cell-chevron {
+  transform: rotate(90deg);
+}
+
 .engine-log-count {
   color: var(--text-muted);
 }
@@ -1151,6 +1155,11 @@ th .sort:focus-visible {
 .transport-scrub input[type='range'] {
   flex: 1;
   min-width: 0;
+  /* DESIGN.md section 5: no interactive element is smaller than
+     --target-min in either dimension. The platform's own range is a
+     little over half that tall; the box is the target and the track stays
+     centred in it by the row's align-items. */
+  min-block-size: var(--target-min);
   /* The platform draws the track and the thumb; the accent is the app's,
      as it is on the kit's checkbox. */
   accent-color: var(--accent);

@@ -39,6 +39,38 @@ import { runRowStatus } from '../runRow'
 // edit the file all six share (A5.5-09).
 
 /**
+ * What the record says about no operator: the picker's own name for it
+ * (`Inspect`'s first option), so one value has one name on one screen.
+ * "none" read as no operator drawn, which is the opposite of the truth.
+ */
+export const EVERY_OPERATOR = 'every operator'
+
+/**
+ * The cell's field list: the feed, the mode and the operator the project
+ * is drawn from. The row is called Operator, as the picker below it is.
+ */
+export function DataFields({
+  feed,
+  mode,
+  agency,
+}: {
+  feed: string
+  mode: string
+  agency: string | null
+}): JSX.Element {
+  return (
+    <dl className="fields">
+      <dt>Feed</dt>
+      <dd>{feed}</dd>
+      <dt>Mode</dt>
+      <dd>{mode}</dd>
+      <dt>Operator</dt>
+      <dd>{agency ?? EVERY_OPERATOR}</dd>
+    </dl>
+  )
+}
+
+/**
  * What the collapsed cell says it holds: how many stops the engine counted
  * in the feed, and nothing else. The feed, the mode and the operator are
  * in the open cell and in the footer, and a row cut with an ellipsis
@@ -128,14 +160,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
     >
       {project !== null && (
         <>
-          <dl className="fields">
-            <dt>Feed</dt>
-            <dd>{project.feed}</dd>
-            <dt>Mode</dt>
-            <dd>{project.mode}</dd>
-            <dt>Agency</dt>
-            <dd>{project.agency ?? 'none'}</dd>
-          </dl>
+          <DataFields feed={project.feed} mode={project.mode} agency={project.agency} />
           {/* The feed's download, when the layout run is fetching it
               (issue 178): here, with the feed, not in cell 02. */}
           <DownloadLine run={run} />

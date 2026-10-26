@@ -372,7 +372,7 @@ describe('which cells reach for a footer at all', () => {
 
   it('DataCell.tsx keeps its field list, having no strip to say it for it', () => {
     // The other half of the same rule, and what shows the pattern above is
-    // one a list is found by: cell 01's Feed, Mode and Agency are stated
+    // one a list is found by: cell 01's Feed, Mode and Operator are stated
     // once, by the list, because nothing else states them.
     expect(codeOf('notebook/cells/DataCell.tsx')).toMatch(/<dl\b/)
   })
