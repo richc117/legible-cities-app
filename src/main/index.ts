@@ -41,6 +41,7 @@ import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
+import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
 import { engineWorkRefusal, Sidecar } from './sidecar'
@@ -180,7 +181,7 @@ let firstRun: FirstRunCheck | null = null
 // Held at this scope because the handlers registered before it exists ask
 // it whether a reset is under way; it is assigned once, during startup.
 let settings: SettingsService | null = null
-let quitting = false
+const quit = quitGate()
 
 /** Why nothing may write under the engine's home right now, or null. */
 const resetInProgress = (): string | null => settings?.refuseWhileResetting() ?? null
@@ -263,8 +264,20 @@ function createWindow(): BrowserWindow {
   window.on('ready-to-show', () => window.show())
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
+  // Windows and Linux quit when the app's own window closes, whatever else
+  // is open - an export's capture window, say - and the quit cancels the
+  // export (issue 537). `window-all-closed` asks again behind it; the quit
+  // gate cancels that pass while the engine stops.
+  const quitWithTheWindow = onAppWindowClosed({
+    platform: process.platform,
+    quit: () => {
+      if (!quit.quitting) app.quit()
+    },
+  })
   window.on('closed', () => {
-    if (mainWindow === window) mainWindow = null
+    if (mainWindow !== window) return
+    mainWindow = null
+    quitWithTheWindow()
   })
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
@@ -791,28 +804,39 @@ if (!hasLock) {
     )
     mainWindow = createWindow()
 
-    app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow()
-    })
+    // The app's own window decides, not every window: an export's capture
+    // window is open while it runs (issue 537).
+    app.on(
+      'activate',
+      onActivate({
+        appWindow: () => mainWindow,
+        open: () => {
+          mainWindow = createWindow()
+        },
+      }),
+    )
   })
 
   // Quitting ends the engine first: ask, then terminate, then kill, and only
   // then let Electron go (specs/004, FR-014). The first pass prevents the
   // default and comes back through here with the flag set.
   app.on('before-quit', (event) => {
-    if (quitting) return
-    quitting = true
+    if (quit.beforeQuit(event, sidecar !== null) === 'later') return
     // An export in flight is cancelled, and its capture window destroyed,
-    // before the engine is asked to stop.
-    exporter?.abortAll()
-    abortCaptures()
-    // The first-run check's children, if any are still running, end now.
-    firstRun?.abort()
-    if (sidecar === null) return
-    event.preventDefault()
-    const stopping = sidecar.stop()
-    stopping.catch((error: Error) => log.error('engine', `stop failed: ${error.message}`))
-    void stopping.finally(() => app.quit())
+    // before the engine is asked to stop; the first-run check's children, if
+    // any are still running, end now. One failing does not skip the others
+    // or the stop, which the gate is waiting for.
+    shutDown({
+      aborts: [
+        { name: 'the export', run: () => exporter?.abortAll() },
+        { name: 'the capture', run: () => abortCaptures() },
+        { name: 'the first-run check', run: () => firstRun?.abort() },
+      ],
+      stop: sidecar === null ? null : () => (sidecar as Sidecar).stop(),
+      finished: () => quit.finished(),
+      quit: () => app.quit(),
+      error: (message) => log.error('engine', message),
+    })
   })
 
   // The files close last. This runs only once the quit above has let
