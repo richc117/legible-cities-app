@@ -123,7 +123,7 @@ As the maintainer, I want the mutations the specs and tests list to be run by a 
   - Ubuntu's end-to-end leg is dropped;
   - a push to `main` runs both layers on macOS and Windows.
 
-  The required checks are renamed to match, and `docs/repository-settings.md` and branch protection move with them. `docs/ARCHITECTURE.md:1269`'s "The smoke test" is corrected. *As of 24 Oct 2026:* the maintainer chose macOS and Windows (Q1, A).
+  The required checks are renamed to match, and `docs/repository-settings.md` and branch protection move with them. "The smoke test" in `docs/ARCHITECTURE.md`'s "Checks" is corrected. *As of 24 Oct 2026:* the maintainer chose macOS and Windows (Q1, A).
 
 **Part 2, the DOM layer (may follow 1.0)**
 
