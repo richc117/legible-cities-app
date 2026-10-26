@@ -27,6 +27,7 @@ import {
 import type { FirstRunResult } from '../shared/first-run'
 import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
 import { writeClipboard, type WriteText } from './clipboard'
+import { DESTINATION_REFUSALS } from './export'
 import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
 import {
@@ -278,7 +279,7 @@ export class SettingsService {
     // app's own bundle included; the bundle is read-only on macOS and wiped
     // on update, so nothing may be kept there whoever chose it (ADR-016).
     if (this.#deps.bundleRoots.some((root) => contains(root, path))) {
-      throw new Error('that folder is inside the app itself; nothing can be kept there')
+      throw new Error(DESTINATION_REFUSALS.insideApp)
     }
     if (which === 'engine') return this.#changeEngineFolder(path, 'chosen')
     // Changed in the store's queue, so a theme or the other folder written

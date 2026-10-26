@@ -125,18 +125,35 @@ export function isLocalHost(hostname: string): boolean {
   return false
 }
 
+/**
+ * The registry gate's refusals, each a sentence that leads with what to do
+ * (DESIGN.md section 11, issue 548). They reach the screen as written: a
+ * refusal from this process is shown unscreened (issue 519), so none may
+ * carry a path. `httpOnly` is the New project sheet's own sentence too
+ * (`SHEET_REFUSALS`), and a unit test holds the two together.
+ */
+export const FEED_REFUSALS = {
+  notUrl:
+    'Paste the whole address, starting with http:// or https://; a feed address must be a URL with its scheme.',
+  httpOnly: 'Use an address that starts with http:// or https://.',
+  localHost:
+    'Use an address on a public host; a feed cannot be fetched from this machine or its network.',
+  noSource: 'Choose a zip or paste an address; a feed needs a source.',
+  notPicked:
+    'Choose the zip again, or paste its address; a feed is added from a file chosen in the app, or from a URL.',
+  noKey: 'Choose the feed to remove again; the request to remove it named no feed.',
+} as const
+
 /** What is wrong with a feed address, or null. */
 export function refuseUrl(source: string): string | null {
   let url: URL
   try {
     url = new URL(source)
   } catch {
-    return 'a feed address must be a URL with its scheme'
+    return FEED_REFUSALS.notUrl
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:')
-    return 'a feed address starts with http:// or https://'
-  if (isLocalHost(url.hostname))
-    return 'a feed address must name a public host, not this machine or its network'
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return FEED_REFUSALS.httpOnly
+  if (isLocalHost(url.hostname)) return FEED_REFUSALS.localHost
   return null
 }
 
@@ -159,15 +176,14 @@ export function registryGuard(picked: PickedPaths, inUse: FeedsInUse): Guard {
   return async (method, params) => {
     if (method === 'feeds.add') {
       const source = params?.source
-      if (typeof source !== 'string' || source === '') return 'a feed needs a source'
+      if (typeof source !== 'string' || source === '') return FEED_REFUSALS.noSource
       if (URL_PATTERN.test(source)) return refuseUrl(source)
-      if (!picked.take(source))
-        return 'a feed is added from a file chosen in the app, or from a URL'
+      if (!picked.take(source)) return FEED_REFUSALS.notPicked
       return null
     }
     if (method === 'feeds.remove') {
       const key = params?.key
-      if (typeof key !== 'string') return 'a feed to remove needs a key'
+      if (typeof key !== 'string') return FEED_REFUSALS.noKey
       const users = (await inUse()).filter((project) => project.feed === key)
       return users.length === 0 ? null : inUseSentence(users.map((project) => project.name))
     }

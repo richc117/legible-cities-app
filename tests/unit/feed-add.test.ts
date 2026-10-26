@@ -260,7 +260,7 @@ describe('FeedAdd', () => {
 
 describe("the dialogs' rules", () => {
   it('validates a typed address', () => {
-    expect(validateFeedUrl('')).toMatch(/paste the address/)
+    expect(validateFeedUrl('')).toMatch(/^Paste the address/)
     expect(validateFeedUrl('ftp://x/y.zip')).toMatch(/starts with http/)
     expect(validateFeedUrl('  https://agency.example/gtfs.zip ')).toBeNull()
   })

@@ -185,10 +185,10 @@ describe('create', () => {
   })
   it('refuses a bad input with the contract message and writes nothing', async () => {
     await expect(store.create({ name: '  ', feed: 'la-metro-rail' })).rejects.toThrow(
-      'name is required',
+      'Give the project a name.',
     )
     await expect(store.create({ name: 'x'.repeat(121), feed: 'la-metro-rail' })).rejects.toThrow(
-      'name is too long',
+      'Shorten the name to 120 characters or fewer.',
     )
     await expect(store.create({ name: 'LA', feed: 'LA Metro' })).rejects.toThrow(
       'feed key must be lowercase letters, digits and hyphens',
@@ -525,8 +525,10 @@ describe('rename', () => {
   })
   it('validates the name and the identifier', async () => {
     await seed(A, record(A))
-    await expect(store.rename(A, '   ')).rejects.toThrow(/^name is required$/)
-    await expect(store.rename(A, 'x'.repeat(121))).rejects.toThrow(/^name is too long/)
+    await expect(store.rename(A, '   ')).rejects.toThrow(/^Give the project a name\.$/)
+    await expect(store.rename(A, 'x'.repeat(121))).rejects.toThrow(
+      /^Shorten the name to 120 characters or fewer\.$/,
+    )
     await expect(store.rename(B, 'Fine')).rejects.toThrow(/^not found$/)
     await expect(store.rename('nope', 'Fine')).rejects.toThrow(/^invalid id$/)
     expect((await store.get(A)).name).toBe('Seed')

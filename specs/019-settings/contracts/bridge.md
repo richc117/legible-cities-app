@@ -87,8 +87,8 @@ settings: {
   touched: "a folder is chosen in the app's own dialog". The page has no way
   to name one, and this holds the rule for any route added later.
 - **A folder inside the app itself** is refused even though the dialog
-  answered it: "that folder is inside the app itself; nothing can be kept
-  there". The chooser makes a folder anywhere the platform allows, the
+  answered it: "Choose another folder: that folder is inside the app
+  itself, and nothing can be kept there." (since issue 548). The chooser makes a folder anywhere the platform allows, the
   bundle included, and the bundle is read-only on macOS and wiped on update
   (ADR-016).
 - **A theme** must be one of the three names: "that is not a theme".
@@ -239,10 +239,10 @@ settings: {
   where it was the reading of the records that did not end, "The projects
   in the engine data folder could not be read in time, so nothing was
   changed or removed; try again." The project's own chooser and the
-  exporter are bounded the same way and say which folder it was: "that
+  exporter are bounded the same way and say which folder it was: "That
   folder did not answer in time, so it could not be checked and nothing
   was changed or written; choose another folder, or try again when it can
-  be reached", or, of the app itself, the engine data folder or the folder
+  be reached.", or, of the app itself, the engine data folder or the folder
   the engine data moves to at the next start, that it "did not answer in
   time, so that folder could not be checked against it and nothing was
   changed or written".

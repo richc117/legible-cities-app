@@ -543,7 +543,7 @@ describe('the proof', () => {
     // Numbered as the frames' files are, from 0: the fourth frame is 000003.png.
     await expect(run).rejects.toThrow(staleFrame(3))
     expect(staleFrame(3)).toBe(
-      'frame 3 was never painted after its step: 4 shots in a row showed an earlier picture; export again, with less running on this machine',
+      'Export again, with less running on this machine: frame 3 was never painted after its step, and 4 shots in a row showed an earlier picture.',
     )
     expect(page.screenshots, 'three frames, and four shots of the fourth').toBe(3 + FRESH_TRIES)
     expect(existsSync(dir)).toBe(false)
@@ -572,7 +572,7 @@ describe('the proof', () => {
       unreadFrame(0),
     )
     expect(unreadFrame(0)).toBe(
-      'the frame counter could not be read in any of 4 shots of frame 0; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies',
+      "Export again, and if it fails again, press Copy diagnostics in Settings and paste what it copies into a new issue on the project's tracker: the frame counter could not be read in any of 4 shots of frame 0.",
     )
     expect(page.screenshots).toBe(FRESH_TRIES)
   })
@@ -672,7 +672,7 @@ describe('the proof', () => {
         ? Promise.resolve({ strip: null, band: false, counts: true })
         : evaluate(code)
     await expect(runCapture(page, short(), { frames: frames(), ...noWait })).rejects.toThrow(
-      'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies',
+      "Export again, and if it fails again, press Copy diagnostics in Settings and paste what it copies into a new issue on the project's tracker: the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh.",
     )
     expect(
       page.calls.filter((c) => c.startsWith('navigate')),

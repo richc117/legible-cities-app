@@ -913,7 +913,7 @@ a table).
   on **Cancel**. Tab: the "Start from" group of three radio buttons, the
   "Feed" pop-up button, the text field "Name" (filled with the feed's
   name), **Cancel**, **Create**. Clear the name and press **Create**: focus
-  moves to "Name", invalid, with "name is required" read with it. Press
+  moves to "Name", invalid, with "Give the project a name." read with it. Press
   Escape and listen for focus back on the button that opened it.
 - **The sheet, from a zip.** Choose **A GTFS zip on this computer**.
   Listen for **Choose a zip** with "No file chosen." read as its
@@ -922,7 +922,7 @@ a table).
   **Choose a zip**.
 - **The sheet, from an address.** Choose **A feed at an address**. Type
   `abc` into "Feed address" and press **Add the feed**: listen for the
-  alert "a feed address starts with http:// or https://" and focus back in
+  alert "Use an address that starts with http:// or https://." and focus back in
   the field, invalid.
 - **The sheet's progress line.** Paste the Caltrain address from the
   checklist's step 14 again and press **Add the feed**; the engine keeps it
@@ -1373,8 +1373,9 @@ a table).
   listen for the path read in its place and a second button, **Use the
   app's folder**. Press that and listen for the first sentence back and
   focus on **Choose folder**. Choose a folder inside the app itself and
-  listen for the refusal under the pair, as an alert: "that folder is
-  inside the app itself; nothing can be kept there" (A5.5-19).
+  listen for the refusal under the pair, as an alert: "Choose another
+  folder: that folder is inside the app itself, and nothing can be kept
+  there." (A5.5-19).
 - **Export, its progress line, Cancel, Reveal.** Choose a still preset (it
   is quick) and press **Export**. Listen for focus moving to **Cancel**
   (D2), a region "Export run", an image "Running: `<sentence>`", and the

@@ -379,7 +379,7 @@ test('a feed address on this machine is refused before the engine sees it', asyn
     const dialog = await openSheet(page, 'address')
     await dialog.getByLabel('Feed address').fill('http://127.0.0.1:631/')
     await dialog.getByRole('button', { name: 'Add the feed' }).click()
-    await expect(sheetAlert(dialog)).toContainText('must name a public host')
+    await expect(sheetAlert(dialog)).toContainText('Use an address on a public host')
     const received = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
     expect(received.includes('feeds.add')).toBe(false)
   })

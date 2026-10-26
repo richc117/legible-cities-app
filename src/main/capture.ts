@@ -88,12 +88,22 @@ export const CAPTURE_TIMEOUTS = { page: 60_000, frame: 30_000 } as const
 export const FRESH_TRIES = 4
 
 /**
+ * Where a person sends what Copy diagnostics copies, until the project has
+ * a support page or a Help menu (issue 548): said in words, because an
+ * export's failure is screened for paths and an address would not survive
+ * it whole.
+ */
+export const REPORT_IT =
+  "press Copy diagnostics in Settings and paste what it copies into a new issue on the project's tracker"
+
+/**
  * The sentence a capture fails with when no shot of a frame showed its own
  * paint. Frames are numbered as their files are, from 0, as the sentence for
- * a frame that could not be written numbers them.
+ * a frame that could not be written numbers them. Like the two below, it
+ * leads with what to do (DESIGN.md section 11, issue 548).
  */
 export function staleFrame(frame: number, tries = FRESH_TRIES): string {
-  return `frame ${frame} was never painted after its step: ${tries} shots in a row showed an earlier picture; export again, with less running on this machine`
+  return `Export again, with less running on this machine: frame ${frame} was never painted after its step, and ${tries} shots in a row showed an earlier picture.`
 }
 
 /**
@@ -101,12 +111,11 @@ export function staleFrame(frame: number, tries = FRESH_TRIES): string {
  * has the band, so the cause is the address or the page, not its age, and
  * drawing the map again would not mend it.
  */
-export const NO_BAND_FOR_ADDRESS =
-  'the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies'
+export const NO_BAND_FOR_ADDRESS = `Export again, and if it fails again, ${REPORT_IT}: the page counts its draws but drew no frame counter for this address, so its frames cannot be proven fresh.`
 
 /** The sentence a capture fails with when no shot of a frame showed a count at all. */
 export function unreadFrame(frame: number, tries = FRESH_TRIES): string {
-  return `the frame counter could not be read in any of ${tries} shots of frame ${frame}; export again, and if it fails again, press Copy diagnostics in Settings and send what it copies`
+  return `Export again, and if it fails again, ${REPORT_IT}: the frame counter could not be read in any of ${tries} shots of frame ${frame}.`
 }
 
 /** A message for a person; `cancelled` distinguishes the one that is not a failure. */

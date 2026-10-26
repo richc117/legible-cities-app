@@ -71,11 +71,11 @@ const full: ProjectRecord = {
 
 describe('validateName', () => {
   it('requires something other than whitespace', () => {
-    expect(validateName('')).toBe('name is required')
-    expect(validateName('   \t ')).toBe('name is required')
+    expect(validateName('')).toBe('Give the project a name.')
+    expect(validateName('   \t ')).toBe('Give the project a name.')
   })
   it('caps the length after trimming', () => {
-    expect(validateName('x'.repeat(121))).toBe('name is too long (120 characters at most)')
+    expect(validateName('x'.repeat(121))).toBe('Shorten the name to 120 characters or fewer.')
     expect(validateName('x'.repeat(120))).toBeNull()
     expect(validateName(`  ${'x'.repeat(120)}  `)).toBeNull()
   })

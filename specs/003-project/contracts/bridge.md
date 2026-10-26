@@ -10,7 +10,7 @@ filesystem path.
 |---|---|---|---|
 | `projects.list()` | none | `ProjectSummary[]`, newest opened first (A5.6-04) | none: unreadable records are skipped and logged |
 | `projects.get(id)` | `id: string` | `ProjectRecord & { readOnly: boolean }` | `not found`; `invalid id` |
-| `projects.create({ name, feed, mode?, agency? })` | as `data-model.md` | the new `ProjectRecord` | `name is required`; `name is too long`; `feed key must be lowercase letters, digits and hyphens`; `mode …`; `agency …` |
+| `projects.create({ name, feed, mode?, agency? })` | as `data-model.md` | the new `ProjectRecord` | `Give the project a name.`; `Shorten the name to 120 characters or fewer.` (issue 548); `feed key must be lowercase letters, digits and hyphens`; `mode …`; `agency …` |
 | `projects.rename(id, name)` | | the updated `ProjectRecord` | as above, plus `not found`, `read-only` |
 | `projects.delete(id)` | | `{ removed: string[]; failed: { folder: 'project' \| 'output'; reason: string }[] }` | `not found`; `invalid id` |
 | `projects.markOpened(id)` (A5.6-04) | `id: string` | the `ProjectRecord` with `opened` set; a read-only one unchanged | `not found`; `invalid id`; refused during a reset |

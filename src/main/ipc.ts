@@ -24,6 +24,7 @@ import {
   type SentSet,
 } from '../shared/project/types'
 import {
+  NAME_REQUIRED,
   validateAgency,
   validateFeedKey,
   validateMode,
@@ -64,7 +65,7 @@ function readId(raw: unknown): string {
 }
 
 function readName(raw: unknown): string {
-  if (typeof raw !== 'string') throw new Error('name is required')
+  if (typeof raw !== 'string') throw new Error(NAME_REQUIRED)
   check(validateName(raw))
   return raw
 }
