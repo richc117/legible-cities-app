@@ -17,6 +17,15 @@ html {
   margin: 0;
   min-height: 100%;
   font-size: var(--root-size);
+  /* The sticky header is the one thing pinned over the page, and the page
+     scrolls under it. Without this the browser brings a control it scrolls
+     to into the very top of the window, which is under the header, and a
+     person tabbing backwards up the notebook cannot see where focus is
+     (issue 536, WCAG 2.4.11). The header's height and a little room, from
+     one token; every scroll the browser makes for focus clears it, the
+     skip link's included. The rail and the inspector are fixed under the
+     header and scroll on their own, so none of this is theirs. */
+  scroll-padding-top: var(--header-clearance);
 }
 
 body {
@@ -270,7 +279,8 @@ body {
    order until it holds focus, then a link-styled control over the top edge
    of the map. Absolute with no offsets, so it keeps its place just above
    the viewer and moves nothing when it appears or goes; scrolled clear of
-   the sticky header. No transition, at any motion setting. The ring is the
+   the sticky header by the page's own `scroll-padding-top` (the `html` rule
+   above), which it once did with a margin of its own. No transition, at any motion setting. The ring is the
    one every focusable element has, but it lies over the engine's page, which
    is drawn in the project's theme and not the interface's (A4-03): a halo of
    --surface under it, as wide as the offset and twice the ring, gives the
@@ -278,7 +288,6 @@ body {
 .skip-link {
   position: absolute;
   z-index: var(--layer-raised);
-  scroll-margin-block: calc(var(--header-height) + var(--space-4-4));
   box-sizing: border-box;
   min-height: var(--target-min);
   padding: var(--space-4-1) var(--space-4-2);
