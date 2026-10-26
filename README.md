@@ -14,14 +14,15 @@ warnings, what the app writes and where, and how to remove it completely.
 The first release, 0.1.0, was published on 8 October 2026; the release
 candidates before it stay on the page, marked "Pre-release".
 
-**Status: 0.1.0 released.** Everything below works. Each version's
+**Status: 0.1.0 is released.** Everything below works. Each version's
 installers for both Macs and for Windows are built in CI, attached to a
 GitHub Release drafted from its tag, and then installed and driven through
 most of [the acceptance checklist](docs/acceptance.md) on a macOS and a
-Windows runner; 0.1.0 passed that run on both. The runs of the release
-gate that only a person can make were reported done on 8 October 2026,
-with no issue noted. Work proceeds through the issues and
-milestones on this repository.
+Windows runner. 0.1.0 passed that run on both, and the runs of its release
+gate that only a person can make were done on 8 October 2026 with no issue
+noted. The installers are unsigned and the app does not update itself: a
+new version is a new download from the Releases page. Work goes on through
+the issues and milestones on this repository.
 
 ## What it does
 
@@ -40,14 +41,16 @@ with the map between cells 02 and 03:
 | Cell | What you do there |
 | --- | --- |
 | 01 Data | Read what is in the feed: its routes, operators and service window, and the network drawn where it really runs. Choose which mode and operator to keep. |
-| 02 Process | Lay the network out, stage by stage, and read what the build had to fudge. |
-| 03 Frame and service day | Pick the day the map is drawn for, scrub its clock, play the day and set the speed. |
-| 04 Style | Choose the map's theme, its sizes and looks, the markers, the label face and the trains. |
-| 05 Lines | Set each line's colour and the order the lines stack in, and under each line its own options. |
+| 02 Process | Lay the network out, stage by stage, tune the layout (the grid it is laid on and the grid's cell, how far apart two stretches of track may be and still merge, and what each bend costs), and read what the build had to fudge. |
+| 03 Frame and service day | Pick the day the map is drawn for, scrub its clock, play the day and set the speed, and find the trip between two stations. |
+| 04 Style | Choose the map's theme (Warm dark or Sepia), one of the engine's looks or sizes of your own, the station and interchange markers, the label typeface, and how the trains are drawn. |
+| 05 Lines | Set each line's colour and the order the lines stack in, and under each line its own options: a name, whether it is hidden, a width, a casing and a dash. |
 | 06 Export | Make stills, reels and GIFs for Instagram, LinkedIn, Bluesky and X, from the social presets the engine defines. |
 
-What a project has exported is listed beside the cells, each with a Reveal
-button that shows the file in its folder.
+**Run all**, in the project's header, brings the map up to date with cells
+01 to 05; an export runs only from cell 06. The rail on the left numbers the
+six cells, and under them lists what the project has exported, each with a
+Reveal button that shows the file in its folder.
 
 ## How it is built
 

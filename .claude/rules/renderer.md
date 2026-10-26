@@ -69,6 +69,18 @@ attribute, `:has`, `:not`, a query) and sets `display`, `container-type`,
 `tests/e2e/notebook-a11y.spec.ts` covers a style written on an element and
 a box further out.
 
+## Route mode
+
+The page finds the trip between two stations; the app never computes one
+(issue 272, spec 030, ADR-048). Cell 03's Trip section asks through the
+seam's `setTrip`, by way of `window.api.viewer`, and reads `state().trip`
+as untrusted data, like everything else the page says: `src/shared/trip.ts`
+checks it for shape, size and sense before a word of it is drawn, and a
+trip that is not whole is refused with a sentence, never half drawn. The
+steps are composed in words by the app. The map's `stations` are kept with
+the record's `drawn`, so a reopened project offers its pickers; **a trip is
+never written to the record.**
+
 ## Components
 
 Keep components pure and push logic into functions that can be called

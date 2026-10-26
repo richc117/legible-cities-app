@@ -9,15 +9,17 @@ The repository is public and **open to outside contributions**: you do not
 need to be asked, and you do not need to know the maintainer. It holds its
 charter, the Phase 0 spike reports and decision records, and the
 application: a front door of projects and sample cities, a project as a
-notebook of six cells under its map, the engine supervised as a child
-process, and exports for the engine's social presets, with checks on three
-platforms (`README.md`, "What it does" and "Developing"). Version 0.1.0 has
-been released; work goes on after it.
+notebook of six cells in one column with its map between cells 02 and 03,
+the engine supervised as a child process, and exports for the engine's
+social presets, with checks on three platforms (`README.md`, "What it does"
+and "Developing"). Version 0.1.0 has been released, and its release gate,
+the people's runs included, is done; work goes on after it.
 
-The roadmap is the milestones on this repository, and its Milestones page
-lists them: Phase 0 - Foundation, Phase 5.5 - The notebook, Phase 5.6 - The
-front door, Phase 6 - Release readiness, Phase 7 - Polish, Consolidation,
-and After 0.1.0. An issue labelled `good first issue` or `help wanted` is
+The roadmap is the milestones on this repository: its Milestones page
+lists them, open and closed, from Phase 0 - Foundation through the phases
+that built the app, with After 0.1.0 for what followed the first release
+and, the newest, Consolidation, for the work from the codebase review of
+October 2026. An issue labelled `good first issue` or `help wanted` is
 one the maintainer would be glad to see taken; any open issue may be, once
 you have said so on it. If what you want to change has no issue, open one
 first and say what you would do, so that nobody builds a change the project
@@ -32,10 +34,11 @@ Planned issues carry four labels: a phase (`phase:0` to `phase:7`, and
 `area:export`, `area:ui`, `area:ci`, `area:release`) and a size (`size:S`,
 `size:M`, `size:L`). A defect carries `bug` (there is no `type:bug`), and
 `accessibility` where it is one; `good first issue` and `help wanted` mark
-work open to a newcomer. The milestones are the ones listed above, and the
-front door's issues carry `phase:5.5`. The maintainer creates labels and
-milestones before the first issues are posted; the issue templates apply a
-label only when it already exists.
+work open to a newcomer; an issue from the codebase review of October 2026
+carries `review-2026-10`. The front door's issues carry `phase:5.5`, since
+there is no `phase:5.6`. The maintainer creates labels and milestones before
+the first issues are posted; the issue templates apply a label only when it
+already exists.
 
 Planned issues carry a short code in their title, such as `A2-03`: the
 repository (`A` for this app, `E` for the engine), the phase, and a sequence
@@ -195,8 +198,9 @@ changing these in the same pull request.
 1. **Pick an issue.** Comment that you are taking it. Issues carry a phase,
    a type, an area and a size label.
 2. **Spec first.** Feature issues get a spec under `specs/` with user stories
-   and acceptance criteria before any code. Spikes get a question, a method
-   and a timebox. See **Specs** below.
+   and acceptance criteria before any code; `spec.md` is the durable record
+   of a feature. Spikes get a question, a method and a timebox. See
+   **Specs** below.
 3. **Branch and pull request.** One issue, one branch named for it
    (`123-geographic-view`, or `A2-03-geographic-view` for a planned issue),
    one pull request. `main` only changes through pull requests with green
@@ -382,6 +386,17 @@ command, each producing a file the next one reads:
 
 One issue maps to one spec. The issue stays short and links the spec; the
 spec is where the detail lives.
+
+The constitution's Workflow says how much of the loop a change needs:
+
+> Spec first. `spec.md` is the durable record of a feature. For work
+> built as a lane, `plan.md` and `tasks.md` are optional: the plan and
+> the tasks may live in the lane's brief instead. A spec's Status moves
+> to Implemented, with the date and the pull request, when its last part
+> merges; a spec built in parts says which parts are built.
+
+A lane is one of several issues built at once, each on its own branch and
+worktree from a written brief (`/lanes`, ADR-034).
 
 Every spec is read against
 [`.specify/memory/constitution.md`](.specify/memory/constitution.md), which

@@ -2,27 +2,38 @@
 
 An Electron + React + TypeScript shell around the `schematic` Python engine
 from `legible-cities`, which runs as a JSON-RPC sidecar over stdio. The
-engine is the source of truth; its generated animation page is the viewer;
-this app never draws a map of its own.
+engine is the source of truth: its self-contained animation page is the
+viewer, embedded in a sandboxed frame and driven from the main process, and
+the app never draws a map of its own; React draws the chrome around it.
+
+`docs/ARCHITECTURE.md` is how it is put together today, `docs/DESIGN.md`
+how it looks, `docs/history.md` the order it was built in and why (history,
+not kept up to date). Personal settings and private pointers live in
+`CLAUDE.local.md`, which is gitignored. Read it if it exists.
 
 ## Where things stand
 
-Released: `v0.1.0` was published on 8 Oct 2026 (the tag on a4f6376, the
-release drafted by `build.yml` and published by hand), unsigned, as
-ADR-037 decided; the automated acceptance run passed against it on a
-macOS and a Windows runner (`acceptance.yml` run 37806989926, both
-records on #37). The three person runs of the gate, which that run cannot
-measure, were reported done on 8 Oct 2026 with no issue noted and are on
-#37 with the fields the report did not carry marked not recorded; ADR-037
-is Accepted on that basis. The screen has been rebuilt twice over since the features
-below were first written, so read this before the history under it.
+**Released: `v0.1.0`**, on 8 Oct 2026 (the tag on a4f6376, the Release
+drafted by `build.yml` and published by hand), unsigned - the Mac signed ad
+hoc, Windows not at all - and with no updater, as ADR-037 decided. The
+automated acceptance run passed against it on a macOS and a Windows runner
+(`acceptance.yml` run 37806989926); the three person runs of the gate,
+which that run cannot measure, were reported done the same day with no
+issue noted, the fields the report did not carry marked not recorded. Both
+records are on issue 37, and ADR-037 is Accepted on that basis. ADR-054
+(24 Oct 2026) keeps 1.0 unsigned too, with no automatic update.
 
-**The project screen is a notebook of six numbered cells** (ADR-045, Phase
-5.5; `specs/028-the-notebook/contracts/run-graph.md` is its one
-specification), in one scrolling column with the map between cells 02
-and 03, nothing pinned (ADR-046). The panels the history below describes
-still exist as files; each now sits inside a cell, and **there are no tabs**:
-the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
+**Open work** is the issues and milestones on this repository, one board
+(ADR-030): `gh issue list`, `gh api repos/{owner}/{repo}/milestones`; read
+the board, since nothing here lists it. `main` changes only through pull
+requests with the required checks green: one issue, one branch, one pull
+request, the maintainer included.
+
+**The project screen is a notebook of six numbered cells** (ADR-045;
+`specs/028-the-notebook/contracts/run-graph.md` is its one specification)
+in one scrolling column, the map between cells 02 and 03 and nothing pinned
+(ADR-046). There are no tabs: the kit's `Tabs` control went with the tab
+strip (A5.5-23).
 
 | Cell | Holds | Adapter under `src/renderer/src/notebook/cells/` |
 | --- | --- | --- |
@@ -33,359 +44,38 @@ the kit's `Tabs` control was deleted with the tab strip (A5.5-23).
 | 05 Lines | `LineColours` (and under each row its line options, issue 394: `LineOptionsDisclosure`, held by `useLineOptions`), `LineOrder` | `LinesCell.tsx` |
 | 06 Export | `ExportTab` (the export's options, and the opening's controls in `ExportOpening`, issue 392), which draws `ExportRun` itself | `ExportCell.tsx` |
 
-Around the cells, under `src/renderer/src/notebook/` unless a path says
-otherwise: the project's own header with its one status line and **Run
-all**, which brings the map up to date with cells 01 to 05 and never runs
-the export (`ProjectHeader.tsx`, and `src/renderer/src/runAll.ts`); the
-rail, a numbered stepper that is a `<nav>` and
-deliberately not a tablist, with the project's **Outputs** under it
-(`Rail.tsx`, `Outputs.tsx`); the map, a block in the column after cell 02
-whose frame is one element for the life of the screen, with an empty
-state where there is no map yet (`Preview.tsx`, and
-`src/renderer/src/styles/preview.css`), and cell 06's own preview frame
-of the export, mounted while the cell is open (`ExportPreview.tsx`; the
-main process holds the two by role, `src/main/viewer.ts`); and the foot,
-where a project is renamed and deleted (`ProjectFooter.tsx`). A cell's
-state is derived, never stored: `src/renderer/src/runGraph.ts` computes it
-from the record and the runs in flight, and the record's `drawn` says what
-the map on screen was drawn from
-(`specs/028-the-notebook/contracts/run-graph.md`). Cheap edits (colours,
-order, theme) still redraw themselves; *stale* is for the expensive edges
-only. `useProjectState.ts` holds what the cells share (the record and its
-writers, the two runs and whether either is going, the rename and the
-delete) and `context.ts` carries it to them. What belongs to one component
-stays in it: which cells are open is `Notebook.tsx`'s, the outputs list is
-`Outputs.tsx`'s.
+Around the cells, in `src/renderer/src/notebook/`: `ProjectHeader.tsx`
+(the status line and **Run all**, which brings the map up to date with
+cells 01 to 05 and never exports; `src/renderer/src/runAll.ts`), `Rail.tsx`
+(a numbered `<nav>`, deliberately not a tablist) with `Outputs.tsx` under
+it, `Preview.tsx` (the map, one frame for the life of the screen, and its
+empty state) and `ProjectFooter.tsx` (rename, delete); cell 06's own
+preview is `src/renderer/src/ExportPreview.tsx`, and main holds both frames
+by role (`src/main/viewer.ts`). **A cell's state is derived, never stored**
+(`src/renderer/src/runGraph.ts`), and the record's `drawn` says what the
+map on screen was drawn from; the cheap edits (the theme through the page's
+`setTheme`; colours, order, style fields and line options in
+`useCheapEdit.ts`) redraw without a re-layout, so *stale* is for the
+expensive edges only. `useProjectState.ts` holds what the cells share and
+`context.ts` carries it; what belongs to one component stays in it (which
+cells are open is `Notebook.tsx`'s, the outputs list `Outputs.tsx`'s).
 
-**The Library is the front door** (Phase 5.6): "Your projects", then
-"Sample cities" - every preset in the engine's registry as a card, drawn
-from `feeds.list` alone with nothing downloaded - then "Your feeds"
-(`Library.tsx`, `SampleCities.tsx`). A press on a card makes the project
-and opens its notebook with the layout already starting; the feed is
-fetched then, its download drawn in cell 01 and stopped by the run's own
-cancel, which keeps nothing (issue 178, engine v0.10.0). New project is one
-sheet with three sources, which replaced the create dialog and the
-add-a-feed dialog (`NewProjectSheet.tsx`).
-
+**The Library is the front door** (Phase 5.6; `Library.tsx`,
+`SampleCities.tsx`): "Your projects", "Sample cities" (the engine's presets
+as cards, from `feeds.list` alone, nothing downloaded) and "Your feeds". A
+card's press makes the project and starts its layout, the download drawn in
+cell 01 and stopped by the run's own cancel, which keeps nothing (issue
+178); New project is one sheet with three sources (`NewProjectSheet.tsx`).
 **The interface's palette is the app's own** (ADR-044): Night and
-Parchment in Settings, in `styles/theme.css`, no longer a copy of the
-engine page's. A project's map still says Warm dark and Sepia, because
-those are what the engine draws. The mark is the brand icon, and the
-progress line is drawn in the line vocabulary of `docs/DESIGN.md` section
-10.
-
-What follows is the order things were built in, and it is still accurate
-about why each feature is as it is. Where it and the paragraphs above
-disagree about where something is or what it is called, the paragraphs
-above are right.
-
-The repository holds its charter (licence, contribution guide,
-security policy, templates, decision-record convention), its hygiene tooling
-(`bin/preflight`, gitleaks, the git hooks, the CI checks), its specs
-(Spec Kit, the constitution), and the Phase 0 spike reports and decision
-records under `docs/adr/` - and the Electron skeleton (A0-09): one window
-opening to the Library on the `app://local` origin, the project object
-(A1-05: a versioned record under the engine home, created, renamed and
-deleted through the preload bridge, five methods then and fourteen now), the engine's
-supervisor (A1-01: the pinned engine started as a child process and spoken
-to over JSON-RPC on its stdio, with a handshake, restart and a clean
-shutdown; `docs/ARCHITECTURE.md`, "The engine process"), the dev loop
-against the sibling engine, and CI on three platforms - and the design
-system's foundations (A2-00: the tokens of `docs/DESIGN.md` in four
-stylesheets, FigUI3's MIT core behind wrappers and a build guard that
-refuses its PolyForm half, Phosphor icons, the Beck progress line, every
-screen restyled), the typed client generated from the engine's own schema
-(A1-02), the layout run (A3-01: one button runs the engine's stages behind
-a progress line and records the layout the project was drawn from; A3-05:
-the id is the engine's own and "Re-layout" runs every stage again behind a
-warning, ADR-033; A3-04: the service day is the engine's choice from a
-stored anchor, `feeds.service` at every layout run, a date control bounded
-by the stored window, and a chosen day a rebuild from the stored layout,
-never a re-layout; A3-06: the layout's `made` beside its id, so a
-project is told when another re-laid out the set it draws from), the feeds
-(A2-01: the Library lists the engine's registry, adds a feed from a zip
-chosen in the platform's dialog or from a URL over `feeds.add` with its
-download on a progress line, and removes an added feed; a guard in the
-main process refuses a path no dialog answered and a feed a project
-names; the create dialog offers the list, and a typed key when the engine
-is away; A2-02: the Inspect view reads the feed through `feeds.inspect`
-and a person chooses mode and agency with the route types in view, the
-histogram saying which the mode keeps, and the layout run passes both to
-the engine; A2-03: two layout stages drawn where they run, the engine's
-SVG over `render.stage` in a frame with an empty sandbox, panned and
-zoomed from outside, the counts the engine's) and the viewer (A3-02: the engine's page in a frame sandboxed to
-an opaque origin and driven from the main process, ADR-028), and the
-capture (A5-02a: an offscreen window in its own session takes a page's
-frames through the DevTools protocol, byte-identical run to run,
-`src/main/capture.ts`) and the export (A5-02b: one preset, `instagram-reel`,
-from a button on the project screen, over the engine's `export.plan` and
-`export.encode` with the capture in the middle, into a folder on the
-desktop or `LEGIBLE_EXPORT_FOLDER`, the sidecar beside the file;
-`src/main/export.ts`) and the line colours (A4-01: the project's lines with
-the colour their feed publishes, an override per line, a reset per line and
-for all, and one default for the lines the feed leaves blank, built on the
-gesture's release (issue 262) into a `map.build` from the stored layout and
-written only once the map carries them;
-`src/renderer/src/LineColours.tsx`) and the line order (A4-02: the
-project's lines in the order the map stacks them, moved one place at a time
-from two named buttons or, since issue 283, dragged by a grip with the
-buttons kept, the whole arrangement debounced into the same rebuild and
-written only once the map carries it;
-`src/renderer/src/LineOrder.tsx`) and the theme (A4-03: the project's map
-drawn in one of the engine page's two themes, chosen per project and
-written at once, since a theme is neither a layout nor a render - the page
-is then told through its seam (`setTheme`) and restyles in place, the
-address carrying the theme for the next load only (issue 349) - and the
-interface's own theme in Settings is a separate thing that neither follows;
-`src/renderer/src/ThemeSwitch.tsx`). That is the first reel.
-
-Route mode came with issue 272 on the engine pin at v0.13.0 (spec 030,
-ADR-048): the page finds the trip between two stations and fades the rest,
-and the app asks for it through the seam's `setTrip`, reads `state().trip`
-as untrusted data, composes the steps in words, and keeps the map's
-`stations` with the record's `drawn` so a reopened project offers its
-pickers; a trip is never written to the record.
-
-Installers (A0-10) came with Phase 5: `build.yml` runs the vendor jobs in
-the same run, refuses a target whose Python, LOOM or ffmpeg is missing,
-stale or the wrong architecture (`scripts/check-vendored.mjs`), compiles
-the runtime's bytecode as unchecked hashes so nothing is written inside a
-signed bundle, packages a dmg per Mac and an nsis installer, launches the
-packaged app once and runs every bundled tool from inside it, and checks
-the bundle did not change (ADR-035). They are unsigned. The maintainer decided that the first release ships that way (issue 38, A6-05); ADR-037 recorded it for v0.1.0, and ADR-054 keeps 1.0 unsigned with no automatic update. The ffmpeg they carry is our own build (#95, ADR-040):
-`scripts/vendor-ffmpeg.sh` builds FFmpeg 9.0.1 and x264 at a pinned commit
-natively on each target (MSYS2 UCRT64 on Windows), with
-`--disable-everything` and only what the export and its checks use, x264
-the one external library and zlib the system's or, on Windows, static; the
-vendor job refuses any other library and uploads the Corresponding Source
-as `ffmpeg-source` before any binary.
-On every start a packaged app makes those tools do real work once the
-engine has settled (A6-02): the main process runs `gtfs2graph` over the
-three-stop feed in `resources/first-run-gtfs/`, whose output must parse as
-a line graph because a zero exit proves nothing, and `ffmpeg`/`ffprobe
--version`, and a failure is one dialog naming the tool, never over the
-mismatch dialog, and a row in Settings (`src/main/first-run.ts`).
-A pushed tag `v<version>` or `v<version>-rc.<N>` then drafts a GitHub
-Release (A6-01, ADR-041): the release job, the only one with `contents:
-write`, runs after every vendor and packaging job succeeded, and
-`scripts/release.mjs` refuses a tag not for `package.json`'s version, moved
-since its push, or not on `main`, names the installers for their machine, archives `ffmpeg-source`,
-`loom-source` and `engine-source` from the same run, writes `SHA256SUMS.txt`
-and the notes from `.github/release-notes.md`, and creates or updates a
-**draft, never published**; the maintainer publishes it by hand, and
-`docs/install.md` is what a person follows.
-The source of the FFmpeg library inside Electron (LGPL-2.1-or-later) rides
-with it (ADR-043): `electron-ffmpeg-source` verifies Chromium's FFmpeg,
-libopus and their build files by git object id against `electron_ffmpeg` in
-the pins, which every Electron bump must move, and no installer is packaged
-without it.
-
-Settings (A1-04) came after it: one file under the user-data folder holding
-the two folders a person chose and the interface's theme, read before the
-configuration resolves so a stored folder sits between `.env.local` and the
-default, and written the way a project record is. A folder is chosen in the
-platform's own dialog, which the main process opens and whose answer it
-applies itself, so no path crosses the bridge inward at all; a folder
-inside the app's own bundle is refused even so. The export folder moves at
-once and the engine's home at the next start, which the screen says. The
-screen also shows the engine home's size, the versions from `engine.info`,
-a way into the platform's log folder, and "Reset engine data".
-
-**The reset removes four folders and never the engine's home itself**:
-`projects`, `out`, `data` and `frames`, which is everything this app and
-the engine put there (the engine's `config.py` names `data/feeds`,
-`data/graphs` and `out`; read it before adding to the list). The home is a
-folder a person can point at `~/Documents` in one click, so whatever else
-is in it is theirs and stays, and a folder that turns out to be a symbolic
-link is left alone and reported rather than unlinked. **The home is
-resolved through `realpath` before any guard judges it**, and so is
-everything it is compared against: the guards are textual, and a home that
-is itself a link would pass every one of them and then remove four folders
-from wherever it points. Before it starts, the main process refuses while a
-reset is already running, while an export, an engine request or a record
-write is in flight, and for a home so high up that those four names would
-mean something else; the screen refuses separately while a layout run or an
-export is open, because a run is four steps with gaps between them and only
-the renderer can see the gaps. The flag goes up before the first `await`,
-and while it is up every engine request, every export and every write to a
-project record is refused, so nothing lands in a folder being walked away
-(`src/main/settings.ts`, `src/main/settings-ipc.ts`). **A project's own
-export folder is kept out of the reset's reach at three doors** (issue
-206): the reset refuses while a project under the home in force exports to
-a folder inside the home or around it; so does the choice of the engine's
-folder in Settings, the default included, which is the door that matters -
-records live under the home and nothing moves them, so after the restart
-the project that exports there is a record in the old home; and a
-project's own folder is judged against the engine folder **waiting for a
-restart** as well as the one in force, where it is chosen and again at
-each export (`destinationRefusal` in `src/main/export.ts`, which is handed
-a function for the folder waiting and asks it at every judgement). **No
-door sees a record left behind in a previous home.** **A projects folder
-that cannot be listed refuses** the choice and the reset, because it hides
-every project (`destinations()` reads strictly; `list()` does not, so the
-front door still opens); **one record that cannot be read is skipped** and
-refuses nothing, because the reset is the remedy for bad records. **Every
-check over folders has one deadline** (`FOLDERS_TIMEOUT_MS`, `inTime`): a
-folder on a share that stalls refuses, with nothing changed or removed,
-rather than keeping the reset's flag up; a check that lapsed is abandoned,
-so checks only read and whatever acts on their answer, the removal or a
-write, comes after them; the refusal names the project whose folder did
-not answer; and **a folder that has not answered is not asked again**
-(`oneAtATime`), because each unanswered question holds one of the four
-threads files are read with. **The screen's promise is qualified**:
-exported files are not touched unless they are inside one of the four
-folders. **Every refusal over
-exported files asks for the files to be moved out and the folder changed,
-in that order**, because changing a folder moves nothing and a reset that
-goes ahead removes what was exported into one of the four.
-`destinationsInTheWay` is the pure rule on Settings' side, on real paths;
-the list is the project store's `destinations()`, handed in and read once
-at a press.
-
-The export's options (A5-01) widened the reel's one button. They were a tab
-once and are cell 06 now. Export offers the thirteen social presets
-from `export.presets` grouped by platform, a storyboard from
-`export.storyboards` for a video or GIF, and view, labels, title, clock,
-start time, lines, quality and a filename tag, and since issue 352 a caption,
-the clock's corner and the sidecar's alt text, and for a video or GIF an opening (a title card, the
-network drawing in, or both, composed as an authored beat list ahead of the storyboard's own, with the
-capture driving the page's `setCard` and `setDrawn`); the choice is the project's,
-written to the record's `export` the moment it is made. While cell 06 is
-open a frame of the cell's own is the preview (ADR-046; until then it was
-the map's frame), at the address `export.plan` answers with `safe` on
-exactly where the preset has safe zones, and **an export's plan never
-carries `safe`**. A still is captured as
-one beat of one frame pinned at the plan's `at`, since the app's capture
-takes frames from beats and a still plan has none
-(`src/renderer/src/ExportTab.tsx`, `src/renderer/src/exportChoice.ts`,
-`src/main/export.ts`). An export goes to the folder Settings names, or to
-the project's own where it has one (A5.5-19).
-
-The logs (A6-03) came next: `main.log` and `engine.log` in the platform's
-log folder behind the sink in `src/main/log.ts`, routed by the `engine`
-tag, each capped at 5 MB with one `.old.log` kept and no dependency
-(`src/main/log-file.ts`); the logs follow `LEGIBLE_USER_DATA`, which macOS
-would not do on its own, and in development `LEGIBLE_LOGS` names a folder
-for them, which the end-to-end suite sets for every launch
-(`tests/e2e/global-setup.ts`) so no run writes a person's own log.
-"Copy diagnostics" in Settings puts the versions, `engine.info`, the end of
-both logs and the session's map reports on the clipboard, composed in the
-main process with the home folder written as `~` (its 8.3 short form on
-Windows included) and checked for afterwards
-(`src/main/diagnostics-text.ts`). Every log line, and the copy again, has
-its URLs' user information, query values and fragments redacted, and the
-query values of a scheme-less path as urllib3 prints one
-(`src/main/redact.ts`); a token in a URL's path is not. Nothing is sent
-anywhere.
-
-The jobs (A1-03) followed: a right-hand inspector that is the window's, not
-a project's (ADR-036), rendered from `App.tsx` beside all three screens,
-collapsed until its header toggle is pressed, the toggle carrying the
-running count; below 900px it covers the main region. It lists the
-session's layout runs, rebuilds, exports and feed adds, running first and
-then the last twenty finished, each on its run's own progress line with
-Cancel through the run's own `cancel()`, the engine's hint and its detail
-behind a closed disclosure, and "Copy log", which the main process redacts
-through the diagnostics copy's own home lookup before the clipboard
-(`src/main/jobs-ipc.ts`). **A running job is derived from its run's
-snapshot each time it is read; a finished job and a project's name are
-copies kept beside the runs** (`job()` on each run, `JobRegistry` in
-`runs.ts`, `src/shared/jobs.ts`), and **the runs' snapshots and behaviour
-did not change**. A project's jobs leave only when its own screen has
-deleted it, never because a list read missed a record, and a rename hands
-the new name in. The list is the inspector's own state, so a run's
-progress never re-renders the screen beside it. Tracking a run is silent,
-since `layoutRunFor` is called during a render. A job's end is announced
-once, emptied and refilled a frame later so a repeat is spoken; nothing is
-written to disk.
-
-The determinism test (A5-04) exports the committed BART fixture twice
-through cell 06 against the real engine and the vendored ffmpeg and
-compares the two captures frame by frame in RGB at a tolerance of 8, with
-the capture required to move, the stored layout checked unmoved and no
-`graph.build` sent; the capture stays the verdict for the frames. From
-engine v0.17.0, whose GIF colour table is composed from the plan rather
-than counted from the frames (engine issue 33, ADR-055), the delivered
-GIFs are judged too, beyond their structure: by their colour tables (256
-entries each, no local table, the two byte-identical) and by what moved
-(decoded beside the captures, the GIFs differ only on pixels the captures
-differ on, exactly, and never on more of them). The tolerance of 8 is
-never applied to the GIFs, because a pixel near the boundary between two
-entries flips by the gap between them (`tests/support/gif.ts`; ADR-039 is
-why only the structure was checked before). It runs on three platforms once
-per pull request that touches what an export is made of and five times a
-week
-(`tests/e2e/determinism.spec.ts`, `.github/workflows/determinism.yml`).
-
-The automated acceptance run (A6-04) drives a published Release's own
-installed app through `docs/acceptance.md` on a macOS and a Windows
-runner, dispatched by hand with the tag: the installer checked against
-`SHA256SUMS.txt`, installed, steps 3 to 20 against the real engine, a real
-layout and real exports, then uninstalled; the record is the checklist's
-results template, with whatever a machine cannot judge written as not
-automated, never passed (`tests/acceptance/acceptance.spec.ts`,
-`.github/workflows/acceptance.yml`). It launches the installed app, so
-`npm run test:acceptance` is for a person or a runner, never beside
-another launch.
-
-The accessibility pass's machine half (A6-07) checked every screen and
-dialog for keyboard reach, names, visible focus, reduced motion and
-contrast in both themes, fixed the small defects it found (focus handed on
-when a pressed control goes, `src/renderer/src/focusHandback.ts`; control
-edges, placeholders and the sepia primary fill), sweeps them in
-`tests/e2e/accessibility.spec.ts` and, for the notebook,
-`tests/e2e/notebook-a11y.spec.ts` (A5.6-09), in Night and then in
-Parchment, and records the result per screen in `docs/accessibility.md`,
-whose VoiceOver and Narrator columns are a person's.
-The people at the release gate follow documents that quote the app's own
-sentences and control names, so changing one means changing them too
-(A6-04): the acceptance checklist (`docs/acceptance.md`), the stranger's
-timed run (`docs/acceptance-stranger.md`) and the screen-reader walkthrough
-in `docs/accessibility.md`.
-
-The licence texts (issue 108, ADR-042) followed: every installer carries
-the texts of the libraries linked into the Python runtime, taken from the
-same python-build-standalone build's `full` archive, and CPython's
-`Doc/license.rst`, under `python/licenses/`; **the build metadata is not
-trusted alone** - on macOS it names a text the archive lacks, on Windows it
-names nothing for the zlib, Expat and libmpdec in the DLLs - so three
-reviewed lists per target in `vendor/pins.json` say what it does not, and
-`scripts/check-vendored.mjs` fails the python job and the package whenever
-the metadata, the folder and the lists disagree. **A new
-python-build-standalone release fails until those lists are reread**, on
-purpose. The Mac app gets Electron's and Chromium's licences back, which
-electron-builder deletes from it. Settings has a Licences section: the
-components from `src/shared/licences.ts`, held to the notices file by a
-test, and three buttons to open the notices, the texts and Chromium's
-licences, each saying so when there is nothing bundled to open.
-
-Work proceeds phase by phase; `CONTRIBUTING.md` explains the flow, the
-labels, the milestones and the `A0-05`-style issue codes. The four Phase 0
-spikes have run: LOOM ships without its optional solvers (ADR-019), the
-sidecar is a pinned python-build-standalone runtime (ADR-020), Windows
-stays in the first release (ADR-021), and a project's layout is stored
-rather than recomputed because `topo` is not reproducible on macOS
-(ADR-023), with the service day resolved once at the first layout
-(ADR-031). The sidecar's `python` job in `vendor.yml` vendors all three
-targets (darwin-arm64, darwin-x64, win-x64; A0-06); the offscreen-capture
-spike is finished, and
-ADR-024 puts capture in the app's own process, in an offscreen window
-driven through the Chrome DevTools Protocol. The "First reel" milestone -
-one preset feed through layout, viewer and export before the phases
-broaden - is complete: the engine's export halves (E10, E09b) landed at
-v0.3.0 and the app exports the reel (A5-02b). Since 2026-09-07 `main`
-changes only through pull requests with the `ci` check green: one issue,
-one branch, one pull request, the maintainer included.
-
-Personal settings and private pointers (sibling checkouts, planning notes)
-live in `CLAUDE.local.md`, which is gitignored. Read it if it exists.
+Parchment, in Settings; a project's map still says Warm dark and Sepia,
+which is what the engine draws.
 
 ## Commands
 
 ```
 bin/preflight                     # refuses personal paths, addresses, keys, session links
-bin/test-hooks                    # the .claude/hooks/ allow and refuse tables
 bin/preflight --message-file F    # the same, over a commit message being written
+bin/test-hooks                    # the .claude/hooks/ allow and refuse tables
 gitleaks git --staged --redact    # keys and tokens in the staged changes
 gitleaks dir . --redact           # the same, over the whole working tree
 pre-commit run --all-files        # the hooks, without committing
@@ -399,135 +89,107 @@ rules in `.claude/settings.json`; `dev`, `start` and `dist` are for a person:
 npm ci && npx install-electron --no   # install; the Electron binary is fetched separately since Electron 42
 npm run dev                           # the app against the sibling engine checkout; interface changes hot-reload
 npm run lint                          # eslint and prettier --check
+npm run format                        # prettier --write over what lint checks
 npm run typecheck                     # tsc over the node and the web project
 npm test                              # vitest; the supervisor runs against a stand-in engine (needs a python3 on PATH)
 npm run build                         # electron-vite build into out/
 npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
-npm run dist                          # electron-builder --dir; installers come from build.yml (A0-10)
+npm run typegen                       # the protocol, its fingerprint and the types, from LEGIBLE_ENGINE_CHECKOUT's engine
+npm run dist                          # electron-builder --dir; installers come from build.yml
 npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
-npm run test:acceptance               # the acceptance checklist over an installed app named by LEGIBLE_ACCEPTANCE_APP (A6-04)
+npm run test:acceptance               # the acceptance checklist over the installed app LEGIBLE_ACCEPTANCE_APP names
 ```
 
-`.github/workflows/ci.yml` has two layers for every pull request and every
-push to `main`: `ci (<os>)` runs lint, typecheck, test and build on Ubuntu,
-macOS and Windows, and `e2e (<os>)` runs the Playwright suite over the built
-app on macOS and Windows (a pull request that changes only documentation
-passes it without running the suite). A branch with no pull request runs none of it. Add a script here, and a permission rule if it is a check, at the
-same time.
-
-`gitleaks` and `pre-commit` are development tools, not dependencies; install
-them from a package manager. Everything they enforce is enforced again in
-CI, so a machine without them can still contribute. The language server
-the `typescript-lsp` plugin reads diagnostics from is a development tool
-too (`npm install -g typescript-language-server typescript`); without it
-the plugin does nothing and nothing breaks.
-
-The `gitleaks` pre-commit hook reads only the **staged** changes, which is
-the right scope at commit time and the wrong one for an audit:
-`pre-commit run --all-files` will not find a key sitting unstaged in the
-working tree. Use `gitleaks dir .` for that.
+A second launch of the app quits at once, so `test:acceptance` never runs
+beside another. `ci.yml` runs `ci (<os>)` (lint, typecheck, test, build) on
+Ubuntu, macOS and Windows and `e2e (<os>)` on macOS and Windows for every
+pull request and push to `main` (a documentation-only pull request passes
+`e2e` without the suite; a branch with no pull request runs neither). Add a
+script here, and a permission rule if it is a check, at the same time.
+`gitleaks` and `pre-commit` are development tools that CI enforces again;
+the `gitleaks` hook reads only **staged** changes, so `gitleaks dir .` is
+what finds a key sitting unstaged. The `typescript-lsp` plugin needs
+`npm install -g typescript-language-server typescript`.
 
 ## What is in `.claude/`
 
-All of it is committed here (ADR-029, which supersedes ADR-025). It is
-technical: permission rules, hooks that run the same scanners CI runs,
-per-process rules, and skills. A checkout is reproducible, the hooks are
-exercised by `bin/test-hooks`, and a contributor can see what the assistant
-is told rather than guessing. Personal permissions go in
-`settings.local.json`, which is gitignored and stays on the machine, as do
-private notes in `CLAUDE.local.md`.
+All of it is committed (ADR-029, which supersedes ADR-025), so a checkout is
+reproducible and a contributor sees what the assistant is told; personal
+permissions (`settings.local.json`) and notes (`CLAUDE.local.md`) are
+gitignored.
 
-- `settings.json` - a permission allowlist for the read-only commands, and a
-  `PreToolUse` hook on `Bash`.
-- `hooks/guard-git.sh` - runs gitleaks and `bin/preflight` before any
-  `git commit` or `git push` made from here, and blocks on a finding; it
-  also refuses `-a`/`--all` and anything it cannot scan. Not
-  in a sibling worktree, which it cannot see; `/lanes` says what covers it.
-- `hooks/reviewer-readonly.sh` - keeps the `reviewer` subagent's `Bash` to
-  read-only commands.
-- `rules/renderer.md`, `rules/main.md` - the detailed rules for each
-  process, loaded when the matching files are read. The short form is below.
-- `skills/adr`, `skills/spike`, `skills/spec` - `/adr` writes a numbered
-  decision record and indexes it; `/spike` sets up a timeboxed experiment
-  and its report; `/spec` scaffolds a feature spec from an issue.
-- `skills/lanes` - `/lanes` builds several issues at once, one branch,
-  worktree and agent each, with the brief every agent is given (ADR-034).
-- `enabledPlugins` in `settings.json` - which plugins run here, on or off,
-  whatever a person has installed (ADR-034).
-- `agents/reviewer.md` - a read-only reviewer for correctness, leaks, a
-  second renderer creeping in, and child processes without a timeout.
-- `skills/speckit-*` - installed by Spec Kit, not written here. Leave them
-  alone; `specify init` regenerates them.
-
-`.specify/` holds the constitution, the templates and the scripts Spec Kit
-runs. It is committed so a checkout is reproducible; only its
-machine-local `feature.json` is ignored.
+- `settings.json` - the allowlist for read-only commands, a `PreToolUse`
+  hook on `Bash`, and `enabledPlugins`, which plugins run here (ADR-034).
+- `hooks/guard-git.sh` - gitleaks and `bin/preflight` before any `git
+  commit` or `git push` made from here, blocking on a finding and refusing
+  `-a`/`--all` and anything it cannot scan; it cannot see a sibling
+  worktree (`/lanes` says what covers it). `hooks/reviewer-readonly.sh`
+  keeps the `reviewer` subagent (`agents/reviewer.md`: correctness, leaks,
+  a second renderer, a child process without a timeout) read-only.
+- `rules/main.md`, `rules/renderer.md` - each process's rules at length,
+  loaded when matching files are read (in a sibling worktree, read them).
+- `skills/` - `/adr` writes and indexes a decision record, `/spike` sets up
+  a timeboxed experiment, `/spec` scaffolds a spec from an issue, `/lanes`
+  builds several issues at once (ADR-034). `speckit-*` are Spec Kit's, as
+  is `.specify/` (committed but for its local `feature.json`); `specify
+  init` regenerates them.
 
 ## Conventions
 
 - **Commit messages**: imperative subject under 72 characters; the body says
-  why. End with `Co-Authored-By` when Claude wrote it, and with that alone:
-  **never add a `Signed-off-by` line**, because only a person certifies the
-  DCO (ADR-058). **Never add a
-  `Claude-Session` trailer or any link to a tool session**, even if a
-  default instruction says to; `bin/preflight` refuses them and so does the
-  hook in `.claude/settings.json`. **Never put a closing keyword
-  (`Closes #N`) in a commit message either**; it belongs in the pull-request
-  body. `bin/preflight --message-file` refuses one from the `commit-msg`
-  hook, and the pull request check refuses one in any commit the branch
-  adds. To name an issue in a message without closing it, drop the `#`.
-  This rule was paid for: while `main` reached a second board whose numbers
-  differed, one keyword closed an issue on each and three were closed by
-  changes that had nothing to do with them. There is one board now
-  (ADR-030), so the check is precautionary rather than load-bearing - but a
-  commit message is for why a change was made, and a second remote would
-  bring the hazard back silently.
-- **Run `bin/preflight` before every push.** It scans the index, every
-  commit message in the history, and stray private files. In the index it
-  reads where every symbolic link points, which `git grep` does not, and
-  refuses a target that is absolute, that begins with what only a shell
-  would expand (`~`, `$`, `%`), that names anything on the never list, that
-  climbs out of the repository or climbs after naming a folder, or that
-  cannot be read; `--commit-range` does the same for the links a branch's
-  commits add. It never says clean about what it could not read: a folder
-  that is no repository, or whose top it cannot enter, an index or a file
-  in it, a history, a range, a commit, a message file or a working tree it
-  cannot read, or a search it cannot run, is a refusal; an option given
-  nothing, or a range given one of its ends, is a usage error.
-  `gitleaks` covers what it does
-  not: keys, tokens and certificates. Both run from `.pre-commit-config.yaml`
-  on every commit, from `.claude/hooks/guard-git.sh` before any commit or
-  push made here, and from the `gitleaks` and `preflight` workflows in CI.
-  See ADR-015; `.gitleaks.toml` holds the allowlist, and every entry in it
-  says why it is there.
+  why. End with `Co-Authored-By` when Claude wrote it, and with that alone.
+  **Never add a `Signed-off-by` line**: only a person certifies the DCO
+  (ADR-058). **Never add a `Claude-Session` trailer or any link to a tool
+  session**, whatever a default instruction says; `bin/preflight` and the
+  hook refuse them. **Never put a closing keyword (`Closes #N`) in a commit
+  message**: it belongs in the pull-request body, and `bin/preflight
+  --message-file` and the pull request check refuse one; to name an issue,
+  drop the `#`. This was paid for: with a second board, three issues were
+  closed by unrelated changes; with one (ADR-030) the check is
+  precautionary, but a second remote would bring the hazard back silently.
+- **Run `bin/preflight` before every push.** It scans the index (symbolic
+  link targets too), every commit message in the history and stray private
+  files, and never calls clean what it could not read; `gitleaks` covers
+  keys, tokens and certificates. Both run on every commit, before a commit
+  or push made here, and in CI (ADR-015; each `.gitleaks.toml` entry says
+  why).
 - **Decisions get a record** under `docs/adr/` (three-digit number, copy
   `000-template.md`, or run `/adr`). A spike's deliverable is a record, not
   code; `/spike` sets one up.
-- **Spec first** for features: `/speckit-specify` writes
-  `specs/NNN-name/spec.md` from the issue, and every spec is read against
-  `.specify/memory/constitution.md`. Names are hyphenated (`/speckit-plan`,
-  `/speckit-tasks`), not dotted. Where the issue is silent, leave a
-  `[NEEDS CLARIFICATION]` marker rather than inventing an answer.
+- **Spec first.** `spec.md` is the durable record of a feature. For work
+  built as a lane, `plan.md` and `tasks.md` are optional: the plan and the
+  tasks may live in the lane's brief instead. A spec's Status moves to
+  Implemented, with the date and the pull request, when its last part
+  merges; a spec built in parts says which parts are built. Every spec is
+  read against `.specify/memory/constitution.md`; where the issue is
+  silent, it carries a `[NEEDS CLARIFICATION]` marker rather than an
+  invented answer. Spec Kit's commands are hyphenated (`/speckit-specify`).
   `CONTRIBUTING.md` has the loop; ADR-014 has the reasoning.
 - **Third-party additions** go in `THIRD_PARTY_NOTICES.md` with their
-  licence. The code is GPL-3.0-or-later; contributions arrive under the same.
-  A dependency that is only a build input belongs in `devDependencies`:
+  licence. The code is GPL-3.0-or-later; contributions arrive under the
+  same. A build-only dependency belongs in `devDependencies`:
   electron-builder copies every production dependency into the app whole,
   so a split-licensed package in `dependencies` ships the half we refuse.
 - **Interface changes are drawn in the design system.** `docs/DESIGN.md` is
   the source; the tokens are the four stylesheets under
-  `src/renderer/src/styles/` and the controls are the wrappers in
+  `src/renderer/src/styles/`, the controls the wrappers in
   `src/renderer/src/kit/`. No colour, size or duration literal in a
   component file (a unit test refuses them); a new text or control pair
   goes into the contrast test; a component the document does not cover yet
   adds its rule to section 8.2 in the same change.
+- **The gate documents quote the app.** `docs/acceptance.md`,
+  `docs/acceptance-stranger.md` and the walkthrough in
+  `docs/accessibility.md` quote its sentences and control names: change one
+  and change them in the same pull request. What a machine cannot judge is
+  recorded as not automated, never as passed.
 - **Public repository.** No machine paths, e-mail addresses, private
   hostnames or addresses, keys, or planning notes in any committed file,
   commit message, issue or screenshot.
 
 ## Rules that matter now there is code
 
-Stated before the first implementation, and kept since.
+Stated before the first implementation and kept since; the rules files
+carry them at length.
 
 - **One renderer.** The engine emits a self-contained animation page; the
   app embeds it in an iframe and drives it only through `window.__present`.
@@ -535,54 +197,60 @@ Stated before the first implementation, and kept since.
   carries `sandbox="allow-scripts"` and nothing else; **never add
   `allow-same-origin`**, which hands the page the interface's realm and with
   it the bridge. The app drives the page from the main process, not through
-  `contentWindow`. `app://local` is still one scheme and one host, but that
-  is no longer what makes the viewer work: ADR-013 said it was and was
-  wrong, and ADR-028 records why.
+  `contentWindow`. The one origin, `app://local`, is not what makes the
+  viewer work: ADR-013 said it was and was wrong; ADR-028 records why.
 - **Never write inside the app bundle.** The engine's home is
   `SCHEMATIC_HOME` under the user-data folder; exports go where the user
-  chooses (a project's own folder where it chose one; else
-  `LEGIBLE_EXPORT_FOLDER`, else the folder Settings names, else a `Legible
-  Cities` folder on the desktop), and an export's frames sit under the
-  engine home only while it runs.
+  chooses (a project's own folder; else `LEGIBLE_EXPORT_FOLDER`, else the
+  folder Settings names, else a `Legible Cities` folder on the desktop),
+  and an export's frames sit under the engine home only while it runs.
+- **The reset removes four folders and never the engine's home**, judged on
+  paths resolved through `realpath`, and keeps every project's export
+  folder out of its reach. It is the one destructive path:
+  `.claude/rules/main.md`, "The reset", is what a change to it must keep.
 - **Child processes**: argument arrays, never shell strings; `windowsHide:
   true`; a timeout; stderr captured to the log; a clean shutdown on quit.
 - **The sidecar protocol is a contract.** JSON-RPC 2.0 over stdio, types
   generated from the engine's JSON Schema; a change on one side is a build
   error on the other, never a runtime surprise.
-- **Capture is deterministic, per project.** A project's layout is
-  computed once and stored; renders and exports read it and never re-run
-  it (ADR-023). `setCapture(true)` before any wait, stills included, then
-  `settle()` before the first captured frame; step the clock by `1/fps`;
-  wait for the paint (two animation frames) before every capture; compare
-  renders in RGB with a channel tolerance of 8, never RGBA and never exact
-  equality.
+- **Capture is deterministic, per project.** A layout is computed once and
+  stored; renders and exports read it and never re-run it (ADR-023).
+  `setCapture(true)` before any wait, stills included, then `settle()`
+  before the first captured frame; step the clock by `1/fps`; wait for the
+  paint (two animation frames) before every capture; compare renders in RGB
+  with a channel tolerance of 8, never RGBA, never exact equality.
 - **Frames come from an offscreen window through the debugger** (ADR-024):
-  navigate first and emulate second, because emulating a web contents that
-  has never navigated crashes the process; take the frame with
-  `Page.captureScreenshot` at a CSS-pixel clip, never `capturePage()`,
-  whose rect is in device-independent pixels and which ignores the
-  emulated scale factor; give the export a session of its own (an
-  in-memory partition, never the interface's default session), because a
-  persisted per-host zoom level scales every capture silently.
+  navigate first and emulate second, since emulating a web contents that
+  has never navigated crashes the process; `Page.captureScreenshot` at a
+  CSS-pixel clip, never `capturePage()`, whose rect is in device-independent
+  pixels and which ignores the emulated scale factor; the export in a
+  session of its own (an in-memory partition, never the interface's
+  default), because a persisted per-host zoom scales every capture silently.
 - **Renderer**: no Node APIs; everything goes through the preload bridge.
   `contextIsolation` on, `nodeIntegration` off, `sandbox` on.
-
-`.claude/rules/renderer.md` and `.claude/rules/main.md` carry the same rules
-at length, and load when the files they cover are read.
+- **What ships is checked, never trusted**: bytecode compiled as unchecked
+  hashes, so nothing is written inside a bundle (ADR-035); ffmpeg from
+  pinned sources, `--disable-everything`, x264 its one external library,
+  its source uploaded before any binary (ADR-040); every Electron bump moves
+  `electron_ffmpeg` in `vendor/pins.json`, or no installer is packaged
+  (ADR-043); a new python-build-standalone release fails until the pins'
+  licence lists are reread (ADR-042); a tag drafts a Release, never
+  publishes one (ADR-041).
 
 ## The engine
 
-Development expects a checkout of the engine beside this repository; the
-path is a personal setting (`CLAUDE.local.md`, later `.env.local`). A new pin
-is one command, `scripts/pin-engine.sh <tag>`: it makes the engine's worktree
-at the tag (`lc-engine-<tag>`, beside the engine repository, wherever that
-is), gives it a venv and `data` and `out`, and moves one link,
-`lc-engine-current`, beside this checkout, which `.env.local` names as
-`LEGIBLE_ENGINE_CHECKOUT` once and never edits again; it refuses a tag that is not `engine.tag` in
-`vendor/pins.json` unless given `--force`. A new pin also moves the shipped
-runtime's lock: run `scripts/lock-python.sh` on the engine at the tag, then move
-`engine.commit` and `python.requirements.sha256` in `vendor/pins.json` (ADR-057).
-Its own
-notes explain the pipeline (`gtfs2graph → topo → loom → octi`, then render,
+A checkout of the engine sits beside this repository, its path a personal
+setting (`CLAUDE.local.md`, then `.env.local`). The pin is `engine` in
+`vendor/pins.json`; the handshake refuses any other version or protocol. A
+new pin moves `engine.tag`, `.version` and `.commit`, then runs
+`scripts/pin-engine.sh <tag>`, which makes the engine's worktree at the tag
+(`lc-engine-<tag>`, beside the engine repository) with a venv, `data` and
+`out`, and moves the link `lc-engine-current` beside this checkout, which
+`.env.local` names as `LEGIBLE_ENGINE_CHECKOUT` once (it refuses a tag that
+is not `engine.tag` without `--force`); then `scripts/lock-python.sh` on
+that checkout, moving `python.requirements.sha256` to the hash it prints
+(ADR-057); then `npm run typegen`, which writes the protocol, its
+fingerprint and the types, all three or none. The engine's own notes
+explain the pipeline (`gtfs2graph → topo → loom → octi`, then render,
 schedule, animate, export). Anything the app needs from the pipeline is a
 change to the engine, versioned and tagged, never a copy.

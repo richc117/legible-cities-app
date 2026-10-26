@@ -97,6 +97,54 @@ moves them, and an end-to-end launch always has one of the two, or it
 writes a person's own log (`src/main/log-file.ts`, specs/023). A path that
 is not one of those is a bug. See ADR-016.
 
+## The reset
+
+"Reset engine data" (`src/main/settings.ts`, `src/main/settings-ipc.ts`)
+is the one destructive act; `docs/ARCHITECTURE.md` has it in full. What a
+change to it must keep:
+
+- It removes four folders under the engine's home - `projects`, `out`,
+  `data` and `frames` - and **never the home itself**, which a person can
+  point at `~/Documents` in one click. The engine's `config.py` is where
+  the list comes from; read it before adding a name. A folder that turns
+  out to be a symbolic link is left alone and reported, never unlinked.
+- **The home is resolved through `realpath` before any guard judges it**,
+  and so is everything it is compared with: the guards are textual, and a
+  home that is itself a link would pass them all and then remove four
+  folders from wherever it points.
+- Main refuses while a reset is already running, while an export, an
+  engine request or a record write is in flight, and for a home so high up
+  that the four names would mean something else; the screen refuses
+  separately while a layout run or an export is open, because only the
+  renderer sees the gaps between a run's steps. The flag goes up **before
+  the first `await`**, and while it is up every engine request, export and
+  record write is refused.
+- A project's own export folder is kept out of the reset's reach at three
+  doors (issue 206): the reset itself; the choice of the engine's folder in
+  Settings, the default included; and the project's folder, judged against
+  the home in force and the engine folder waiting for a restart, where it
+  is chosen and again at each export (`destinationRefusal`, handed a
+  function for the folder waiting and asking it at every judgement).
+  `destinationsInTheWay` is the pure rule on Settings' side, on real paths.
+  No door sees a record left behind in a previous home.
+- A projects folder that cannot be listed refuses the choice and the reset,
+  because it hides every project (`destinations()` reads strictly; `list()`
+  does not, so the front door still opens); one record that cannot be read
+  is skipped and refuses nothing, because the reset is the remedy for bad
+  records.
+- Every check over folders has one deadline (`FOLDERS_TIMEOUT_MS`,
+  `inTime`): a folder that stalls refuses, with nothing changed or removed;
+  a check that lapsed is abandoned, so checks only read and whatever acts
+  on their answer comes after them; the refusal names the project whose
+  folder did not answer; and a folder that has not answered is not asked
+  again (`oneAtATime`), because each unanswered question holds one of the
+  four threads files are read with.
+- Every refusal over exported files asks for the files to be moved out
+  **and then** the folder changed, in that order: changing a folder moves
+  nothing, and a reset that goes ahead removes what was exported into one
+  of the four. The screen promises only that exported files outside the
+  four folders are not touched.
+
 ## The protocol is a contract
 
 JSON-RPC 2.0 over stdio. The types are generated from the engine's JSON
