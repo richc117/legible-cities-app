@@ -22,6 +22,7 @@ import {
   expect,
   test,
   type ElectronApplication,
+  type Locator,
   type Page,
 } from '@playwright/test'
 import { openCell } from '../support/project'
@@ -237,7 +238,7 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
+    await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page.getByText(/was cancelled/i)).toBeVisible({ timeout: 20_000 })
     expect(existsSync(deliverable(h))).toBe(false)
@@ -245,6 +246,16 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
     await expect(exportButton(page)).toBeVisible()
   })
 })
+
+// The export's line is drawn twice since issue 542: once for the eye, which
+// changes with every frame, and once out of sight for a screen reader, which
+// changes at a tenth of them. A text locator over the page finds both, so
+// these read the line the eye follows.
+const exportLine = (page: Page, text: RegExp): Locator =>
+  page
+    .getByRole('region', { name: 'Export run', exact: true })
+    .locator('.progress-message')
+    .filter({ hasText: text })
 
 /**
  * Until the stand-in's encode has written its first step: the page shows
@@ -256,12 +267,7 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
  * prove nothing about what a write leaves.
  */
 async function encodedAStep(page: Page): Promise<void> {
-  await expect(
-    page
-      .getByRole('region', { name: 'Export run', exact: true })
-      .getByRole('status')
-      .filter({ hasText: /^Encoded \d+ of \d+ frames\./ }),
-  ).toBeVisible({ timeout: 30_000 })
+  await expect(exportLine(page, /^Encoded \d+ of \d+ frames\./)).toBeVisible({ timeout: 30_000 })
 }
 
 // Since engine v0.18.0 (its issue 79) the encode writes the file and its
@@ -357,7 +363,9 @@ test('cancelled during the encode after the file was in place: the export finish
     await expect.poll(() => existsSync(deliverable(h) + '.json'), { timeout: 45_000 }).toBe(true)
     await run.getByRole('button', { name: 'Cancel' }).click()
     await expect(
-      run.getByText('The export was already written when you cancelled; it is kept.'),
+      run.locator('.progress-message', {
+        hasText: 'The export was already written when you cancelled; it is kept.',
+      }),
     ).toBeVisible({ timeout: 20_000 })
     await expect(run.getByRole('status').filter({ hasText: /^Exported / })).toHaveText(
       `Exported ${REEL}.`,
@@ -411,7 +419,7 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
   const page = await ready(app)
   await laidOutProject(page, h)
   await exportButton(page).click()
-  await expect(page.getByText(/^Captur/)).toBeVisible({ timeout: 20_000 })
+  await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
   await app.close()
   expect(existsSync(deliverable(h))).toBe(false)
 
