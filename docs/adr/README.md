@@ -1,15 +1,35 @@
 # Architecture decision records
 
 One file per decision, `docs/adr/NNN-short-title.md` with a three-digit
-number in order of acceptance and a kebab-case title. A record is not
-rewritten after it is accepted: the only line that changes is its status,
-and a changed decision is a new record that names the one it supersedes.
+number in order of acceptance and a kebab-case title. A record's decision is
+not rewritten after it is accepted. Three things change in an accepted
+record, and only these: its status; the header lines that name a related
+record (Supersedes, Superseded by, Amends, Amended by); and "As of"
+paragraphs appended to it, below. A changed decision is a new record that
+names the one it supersedes.
 
 Each record opens with a header (Status, Date, Supersedes or Superseded-by)
 and has four sections: **Context** (what forced a choice), **Options** (what
 was on the table), **Decision** (what we chose), **Consequences** (what it
 costs and what it buys). Status is one of Proposed, Accepted, or Superseded
-by ADR-NNN. Copy `000-template.md` to start one.
+by ADR-NNN (a record with one decision superseded stays Accepted, as
+below). Copy `000-template.md` to start one.
+
+**The "As of" rule.** When a later change makes an accepted record's
+description out of date without reversing its decision, an "As of"
+paragraph is appended to the record, dated, saying what changed and where.
+It begins with the date in bold, **As of 8 Oct 2026**, usually followed by
+a few words naming the kind of change: "a correction of scope", "a
+correction of premise", "accepted", or the half of the work that landed. It
+says what is now true and where to look (the issue, the file or the engine
+version that made it so), and it leaves the text above it standing. It sits
+under the paragraph it corrects, or at the end of the section it concerns,
+and a record can carry several. For example, ADR-049, ADR-051, ADR-052 and
+ADR-053 carry corrections of scope and of premise; ADR-037, ADR-046, ADR-050 and ADR-052
+carry the paragraph that records an acceptance once the work shipped and was
+measured; ADR-055 carries one for the engine's half and one for the app's
+gate. A decision that is reversed, rather than described afresh, is a new
+record that supersedes the old one, and the old record's status says so.
 
 Spikes (timeboxed experiments) end in a record here, not in code; their
 working reports sit under `spikes/`.
@@ -28,67 +48,80 @@ will not appear here as files. **The next free number is the one after the
 last row.** Add your row when you add a record, and check that nothing
 already cites the number you mean to use.
 
-| Number | Title | Status |
-|---|---|---|
-| 000 | Template | n/a |
-| 001 | The desktop shell is Electron | Accepted, not yet written up |
-| 002 | The engine stays in Python and runs as a sidecar | Accepted, not yet written up |
-| 003 | The code is licensed GPL-3.0-or-later | Accepted, not yet written up |
-| 004 | Reserved: a decision about the project, recorded outside this repository | - |
-| 005 | Reserved: a decision about the project, recorded outside this repository | - |
-| 006 | Reserved: a decision about the project, recorded outside this repository | - |
-| 007 | Reserved: a decision about the project, recorded outside this repository | - |
-| 008 | Reserved: a decision about the project, recorded outside this repository | - |
-| 009 | electron-vite + React + TypeScript, packaged by electron-builder | Accepted, not yet written up |
-| 010 | JSON-RPC 2.0 over stdio, using existing LSP libraries | Accepted, not yet written up |
-| 011 | LOOM ships as native binaries built in CI from a pinned commit | Accepted, not yet written up |
-| 012 | [FFmpeg is bundled and encoding stays in Python](012-ffmpeg-is-bundled-and-encoding-stays-in-python.md) | Accepted |
-| 013 | [The generated animation page is the viewer, served same-origin](013-the-generated-page-is-the-viewer.md) | Accepted |
-| 014 | [Spec Kit for specs; decision records for decisions; spikes end in a record](014-spec-kit-for-specs.md) | Accepted |
-| 015 | [Public-repo hygiene is enforced by tools, not attention](015-hygiene-enforced-by-tools.md) | Accepted |
-| 016 | [All data lives in the user's data folder; the engine never writes beside its code](016-data-lives-in-the-user-data-folder.md) | Accepted |
-| 017 | The app is called "Legible Cities" | Accepted, not yet written up |
-| 018 | Public ADRs use three-digit numbers and a header block | Accepted, not yet written up |
-| 019 | [LOOM ships without its optional solvers, and not on macOS until it is deterministic](019-loom-binaries.md) | Accepted |
-| 020 | [The Python sidecar ships as a pinned python-build-standalone runtime](020-sidecar-packaging.md) | Accepted |
-| 021 | [Windows stays in the first release; LOOM is not built from source there](021-windows-in-the-first-release.md) | Accepted |
-| 022 | Reserved: a decision about the project, recorded outside this repository | - |
-| 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted |
-| 024 | [Capture runs in the app, offscreen, through the debugger](024-capture-is-in-process-and-offscreen.md) | Accepted |
-| 025 | Reserved: a decision about the project, recorded outside this repository | Superseded by 029 |
-| 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted; the mark superseded by 044 |
-| 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Superseded by 033 |
-| 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted |
-| 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted |
-| 030 | [One board and one remote, on GitHub](030-one-board-and-one-remote.md) | Accepted |
-| 031 | [The service day is resolved once, at the first layout](031-the-service-day-is-resolved-at-the-first-layout.md) | Accepted |
-| 032 | Reserved: a decision about the project, recorded outside this repository | - |
-| 033 | [The layout identifier is the engine's, and re-layout is a button](033-the-layout-identifier-is-the-engines.md) | Accepted |
-| 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted |
-| 035 | [Installers are built from the same run's vendor artefacts](035-installers-are-built-from-the-same-runs-vendor-artefacts.md) | Accepted |
-| 036 | [The inspector spans projects](036-the-inspector-spans-projects.md) | Accepted |
-| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Accepted |
-| 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted |
-| 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted |
-| 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted |
-| 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted |
-| 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted |
-| 043 | [The source of Electron's FFmpeg library is attached to every release](043-electrons-ffmpeg-source-is-attached-to-every-release.md) | Accepted |
-| 044 | [The interface's palette is the app's own](044-the-interface-palette-is-the-apps-own.md) | Accepted |
-| 045 | [The project screen is a notebook of six cells](045-the-project-screen-is-a-notebook.md) | Accepted; the pinned map superseded in part by 046 |
-| 046 | [The map moves into the notebook's flow, and the export gets a preview of its own](046-the-map-moves-into-the-notebooks-flow.md) | Accepted |
-| 047 | [The front door shows pictures the engine made, and ships none of its layouts](047-the-front-door-shows-pictures-the-engine-made.md) | Accepted |
-| 048 | [Route mode is a trip the page finds](048-route-mode-is-a-trip-the-page-finds.md) | Accepted |
-| 049 | [Style goes on the wire as the engine's own fields](049-style-on-the-wire.md) | Accepted |
-| 050 | [The frame is padded, never cropped](050-the-frame-is-padded-never-cropped.md) | Accepted |
-| 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Accepted |
-| 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Accepted |
-| 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Accepted |
-| 054 | [1.0 ships unsigned, with no automatic update](054-1-0-ships-unsigned-with-no-automatic-update.md) | Accepted |
-| 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted |
-| 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted |
-| 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted |
-| 058 | [Contributions carry a DCO sign-off](058-contributions-carry-a-dco-sign-off.md) | Accepted |
+The **Relations** column is read from each record's header and text, and it
+is the place to look before relying on a record. *Supersedes* and *Superseded
+by* mean the decision was replaced, wholly or "in part" (the part is named);
+a record superseded in part keeps its Accepted status and the table says
+"Accepted, in part superseded". *Amends* and *Amended by* mean the decision
+stands and something it said does not (see "Amending rather than superseding"
+below). *Builds on* means the record's reasoning rests on an earlier decision
+without changing it, and *See also* is a pointer the record itself carries. A
+row's relations are the ones the records state; where only one of two
+records states a relation, the table shows it on both rows and the gap is
+reported rather than repaired in an accepted record. When you add a row, fill
+this column from your record's header.
+
+| Number | Title | Status | Relations |
+|---|---|---|---|
+| 000 | Template | n/a | - |
+| 001 | The desktop shell is Electron | Accepted, not yet written up | - |
+| 002 | The engine stays in Python and runs as a sidecar | Accepted, not yet written up | - |
+| 003 | The code is licensed GPL-3.0-or-later | Accepted, not yet written up | - |
+| 004 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 005 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 006 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 007 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 008 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 009 | electron-vite + React + TypeScript, packaged by electron-builder | Accepted, not yet written up | - |
+| 010 | JSON-RPC 2.0 over stdio, using existing LSP libraries | Accepted, not yet written up | - |
+| 011 | LOOM ships as native binaries built in CI from a pinned commit | Accepted, not yet written up | - |
+| 012 | [FFmpeg is bundled and encoding stays in Python](012-ffmpeg-is-bundled-and-encoding-stays-in-python.md) | Accepted | Amended by 040 |
+| 013 | [The generated animation page is the viewer, served same-origin](013-the-generated-page-is-the-viewer.md) | Accepted | Amended by 028 |
+| 014 | [Spec Kit for specs; decision records for decisions; spikes end in a record](014-spec-kit-for-specs.md) | Accepted | - |
+| 015 | [Public-repo hygiene is enforced by tools, not attention](015-hygiene-enforced-by-tools.md) | Accepted | - |
+| 016 | [All data lives in the user's data folder; the engine never writes beside its code](016-data-lives-in-the-user-data-folder.md) | Accepted | - |
+| 017 | The app is called "Legible Cities" | Accepted, not yet written up | - |
+| 018 | Public ADRs use three-digit numbers and a header block | Accepted, not yet written up | - |
+| 019 | [LOOM ships without its optional solvers, and not on macOS until it is deterministic](019-loom-binaries.md) | Accepted | Builds on 011 |
+| 020 | [The Python sidecar ships as a pinned python-build-standalone runtime](020-sidecar-packaging.md) | Accepted | Amended by 038, 042, 057 |
+| 021 | [Windows stays in the first release; LOOM is not built from source there](021-windows-in-the-first-release.md) | Accepted | Builds on 019, 020 |
+| 022 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 023 | [Determinism is per project; the layout is computed once and stored](023-per-project-determinism.md) | Accepted | Amended by 031 |
+| 024 | [Capture runs in the app, offscreen, through the debugger](024-capture-is-in-process-and-offscreen.md) | Accepted | Builds on 028 |
+| 025 | Reserved: a decision about the project, recorded outside this repository | Superseded | Superseded by 029 |
+| 026 | [The design system's icons, select control and mark](026-design-system-choices.md) | Accepted, in part superseded | Superseded in part by 044 (the mark) |
+| 027 | [The layout a project stores, and what the engine cannot yet promise](027-the-layout-a-project-stores.md) | Superseded | Superseded by 033 |
+| 028 | [The viewer frame is sandboxed, and driven from the main process](028-the-viewer-frame-is-sandboxed.md) | Accepted | Amends 013 |
+| 029 | [The assistant's configuration is committed](029-the-assistants-configuration-is-committed.md) | Accepted | Supersedes 025 |
+| 030 | [One board and one remote, on GitHub](030-one-board-and-one-remote.md) | Accepted | - |
+| 031 | [The service day is resolved once, at the first layout](031-the-service-day-is-resolved-at-the-first-layout.md) | Accepted | Amends 023 |
+| 032 | Reserved: a decision about the project, recorded outside this repository | - | - |
+| 033 | [The layout identifier is the engine's, and re-layout is a button](033-the-layout-identifier-is-the-engines.md) | Accepted | Supersedes 027 |
+| 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted | Builds on 029 |
+| 035 | [Installers are built from the same run's vendor artefacts](035-installers-are-built-from-the-same-runs-vendor-artefacts.md) | Accepted | Amended by 040, 042 |
+| 036 | [The inspector spans projects](036-the-inspector-spans-projects.md) | Accepted, in part superseded | Superseded in part by 045 (the left rail's deferral) |
+| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Accepted | See also 054 |
+| 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted | Amends 020; amended by 042 |
+| 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted, in part superseded | Superseded in part by 055 (the GIFs) |
+| 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted | Amends 012, 035 |
+| 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted | Amended by 057 |
+| 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted | Amends 020, 035, 038 |
+| 043 | [The source of Electron's FFmpeg library is attached to every release](043-electrons-ffmpeg-source-is-attached-to-every-release.md) | Accepted | Builds on 041 |
+| 044 | [The interface's palette is the app's own](044-the-interface-palette-is-the-apps-own.md) | Accepted | Supersedes 026 in part (the mark) |
+| 045 | [The project screen is a notebook of six cells](045-the-project-screen-is-a-notebook.md) | Accepted, in part superseded | Supersedes 036 in part (the left rail's deferral); superseded in part by 046 (the pinned map, the one frame per project) |
+| 046 | [The map moves into the notebook's flow, and the export gets a preview of its own](046-the-map-moves-into-the-notebooks-flow.md) | Accepted | Supersedes 045 in part (the pinned map, the one frame per project) |
+| 047 | [The front door shows pictures the engine made, and ships none of its layouts](047-the-front-door-shows-pictures-the-engine-made.md) | Accepted | Builds on 045 |
+| 048 | [Route mode is a trip the page finds](048-route-mode-is-a-trip-the-page-finds.md) | Accepted | - |
+| 049 | [Style goes on the wire as the engine's own fields](049-style-on-the-wire.md) | Accepted | - |
+| 050 | [The frame is padded, never cropped](050-the-frame-is-padded-never-cropped.md) | Accepted | Builds on 049 |
+| 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Accepted | - |
+| 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Accepted | - |
+| 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Accepted | - |
+| 054 | [1.0 ships unsigned, with no automatic update](054-1-0-ships-unsigned-with-no-automatic-update.md) | Accepted | Builds on 037 |
+| 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted | Supersedes 039 in part (the GIFs) |
+| 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted | - |
+| 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted | Amends 020, 041 |
+| 058 | [Contributions carry a DCO sign-off](058-contributions-carry-a-dco-sign-off.md) | Accepted | - |
 
 ## Amending rather than superseding
 

@@ -11,7 +11,8 @@ const lead = (status: string): string => status.trim().split(/[;,\s]/)[0] ?? ''
 
 const rows = new Map<string, string>()
 for (const line of readFileSync(join(dir, 'README.md'), 'utf8').split('\n')) {
-  const m = /^\| (\d{3}) \|.*\| ([^|]*?) \|$/.exec(line)
+  // Number | Title | Status | Relations: the status is the third cell.
+  const m = /^\| (\d{3}) \|[^|]*\| ([^|]*?) \|[^|]*\|$/.exec(line)
   if (m) rows.set(m[1]!, m[2]!)
 }
 
