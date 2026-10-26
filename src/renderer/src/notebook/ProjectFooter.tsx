@@ -90,7 +90,7 @@ export default function ProjectFooter(): JSX.Element {
       <ConfirmDialog
         open={remove.confirming}
         title={`Delete ${project?.name ?? ''}?`}
-        description="This removes the project and its generated output. The feed stays."
+        description="This removes the project and its generated output. The feed stays. Exported files stay where they are."
         confirmLabel="Delete"
         onConfirm={remove.confirm}
         onCancel={remove.cancel}

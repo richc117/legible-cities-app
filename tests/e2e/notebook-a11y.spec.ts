@@ -695,6 +695,15 @@ test("cell 03's transport, on a page that answers what day it has", async () => 
       `Play ${JSON.stringify(b)} against Speed ${JSON.stringify(c)}`,
     ).toBeLessThanOrEqual(1)
     expect(Math.abs(b.height - c.height), 'one height').toBeLessThanOrEqual(1)
+    // The scrub is a target of at least 24px in both dimensions
+    // (DESIGN.md section 5, --target-min, issue 543); the platform draws a
+    // range 16px tall. Mutation owed to the coordinator: delete
+    // `min-block-size` from `.transport-scrub input[type='range']` in
+    // panels.css and this reads 16.
+    const scrub = transport.getByRole('slider', { name: 'Time of day' })
+    const scrubBox = (await scrub.boundingBox())!
+    expect(scrubBox.height, `the scrub is ${JSON.stringify(scrubBox)}`).toBeGreaterThanOrEqual(24)
+    expect(scrubBox.width, `the scrub is ${JSON.stringify(scrubBox)}`).toBeGreaterThanOrEqual(24)
     const ground = (selector: string): Promise<string> =>
       page
         .locator(selector)

@@ -12,6 +12,7 @@ import { type ProjectRecord } from '../../shared/project/types'
 import { downloading, kindOfRun, type LayoutRun as Run, type RunKindOf } from './engine/layoutRun'
 import { NOT_LAID_OUT, WAITING_FOR_FEED } from './DownloadLine'
 import { processStoppedSentence, type FrameFailure } from './notebook/olderPage'
+import { EVERY_OPERATOR } from './record'
 import { tuningNotice } from './tuningRules'
 import { useSnapshot } from './useSnapshot'
 
@@ -331,7 +332,7 @@ export function doneSentence(forced: boolean, changed: boolean, relaid = false):
 export function describeInputs(inputs: { mode: string; agency: string | null } | null): string {
   if (inputs === null) return "the feed's own entry"
   return inputs.agency === null
-    ? `${inputs.mode}, every operator`
+    ? `${inputs.mode}, ${EVERY_OPERATOR}`
     : `${inputs.mode}, ${inputs.agency}`
 }
 

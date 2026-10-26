@@ -4,6 +4,7 @@ import type { LayoutRun } from '../engine/layoutRun'
 import { copyLog, logNotCopied } from '../Jobs'
 import Button from '../kit/Button'
 import Disclosure from '../kit/Disclosure'
+import Icon from '../icons/Icon'
 
 // The engine's log for the run that is going, inside cell 02 (A5.5-13).
 //
@@ -350,6 +351,7 @@ export default function EngineLog({
         label={PANEL_LABEL}
         summary={
           <>
+            <Icon name="chevron" size={16} className="cell-chevron" />
             Engine log{' '}
             <span className="engine-log-count">{lineCount(log.lines.length, log.running)}</span>
           </>

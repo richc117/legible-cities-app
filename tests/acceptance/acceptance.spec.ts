@@ -458,7 +458,7 @@ const text = async (locator: Locator): Promise<string> =>
 /**
  * A cell's own fields, the definition list at the top of its body, never
  * its footer's strip. **Cell 01 is the one cell that has one**: it has no
- * strip, so nothing else states its Feed, Mode and Agency. Cells 02 and 03
+ * strip, so nothing else states its Feed, Mode and Operator. Cells 02 and 03
  * drew one each until issue 209, over a strip stating the same facts; what
  * those two hold is read from `cellStrip`.
  */
@@ -1139,8 +1139,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const record = await recordOf(window, LA)
         await expect(definition(cellFields(window, 'data'), 'Feed')).toHaveText('la-metro-rail')
         await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
-        const agency = await text(definition(cellFields(window, 'data'), 'Agency'))
-        log.note(`Mode ${record.mode}, Agency ${agency}.`)
+        const agency = await text(definition(cellFields(window, 'data'), 'Operator'))
+        log.note(`Mode ${record.mode}, Operator ${agency}.`)
       })
       // The day, the layout and when it was made are the strips' to say
       // (issue 209), under cells 03 and 02.
@@ -1238,8 +1238,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('the fields', async () => {
         await expect(definition(cellFields(window, 'data'), 'Feed')).toHaveText('la-metro-rail')
         await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
-        await expect(definition(cellFields(window, 'data'), 'Agency')).toHaveText(
-          record.agency ?? 'none',
+        await expect(definition(cellFields(window, 'data'), 'Operator')).toHaveText(
+          record.agency ?? 'every operator',
         )
       })
       const inFeed = window.getByRole('region', { name: 'In the feed' })
@@ -3028,8 +3028,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await create.getByRole('button', { name: 'Create', exact: true }).click()
       await expect(create).toBeHidden()
       await openProject(window, name)
-      await log.soft('Agency METRO', () =>
-        expect(definition(cellFields(window, 'data'), 'Agency')).toHaveText('METRO'),
+      await log.soft('Operator METRO', () =>
+        expect(definition(cellFields(window, 'data'), 'Operator')).toHaveText('METRO'),
       )
       const cdmx = window.getByRole('region', { name: 'In the feed' })
       await expect(cdmx.locator('dl.fields').or(cdmx.getByRole('alert')).first()).toBeVisible({
@@ -3057,7 +3057,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await expect(confirm).toBeVisible()
       await log.soft('the confirmation', async () => {
         await expect(confirm).toContainText(
-          'This removes the project and its generated output. The feed stays.',
+          'This removes the project and its generated output. The feed stays. Exported files stay where they are.',
         )
         await expect(confirm.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
       })

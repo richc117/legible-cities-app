@@ -5,8 +5,10 @@
 // stop and a count in the thousands is a table here rather than two states
 // of a running app.
 
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { dataSummary } from '../../src/renderer/src/notebook/cells/DataCell'
+import { DataFields, dataSummary } from '../../src/renderer/src/notebook/cells/DataCell'
 import type { Inspection } from '../../src/shared/protocol'
 
 const LA: Inspection = {
@@ -60,5 +62,28 @@ describe('what cell 01 says while it is collapsed', () => {
     // The literal, not `toLocaleString()` on both sides: that asserts only
     // that the test and the code call the same function.
     expect(dataSummary(many)).toBe('2,400 stops in the feed')
+  })
+})
+
+// Issue 543. The field list named a project with no operator "Agency none",
+// where the picker below it offers "every operator" for the same value and
+// the facts beside it say "Operators": one value, one name on one screen.
+describe("cell 01's field list", () => {
+  const fields = (agency: string | null): string =>
+    renderToStaticMarkup(createElement(DataFields, { feed: 'la-metro-rail', mode: 'all', agency }))
+
+  it('says every operator for a project with no operator, as the picker does', () => {
+    const html = fields(null)
+    expect(html).toContain('<dt>Operator</dt><dd>every operator</dd>')
+    expect(html).not.toContain('none')
+    expect(html).not.toContain('Agency')
+  })
+
+  it('says the operator when the project names one', () => {
+    expect(fields('LACMTA')).toContain('<dt>Operator</dt><dd>LACMTA</dd>')
+  })
+
+  it('keeps the feed and the mode as they were', () => {
+    expect(fields(null)).toContain('<dt>Feed</dt><dd>la-metro-rail</dd><dt>Mode</dt><dd>all</dd>')
   })
 })

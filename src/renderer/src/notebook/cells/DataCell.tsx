@@ -8,6 +8,7 @@ import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
 import { useProject } from '../context'
 import { runRowStatus } from '../runRow'
+import { EVERY_OPERATOR } from '../../record'
 
 // Cell 01, Data: what the project is made of (ADR-045).
 //
@@ -37,6 +38,31 @@ import { runRowStatus } from '../runRow'
 // because it is prose about this cell's own subject: a table of summaries
 // would have to know what every cell is made of, and each new one would
 // edit the file all six share (A5.5-09).
+
+/**
+ * The cell's field list: the feed, the mode and the operator the project
+ * is drawn from. The row is called Operator, as the picker below it is.
+ */
+export function DataFields({
+  feed,
+  mode,
+  agency,
+}: {
+  feed: string
+  mode: string
+  agency: string | null
+}): JSX.Element {
+  return (
+    <dl className="fields">
+      <dt>Feed</dt>
+      <dd>{feed}</dd>
+      <dt>Mode</dt>
+      <dd>{mode}</dd>
+      <dt>Operator</dt>
+      <dd>{agency ?? EVERY_OPERATOR}</dd>
+    </dl>
+  )
+}
 
 /**
  * What the collapsed cell says it holds: how many stops the engine counted
@@ -128,14 +154,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
     >
       {project !== null && (
         <>
-          <dl className="fields">
-            <dt>Feed</dt>
-            <dd>{project.feed}</dd>
-            <dt>Mode</dt>
-            <dd>{project.mode}</dd>
-            <dt>Agency</dt>
-            <dd>{project.agency ?? 'none'}</dd>
-          </dl>
+          <DataFields feed={project.feed} mode={project.mode} agency={project.agency} />
           {/* The feed's download, when the layout run is fetching it
               (issue 178): here, with the feed, not in cell 02. */}
           <DownloadLine run={run} />

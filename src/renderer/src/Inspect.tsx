@@ -12,6 +12,7 @@ import { withoutPaths } from '../../shared/engine'
 import type { Inspection, Route, RouteType } from '../../shared/protocol'
 import type { ProjectInputs, ProjectRecord } from '../../shared/project/types'
 import { validateAgency, validateMode } from '../../shared/project/validate'
+import { EVERY_OPERATOR } from './record'
 import Button from './kit/Button'
 import Select from './kit/Select'
 import TextInput from './kit/TextInput'
@@ -431,7 +432,7 @@ export default function Inspect({
                   onChange={chooseAgency}
                   disabled={disabled}
                 >
-                  <option value="">every operator</option>
+                  <option value="">{EVERY_OPERATOR}</option>
                   {agencyOptions.map((a) => (
                     <option key={a.agency_id} value={a.agency_id}>
                       {a.agency_name || a.agency_id}
@@ -443,7 +444,9 @@ export default function Inspect({
             {registry !== null && (registry.mode !== mode || registry.agency !== agency) && (
               <p className="hint" role="status">
                 The feed's own entry draws {registry.mode}
-                {registry.agency === null ? ' for every operator' : ` for ${registry.agency}`}.{' '}
+                {registry.agency === null
+                  ? ` for ${EVERY_OPERATOR}`
+                  : ` for ${registry.agency}`}.{' '}
                 <Button ref={entryRef} onClick={useEntry} disabled={disabled}>
                   Use the feed's entry
                 </Button>

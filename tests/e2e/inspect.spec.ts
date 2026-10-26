@@ -182,7 +182,7 @@ test('a feed with several operators offers the choice, filters the routes, and s
     // asks with what the write left (issue 388, held by a test below), and
     // since issue 407 reads the store's answer in the beat between it
     // arriving and the screen rendering it too.
-    await expect(page.getByRole('definition').filter({ hasText: /^none$/ })).toBeVisible()
+    await expect(page.getByRole('definition').filter({ hasText: /^every operator$/ })).toBeVisible()
     await page.getByRole('button', { name: /lay out/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
