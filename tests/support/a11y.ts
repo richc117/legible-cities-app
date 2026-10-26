@@ -47,6 +47,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { READY_DEADLINE_MS } from './ready'
 import { describePair, describeReading, duplicatedNames } from './a11y-names'
 import {
   MIN_RING_CONTRAST,
@@ -158,7 +159,7 @@ export async function withApp(
     ).toBe(true)
     if (ready)
       await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-        timeout: 20_000,
+        timeout: READY_DEADLINE_MS,
       })
     await run(page, app)
   } finally {

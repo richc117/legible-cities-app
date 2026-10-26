@@ -22,6 +22,7 @@
 // `python.ts`, `store-lines.ts` and `frames.ts` already are.
 
 import { expect, type Locator, type Page } from '@playwright/test'
+import { READY_DEADLINE_MS } from './ready'
 
 /**
  * The six cells of the notebook, by the number and name ADR-045 fixes, and
@@ -216,10 +217,14 @@ export async function closeCell(page: Page, id: CellId): Promise<void> {
   await expect(cell(page, id)).toBeHidden()
 }
 
-/** The engine's status line says it is ready. A project needs one. */
+/**
+ * The engine's status line says it is ready. A project needs one. The wait
+ * covers one restart of a first start that missed its handshake
+ * (`READY_DEADLINE_MS`, issue 529).
+ */
 export async function engineReady(page: Page): Promise<void> {
   await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
-    timeout: 20_000,
+    timeout: READY_DEADLINE_MS,
   })
 }
 

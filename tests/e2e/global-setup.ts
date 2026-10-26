@@ -9,6 +9,8 @@
 import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { findPython } from '../support/python'
+import { warmEngine } from '../support/warm-engine'
 
 /** The prefix the folder is made with; the teardown checks it as well. */
 export const LOGS_PREFIX = 'legible-cities-e2e-logs-'
@@ -39,8 +41,34 @@ function sayIfTheEngineIsNotNamed(): void {
   )
 }
 
-export default function globalSetup(): void {
+/**
+ * Start the stand-in engine once and stop it, so the run's first launch is
+ * warm like the rest (issue 529). The first test of a run has twice missed
+ * the supervisor's 10 s handshake on a cold start - the interpreter, the
+ * stand-in compiled for the first time, a scanner reading both - and then
+ * waited through a restart its deadline did not cover. Best effort: a
+ * warm-up that fails is said and the run goes on, since all it changes is
+ * that first test's odds. `main.log` has the handshake's own time for every
+ * launch (`handshake: answered in N ms`), which is how a warm first test is
+ * told from a cold one.
+ */
+async function warmTheEngine(): Promise<void> {
+  const python = findPython()
+  if (python === null) return // every test that needs the stand-in skips itself
+  try {
+    const { ms } = await warmEngine(python)
+    console.log(`\n  Stand-in engine warmed in ${ms} ms before the first launch.\n`)
+  } catch (error) {
+    console.warn(
+      `\n  The stand-in engine could not be warmed (${(error as Error).message});\n` +
+        '  the first launch of the run may be a cold one.\n',
+    )
+  }
+}
+
+export default async function globalSetup(): Promise<void> {
   sayIfTheEngineIsNotNamed()
+  await warmTheEngine()
   // When the run began, so the teardown reads only the temporary profiles
   // this run made (issue 93).
   process.env.LEGIBLE_E2E_STARTED = String(Date.now())
