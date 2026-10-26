@@ -85,9 +85,11 @@ export function validateId(id: string): string | null {
 
 /**
  * The palette a person chose (A4-01): overrides by line label and the
- * colour a line the feed leaves uncoloured takes. Checked in the form for
- * a sentence, in the main-side handler because it arrived from another
- * process, and in the store because the store is the trusted layer.
+ * colour a line the feed leaves uncoloured takes. Checked in the
+ * main-side handler because it arrived from another process, and in the
+ * store because the store is the trusted layer. The form checks each
+ * colour itself (`isHexColor`, `validateLineLabel`), and never imports
+ * this.
  */
 export function validatePalette(palette: unknown): string | null {
   if (typeof palette !== 'object' || palette === null || Array.isArray(palette))
