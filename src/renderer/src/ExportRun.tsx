@@ -35,7 +35,7 @@ export default function ExportRun({
    */
   disabled?: boolean
 }): JSX.Element {
-  const { state, stages, message, error, file, left, refused } = useSnapshot(run)
+  const { state, stages, message, announced, error, file, left, refused } = useSnapshot(run)
   const begin = (): void => run.start(project, engine, choice)
   // "Export" gives way to Cancel, and Cancel to "Reveal" or "Export" again
   // when the export ends; focus on the one that went goes to the one that
@@ -54,8 +54,17 @@ export default function ExportRun({
           : exportRef.current,
     state,
   )
+  // One call to action on a screen (DESIGN.md section 8.2): Export is the
+  // primary button before and during a run, and when a run has ended without
+  // a file; once a file is written Reveal is the way on, a text button, and
+  // Export is the secondary one beside it.
   const exportButton = (
-    <Button variant="primary" ref={exportRef} onClick={begin} disabled={disabled}>
+    <Button
+      variant={state === 'done' ? 'secondary' : 'primary'}
+      ref={exportRef}
+      onClick={begin}
+      disabled={disabled}
+    >
       <Icon name="export" />
       Export
     </Button>
@@ -74,8 +83,14 @@ export default function ExportRun({
       <section className="export-run" aria-label="Export run">
         <ProgressLine fill stages={stages} ariaLabel={describe(state, message)} />
         <div className="export-run-foot">
-          <p className="progress-message" role="status" aria-live="polite">
+          {/* The line the eye follows changes with every frame, so it is not
+              a live region; the one a screen reader follows changes at a
+              stage and at each tenth of the frames (`announcement`). */}
+          <p className="progress-message" aria-live="off">
             {error ?? message ?? 'Starting the export.'}
+          </p>
+          <p className="visually-hidden" role="status" aria-live="polite">
+            {error ?? announced ?? 'Starting the export.'}
           </p>
           {state === 'running' && (
             <Button ref={cancelRef} onClick={() => run.cancel()}>
@@ -98,7 +113,7 @@ export default function ExportRun({
               Exported {file}.
             </p>
             <div className="toolbar">
-              <Button variant="primary" ref={revealRef} onClick={() => run.reveal()}>
+              <Button variant="ghost" ref={revealRef} onClick={() => run.reveal()}>
                 <Icon name="forward" />
                 Reveal
               </Button>
