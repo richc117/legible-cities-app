@@ -262,8 +262,10 @@ Cities`, into the address bar of File Explorer and press Enter.
 ### What Settings shows
 
 **Settings**, from the button at the top right of the window, shows the
-**Engine data folder** with its size, the **Export folder**, a button to
-**Open logs folder**, and **Reset engine data**. Changing the engine data
+**Engine data folder** with its size and the **Export folder**; under
+**Logs and diagnostics**, a button to **Open logs folder** and **Copy
+diagnostics**; under **Versions**, the app's own version first and then the
+engine's; and **Reset engine data**. Changing the engine data
 folder takes effect the next time the app starts; changing the export
 folder takes effect at once.
 
@@ -309,8 +311,9 @@ do these in order.
 
 ## Report a problem
 
-1. In the app, open **Settings** and press **Copy diagnostics**. It copies
-   the app's and the engine's versions, the result of the check the app
+1. In the app, open **Settings**. The app's version is under **Versions**,
+   at the top. Under **Logs and diagnostics**, press **Copy diagnostics**.
+   It copies the app's and the engine's versions, the result of the check the app
    runs on its bundled tools when it starts, the last lines of both logs, and
    the reports from the maps made in this session. Your home folder is
    written as `~`, and web addresses lose their query values, their

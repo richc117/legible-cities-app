@@ -181,6 +181,13 @@ const FEATURES = {
     commit: '8ac7b8ac7094f30a3a2280bd1443f4514fb60247',
     landed: 'pull request 243 (A5.6-06)',
   },
+  // Settings' Versions list names the app itself first (issue 544). The
+  // commit is the lane's own and is moved to the one on main when it merges.
+  appVersionRow: {
+    name: "the app's own row under Versions",
+    commit: '942858c8db55f0ae3ca95c2390fc128b42232bb1',
+    landed: 'pull request for issue 544',
+  },
 } satisfies Record<string, Feature>
 
 /** The release under test, by its tag; the workflow names it. */
@@ -1007,6 +1014,27 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // engine's rows follow once it has answered (issue 544).
         await expect(definition(versions, 'Engine')).toBeVisible({ timeout: SHORT_MS })
         const read = async (term: string): Promise<string> => text(definition(versions, term))
+        // The app's own row, which a release tagged before issue 544 does not
+        // have: against one, it is written as not checked, never passed.
+        // With a tag it must be the tag's version without any -rc.<N>, which
+        // is package.json's; without one there is nothing to compare it with.
+        const appWrong: string[] = []
+        if (tagContains(FEATURES.appVersionRow) === false) {
+          log.notAutomated(
+            `the app's own version under Versions: ${TAG} was tagged before ${FEATURES.appVersionRow.landed}, so it has no such row.`,
+          )
+        } else {
+          const app = await read('App')
+          log.note(`App: ${app}`)
+          if (TAG === '') {
+            log.notAutomated(
+              'whether the App row is the release under test: no tag was named (LEGIBLE_ACCEPTANCE_TAG).',
+            )
+          } else {
+            const expected = TAG.slice(1).replace(/-rc\.\d+$/, '')
+            if (app !== expected) appWrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
+          }
+        }
         const six = {
           Engine: await read('Engine'),
           Protocol: await read('Protocol'),
@@ -1016,7 +1044,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           ffmpeg: await read('ffmpeg'),
         }
         record.versions(Object.entries(six).map(([term, value]) => `${term}: ${value}`))
-        const wrong: string[] = []
+        const wrong: string[] = [...appWrong]
         if (six.Engine !== pins.engine.version)
           wrong.push(`Engine is ${six.Engine}, not ${pins.engine.version}`)
         if (six.Protocol !== '1') wrong.push(`Protocol is ${six.Protocol}`)

@@ -27,6 +27,26 @@ describe('icons', () => {
     expect(iconMarkup('folder', 24)).not.toBe(iconMarkup('layers', 24))
     expect(iconMarkup('folder', 16)).not.toBe(iconMarkup('info', 16))
   })
+  // The Jobs toggle in the header is the one place `layers` is drawn, so the
+  // glyph means one thing wherever it is seen (issue 544).
+  it('draw the layers glyph in exactly one place: the Jobs toggle', () => {
+    const root = resolve(__dirname, '../../src/renderer/src')
+    const found: string[] = []
+    const walk = (folder: string): void => {
+      for (const entry of readdirSync(folder, { withFileTypes: true })) {
+        const path = join(folder, entry.name)
+        if (entry.isDirectory()) walk(path)
+        else if (/\.tsx?$/.test(entry.name)) {
+          const uses = readFileSync(path, 'utf8').match(/['"]layers['"]/g) ?? []
+          found.push(...uses.map(() => path.slice(root.length + 1)))
+        }
+      }
+    }
+    walk(root)
+    // Icon.tsx names it in the list of names; App.tsx draws it for Jobs.
+    expect(found.sort()).toEqual(['App.tsx', 'icons/Icon.tsx'])
+    expect(readFileSync(join(root, 'App.tsx'), 'utf8')).toMatch(/<Icon name="layers" \/>\s*Jobs/)
+  })
   it('are plain SVG files with no script and currentColor only', () => {
     const files = readdirSync(join(dir, 'phosphor')).filter((f) => f.endsWith('.svg'))
     expect(files.length).toBeGreaterThan(30)
