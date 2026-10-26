@@ -15,7 +15,7 @@
 
 import { existsSync, mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { isAbsolute, join, resolve } from 'node:path'
 import { findPython } from '../support/python'
 import { warmEngine } from '../support/warm-engine'
 
@@ -84,7 +84,17 @@ export default async function globalSetup(): Promise<void> {
     return value === undefined || value === '' ? undefined : value
   }
   // A profile named by hand is respected, and the teardown leaves it alone.
+  // The app ignores one that is not absolute and falls back to the person's
+  // own profile, which is what this setup is here to prevent, so such a
+  // value is replaced by the run's own.
   let profile = given('LEGIBLE_USER_DATA')
+  if (profile !== undefined && !isAbsolute(profile)) {
+    console.warn(
+      '\n  LEGIBLE_USER_DATA is not an absolute path, which the app ignores;\n' +
+        '  the run uses a profile of its own instead.\n',
+    )
+    profile = undefined
+  }
   if (profile === undefined) {
     profile = mkdtempSync(join(tmpdir(), RUN_PROFILE_PREFIX))
     process.env.LEGIBLE_USER_DATA = profile

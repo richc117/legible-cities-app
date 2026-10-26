@@ -109,5 +109,13 @@ export default function globalTeardown(): void {
     resolve(dirname(profile)) === resolve(tmpdir()) &&
     basename(profile).startsWith(RUN_PROFILE_PREFIX)
   keepLogs(folder, ours)
-  if (ours) rmSync(profile, { recursive: true, force: true })
+  if (!ours) return
+  // A whole Chromium profile: on Windows an app a timed-out close left
+  // running can still hold files in it, and a failed removal must not fail
+  // a run whose tests have passed.
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+  } catch (error) {
+    console.log(`The run's profile could not be removed: ${String(error)}`)
+  }
 }
