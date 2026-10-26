@@ -2,10 +2,9 @@ import {
   cameTooLate,
   isEngineErrorShape,
   ERROR_CODES,
-  withoutPaths,
   type EngineState,
 } from '../../../shared/engine'
-import { failureOf, LogBuffer, nextJobId, screenPaths, type Job } from '../../../shared/jobs'
+import { failureOf, runFailureSentence, LogBuffer, nextJobId, type Job } from '../../../shared/jobs'
 import type { FeedRecord, Methods } from '../../../shared/protocol'
 import type { Stage } from '../ProgressLine'
 
@@ -72,8 +71,7 @@ export const freshStages = (): Stage[] =>
  * is "reason: path" (the engine's classify), so the path is taken out.
  */
 export function sentenceFor(reason: unknown): string {
-  if (isEngineErrorShape(reason)) return withoutPaths(reason.data?.hint ?? reason.message)
-  return reason instanceof Error ? reason.message : 'The feed could not be added.'
+  return runFailureSentence(reason, 'The feed could not be added.')
 }
 
 const IDLE: AddSnapshot = {
@@ -143,7 +141,7 @@ export class FeedAdd {
       state,
       stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
       message,
-      hint: failed ? screenPaths(error) : null,
+      hint: failed ? error : null,
       detail: failed ? attempt.detail : null,
       rawDetail: failed ? attempt.rawDetail : null,
       log: attempt.log.lines,

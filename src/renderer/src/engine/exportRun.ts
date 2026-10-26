@@ -5,7 +5,7 @@ import {
   type ExportChoice,
   type ExportResult,
 } from '../../../shared/export'
-import { failureOf, LogBuffer, nextJobId, screenPaths, type Job } from '../../../shared/jobs'
+import { failureOf, runFailureSentence, LogBuffer, nextJobId, type Job } from '../../../shared/jobs'
 import type { RunState } from '../../../shared/layout'
 import type { ProjectRecord } from '../../../shared/project'
 import type { Stage } from '../ProgressLine'
@@ -68,8 +68,7 @@ export function stagesAt(stages: Stage[], running: string): Stage[] {
 
 /** The sentence a person reads for a failure: the engine's, or the app's; never a path. */
 export function sentenceFor(reason: unknown): string {
-  if (isEngineErrorShape(reason)) return reason.data?.hint ?? reason.message
-  return reason instanceof Error ? reason.message : 'The export did not finish.'
+  return runFailureSentence(reason, 'The export did not finish.')
 }
 
 /**
@@ -164,7 +163,7 @@ export class ExportRun {
       state,
       stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
       message,
-      hint: failed ? screenPaths(error) : null,
+      hint: failed ? error : null,
       detail: failed ? attempt.detail : null,
       rawDetail: failed ? attempt.rawDetail : null,
       log: attempt.log.lines,

@@ -5,7 +5,7 @@
 // them, and the main process knows only the bound on the text a job's log
 // is copied as.
 
-import { withoutPaths, isEngineErrorShape } from './engine'
+import { withoutPaths, isEngineErrorShape, ERROR_CODES } from './engine'
 import type { StageState } from './layout'
 
 export type JobKind = 'layout' | 'rebuild' | 'export' | 'feed-add'
@@ -129,10 +129,23 @@ export class LogBuffer {
 }
 
 /**
+ * Is this failure one of the app's own refusals (`badCall`, the code the main
+ * process gives `refusal` in `src/main/ipc-shape.ts`)? The door has taken the
+ * known folders out of those already, and they can quote a person's project
+ * name, which a guess at a path rewrites, so neither the sentence nor the
+ * detail of one is screened again.
+ */
+function isOwnRefusal(reason: unknown): boolean {
+  return isEngineErrorShape(reason) && reason.code === ERROR_CODES.badCall
+}
+
+/**
  * The engine's two sentences about a failure: the hint a person reads and
  * the detail a report needs. Both have their paths taken out for a screen;
  * the detail is also kept as sent, for the copied log, where the main
- * process writes the home folder as `~`.
+ * process writes the home folder as `~`. The app's own refusals are the
+ * exception for the screen's copy too (`isOwnRefusal`): their detail is
+ * their sentence, and it is left as it is so the two stay equal.
  */
 export function failureOf(reason: unknown): {
   detail: string | null
@@ -141,7 +154,7 @@ export function failureOf(reason: unknown): {
   if (!isEngineErrorShape(reason)) return { detail: null, rawDetail: null }
   const raw = reason.data?.detail
   if (typeof raw !== 'string' || raw === '') return { detail: null, rawDetail: null }
-  return { detail: withoutPaths(raw), rawDetail: raw }
+  return { detail: isOwnRefusal(reason) ? raw : withoutPaths(raw), rawDetail: raw }
 }
 
 /** Running jobs first, newest first; then the finished ones, newest first. */
@@ -256,4 +269,28 @@ export function composeJobLog(job: Job): string {
 /** A sentence for a screen: its paths taken out, or nothing. */
 export function screenPaths(sentence: string | null): string | null {
   return sentence === null ? null : withoutPaths(sentence)
+}
+
+/**
+ * The sentence a person reads for a run's failure, made once for every run
+ * (issue 519): the engine's hint, else its message; else a thrown error's
+ * message; else the run's own `fallback`. Its paths are taken out here, where
+ * the sentence is made, so the snapshot's `error` is already fit for a screen
+ * and no panel, announcement or cell that shows it can forget. The engine's
+ * `detail` is another thing, kept as sent beside it (`failureOf`), and the
+ * copied log is redacted in the main process.
+ *
+ * **The app's own refusals are not screened** (`badCall`, the code the main
+ * process gives `refusal` in `src/main/ipc-shape.ts`): the door has taken the
+ * known folders out of them already, and they can quote a person's project
+ * name, which a guess at a path rewrites ("The project “Lines /North” uses
+ * this feed" would read "The project “Lines a file uses this feed").
+ * `failureOf` follows the same rule for the detail (`isOwnRefusal`).
+ */
+export function runFailureSentence(reason: unknown, fallback: string): string {
+  if (isEngineErrorShape(reason)) {
+    const sentence = reason.data?.hint ?? reason.message
+    return isOwnRefusal(reason) ? sentence : withoutPaths(sentence)
+  }
+  return withoutPaths(reason instanceof Error ? reason.message : fallback)
 }

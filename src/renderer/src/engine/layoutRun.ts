@@ -20,9 +20,9 @@ import {
 } from '../../../shared/project'
 import {
   failureOf,
+  runFailureSentence,
   LogBuffer,
   nextJobId,
-  screenPaths,
   type Job,
   type JobKind,
 } from '../../../shared/jobs'
@@ -426,8 +426,7 @@ const looksLikePath = (message: string): boolean =>
 
 /** The sentence a person reads for a failure: the engine's, never a path. */
 export function sentenceFor(reason: unknown): string {
-  if (isEngineErrorShape(reason)) return reason.data?.hint ?? reason.message
-  return reason instanceof Error ? reason.message : 'The layout run did not finish.'
+  return runFailureSentence(reason, 'The layout run did not finish.')
 }
 
 const IDLE: RunSnapshot = {
@@ -630,7 +629,7 @@ export class LayoutRun {
       state,
       stages: stages.map(({ id, label, state: s }) => ({ id, label, state: s })),
       message,
-      hint: failed ? screenPaths(error) : null,
+      hint: failed ? error : null,
       detail: failed ? attempt.detail : null,
       rawDetail: failed ? attempt.rawDetail : null,
       log: attempt.log.lines,
