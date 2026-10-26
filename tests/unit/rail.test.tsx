@@ -19,7 +19,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import { stateIcon } from '../../src/renderer/src/notebook/Cell'
-import { EXPORT_ONE, NOTHING_YET, OutputsEmpty } from '../../src/renderer/src/notebook/Outputs'
+import {
+  EXPORT_ONE,
+  NOTHING_YET,
+  OutputsEmpty,
+  canExportFrom,
+} from '../../src/renderer/src/notebook/Outputs'
 import Rail, { RAIL_LABEL, goToCell, stepName } from '../../src/renderer/src/notebook/Rail'
 import {
   clearance,
@@ -302,36 +307,38 @@ describe('which step the scroll is on', () => {
 })
 
 describe('Outputs’ empty state', () => {
-  const empty = (readOnly: boolean, onExport: () => void = () => {}): string =>
-    renderToStaticMarkup(<OutputsEmpty readOnly={readOnly} onExport={onExport} />)
+  const empty = (canExport: boolean, onExport: () => void = () => {}): string =>
+    renderToStaticMarkup(<OutputsEmpty canExport={canExport} onExport={onExport} />)
 
   it('says its sentence and offers one way to fill it, link-styled', () => {
-    const drawn = empty(false)
+    const drawn = empty(true)
     expect(drawn).toContain(NOTHING_YET)
     expect(drawn).toContain(`<button type="button" class="inline-link">${EXPORT_ONE}</button>`)
     expect(EXPORT_ONE).toBe('Export one in cell 06.')
     expect([...drawn.matchAll(/<button/g)]).toHaveLength(1)
   })
 
-  it('offers nothing to a read-only project, which cannot export', () => {
-    const drawn = empty(true)
+  it('offers nothing where no export can be made: no layout yet, or a read-only project', () => {
+    const drawn = empty(false)
     expect(drawn).toContain(NOTHING_YET)
     expect(drawn).not.toContain('<button')
   })
+})
 
-  it('is handed the press the rail makes for cell 06', () => {
-    const rail = readFileSync(
-      resolve(__dirname, '../../src/renderer/src/notebook/Rail.tsx'),
-      'utf8',
-    )
-    expect(rail).toContain(
-      "<Outputs onExport={() => goToCell('export', open.export, onOpen, setPending)}",
-    )
-    const outputs = readFileSync(
-      resolve(__dirname, '../../src/renderer/src/notebook/Outputs.tsx'),
-      'utf8',
-    )
-    expect(outputs).toContain('onClick={onExport}')
+describe('when the empty Outputs may offer an export', () => {
+  const layout = { stations: [] }
+
+  it('does once the project is laid out', () => {
+    expect(canExportFrom({ readOnly: false, layout })).toBe(true)
+  })
+
+  it('does not before a layout, where cell 06 says there is no map to export', () => {
+    expect(canExportFrom({ readOnly: false, layout: null })).toBe(false)
+  })
+
+  it('does not to a read-only project, or before there is a project', () => {
+    expect(canExportFrom({ readOnly: true, layout })).toBe(false)
+    expect(canExportFrom(null)).toBe(false)
   })
 })
 

@@ -180,7 +180,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Steps: six buttons, each "`<nn> <name>`, `<state>`", `aria-current="step"` following the scroll (A5.5-21) | swept; **a step moves focus on activation**, to its cell's heading, landing it clear of the header, the only thing pinned since ADR-046, with no smooth scroll under reduced motion (`rail.spec.ts`) | swept (a `<nav>` "Steps" under an `h2` of the project's name, issue 274; the state an icon and a word, never a colour alone) | swept | swept | pass (the state words on `--surface`, and on `--surface-hover` and `--surface-selected` the warning and error words fall back to `--text-muted`; a running step's `--accent-text` on `--surface-selected` and on `--surface-hover`, both added to the contrast test by A5.6-09) | pass (the same) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Outputs: a button "Export one in cell 06." in its empty state, a row per export, Reveal named "Reveal `<preset>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, the warning icon with its words) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Outputs: a button "Export one in cell 06." in its empty state once laid out, a row per export, Reveal named "Reveal `<preset>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes; the empty state's button lands on cell 06's heading, `rail.spec.ts`) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, `--accent-text`, the warning icon with its words) | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Below 900px | audit only: the rail keeps its names and clips them, and is `inert` while the inspector covers the main region | audit only | audit only | audit only | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
 ### Project: the map, and cell 06's preview
@@ -976,8 +976,9 @@ a table).
   header. This move on activation is the part of the rail most worth hearing:
   note what is read when focus lands.
 - **The rail: Outputs.** Find the region "Outputs": "Nothing exported
-  yet." and a button "Export one in cell 06." before any export (pressing
-  it opens cell 06 and puts focus on its heading), and afterwards a row per export read as its
+  yet." before any export, with a button "Export one in cell 06." beside
+  it once the project is laid out (pressing it opens cell 06 and puts
+  focus on its heading), and afterwards a row per export read as its
   preset and when it was made, with a button "Reveal `<preset>`,
   `<file>`". A file since moved or deleted is read as "the file has been
   moved or deleted", with no button.

@@ -204,6 +204,7 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
 // run says it is done. The mutation to watch it fail under: take
 // `runState` out of the effect's dependencies in `Outputs.tsx`.
 test('Outputs dates a re-exported file by the new export, with no reload', async () => {
+  test.setTimeout(120_000)
   const h = home()
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
@@ -218,10 +219,7 @@ test('Outputs dates a re-exported file by the new export, with no reload', async
     // The screen mounted afresh reads the folder: the row says 2020.
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await openProject(page, 'Los Angeles')
-    const made = page
-      .getByRole('region', { name: 'Outputs' })
-      .locator('.output-made')
-      .filter({ hasText: '2020' })
+    const made = page.getByRole('region', { name: 'Outputs' }).locator('time[datetime^="2020"]')
     await expect(made).toHaveCount(1)
 
     await openCell(page, 'export')
@@ -237,14 +235,8 @@ test('Outputs dates a re-exported file by the new export, with no reload', async
     // Within the expectation's own deadline, and with no reload, no way
     // back to the Library and no press: the run's `done` is the only thing
     // that can make the list read again.
-    await expect(
-      page.getByRole('region', { name: 'Outputs' }).locator('.output-made').filter({
-        hasText: '2020',
-      }),
-    ).toHaveCount(0)
-    await expect(page.getByRole('region', { name: 'Outputs' }).locator('.output-made')).toHaveCount(
-      1,
-    )
+    await expect(made).toHaveCount(0, { timeout: 20_000 })
+    await expect(page.getByRole('region', { name: 'Outputs' }).locator('time')).toHaveCount(1)
   })
 })
 

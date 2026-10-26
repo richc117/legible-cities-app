@@ -42,23 +42,33 @@ export const NOTHING_YET = 'Nothing exported yet.'
 export const GONE = 'the file has been moved or deleted'
 
 /**
+ * Whether an export can be made from this project now: it is not read-only
+ * and it has a layout, which is when cell 06 has an export to offer.
+ */
+export function canExportFrom(project: { readOnly: boolean; layout: unknown } | null): boolean {
+  return project !== null && !project.readOnly && project.layout !== null
+}
+
+/**
  * The empty state (docs/DESIGN.md 8.2, Empty states): one sentence and one
  * action, the way the map's has "Lay it out in cell 02." The action opens
  * cell 06 if it is closed and puts focus on its heading, as a press on the
- * rail's sixth step does; it is not offered to a read-only project, which
- * cannot export (the map's does the same, FR-019).
+ * rail's sixth step does. It is offered only where an export can be made: not
+ * to a read-only project (the map's does the same, FR-019), and not before a
+ * layout, where cell 06 says only that there is no map to export and the
+ * map's own empty state is the way on.
  */
 export function OutputsEmpty({
-  readOnly,
+  canExport,
   onExport,
 }: {
-  readOnly: boolean
+  canExport: boolean
   onExport: () => void
 }): JSX.Element {
   return (
     <p className="rail-empty">
       {NOTHING_YET}
-      {!readOnly && (
+      {canExport && (
         <>
           {' '}
           <button type="button" className="inline-link" onClick={onExport}>
@@ -107,7 +117,7 @@ export default function Outputs({ onExport }: { onExport: () => void }): JSX.Ele
         Outputs
       </h2>
       {rows !== null && rows.length === 0 && (
-        <OutputsEmpty readOnly={project?.readOnly ?? false} onExport={onExport} />
+        <OutputsEmpty canExport={canExportFrom(project)} onExport={onExport} />
       )}
       {rows !== null && rows.length > 0 && (
         <ul className="outputs">
