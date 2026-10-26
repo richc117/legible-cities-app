@@ -512,14 +512,20 @@ test('closing the window during an export on macOS keeps the export going, and t
       electron.emit('activate')
     })
     await reopened
-    expect(
-      await app.evaluate(
-        ({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows().filter((w) =>
-            w.webContents.getURL().startsWith('app://local/ui/'),
-          ).length,
-      ),
-    ).toBe(1)
+    // The window exists before its page is asked for, so its address is
+    // empty for a moment: on a loaded runner, longer than one read.
+    await expect
+      .poll(
+        () =>
+          app.evaluate(
+            ({ BrowserWindow }) =>
+              BrowserWindow.getAllWindows().filter((w) =>
+                w.webContents.getURL().startsWith('app://local/ui/'),
+              ).length,
+          ),
+        { timeout: 15_000, message: 'one window of the interface came back' },
+      )
+      .toBe(1)
 
     // And the export, which nothing cancelled, finishes into its folder.
     await expect
