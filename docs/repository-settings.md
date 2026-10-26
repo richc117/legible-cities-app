@@ -10,23 +10,23 @@ Everything below is free for a public repository.
 
 ## Code security
 
-- [x] **Secret scanning** on (checked 26 Oct 2026). It watches what has
+- [x] **Secret scanning** on (checked 25 Oct 2026). It watches what has
       already been pushed, which is the case the local hooks cannot cover.
-- [x] **Push protection** on (checked 26 Oct 2026). It rejects a push
+- [x] **Push protection** on (checked 25 Oct 2026). It rejects a push
       containing a recognised secret before it lands, so a bypassed hook is
       still stopped.
-- [x] **Private vulnerability reporting** on (checked 26 Oct 2026).
+- [x] **Private vulnerability reporting** on (checked 25 Oct 2026).
       `SECURITY.md` and the issue chooser both send people there; with it off,
       those links go nowhere.
 - [x] **Dependabot alerts** on, and **Dependabot security updates** on
-      (checked 26 Oct 2026). `.github/dependabot.yml` handles version updates.
+      (checked 25 Oct 2026). `.github/dependabot.yml` handles version updates.
 
 ## Actions
 
-- [x] Workflow permissions: **read repository contents** (checked 26 Oct 2026).
+- [x] Workflow permissions: **read repository contents** (checked 25 Oct 2026).
       A job that needs more asks for it in its own `permissions:` block.
 - [x] Do not allow GitHub Actions to create or approve pull requests
-      (checked 26 Oct 2026).
+      (checked 25 Oct 2026).
 - [x] **Approval for running workflows from outside collaborators:
       "Require approval for first-time contributors"** (Settings, Actions,
       General, "Fork pull request workflows from outside collaborators"; the
