@@ -34,6 +34,7 @@ import {
 } from '../support/project'
 import {
   afterFrames,
+  boxNumbers,
   gapsBetween,
   heardApart,
   keysSeenBy,
@@ -645,6 +646,13 @@ async function holdsStillThroughARedraw(page: Page): Promise<void> {
   await chip.click()
   const picker = panel.getByRole('group', { name: 'Colour for line A' })
   await expect(picker).toBeVisible()
+  // The platform places the panel against its chip, and flipped above a
+  // chip near the window's foot it can still be moving when it first shows
+  // (Electron 45). A click then finds its point covered, and Playwright
+  // scrolls the page to try again: the gesture moving the page, not the
+  // redraw, nearly 300px in a short window. So the panel is let settle
+  // before anything is measured.
+  await steady(page, async () => boxNumbers((await picker.boundingBox())!), 'the open panel')
   const where = (): Promise<{ chip: number; above: number[] }> =>
     page.evaluate(() => {
       const open = document.querySelector('.colour-chip[aria-expanded="true"]')!
