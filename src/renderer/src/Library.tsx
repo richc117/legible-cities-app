@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
-import { ERROR_CODES, isEngineErrorShape } from '../../shared/engine'
+import { ERROR_CODES, isEngineErrorShape, type EngineState } from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
 import { uniqueName } from './record'
 import Card from './Card'
@@ -187,9 +187,22 @@ export function removalTakesTheRow(outcome: RemovalOutcome): boolean {
 export const INTRODUCTION =
   'Legible Cities draws a transit network as a schematic map and plays a day of its service on it: start from a sample city below, or add a feed of your own.'
 
-/** What the samples region says while the engine cannot list them. */
+/**
+ * What the samples region says while the engine is on its way (starting, or
+ * restarting after a failure): it will be ready, and the status line says
+ * how far it has got.
+ */
 export const SAMPLES_AWAY =
   'The sample cities are listed once the engine is ready; the status line above says what it is doing.'
+
+/**
+ * What it says when the engine is not coming back by itself (unavailable, or
+ * stopped after failing too often): no promise of a wait, the next step
+ * first, and then why, in full, since the status line cuts a long reason
+ * short (issue 547).
+ */
+export const SAMPLES_ENGINE_DOWN =
+  'Open Settings and press Copy diagnostics, then reinstall the app if this keeps happening: the engine is not running, so the sample cities cannot be listed.'
 
 /** What it says when the engine is ready and its answer to `feeds.list` failed. */
 export const SAMPLES_UNREAD =
@@ -204,8 +217,10 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  * its way - a sentence saying the engine is not ready, under a status line
  * that says it is, would be the screen contradicting itself for a beat.
  */
-export function samplesSentence(ready: boolean, read: FeedsRead): string | null {
-  if (!ready) return SAMPLES_AWAY
+export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
+  if (engine?.state === 'unavailable' || engine?.state === 'stopped')
+    return `${SAMPLES_ENGINE_DOWN} ${engine.reason}`
+  if (engine?.state !== 'ready') return SAMPLES_AWAY
   if (read === 'failed') return SAMPLES_UNREAD
   if (read === 'listed') return SAMPLES_NONE
   return null
@@ -571,7 +586,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   }
 
   const presets = feeds.filter((feed) => feed.source === 'preset')
-  const samples = samplesSentence(ready, feedsRead)
+  const samples = samplesSentence(engine, feedsRead)
   const addedFeeds = feeds.filter((feed) => feed.source === 'user')
   const startFrom = (feed: FeedRecord): void => {
     setFeedNotice(null)

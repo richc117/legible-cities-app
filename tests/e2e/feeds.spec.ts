@@ -834,8 +834,13 @@ test('without an engine the New project sheet takes a typed key, as before', asy
     await expect(page.getByRole('region', { name: 'Sample cities' }).getByRole('list')).toHaveCount(
       0,
     )
+    // An engine that is not coming back is not promised: the next step, and
+    // the whole reason, which the status line cuts short (issue 547).
     await expect(page.getByRole('region', { name: 'Sample cities' })).toContainText(
-      'listed once the engine is ready',
+      'Open Settings and press Copy diagnostics',
+    )
+    await expect(page.getByRole('region', { name: 'Sample cities' })).not.toContainText(
+      'once the engine is ready',
     )
     await page.getByRole('button', { name: 'New project' }).click()
     const dialog = page.getByRole('dialog', { name: 'New project' })

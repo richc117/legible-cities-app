@@ -115,7 +115,11 @@ describe('resolveInterpreter', () => {
       exists: existing(join('/eng', '.venv', 'bin', 'python')),
     })
     expect(missing.interpreter).toBeNull()
-    if (missing.interpreter === null) expect(missing.reason).toContain('reinstall')
+    if (missing.interpreter === null) {
+      expect(missing.reason).toContain('Reinstall the app')
+      // An installed app's person has no environment to look at (issue 547).
+      expect(missing.reason).not.toMatch(/LEGIBLE_/)
+    }
   })
 })
 

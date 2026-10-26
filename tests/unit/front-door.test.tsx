@@ -15,6 +15,7 @@ import Library, {
   PROJECTS_NONE,
   ProjectCards,
   SAMPLES_AWAY,
+  SAMPLES_ENGINE_DOWN,
   SAMPLES_NONE,
   SAMPLES_UNREAD,
   projectFacts,
@@ -30,6 +31,7 @@ import { samplePicture } from '../../src/renderer/src/samplePictures'
 import { summarise } from '../../src/main/record/helpers'
 import { type DrawnFrom, type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
+import type { EngineState } from '../../src/shared/engine'
 import type { FeedRecord } from '../../src/shared/protocol'
 
 // The screen's run helpers reach for the bridge when they are made. A
@@ -148,18 +150,61 @@ describe('the front door', () => {
 })
 
 describe('what the samples region says when it has no presets to draw', () => {
-  it('says the engine is not ready only when it is not', () => {
-    expect(samplesSentence(false, 'unread')).toBe(SAMPLES_AWAY)
-    expect(samplesSentence(false, 'listed')).toBe(SAMPLES_AWAY)
+  const starting: EngineState = { state: 'starting', attempt: 1 }
+  const restarting: EngineState = { state: 'restarting', attempt: 2, reason: 'It exited.' }
+  const ready: EngineState = { state: 'ready', version: '1.0.0', protocol: 1 }
+  const unavailable: EngineState = {
+    state: 'unavailable',
+    reason: 'The engine could not be started.',
+  }
+  const stopped: EngineState = {
+    state: 'stopped',
+    reason: 'It exited. It failed 3 times in a row.',
+  }
+
+  it('says the engine is on its way while it is starting or restarting, or not yet heard from', () => {
+    for (const engine of [null, starting, restarting]) {
+      expect(samplesSentence(engine, 'unread')).toBe(SAMPLES_AWAY)
+      expect(samplesSentence(engine, 'listed')).toBe(SAMPLES_AWAY)
+    }
+  })
+
+  it('never promises a wait while the engine is unavailable or stopped (issue 547)', () => {
+    for (const engine of [unavailable, stopped]) {
+      const sentence = samplesSentence(engine, 'unread')
+      expect(sentence).not.toBeNull()
+      expect(sentence).not.toContain('once the engine is ready')
+      // The next step comes first, and says where to go.
+      expect(sentence?.startsWith('Open Settings and press Copy diagnostics')).toBe(true)
+      expect(sentence?.startsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
+    }
+  })
+
+  it('carries the whole reason, which the status line cuts short', () => {
+    expect(samplesSentence(unavailable, 'unread')).toContain(unavailable.reason)
+    expect(samplesSentence(stopped, 'unread')).toContain('It failed 3 times in a row.')
+  })
+
+  it('draws that sentence in the region', () => {
+    const html = renderToStaticMarkup(
+      <SampleCities
+        presets={[]}
+        palette="dark"
+        sentence={samplesSentence(unavailable, 'unread')}
+        onOpen={() => undefined}
+      />,
+    )
+    expect(html).toContain('Copy diagnostics')
+    expect(html).not.toContain('once the engine is ready')
   })
 
   it('says nothing while the first read is on its way', () => {
-    expect(samplesSentence(true, 'unread')).toBeNull()
+    expect(samplesSentence(ready, 'unread')).toBeNull()
   })
 
   it('says the read failed when it did, and that there are none when there are none', () => {
-    expect(samplesSentence(true, 'failed')).toBe(SAMPLES_UNREAD)
-    expect(samplesSentence(true, 'listed')).toBe(SAMPLES_NONE)
+    expect(samplesSentence(ready, 'failed')).toBe(SAMPLES_UNREAD)
+    expect(samplesSentence(ready, 'listed')).toBe(SAMPLES_NONE)
   })
 })
 

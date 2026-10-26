@@ -369,6 +369,7 @@ function createSidecar(config: Config): Sidecar {
     }),
     pin,
     log: engineLog,
+    isPackaged: app.isPackaged,
   })
 }
 

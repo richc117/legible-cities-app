@@ -331,6 +331,32 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await missing.stop()
   })
 
+  it('gives an installed app a reason with no environment variable in it (issue 547)', async () => {
+    const log: string[] = []
+    const missing = new Sidecar({
+      command: ['no-such-interpreter-xyz', '-m', 'schematic.serve'],
+      env: { PATH: process.env.PATH ?? '' },
+      pin: PIN,
+      log: (m) => log.push(m),
+      bounds: FAST,
+      isPackaged: true,
+    })
+    missing.start()
+    await new Promise<void>((resolve) => {
+      if (missing.state.state === 'unavailable') resolve()
+      missing.onState((s) => s.state === 'unavailable' && resolve())
+    })
+    if (missing.state.state !== 'unavailable') throw new Error('expected unavailable')
+    expect(missing.state.reason).not.toMatch(/LEGIBLE_/)
+    expect(missing.state.reason).not.toContain('checkout')
+    // The next step first.
+    expect(missing.state.reason.startsWith('Reinstall the app')).toBe(true)
+    expect(missing.state.reason).toContain('Copy diagnostics')
+    // What the system said is kept for the log, not the screen.
+    expect(log.join('\n')).toContain('the interpreter could not be started: ENOENT')
+    await missing.stop()
+  })
+
   it('refuses a request before ready, and forwards one after', async () => {
     const h = harness()
     const early = h.sidecar.request('engine.info')

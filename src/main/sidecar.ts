@@ -72,9 +72,28 @@ export interface SidecarOptions {
   log: (message: string) => void
   bounds?: Partial<Bounds>
   platform?: NodeJS.Platform
+  /**
+   * Whether this is an installed app, whose person has no engine checkout and
+   * no environment to look at: the reason an interpreter that will not start
+   * gives is then a sentence they can act on (issue 547).
+   */
+  isPackaged?: boolean
 }
 
 const STDERR_TAIL = 20
+
+/**
+ * Why the interpreter could not be started, as a sentence for whoever is
+ * looking at the screen. A person with the installed app is told the next
+ * step first and never an environment variable, which means nothing to them;
+ * whoever runs from a checkout keeps the sentence that names what to check.
+ * What the operating system said goes to the log either way.
+ */
+export function interpreterFailedReason(what: string, isPackaged: boolean): string {
+  if (isPackaged)
+    return 'Reinstall the app; if it happens again, use Copy diagnostics in Settings. The bundled engine could not be started.'
+  return `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`
+}
 
 /** The longest delay a Node timer holds; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647
@@ -560,9 +579,10 @@ export class Sidecar {
 
   private couldNotStart(what: string): void {
     this.client = null
+    this.log(`the interpreter could not be started: ${what}`)
     this.setState({
       state: 'unavailable',
-      reason: `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`,
+      reason: interpreterFailedReason(what, this.options.isPackaged ?? false),
     })
   }
 
