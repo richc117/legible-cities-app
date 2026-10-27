@@ -63,6 +63,20 @@ async function listFeeds(ready: boolean): Promise<FeedRecord[] | null> {
 export const UNANSWERED_REMOVAL =
   'The engine did not answer in time, so the feed may or may not have been removed. The list of feeds is read again to show what the engine has now.'
 
+/**
+ * What the Library says when a sample city's project could not be made
+ * (issue 548): what to try, then what went wrong, with the refusal as it
+ * came and a full stop where it ends without one. Nothing was made or
+ * fetched yet, so a second press is the whole next step; a sample city is
+ * the engine's own and cannot be removed and added again.
+ */
+export function openFailed(name: string, error: unknown): string {
+  const said = (error instanceof Error ? error.message : String(error)).trim()
+  if (said === '') return `Try again. ${name} could not be opened.`
+  const stopped = /[.!?…][”’")]*$/.test(said) ? said : `${said}.`
+  return `Try again. ${name} could not be opened: ${stopped}`
+}
+
 /** Whether a failed request ended because the app stopped waiting, leaving its outcome unknown. */
 export function unanswered(error: unknown): boolean {
   return isEngineErrorShape(error) && error.code === ERROR_CODES.inactive
@@ -592,9 +606,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
       // it down before that render would let a queued click make a second
       // project and orphan the first.
       opening.current = false
-      setFeedNotice(
-        `${feed.name} could not be opened: ${error instanceof Error ? error.message : String(error)}`,
-      )
+      setFeedNotice(openFailed(feed.name, error))
     }
   }
   const askToRemove = (feed: FeedRecord): void => {

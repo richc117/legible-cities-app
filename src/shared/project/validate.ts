@@ -58,10 +58,18 @@ export const NAME_MAX = 120
 // Exported for tests/unit/project.test.ts alone, which holds it to the form's own limit.
 export const AGENCY_MAX = 64
 
+/**
+ * The two refusals of a project's name, said as sentences that lead with
+ * what to do (DESIGN.md section 11, issue 548): they reach the screen as
+ * written, under the name field of the New project sheet and the rename.
+ */
+export const NAME_REQUIRED = 'Give the project a name.'
+export const NAME_TOO_LONG = `Shorten the name to ${NAME_MAX} characters or fewer.`
+
 export function validateName(name: string): string | null {
   const trimmed = name.trim()
-  if (trimmed === '') return 'name is required'
-  if (trimmed.length > NAME_MAX) return `name is too long (${NAME_MAX} characters at most)`
+  if (trimmed === '') return NAME_REQUIRED
+  if (trimmed.length > NAME_MAX) return NAME_TOO_LONG
   return null
 }
 

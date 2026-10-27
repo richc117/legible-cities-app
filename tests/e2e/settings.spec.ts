@@ -517,12 +517,12 @@ test('refuses a project an export folder inside or around the engine folder that
       await chooserAnswers(app, join(videos, 'engine', 'exports'))
       await panel.getByRole('button', { name: 'Choose folder' }).click()
       await expect(panel.getByRole('alert')).toHaveText(
-        'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on',
+        'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.',
       )
       await chooserAnswers(app, videos)
       await panel.getByRole('button', { name: 'Choose folder' }).click()
       await expect(panel.getByRole('alert')).toHaveText(
-        'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself',
+        'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.',
       )
       expect(record().destination, 'and neither was written').toBeNull()
       await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()

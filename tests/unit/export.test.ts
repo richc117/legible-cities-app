@@ -2158,9 +2158,9 @@ describe('where a project may not export to', () => {
   // nothing reads, exporting into the home a reset empties.
   describe('while another engine folder waits for a restart', () => {
     const INSIDE =
-      'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
+      'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.'
     const HOLDS =
-      'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+      'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.'
 
     it('refuses the folder that waits and anything inside it, without calling it the engine data folder', async () => {
       const t = tree()
@@ -2217,10 +2217,10 @@ describe('where a project may not export to', () => {
       // is inside both, and one above both holds both.
       t.waiting.now = join(t.root, 'support')
       expect(await destinationRefusal(join(t.home, 'out'), t.where)).toMatch(
-        /^that folder is inside the engine data folder, which “Reset engine data” removes$/,
+        /^Choose another folder: that folder is inside the engine data folder, which “Reset engine data” removes\.$/,
       )
       expect(await destinationRefusal(t.root, t.where)).toMatch(
-        /^that folder holds the engine data folder; /,
+        /^Choose another folder: that folder holds the engine data folder, /,
       )
     })
 
@@ -2308,7 +2308,9 @@ describe('where a project may not export to', () => {
         () => refusal !== null || h.eng.requests.length > 2,
       )
       expect(h.eng.requests, 'the engine was not asked for a second plan').toHaveLength(2)
-      expect(refusal).toBe(`The folder this project exports to cannot be written to: ${INSIDE}.`)
+      expect(refusal).toBe(
+        `${INSIDE} That is the folder this project exports to, so the export did not start.`,
+      )
       expect(h.cap.calls, 'nothing more was captured').toHaveLength(1)
       expect(h.exporter.live, 'the export was let go').toBe(0)
     })
@@ -2337,12 +2339,12 @@ describe('where a project may not export to', () => {
 
     const LATE = {
       folder:
-        'that folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached',
-      app: 'the app itself did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again',
+        'That folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached.',
+      app: 'The app itself did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again.',
       engine:
-        'the engine data folder did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached',
+        'The engine data folder did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached.',
       waiting:
-        'the folder the engine data moves to at the next start did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached',
+        'The folder the engine data moves to at the next start did not answer in time, so that folder could not be checked against it and nothing was changed or written; try again when it can be reached.',
     } as const
 
     it('says each of its four sentences as written', () => {
@@ -2477,7 +2479,7 @@ describe('where a project may not export to', () => {
       try {
         const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
         const refused = expect(result).rejects.toThrow(
-          `The folder this project exports to cannot be written to: ${LATE.folder}.`,
+          `${LATE.folder} That is the folder this project exports to, so the export did not start.`,
         )
         await askedOrEnded(wasAsked, refused)
         expect(h.exporter.live, 'it is an export until it is refused').toBe(1)

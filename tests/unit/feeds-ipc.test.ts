@@ -158,7 +158,7 @@ describe('the registry guard', () => {
       'The project “Prueba” uses this feed; delete it first.',
     )
     expect(await guard('feeds.remove', { key: 'unused' })).toBeNull()
-    expect(await guard('feeds.remove', {})).toMatch(/needs a key/)
+    expect(await guard('feeds.remove', {})).toMatch(/^Choose the feed to remove again; /)
   })
 
   it('leaves every other method alone', async () => {

@@ -897,9 +897,9 @@ describe('choosing the engine folder while a project exports to a folder of its 
 // the one Settings holds now, read as index.ts reads it.
 describe('a project’s export folder while a chosen engine folder waits for a restart', () => {
   const INSIDE =
-    'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
+    'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.'
   const HOLDS =
-    'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+    'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.'
 
   /** The refusal as index.ts builds it: the folder waiting is asked of Settings at each judgement. */
   const judge =

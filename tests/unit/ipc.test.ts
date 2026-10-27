@@ -569,8 +569,12 @@ describe('registerProjectHandlers', () => {
   })
   it("maps a malformed create input onto the contract's messages", async () => {
     const { call, calls } = harness()
-    await expect(call(CHANNELS.projectsCreate, undefined)).rejects.toThrow('name is required')
-    await expect(call(CHANNELS.projectsCreate, { name: '  ' })).rejects.toThrow('name is required')
+    await expect(call(CHANNELS.projectsCreate, undefined)).rejects.toThrow(
+      'Give the project a name.',
+    )
+    await expect(call(CHANNELS.projectsCreate, { name: '  ' })).rejects.toThrow(
+      'Give the project a name.',
+    )
     await expect(call(CHANNELS.projectsCreate, { name: 'LA' })).rejects.toThrow(/feed key/)
     await expect(call(CHANNELS.projectsCreate, { name: 'LA', feed: 'LA Metro' })).rejects.toThrow(
       /feed key/,
@@ -596,10 +600,10 @@ describe('registerProjectHandlers', () => {
   it('validates a rename name', async () => {
     const { call, calls } = harness()
     await expect(call(CHANNELS.projectsRename, 'abcdefghijk1', '')).rejects.toThrow(
-      'name is required',
+      'Give the project a name.',
     )
     await expect(call(CHANNELS.projectsRename, 'abcdefghijk1', 'x'.repeat(121))).rejects.toThrow(
-      /too long/,
+      /^Shorten the name/,
     )
     expect(calls).toEqual([])
   })

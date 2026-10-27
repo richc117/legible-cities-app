@@ -63,11 +63,25 @@ export function startingFeed(feeds: FeedRecord[], wanted: string | undefined): s
 
 const URL_PATTERN = /^https?:\/\/\S+$/
 
+/**
+ * The sheet's own refusals, each a sentence that leads with what to do
+ * (DESIGN.md section 11, issue 548). `httpOnly` is the main process's
+ * sentence for the same address (`FEED_REFUSALS` in `src/main/feeds-ipc.ts`,
+ * which this process may not import), and a unit test holds the two
+ * together.
+ */
+export const SHEET_REFUSALS = {
+  noAddress: 'Paste the address of a GTFS zip, or choose a file.',
+  httpOnly: 'Use an address that starts with http:// or https://.',
+  noZip: 'Choose a GTFS zip first.',
+  addFinishing: 'Wait for the earlier add to finish, then try again.',
+} as const
+
 /** What is wrong with a typed URL, or null. */
 export function validateFeedUrl(url: string): string | null {
   const trimmed = url.trim()
-  if (trimmed === '') return 'paste the address of a GTFS zip, or choose a file'
-  if (!URL_PATTERN.test(trimmed)) return 'a feed address starts with http:// or https://'
+  if (trimmed === '') return SHEET_REFUSALS.noAddress
+  if (!URL_PATTERN.test(trimmed)) return SHEET_REFUSALS.httpOnly
   return null
 }
 
@@ -103,9 +117,12 @@ export function arrivalName(typed: boolean, held: boolean, feedName: string | nu
 type Field = 'name' | 'feed' | 'file' | 'url'
 type Messages = Partial<Record<Field, string>>
 
-// The bridge's messages open with the field they concern ("name is
-// required", "feed key must be…"), so a create's refusal lands under that
-// field; anything else lands under the name.
+// A create's refusal about the feed opens with the word ("feed key must
+// be…"), so it lands under that field; anything else, the name's own
+// ("Give the project a name.") included, lands under the name. The match is
+// on that lower-case prefix: `validateFeedKey`'s sentence must keep starting
+// with "feed", and no other create refusal may, or a reworded one lands
+// under the wrong field without any test saying so.
 function fieldFor(message: string): Field {
   return message.startsWith('feed') ? 'feed' : 'name'
 }
@@ -384,11 +401,7 @@ export default function NewProjectSheet({
     if (adding || busy) return
     const trimmed = name.trim()
     const begin = (source: { file: string } | { url: string }): void => {
-      if (elsewhere)
-        return fail(
-          'file' in source ? 'file' : 'url',
-          'an earlier add is still finishing; try again once it has',
-        )
+      if (elsewhere) return fail('file' in source ? 'file' : 'url', SHEET_REFUSALS.addFinishing)
       setMessages({})
       setAttempt((n) => n + 1)
       run.start(source, engine)
@@ -418,7 +431,7 @@ export default function NewProjectSheet({
       return
     }
     if (source === 'zip') {
-      if (file === null) return fail('file', 'choose a GTFS zip first')
+      if (file === null) return fail('file', SHEET_REFUSALS.noZip)
       return begin({ file: file.path })
     }
     const problem = validateFeedUrl(url)

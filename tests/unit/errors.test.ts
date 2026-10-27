@@ -4,8 +4,10 @@ import { unwrapIpcError } from '../../src/shared/errors'
 describe('unwrapIpcError', () => {
   it("strips Electron's remote-method wrapper and the Error: prefix", () => {
     expect(
-      unwrapIpcError("Error invoking remote method 'projects:create': Error: name is required"),
-    ).toBe('name is required')
+      unwrapIpcError(
+        "Error invoking remote method 'projects:create': Error: Give the project a name.",
+      ),
+    ).toBe('Give the project a name.')
     expect(unwrapIpcError("Error invoking remote method 'projects:get': not found")).toBe(
       'not found',
     )

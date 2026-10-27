@@ -542,12 +542,7 @@ export class Exporter {
     // is a file anything on the machine can write.
     if (project.destination !== null) {
       const why = (await this.#options.destinationRefusal?.(project.destination)) ?? null
-      if (why !== null)
-        throw engineError(
-          ERROR_CODES.badCall,
-          `The folder this project exports to cannot be written to: ${why}.`,
-          'params',
-        )
+      if (why !== null) throw engineError(ERROR_CODES.badCall, `${why} ${EXPORTS_THERE}`, 'params')
     }
     const destination = project.destination ?? appFolder
     // The service day the map on disk was drawn for. Not `project.date`,
@@ -806,27 +801,57 @@ export interface ForbiddenFolders {
 export type DestinationAsked = 'folder' | 'app' | 'engine' | 'waiting'
 
 /**
+ * What the exporter says after a refusal of the project's own folder
+ * (`destinationRefusal`, asked again at each export): the refusal leads with
+ * what to do, and this names the folder it is about (issue 548).
+ */
+export const EXPORTS_THERE =
+  'That is the folder this project exports to, so the export did not start.'
+
+/**
  * What the chooser and the exporter say when a folder did not answer in
  * time (issue 206): which folder, that nothing was changed or written, and
- * what can be done about it. Lower case and unstopped, like the refusals
- * beside it: the exporter says it after "The folder this project exports
- * to cannot be written to: ", which is where the project is named. No
- * path.
+ * what can be done about it. Whole sentences, like the refusals beside it
+ * (issue 548): the exporter says one before `EXPORTS_THERE`, which is
+ * where the project's folder is named. No path.
  */
 export function destinationLate(asked: DestinationAsked): string {
   const unchecked =
     'so that folder could not be checked against it and nothing was changed or written'
   switch (asked) {
     case 'folder':
-      return 'that folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached'
+      return 'That folder did not answer in time, so it could not be checked and nothing was changed or written; choose another folder, or try again when it can be reached.'
     case 'app':
-      return `the app itself did not answer in time, ${unchecked}; try again`
+      return `The app itself did not answer in time, ${unchecked}; try again.`
     case 'engine':
-      return `the engine data folder did not answer in time, ${unchecked}; try again when it can be reached`
+      return `The engine data folder did not answer in time, ${unchecked}; try again when it can be reached.`
     case 'waiting':
-      return `the folder the engine data moves to at the next start did not answer in time, ${unchecked}; try again when it can be reached`
+      return `The folder the engine data moves to at the next start did not answer in time, ${unchecked}; try again when it can be reached.`
   }
 }
+
+/**
+ * Why a folder may not be an export's destination, one sentence for each
+ * forbidden folder and direction (`judgeDestination`), each leading with
+ * what to do (DESIGN.md section 11, issue 548). The chooser shows one as
+ * written, and the exporter with `EXPORTS_THERE` after it. `insideApp` is
+ * also Settings' refusal of a folder in the bundle (`settings-ipc.ts`). No
+ * path.
+ */
+export const DESTINATION_REFUSALS = {
+  insideApp:
+    'Choose another folder: that folder is inside the app itself, and nothing can be kept there.',
+  holdsApp:
+    'Choose another folder: that folder holds the app itself, and an export goes into a folder named after the project, which could be the app.',
+  insideHome:
+    'Choose another folder: that folder is inside the engine data folder, which “Reset engine data” removes.',
+  holdsHome:
+    'Choose another folder: that folder holds the engine data folder, and an export goes into a folder named after the project, which could be that folder itself.',
+  insideWaiting:
+    'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.',
+  holdsWaiting:
+    'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.',
+} as const
 
 /**
  * Why a project may not export to this folder, or null (A5.5-19).
@@ -907,27 +932,21 @@ async function judgeDestination(
   for (const root of where.bundleRoots) {
     asking.now = 'app'
     const bundle = await realOf(root)
-    if (contains(bundle, real))
-      return 'that folder is inside the app itself; nothing can be kept there'
-    if (contains(real, bundle))
-      return 'that folder holds the app itself; an export goes into a folder named after the project, which could be the app'
+    if (contains(bundle, real)) return DESTINATION_REFUSALS.insideApp
+    if (contains(real, bundle)) return DESTINATION_REFUSALS.holdsApp
   }
   asking.now = 'engine'
   const home = await realOf(where.engineHome)
-  if (contains(home, real))
-    return 'that folder is inside the engine data folder, which “Reset engine data” removes'
-  if (contains(real, home))
-    return 'that folder holds the engine data folder; an export goes into a folder named after the project, which could be that folder itself'
+  if (contains(home, real)) return DESTINATION_REFUSALS.insideHome
+  if (contains(real, home)) return DESTINATION_REFUSALS.holdsHome
   // Asked now, after everything above has been read from the disk, so it
   // is the folder waiting at this judgement and not at an earlier one.
   const waiting = where.waitingHome()
   if (waiting !== null) {
     asking.now = 'waiting'
     const next = await realOf(waiting)
-    if (contains(next, real))
-      return 'that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on'
-    if (contains(real, next))
-      return 'that folder holds the folder the engine data moves to at the next start; an export goes into a folder named after the project, which could be that folder itself'
+    if (contains(next, real)) return DESTINATION_REFUSALS.insideWaiting
+    if (contains(real, next)) return DESTINATION_REFUSALS.holdsWaiting
   }
   return null
 }
