@@ -32,7 +32,14 @@
 // change flushed as its panel goes reads the record after the panel is
 // gone.
 
-import { act, createRef, type JSX, type ReactElement } from 'react'
+import {
+  act,
+  createRef,
+  Profiler,
+  type JSX,
+  type ProfilerOnRenderCallback,
+  type ReactElement,
+} from 'react'
 import { createRoot } from 'react-dom/client'
 import '../../src/renderer/src/kit'
 import type { Api } from '../../src/shared/api'
@@ -297,6 +304,8 @@ export interface CellOptions extends RenderOptions {
   open?: boolean
   /** The run the cell is drawn with; a fresh one unless a test hands its own. */
   run?: StandInRun
+  /** Told of every commit of the cell's view, through a `Profiler` around it: to count renders. */
+  onRender?: ProfilerOnRenderCallback
 }
 
 interface Mounted {
@@ -365,14 +374,23 @@ export function renderCell(
       layingOut: snapshot.state === 'running',
       ...given,
     }
+    const view = (
+      <View
+        cell={cell}
+        state={options.cellState ?? 'ready'}
+        open={options.open ?? true}
+        onToggle={nothing}
+      />
+    )
     return (
       <ProjectProvider value={drawn}>
-        <View
-          cell={cell}
-          state={options.cellState ?? 'ready'}
-          open={options.open ?? true}
-          onToggle={nothing}
-        />
+        {options.onRender === undefined ? (
+          view
+        ) : (
+          <Profiler id={id} onRender={options.onRender}>
+            {view}
+          </Profiler>
+        )}
       </ProjectProvider>
     )
   }
