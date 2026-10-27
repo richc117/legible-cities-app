@@ -6,17 +6,20 @@ import { describe, expect, it } from 'vitest'
 // criterion, including the six that 2.2 added (issue 550). It also said "not
 // yet run" of checks that CI runs, which misleads the person deciding what to
 // walk. This test reads the record, as adr-index.test.ts reads the ADR index,
-// and holds two things:
+// and holds three things:
 //
 // 1. the section "WCAG 2.2: the criteria it added" has one row for each of the
-//    six, each with a status, the evidence and the issue or pull request, and
-//    the files and tests the evidence names exist;
-// 2. no row that names a spec under tests/e2e/ says of its automated checks
-//    that they are "not yet run", "not yet swept" or "not yet in the sweep".
-//    CI runs every spec in that folder (ci.yml, `e2e`), so such a row is
-//    wrong the day the spec exists. A person's column ("not yet run: a
-//    person's") is a different statement and is left alone: no spec can
-//    answer it.
+//    six, each with a status, the evidence and the issue or pull request;
+//    a `pass` carries no limit in brackets (that is a `partial`); and the
+//    files and tests the evidence names are real: a file at a path from the
+//    root, a test by a title that is a `test(`, `it(` or `describe(` in it;
+// 2. no row of a screen's table says, in a machine column (keyboard, labels,
+//    focus, motion, contrast), that a spec has not run. CI runs every spec in
+//    tests/e2e/ (ci.yml, `e2e`), so such a cell is wrong the day the spec
+//    exists. The reader columns are the last two of the nine and are judged
+//    by position: they are a person's, and no spec answers them;
+// 3. every spec a table row names exists, so a renamed spec cannot take its
+//    row out of the rule above by no longer being found.
 
 const root = join(__dirname, '..', '..')
 const record = readFileSync(join(root, 'docs', 'accessibility.md'), 'utf8')
@@ -37,6 +40,14 @@ const cellsOf = (row: string): string[] =>
     .split('|')
     .map((cell) => cell.trim())
 
+/** A screen's table has nine columns: the part, five machine checks, two contrasts and two readers. */
+const COLUMNS = 9
+/** The machine columns of such a row: Keyboard to Contrast (Parchment). The last two are the readers'. */
+const machineCells = (row: string): string[] => cellsOf(row).slice(1, COLUMNS - 2)
+
+/** What a machine cell may not say of a spec that is in the repository. */
+const SPEC_HAS_NOT_RUN = /not yet run|written, not run/i
+
 /** The lines of the section, from its heading to the next second-level one. */
 function section(): string[] {
   const start = lines.indexOf(HEADING)
@@ -46,12 +57,29 @@ function section(): string[] {
   return end === -1 ? rest : rest.slice(0, end)
 }
 
-/** Where a file the record names lives; null when the name is not one this test knows how to place. */
+/**
+ * Where a file the record names lives. A path from the root is placed as it
+ * is; a bare spec is under tests/e2e/ (or tests/acceptance/) and a bare unit
+ * test under tests/unit/. Any other bare name is not placed, and the caller
+ * fails on it rather than skipping it.
+ */
 function placed(name: string): string | null {
   if (name.includes('/')) return join(root, name)
-  if (/\.spec\.tsx?$/.test(name)) return join(root, 'tests', 'e2e', name)
+  if (/\.spec\.tsx?$/.test(name)) {
+    const e2e = join(root, 'tests', 'e2e', name)
+    return existsSync(e2e) ? e2e : join(root, 'tests', 'acceptance', name)
+  }
   if (/\.test\.tsx?$/.test(name)) return join(root, 'tests', 'unit', name)
   return null
+}
+
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/** Is `title` the title of a `test(`, `it(` or `describe(` in `source`, and not a word in a comment? */
+function isATitle(source: string, title: string): boolean {
+  return new RegExp(
+    String.raw`\b(?:test|it|describe)(?:\.\w+)?\(\s*(['"` + '`' + String.raw`])${escaped(title)}\1`,
+  ).test(source)
 }
 
 describe('the accessibility record maps WCAG 2.2', () => {
@@ -91,6 +119,15 @@ describe('the accessibility record maps WCAG 2.2', () => {
         ).toBe(true)
       })
 
+      it('is not a pass that carries a limit', () => {
+        if (row === undefined) return expect.fail(`no row for ${id}`)
+        const status = cellsOf(row)[1] ?? ''
+        // A limit in brackets is what *partial* is for. A pass is met as the
+        // evidence says, and the evidence does not say less than it claims.
+        if (status.toLowerCase().startsWith('pass'))
+          expect(status, `${id}: a pass has no bracketed limit; say partial`).not.toMatch(/[()]/)
+      })
+
       it('names files and tests that exist', () => {
         if (row === undefined) return expect.fail(`no row for ${id}`)
         const evidence = cellsOf(row)[2] ?? ''
@@ -100,18 +137,23 @@ describe('the accessibility record maps WCAG 2.2', () => {
           expect(files.length, `${id}: the evidence names at least one file`).toBeGreaterThan(0)
         for (const name of files) {
           const path = placed(name)
-          if (path === null) continue
-          expect(existsSync(path), `${id}: ${name} exists`).toBe(true)
+          expect(
+            path,
+            `${id}: ${name} is a path from the root, or a bare spec or unit test; write the path`,
+          ).not.toBeNull()
+          expect(existsSync(path!), `${id}: ${name} exists`).toBe(true)
         }
-        // A test named by its title: `file` ("title"). The file has to hold
-        // the title, so a rename in the spec is a failure here.
-        for (const m of evidence.matchAll(/`([\w./-]+\.(?:spec|test)\.tsx?)` \("([^"]+)"/g)) {
+        // A test named by its title: `file` ("title"). The title has to be
+        // one a `test(`, `it(` or `describe(` in that file opens with, not
+        // a sentence a comment happens to quote.
+        const titles = [...evidence.matchAll(/`([\w./-]+\.(?:spec|test)\.tsx?)` \("([^"]+)"/g)]
+        for (const m of titles) {
           const path = placed(m[1]!)
           expect(path, `${id}: ${m[1]} is placeable`).not.toBeNull()
           const source = existsSync(path!) ? readFileSync(path!, 'utf8') : ''
           expect(
-            source.includes(m[2]!),
-            `${id}: ${m[1]} holds a test or suite titled "${m[2]}"`,
+            isATitle(source, m[2]!),
+            `${id}: ${m[1]} has a test(), it() or describe() titled "${m[2]}"`,
           ).toBe(true)
         }
       })
@@ -123,6 +165,14 @@ describe('the accessibility record maps WCAG 2.2', () => {
       .map((row) => cellsOf(row)[0]?.split(/\s/)[0] ?? '')
       .filter((id) => /^\d/.test(id))
     expect([...ids].sort()).toEqual([...CRITERIA].sort())
+  })
+
+  it('tells a title from a sentence in a comment', () => {
+    const source = "// 'a quoted title' is only said here\ntest('a real title', () => {})\n"
+    expect(isATitle(source, 'a real title')).toBe(true)
+    expect(isATitle(source, 'a quoted title')).toBe(false)
+    expect(isATitle("describe(\n  'split over lines',\n", 'split over lines')).toBe(true)
+    expect(isATitle("test('a real title and more', () => {})", 'a real title')).toBe(false)
   })
 })
 
@@ -136,46 +186,66 @@ describe('the record does not say a check CI runs has not run', () => {
     expect(config).toMatch(/testDir: 'tests\/e2e'/)
   })
 
-  /** A person's column, which no spec can answer. */
-  const PERSONS = /not yet run: a person[’']s/gi
-  const UNRUN = /not yet (?:run|swept|in the sweep)/i
+  const tableRows = lines
+    .map((line, i) => ({ line, at: i + 1 }))
+    .filter((r) => r.line.startsWith('| '))
+  const screens = tableRows.filter(
+    (r) => cellsOf(r.line).length === COLUMNS && cellsOf(r.line)[0] !== 'Part',
+  )
 
-  it('tells the person’s column from an automated one', () => {
-    expect(
-      UNRUN.test('not yet run: a person’s (this part changed after 0.1.0)'.replace(PERSONS, '')),
-    ).toBe(false)
-    expect(
-      UNRUN.test('driven in `tuning.spec.ts`, written, not yet run; not yet in the sweep'),
-    ).toBe(true)
-    expect(UNRUN.test('not yet swept: drawn on the default reel'.replace(PERSONS, ''))).toBe(true)
-    // A person's column beside an automated one in the same row: only the
-    // automated one is left to find.
-    expect(
-      UNRUN.test('swept | not yet run: a person’s | not yet run: a person’s'.replace(PERSONS, '')),
-    ).toBe(false)
-    expect(UNRUN.test('not yet run | not yet run: a person’s'.replace(PERSONS, ''))).toBe(true)
+  it('tells the person’s columns from the machine’s by position', () => {
+    const row =
+      '| A part | swept | not yet run, here | swept | swept | swept | swept | not yet run: a person’s | not yet run: a person’s |'
+    expect(machineCells(row)).toEqual([
+      'swept',
+      'not yet run, here',
+      'swept',
+      'swept',
+      'swept',
+      'swept',
+    ])
+    expect(machineCells(row).some((cell) => SPEC_HAS_NOT_RUN.test(cell))).toBe(true)
+    // Whatever the readers' cells say, and whatever words they use, they are
+    // not read: not a phrase, a column.
+    const readers =
+      '| A part | swept | swept | swept | swept | swept | swept | not yet run | written, not run |'
+    expect(machineCells(readers).some((cell) => SPEC_HAS_NOT_RUN.test(cell))).toBe(false)
+    expect(SPEC_HAS_NOT_RUN.test('driven in `tuning.spec.ts`, written, not yet run')).toBe(true)
+    expect(SPEC_HAS_NOT_RUN.test('driven in `tuning.spec.ts`, written, not run')).toBe(true)
+    // Where the sweep really does not reach a part, saying so is allowed.
+    expect(SPEC_HAS_NOT_RUN.test('not yet swept: drawn only once an opening is chosen')).toBe(false)
   })
 
-  it('finds rows to read', () => {
-    const named = lines.filter((line) => line.startsWith('| ') && /\w[\w-]*\.spec\.ts/.test(line))
-    expect(named.length).toBeGreaterThan(20)
+  it('reads the screens’ rows', () => {
+    expect(screens.length).toBeGreaterThan(60)
+    expect(screens.filter((r) => /`[\w-]+\.spec\.ts`/.test(r.line)).length).toBeGreaterThan(20)
   })
 
-  it('says it of no row that names a spec which exists', () => {
+  it('names, in every table row, only specs that exist', () => {
+    const missing: string[] = []
+    for (const { line, at } of tableRows)
+      for (const m of line.matchAll(/`([\w-]+\.spec\.ts)`/g)) {
+        const path = placed(m[1]!)
+        if (path === null || !existsSync(path)) missing.push(`line ${at}: ${m[1]}`)
+      }
+    expect(missing, 'specs a row names that are not under tests/').toEqual([])
+  })
+
+  it('says of no spec that exists, in a machine column, that it has not run', () => {
     const stale: string[] = []
-    lines.forEach((line, i) => {
-      if (!line.startsWith('| ')) return
+    for (const { line, at } of screens) {
       const specs = [...line.matchAll(/`([\w-]+\.spec\.ts)`/g)].map((m) => m[1]!)
-      if (!specs.some((name) => existsSync(join(root, 'tests', 'e2e', name)))) return
-      const found = line.replace(PERSONS, '').match(new RegExp(UNRUN.source, 'gi'))
-      if (found === null) return
-      const part = cellsOf(line)[0] ?? ''
-      stale.push(
-        `line ${i + 1} (${part.slice(0, 60)}): ${found.join(', ')}, naming ${specs.join(', ')}`,
-      )
-    })
-    expect(stale, 'rows that say a check has not run when its spec exists and CI runs it').toEqual(
-      [],
-    )
+      if (!specs.some((name) => existsSync(placed(name) ?? ''))) continue
+      cellsOf(line)
+        .slice(1, COLUMNS - 2)
+        .forEach((cell, i) => {
+          const found = cell.match(new RegExp(SPEC_HAS_NOT_RUN.source, 'gi'))
+          if (found !== null)
+            stale.push(
+              `line ${at} (${cellsOf(line)[0]!.slice(0, 50)}), column ${i + 2}: ${found.join(', ')}`,
+            )
+        })
+    }
+    expect(stale, 'cells that say a spec has not run when it exists and CI runs it').toEqual([])
   })
 })
