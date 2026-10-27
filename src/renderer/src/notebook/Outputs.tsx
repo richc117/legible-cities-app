@@ -3,6 +3,7 @@ import type { ExportOutput } from '../../../shared/export'
 import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
+import { exportable } from '../runGraph'
 import { useProject } from './context'
 import Time from './Time'
 
@@ -40,14 +41,6 @@ export const NOTHING_YET = 'Nothing exported yet.'
 
 /** What a row says when its file is no longer beside its sidecar. */
 export const GONE = 'the file has been moved or deleted'
-
-/**
- * Whether an export can be made from this project now: it is not read-only
- * and it has a layout, which is when cell 06 has an export to offer.
- */
-export function canExportFrom(project: { readOnly: boolean; layout: unknown } | null): boolean {
-  return project !== null && !project.readOnly && project.layout !== null
-}
 
 /**
  * The empty state (docs/DESIGN.md 8.2, Empty states): one sentence and one
@@ -117,7 +110,7 @@ export default function Outputs({ onExport }: { onExport: () => void }): JSX.Ele
         Outputs
       </h2>
       {rows !== null && rows.length === 0 && (
-        <OutputsEmpty canExport={canExportFrom(project)} onExport={onExport} />
+        <OutputsEmpty canExport={project !== null && exportable(project)} onExport={onExport} />
       )}
       {rows !== null && rows.length > 0 && (
         <ul className="outputs">

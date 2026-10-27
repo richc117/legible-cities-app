@@ -2,6 +2,7 @@ import { useRef, useState, type JSX } from 'react'
 import type { PreviewAddress } from '../../exportChoice'
 import ExportPreview from '../../ExportPreview'
 import ExportTab from '../../ExportTab'
+import { exportable } from '../../runGraph'
 import Cell from '../Cell'
 import { exportFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
@@ -82,7 +83,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
             // read-only project, whose export cannot be made (FR-019).
             open &&
             address !== null &&
-            !project.readOnly && (
+            exportable(project) && (
               <ExportPreview projectId={project.id} projectName={project.name} address={address} />
             )
           }

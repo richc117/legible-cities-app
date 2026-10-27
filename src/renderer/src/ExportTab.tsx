@@ -13,6 +13,7 @@ import { useExportTables } from './export/useExportTables'
 import ExportRunView from './ExportRun'
 import { defaultsFor, plannedChoice, playedBy, type PreviewAddress } from './exportChoice'
 import { openingOf, PREVIEW_NOTE } from './opening'
+import { exportable } from './runGraph'
 import { useSnapshot } from './useSnapshot'
 
 // The export (A5-01, specs/022-export-tab), cell 06 of the notebook: the composition
@@ -101,10 +102,9 @@ export default function ExportTab({
       handback.current?.focus()
   }, [exporting, handback])
 
-  // A read-only project is shown nothing to choose and nothing previewed (ADR-046,
-  // FR-019), not even its choice (spec 029's trade-off), and one not laid out has
-  // nothing to export: one sentence each says why, as cells 02 to 05 say theirs.
-  if (project.readOnly || project.layout === null)
+  // Nothing to choose or preview, not even the choice held (ADR-046, FR-019, spec 029),
+  // where no export can be made: one sentence says why, as cells 02 to 05 say theirs.
+  if (!exportable(project))
     return (
       <div className="export-tab">
         <p className="prose">
