@@ -597,10 +597,27 @@ against the window the feed covers, 06 the last export's file and its
 sidecar. 01, 04 and 05 have none, because they have nothing true to report.
 
 What the cells share is one hook, `notebook/useProjectState.ts` - the
-record and its writers, the two runs and whether either is going, the
-rename and the delete, and the refs the focus handbacks point at - carried
-to them by one context (`notebook/context.ts`), so a cell reads what it
-needs without a prop list. What belongs to one component stays in it.
+record and its writers, the two runs and whether either is going, and the
+refs the focus handbacks point at - carried to them by contexts, so a cell
+reads what it needs without a prop list. The contexts are split by who
+reads what (issue 433): the record; the runs, with whether either goes;
+the export's snapshot alone, which moves every frame; the actions, the
+writers and callbacks made once per project; and three small ones for the
+map - the redraw count (the map's frame and cell 03's transport), the
+theme reload count (the frame alone) and what the opening redrew (cells 02
+and 03). Each value is memoised over its own fields, so a part of the
+screen renders for a change to what it reads and for nothing else; a run
+snapshot still renders all six cells, because each row shows the run's
+progress. They are composed in one place, `ProjectProviders` in
+`notebook/context.tsx`, which `ProjectView.tsx` and the unit tests' harness
+both draw, and the contexts themselves are private to that module. Three
+things keep the memo honest: the screen's body is one element made once
+(`PROJECT_SCREEN`), the notebook draws each cell, the map and the outputs
+in a slot that passes them by while their props are unchanged, and
+`tests/unit/cell-renders.test.tsx` counts each part against each kind of
+change. What belongs to one component stays in it: the rename's field and
+the delete's confirmation are the footer's own state, and their two writes
+(`setName`, `deleteProject`) are the hook's, with the others.
 
 ### The header and Run all
 

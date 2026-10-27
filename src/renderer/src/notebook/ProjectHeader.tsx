@@ -4,7 +4,7 @@ import Icon from '../icons/Icon'
 import Button from '../kit/Button'
 import { failureSentence, notebookSentence, runAllOffered, runAllPlan } from '../runAll'
 import { cellOfRun, runGraph } from '../runGraph'
-import { useProject } from './context'
+import { useProjectActions, useProjectExport, useProjectRecord, useProjectRuns } from './context'
 
 // The project's own header, above the notebook (ADR-045, A5.5-22,
 // DESIGN.md 8.2, "The project's header").
@@ -31,19 +31,10 @@ import { useProject } from './context'
 // project (A1-03, ADR-036).
 
 export default function ProjectHeader(): JSX.Element {
-  const {
-    project,
-    error,
-    headingRef,
-    engine,
-    run,
-    runSnapshot,
-    exportSnapshot,
-    layingOut,
-    settling,
-    exporting,
-    refused,
-  } = useProject()
+  const { project, error, engine } = useProjectRecord()
+  const { run, runSnapshot, layingOut, settling, exporting, refused } = useProjectRuns()
+  const { exportSnapshot } = useProjectExport()
+  const { headingRef } = useProjectActions()
   const region = useRef<HTMLDivElement>(null)
   const runAllRef = useRef<HTMLElement>(null)
   const stopRef = useRef<HTMLElement>(null)

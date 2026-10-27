@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../../shared/activity'
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
 import type { ExportChoice } from '../../../shared/export'
 import { type ProjectInputs, type ProjectTuning, type Theme } from '../../../shared/project/types'
-import { validateName } from '../../../shared/project/validate'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
 import type { ExportRun, ExportSnapshot } from '../engine/exportRun'
 import { feedRecordFor, inspectionFor } from '../engine/inspections'
@@ -22,7 +21,6 @@ import { isOlderPage } from '../../../shared/viewer'
 import { skipTarget } from '../SkipPastMap'
 import { forgetTheme, rememberTheme } from '../themeMemory'
 import { writeThenRestyle } from '../themeWrites'
-import type { TextInputHandle } from '../kit/TextInput'
 import { tunedProject } from '../tuningRules'
 import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
@@ -39,8 +37,17 @@ import { useRefusedGone } from './useCheapEdit'
 // It is a hook rather than a component's state because the notebook's six
 // cells all read from it and three of them write to it, and threading
 // twenty values through six adapters as props would mean every branch that
-// adds a consumer edits the file above it. The context in `context.ts`
-// carries what this returns; a cell reads what it needs and nothing else.
+// adds a consumer edits the file above it. The contexts in `context.tsx`
+// carry what this returns, split by who reads what (issue 433); a cell
+// reads what it needs and nothing else.
+//
+// What a context hands its readers is memoised over its fields, so the
+// writers and the callbacks here are made once per project and keep their
+// identity from render to render: a writer made afresh each render would
+// render every cell that holds one, on every snapshot, frame and answer.
+// The rename's field and the delete's confirmation are the footer's own
+// state (`ProjectFooter.tsx`); the two writes they end in are here, with
+// the others.
 
 type Project = ProjectRecord & { readOnly: boolean }
 
@@ -152,33 +159,25 @@ export interface ProjectState {
    */
   setTuning: (tuning: ProjectTuning) => Promise<void>
   setExport: (choice: ExportChoice) => Promise<void>
+  /**
+   * The project's new name, written at once; the footer's rename form has
+   * checked it and draws what a rejection says. The inspector's jobs say the
+   * new name from the answer on (A1-03).
+   */
+  setName: (name: string) => Promise<void>
+  /**
+   * The project deleted, from the footer's confirmation: refused while a
+   * run goes, re-read at the moment of confirming (issue 491); a result goes
+   * back to the Library, with a sentence if some folder remained, and a
+   * rejection is the confirmation's to show.
+   */
+  deleteProject: () => Promise<void>
   /** The screen's own heading, focused once there is something to read. */
   headingRef: RefObject<HTMLHeadingElement | null>
   /** Past the map to cell 03's heading (issue 106, ADR-046). */
   skipPastMap: () => void
+  /** Back to the Library; one function for the screen's life, whatever the screen above it hands in. */
   onBack: (notice?: string) => void
-  /** The rename form and the delete, which the footer draws. */
-  rename: {
-    open: boolean
-    value: string
-    setValue: (value: string) => void
-    message: string | null
-    saving: boolean
-    buttonRef: RefObject<HTMLElement | null>
-    inputRef: RefObject<TextInputHandle | null>
-    begin: () => void
-    close: () => void
-    save: (event: FormEvent<HTMLFormElement>) => Promise<void>
-  }
-  remove: {
-    confirming: boolean
-    problem: string | null
-    buttonRef: RefObject<HTMLElement | null>
-    begin: () => void
-    cancel: () => void
-    confirm: () => Promise<void>
-    setProblem: (problem: string | null) => void
-  }
 }
 
 /**
@@ -194,13 +193,6 @@ export function useProjectState(
   layOut = false,
 ): ProjectState {
   const [state, setState] = useState<ViewState>({ status: 'loading' })
-  const [renaming, setRenaming] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [renameMessage, setRenameMessage] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  // A delete refused after its confirmation was closed while it ran (A6-07).
-  const [deleteProblem, setDeleteProblem] = useState<string | null>(null)
   const mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
@@ -281,9 +273,14 @@ export function useProjectState(
       previous = snapshot.state
     })
   }, [id, run])
-  const renameButtonRef = useRef<HTMLElement>(null)
-  const deleteButtonRef = useRef<HTMLElement>(null)
-  const newNameRef = useRef<TextInputHandle>(null)
+  // The screen above hands in a new `onBack` whenever it renders; the one
+  // the contexts carry calls whichever it handed in last, so it is one
+  // function for the screen's life and renders no cell when that one moves.
+  const backTo = useRef(onBack)
+  useEffect(() => {
+    backTo.current = onBack
+  }, [onBack])
+  const back = useCallback((notice?: string): void => backTo.current(notice), [])
 
   // Past the map to what comes after it (issue 106): cell 03's heading,
   // since ADR-046 put the map between cells 02 and 03. The heading and not
@@ -293,12 +290,12 @@ export function useProjectState(
   // was pinned above every cell and the skip went to the footer's Rename.
   // The screen's own heading is the fallback, so a press never leaves focus
   // on a control that did nothing.
-  const skipPastMap = (): void => {
+  const skipPastMap = useCallback((): void => {
     skipTarget<HTMLElement>(
       [document.querySelector<HTMLElement>(`.cell[data-cell="03"] .disclosure-heading`)],
       headingRef.current,
     )?.focus()
-  }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -444,45 +441,21 @@ export function useProjectState(
     })
   }, [layOut, run, id, state, onBack])
 
-  const openRename = (): void => {
-    if (!project) return
-    setNewName(project.name)
-    setRenameMessage(null)
-    setRenaming(true)
-  }
-
-  // The form's own controls disappear with it, so focus goes back to the
-  // button that revealed it.
-  const closeRename = (): void => {
-    setRenaming(false)
-    renameButtonRef.current?.focus()
-  }
-
-  const saveRename = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault()
-    if (!project) return
-    const trimmed = newName.trim()
-    const invalid = validateName(trimmed)
-    if (invalid) {
-      setRenameMessage(invalid)
-      newNameRef.current?.focus()
-      return
-    }
-    if (trimmed === project.name) return closeRename()
-    setSaving(true)
-    try {
-      const record = await window.api.projects.rename(id, trimmed)
+  // The name the footer's rename form checked, written at once. A rejection
+  // is the form's to show, as it is shown in the form.
+  const setName = useCallback(
+    async (name: string): Promise<void> => {
+      const record = await window.api.projects.rename(id, name)
       // The inspector's jobs say the new name from now on (A1-03).
       nameProject(id, record.name)
-      setState({ status: 'ready', project: { ...project, ...record } })
-      closeRename()
-    } catch (error) {
-      setRenameMessage(error instanceof Error ? error.message : String(error))
-      newNameRef.current?.focus()
-    } finally {
-      setSaving(false)
-    }
-  }
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'ready', project: { ...current.project, ...record } }
+          : current,
+      )
+    },
+    [id],
+  )
 
   // The two inputs chosen with the feed in view: the record comes back
   // written, and the run reads it when it next starts.
@@ -498,28 +471,34 @@ export function useProjectState(
   // writes the fields a write names onto the record as the writes before it
   // left it, so a mode chosen a moment before and still on its way is not
   // put back by the mode this screen held.
-  const setInputs = async (inputs: Partial<ProjectInputs>): Promise<void> => {
-    const record = await window.api.projects.setInputs(id, inputs)
-    setState((current) =>
-      current.status === 'ready'
-        ? { status: 'ready', project: { ...current.project, ...record } }
-        : current,
-    )
-  }
+  const setInputs = useCallback(
+    async (inputs: Partial<ProjectInputs>): Promise<void> => {
+      const record = await window.api.projects.setInputs(id, inputs)
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'ready', project: { ...current.project, ...record } }
+          : current,
+      )
+    },
+    [id],
+  )
   // The service day is written the moment it is chosen, as the inputs are,
   // and draws nothing: the rebuild that draws it is a separate press. Until
   // A5.5-15 the day reached the record only from a finished draw, so
   // `drawn.date` could never differ from `date` and the notebook could
   // never say the map does not show the day a person picked. A rejection
   // is the caller's to show, as the rename's is.
-  const setDate = async (date: string): Promise<void> => {
-    const record = await window.api.projects.setDate(id, date)
-    setState((current) =>
-      current.status === 'ready'
-        ? { status: 'ready', project: { ...current.project, ...record } }
-        : current,
-    )
-  }
+  const setDate = useCallback(
+    async (date: string): Promise<void> => {
+      const record = await window.api.projects.setDate(id, date)
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'ready', project: { ...current.project, ...record } }
+          : current,
+      )
+    },
+    [id],
+  )
   // The theme is written at once and nothing is rebuilt for it (A4-03). The
   // map's page is then told through its seam, which restyles it in place
   // and leaves the frame where it is; the record also reaches the next
@@ -533,45 +512,54 @@ export function useProjectState(
   // nothing. A page with no `setTheme` says so, and that one case loads the
   // page again with the theme on its address, as a press always did before
   // the seam had one.
-  const setTheme = (theme: Theme): Promise<void> =>
-    writeThenRestyle(
-      theme,
-      async (chosen) => {
-        const record = await window.api.projects.setTheme(id, chosen)
-        rememberTheme(id, record.theme)
-        setState((current) =>
-          current.status === 'ready'
-            ? { status: 'ready', project: { ...current.project, ...record } }
-            : current,
-        )
-      },
-      (chosen) => window.api.viewer.call('map', 'setTheme', chosen),
-      () => setThemeReloads((count) => count + 1),
-    )
+  const setTheme = useCallback(
+    (theme: Theme): Promise<void> =>
+      writeThenRestyle(
+        theme,
+        async (chosen) => {
+          const record = await window.api.projects.setTheme(id, chosen)
+          rememberTheme(id, record.theme)
+          setState((current) =>
+            current.status === 'ready'
+              ? { status: 'ready', project: { ...current.project, ...record } }
+              : current,
+          )
+        },
+        (chosen) => window.api.viewer.call('map', 'setTheme', chosen),
+        () => setThemeReloads((count) => count + 1),
+      ),
+    [id],
+  )
   // LOOM's settings for the layout are written the moment they are
   // committed, as the export's options are, and nothing is laid out for
   // them: the next layout run reads the record and sends them, and until
   // then the run graph reports the layout as of another tuning (issue 385).
   // The record comes back whole and goes in whole (`tunedProject`): a reset
   // removes the key, which a merge would keep.
-  const setTuning = async (tuning: ProjectTuning): Promise<void> => {
-    const record = await window.api.projects.setTuning(id, tuning)
-    setState((current) =>
-      current.status === 'ready'
-        ? { status: 'ready', project: tunedProject(current.project, record) }
-        : current,
-    )
-  }
+  const setTuning = useCallback(
+    async (tuning: ProjectTuning): Promise<void> => {
+      const record = await window.api.projects.setTuning(id, tuning)
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'ready', project: tunedProject(current.project, record) }
+          : current,
+      )
+    },
+    [id],
+  )
   // What to export is written the moment it is chosen, as the theme is;
   // nothing is built for it (A5-01).
-  const setExport = async (choice: ExportChoice): Promise<void> => {
-    const record = await window.api.projects.setExport(id, choice)
-    setState((current) =>
-      current.status === 'ready'
-        ? { status: 'ready', project: { ...current.project, ...record } }
-        : current,
-    )
-  }
+  const setExport = useCallback(
+    async (choice: ExportChoice): Promise<void> => {
+      const record = await window.api.projects.setExport(id, choice)
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'ready', project: { ...current.project, ...record } }
+          : current,
+      )
+    },
+    [id],
+  )
   const today = (): string => {
     const now = new Date()
     const pad = (n: number): string => String(n).padStart(2, '0')
@@ -637,7 +625,7 @@ export function useProjectState(
 
   // A rejection stays in the confirm dialog; a result goes back to the
   // Library, with a sentence if some folder remained.
-  const remove = async (): Promise<void> => {
+  const deleteProject = useCallback(async (): Promise<void> => {
     // Re-read at the moment of confirming: the button was disabled when the
     // dialog opened, but a run can have started since, and `exporting` and
     // `layingOut` are the render's. Main refuses too (issue 491); this says
@@ -651,8 +639,8 @@ export function useProjectState(
     forgetTheme(id)
     // Back to the Library only from this screen: if a person has left it
     // while the delete ran, they are somewhere else now (A6-07).
-    if (mounted.current) onBack(describeFailures(result.failed))
-  }
+    if (mounted.current) backTo.current(describeFailures(result.failed))
+  }, [id, exporter, run])
 
   return {
     project,
@@ -679,32 +667,10 @@ export function useProjectState(
     setTheme,
     setTuning,
     setExport,
+    setName,
+    deleteProject,
     headingRef,
     skipPastMap,
-    onBack,
-    rename: {
-      open: renaming,
-      value: newName,
-      setValue: setNewName,
-      message: renameMessage,
-      saving,
-      buttonRef: renameButtonRef,
-      inputRef: newNameRef,
-      begin: openRename,
-      close: closeRename,
-      save: saveRename,
-    },
-    remove: {
-      confirming,
-      problem: deleteProblem,
-      buttonRef: deleteButtonRef,
-      begin: () => {
-        setDeleteProblem(null)
-        setConfirming(true)
-      },
-      cancel: () => setConfirming(false),
-      confirm: remove,
-      setProblem: setDeleteProblem,
-    },
+    onBack: back,
   }
 }

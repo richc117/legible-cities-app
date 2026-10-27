@@ -182,6 +182,7 @@ interface Bridge {
     setTuning: ReturnType<typeof vi.fn>
     setInputs: ReturnType<typeof vi.fn>
     setDate: ReturnType<typeof vi.fn>
+    rename: ReturnType<typeof vi.fn>
   }
   engine: { onState: () => () => void; state: () => Promise<EngineState> }
 }
@@ -230,6 +231,7 @@ function sessionOf(api: Bridge): Bridge {
       setTuning: write(api.projects.setTuning) as never,
       setInputs: write(api.projects.setInputs) as never,
       setDate: write(api.projects.setDate) as never,
+      rename: write(api.projects.rename) as never,
     },
   }
 }
@@ -311,6 +313,7 @@ beforeEach(() => {
       setTuning: vi.fn(),
       setInputs: vi.fn(),
       setDate: vi.fn(),
+      rename: vi.fn(),
     },
     engine: { onState: () => () => undefined, state: async () => READY },
   }
@@ -812,5 +815,122 @@ describe('a cheap edit refused after its panel went', () => {
     expect(shown.refused).toBe(refusal)
     act(() => run.start(shown.project as ProjectRecord, null))
     expect(shown.refused, 'gone once the run moves').toBeNull()
+  })
+})
+
+// Issue 433: the screen's contexts are memoised over their fields
+// (`notebook/context.tsx`), so a field that is a new object on every render
+// renders every reader of its slice on every render - every run snapshot,
+// every export frame. The render-count test draws the screen over a fixed
+// state, so it cannot see this; the hook itself is held here.
+describe('the screen’s callbacks and its record keep their identity across renders', () => {
+  /** What the contexts hand on that must not move unless what it is moved. */
+  const held = (state: ProjectState): Record<string, unknown> => ({
+    inspect: state.inspect,
+    readStage: state.readStage,
+    setInputs: state.setInputs,
+    setDate: state.setDate,
+    setTheme: state.setTheme,
+    setTuning: state.setTuning,
+    setExport: state.setExport,
+    setName: state.setName,
+    deleteProject: state.deleteProject,
+    pageSeams: state.pageSeams,
+    skipPastMap: state.skipPastMap,
+    onBack: state.onBack,
+    headingRef: state.headingRef,
+    run: state.run,
+    exporter: state.exporter,
+    project: state.project,
+    engine: state.engine,
+    registry: state.registry,
+    openedSeams: state.openedSeams,
+  })
+  const same = (before: Record<string, unknown>, after: Record<string, unknown>): void => {
+    for (const [field, value] of Object.entries(before))
+      expect(after[field], `${field} is the one it was`).toBe(value)
+  }
+
+  /** An export whose snapshot the test moves, telling its listeners as the run does. */
+  const listeners = new Set<(snapshot: unknown) => void>()
+  const movable = {
+    snapshot: { state: 'idle' } as { state: string; message?: string },
+    subscribe: (listener: (snapshot: unknown) => void) => {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+  }
+  const idle = runs.exporter
+  beforeEach(() => {
+    movable.snapshot = { state: 'idle' }
+    listeners.clear()
+    runs.exporter = movable as unknown as typeof idle
+  })
+  afterEach(() => {
+    runs.exporter = idle
+  })
+
+  it('over a frame of the export', async () => {
+    // Mutations: `useCallback` taken off `setInputs`, then off
+    // `skipPastMap` - each is a new function after the frame, and this
+    // fails naming it.
+    await opened()
+    const before = held(shown)
+    const frame = { state: 'running', message: 'Frame 2 of 300' }
+    act(() => {
+      movable.snapshot = frame
+      for (const listener of listeners) listener(frame)
+    })
+    expect(shown.exportSnapshot, 'the screen rendered for the frame').toBe(frame)
+    same(before, held(shown))
+  })
+
+  it('over a render that changes nothing', async () => {
+    await opened()
+    const before = held(shown)
+    const was = shown
+    await act(async () => root.render(<Harness />))
+    expect(shown, 'the hook ran again').not.toBe(was)
+    same(before, held(shown))
+  })
+})
+
+describe('a rename answered after a tuning reset that landed before it', () => {
+  it('leaves the tuning removed, as the store holds it', async () => {
+    // The reset is sent first and answered first; the rename, sent from the
+    // same render, is answered after it with the record as the store then
+    // holds it, which has no tuning. Its answer is merged into the record
+    // as the screen holds it by then. Mutation: the rename's answer merged
+    // over the record the press's render held - the tuning the reset
+    // removed comes back.
+    stored = { ...RECORD, tuning: { grid: 'orthoradial' } } as ProjectRecord
+    await opened()
+    expect(shown.project?.tuning).toEqual({ grid: 'orthoradial' })
+    const renamed = deferred<ProjectRecord>()
+    api.projects.setTuning.mockImplementation(async () => {
+      const { tuning: _gone, ...rest } = stored
+      void _gone
+      return rest as ProjectRecord
+    })
+    api.projects.rename.mockImplementation(() => renamed.promise)
+    const pressed = shown
+    let tuned!: Promise<void>
+    let named!: Promise<void>
+    act(() => {
+      tuned = pressed.setTuning({})
+      named = pressed.setName('LA Metro')
+    })
+    await act(async () => {
+      await tuned
+    })
+    expect(shown.project?.tuning, 'the reset has landed').toBeUndefined()
+    await act(async () => {
+      renamed.resolve({ ...stored, name: 'LA Metro' })
+      await named
+    })
+    expect(shown.project?.name).toBe('LA Metro')
+    expect(shown.project !== null && 'tuning' in shown.project, 'the tuning stays removed').toBe(
+      false,
+    )
   })
 })

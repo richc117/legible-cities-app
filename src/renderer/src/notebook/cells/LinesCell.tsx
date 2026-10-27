@@ -4,7 +4,7 @@ import LineColours from '../../LineColours'
 import LineOrderPanel from '../../LineOrder'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
-import { useProject } from '../context'
+import { useProjectActions, useProjectRecord, useProjectRuns } from '../context'
 import { runRowStatus } from '../runRow'
 
 // Cell 05, Lines: each line's colour and where it sits in the stack
@@ -71,7 +71,9 @@ export function linesSummary(
 }
 
 export default function LinesCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, exporter, inspect, exporting, settling } = useProject()
+  const { project, engine } = useProjectRecord()
+  const { run, runSnapshot, exporter, exporting, settling } = useProjectRuns()
+  const { inspect } = useProjectActions()
   const heading = useRef<HTMLHeadingElement>(null)
   const busyNow = (): boolean => exporter.snapshot.state === 'running'
   return (

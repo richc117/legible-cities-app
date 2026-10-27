@@ -36,7 +36,7 @@ import type { LineChoice, ProjectRecord } from '../../src/shared/project/types'
 import { REDRAW_DELAY } from '../../src/renderer/src/colours'
 import type { ExportRun } from '../../src/renderer/src/engine/exportRun'
 import type { LayoutRun, RunSnapshot } from '../../src/renderer/src/engine/layoutRun'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
+import { ProjectProviders } from '../../src/renderer/src/notebook/context'
 import ProjectHeader from '../../src/renderer/src/notebook/ProjectHeader'
 import { READ_RETRY_MAX, useRefusedGone } from '../../src/renderer/src/notebook/useCheapEdit'
 import {
@@ -935,9 +935,9 @@ describe('the project’s status line says a refused flush', () => {
   const failed = snap('failed', { recoloured: true }, REFUSAL)
   const line = (refused: string | null): string =>
     renderToStaticMarkup(
-      <ProjectProvider value={{ ...defaultProjectState(), runSnapshot: failed, refused }}>
+      <ProjectProviders state={{ ...defaultProjectState(), runSnapshot: failed, refused }}>
         <ProjectHeader />
-      </ProjectProvider>,
+      </ProjectProviders>,
     )
 
   it('after the cell’s failure, on the line and in its alert', () => {

@@ -8,9 +8,11 @@
 // what the DOM shows; it does not call a handler a component gave a child.
 //
 // - `renderCell(cell, state)` draws one of the notebook's six cells, by the
-//   adapter `notebook/cells.tsx` maps its id to, under `ProjectProvider`.
-//   The state is completed from one default (`defaultProjectState`), so a
-//   test names only what it changes and builds no `ProjectState` by hand.
+//   adapter `notebook/cells.tsx` maps its id to, under `ProjectProviders`,
+//   the one composition of the screen's providers `ProjectView` draws too.
+//   The state is completed from one default (`defaultProjectState`, in
+//   `project-state.ts`), so a test names only what it changes and builds
+//   no `ProjectState` by hand.
 // - `renderPanel(element)` draws a component that lives outside the
 //   notebook: the export's run, the jobs' live region.
 // - `byName(role, name)` finds a control by its role and its accessible
@@ -35,152 +37,23 @@
 // gone, and `cleanup()` puts back whatever was there before the first
 // stub, so one test's bridge never reaches the next.
 
-import { act, createRef, type JSX, type ReactElement } from 'react'
+import { act, type JSX, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../../src/renderer/src/kit'
 import type { Api } from '../../src/shared/api'
-import type { EngineState } from '../../src/shared/engine'
-import { DEFAULT_COLOR, type ProjectRecord } from '../../src/shared/project/types'
-import type { Inspection } from '../../src/shared/protocol'
-import { ExportRun } from '../../src/renderer/src/engine/exportRun'
-import type { LayoutRun, RunSnapshot } from '../../src/renderer/src/engine/layoutRun'
+import type { ProjectRecord } from '../../src/shared/project/types'
+import type { RunSnapshot } from '../../src/renderer/src/engine/layoutRun'
 import { CELL_VIEWS } from '../../src/renderer/src/notebook/cells'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { CELL_LIST, type CellId, type CellState } from '../../src/renderer/src/runGraph'
 import { useSnapshot } from '../../src/renderer/src/useSnapshot'
+import { BASE, defaultProjectState, nothing, pending, READY, unsubscribed } from './project-state'
 import { StandInRun } from './stand-in-run'
+
+export { BASE, defaultProjectState, INSPECTION, READY } from './project-state'
 
 // React's client reads this to know it is driven by `act`.
 ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-export const READY: EngineState = { state: 'ready', version: '0.19.0', protocol: 1 }
-
-/** A laid-out project of the LA Metro Rail feed, with nothing of its own chosen yet. */
-export const BASE: ProjectRecord = {
-  version: 2,
-  id: 'kq7x2mzp4dna',
-  name: 'Los Angeles',
-  feed: 'la-metro-rail',
-  mode: 'all',
-  agency: null,
-  date: '2026-09-12',
-  service: { start: '2026-01-01', end: '2026-12-31', busiest: '2026-09-12', anchor: '2026-09-08' },
-  style: {},
-  colors: {},
-  defaultColor: DEFAULT_COLOR,
-  lineOrder: [],
-  theme: 'warm-dark',
-  export: { preset: 'instagram-reel', options: {} },
-  destination: null,
-  opened: null,
-  layout: 'a'.repeat(64),
-  made: '2026-09-10T12:00:00+00:00',
-  drawn: null,
-  built: { mode: 'all', agency: null },
-  created: '2026-09-07T20:00:00.000Z',
-  modified: '2026-09-07T20:00:00.000Z',
-}
-
-/** Three lines, A, B and C, one route each, A in the colour its feed publishes. */
-export const INSPECTION = {
-  key: 'la-metro-rail',
-  name: 'LA Metro Rail',
-  routes: ['A', 'B', 'C'].map((label) => ({
-    route_id: label,
-    agency_id: 'M',
-    short_name: label,
-    long_name: '',
-    label,
-    route_type: 1,
-    color: label === 'A' ? '0072BC' : null,
-    text_color: null,
-    trips: 1,
-  })),
-  route_types: [
-    { route_type: 1, name: 'subway', mode: 'subway', modes: ['subway'], routes: 3, trips: 3 },
-  ],
-} as unknown as Inspection
-
-const inspected = Promise.resolve(INSPECTION)
-
-/** Never answers: a request or a stage that is still on its way. */
-const pending = <T,>(): Promise<T> => new Promise<T>(() => undefined)
-
-const nothing = (): void => undefined
-const unsubscribed = (): (() => void) => nothing
-
-/**
- * An export that has not started, on a bridge that starts nothing: what an
- * idle project's screen holds.
- */
-const idleExporter = (): ExportRun =>
-  new ExportRun({
-    run: () => ({ id: 'export-1', result: pending() }),
-    cancel: async () => undefined,
-    reveal: async () => undefined,
-    onProgress: unsubscribed,
-  })
-
-/**
- * The project screen's state for an open, laid-out project with nothing
- * going: `BASE` read and writable, the engine `READY`, `run` idle, an idle
- * export, the feed's inspection answering the three lines at once, nothing
- * being read back, and every writer resolving.
- */
-export function defaultProjectState(run: StandInRun = new StandInRun()): ProjectState {
-  const exporter = idleExporter()
-  return {
-    project: { ...BASE, readOnly: false },
-    error: null,
-    engine: READY,
-    run: run as unknown as LayoutRun,
-    exporter,
-    runSnapshot: run.snapshot,
-    exportSnapshot: exporter.snapshot,
-    layingOut: run.snapshot.state === 'running',
-    exporting: false,
-    settling: false,
-    refused: null,
-    drawn: 0,
-    themeReloads: 0,
-    pageSeams: nothing,
-    redrawAsked: null,
-    openedSeams: null,
-    registry: null,
-    inspect: () => inspected,
-    readStage: () => pending(),
-    setInputs: async () => undefined,
-    setDate: async () => undefined,
-    setTheme: async () => undefined,
-    setTuning: async () => undefined,
-    setExport: async () => undefined,
-    headingRef: createRef(),
-    skipPastMap: nothing,
-    onBack: nothing,
-    rename: {
-      open: false,
-      value: BASE.name,
-      setValue: nothing,
-      message: null,
-      saving: false,
-      buttonRef: createRef(),
-      inputRef: createRef(),
-      begin: nothing,
-      close: nothing,
-      save: async () => undefined,
-    },
-    remove: {
-      confirming: false,
-      problem: null,
-      buttonRef: createRef(),
-      begin: nothing,
-      cancel: nothing,
-      confirm: async () => undefined,
-      setProblem: nothing,
-    },
-  }
-}
 
 /** The bridge, part by part, as far as a test stubs it. */
 export type ApiStub = { [Part in keyof Api]?: Partial<Api[Part]> }
@@ -404,7 +277,7 @@ export function renderCell(
       layingOut: snapshot.state === 'running',
       ...given,
     }
-    return <ProjectProvider value={drawn}>{view}</ProjectProvider>
+    return <ProjectProviders state={drawn}>{view}</ProjectProviders>
   }
 
   installApi(

@@ -57,7 +57,7 @@ map on screen was drawn from; the cheap edits (the theme through the page's
 `setTheme`; colours, order, style fields and line options in
 `useCheapEdit.ts`) redraw without a re-layout, so *stale* is for the
 expensive edges only. `useProjectState.ts` holds what the cells share and
-`context.ts` carries it; what belongs to one component stays in it (which
+the contexts in `context.tsx` carry it, split by who reads what; what belongs to one component stays in it (which
 cells are open is `Notebook.tsx`'s, the outputs list `Outputs.tsx`'s).
 
 **The Library is the front door** (Phase 5.6; `Library.tsx`,

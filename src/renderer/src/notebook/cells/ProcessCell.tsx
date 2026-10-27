@@ -7,7 +7,7 @@ import LayoutTuning from '../../LayoutTuning'
 import Cell from '../Cell'
 import { processFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
-import { useProject } from '../context'
+import { useProjectActions, useProjectOpening, useProjectRecord, useProjectRuns } from '../context'
 import { frameFailure } from '../olderPage'
 import { runRowStatus } from '../runRow'
 import EngineLog from '../EngineLog'
@@ -64,8 +64,10 @@ export function processSummary(
 }
 
 export default function ProcessCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, exporting, setTuning, redrawAsked, openedSeams } =
-    useProject()
+  const { project, engine } = useProjectRecord()
+  const { run, runSnapshot, exporting } = useProjectRuns()
+  const { setTuning } = useProjectActions()
+  const { redrawAsked, openedSeams } = useProjectOpening()
   // Cell 03's failure, which the run panel's stopped sentence defers to where
   // it is the opening's redraw (issue 517, `processStoppedSentence`).
   const frameFailed = frameFailure({

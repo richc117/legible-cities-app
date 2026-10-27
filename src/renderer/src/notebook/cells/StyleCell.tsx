@@ -6,7 +6,7 @@ import ThemeSwitch, { themeWord } from '../../ThemeSwitch'
 import { sizesWords } from '../../styleRules'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
-import { useProject } from '../context'
+import { useProjectActions, useProjectRecord, useProjectRuns } from '../context'
 import { runRowStatus } from '../runRow'
 
 // Cell 04, Style: how the map is drawn (ADR-045).
@@ -46,8 +46,9 @@ export function styleSummary(project: Pick<ProjectRecord, 'theme' | 'style'>): s
 }
 
 export default function StyleCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, run, runSnapshot, exporter, setTheme, exporting, layingOut, settling } =
-    useProject()
+  const { project, engine } = useProjectRecord()
+  const { run, runSnapshot, exporter, exporting, layingOut, settling } = useProjectRuns()
+  const { setTheme } = useProjectActions()
   const redrawing = runSnapshot.state === 'running' && isTuningRedraw(runSnapshot)
   const heading = useRef<HTMLHeadingElement>(null)
   const busyNow = (): boolean => exporter.snapshot.state === 'running'

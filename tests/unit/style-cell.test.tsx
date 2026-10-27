@@ -36,9 +36,8 @@ import {
   TRAINS_SENTENCE,
   UNIT_SENTENCE,
 } from '../../src/renderer/src/styleRules'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import StyleCell, { styleSummary } from '../../src/renderer/src/notebook/cells/StyleCell'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import {
   DEFAULT_STYLE,
@@ -48,6 +47,8 @@ import {
   type ProjectStyle,
   type Theme,
 } from '../../src/shared/project/types'
+import type { LayoutRun, RunSnapshot } from '../../src/renderer/src/engine/layoutRun'
+import { defaultProjectState } from '../support/project-state'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'style') as Cell
 
@@ -78,9 +79,8 @@ const record: ProjectRecord = {
 }
 
 /**
- * The cell reads a handful of things from the screen's state and nothing
- * else, so the rest of it is not built: a fuller stand-in would only say
- * that the context has many fields, which `useProjectState` already says.
+ * The cell, collapsed, over the screen's default state with the record, the
+ * engine, the run and the two activities named; the rest is the default's.
  */
 function draw({
   project,
@@ -93,22 +93,26 @@ function draw({
   exporting?: boolean
   layingOut?: boolean
 }): string {
-  const runSnapshot = { state: 'idle', recoloured: false, reordered: false, restyled: false }
-  const state = {
+  const runSnapshot = {
+    state: 'idle',
+    recoloured: false,
+    reordered: false,
+    restyled: false,
+  } as unknown as RunSnapshot
+  const state: ProjectState = {
+    ...defaultProjectState(),
     project: project === null ? null : { ...project, readOnly },
     engine: null,
     // A run is something with a current snapshot and a way to hear it change.
-    run: { snapshot: runSnapshot, subscribe: () => () => {} },
-    exporter: { snapshot: { state: 'idle' } },
-    setTheme: async () => {},
+    run: { snapshot: runSnapshot, subscribe: () => () => {} } as unknown as LayoutRun,
     exporting,
     layingOut,
     runSnapshot,
-  } as unknown as ProjectState
+  }
   return renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <StyleCell cell={CELL} state="ready" open={false} onToggle={() => {}} />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
 }
 

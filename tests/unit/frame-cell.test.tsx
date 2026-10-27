@@ -17,8 +17,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { freshStages, type LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import FrameCell from '../../src/renderer/src/notebook/cells/FrameCell'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import {
@@ -28,6 +27,7 @@ import {
   THEME_BY_RELOAD,
 } from '../../src/renderer/src/notebook/olderPage'
 import { PAGE_SEAMS } from '../../src/shared/viewer'
+import { defaultProjectState } from '../support/project-state'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'frame') as Cell
 
@@ -105,22 +105,19 @@ function draw(
     openedSeams?: readonly string[] | null
   } = {},
 ): { above: string; strip: string } {
-  const state = {
+  const state: ProjectState = {
+    ...defaultProjectState(),
     project: { ...project, readOnly },
     engine: null,
     run,
     runSnapshot: run.snapshot,
-    setDate: async () => {},
-    exporting: false,
-    layingOut: false,
-    drawn: 0,
     redrawAsked,
     openedSeams,
-  } as unknown as ProjectState
+  }
   const html = renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <FrameCell cell={CELL} state="ready" open={true} onToggle={() => {}} />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
   const [above, strip = ''] = html.split('<div class="cell-footer">')
   return { above, strip }

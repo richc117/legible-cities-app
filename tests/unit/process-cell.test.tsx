@@ -28,11 +28,11 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { freshStages, type LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import ProcessCell from '../../src/renderer/src/notebook/cells/ProcessCell'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import type { EngineState } from '../../src/shared/engine'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
+import { defaultProjectState } from '../support/project-state'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'process') as Cell
 
@@ -104,18 +104,17 @@ function draw(
   project: ProjectRecord,
   { readOnly = false }: { readOnly?: boolean } = {},
 ): { above: string; strip: string } {
-  const state = {
+  const state: ProjectState = {
+    ...defaultProjectState(),
     project: { ...project, readOnly },
     engine: READY,
     run: idle,
     runSnapshot: idle.snapshot,
-    exporting: false,
-    layingOut: false,
-  } as unknown as ProjectState
+  }
   const html = renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <ProcessCell cell={CELL} state="ready" open={true} onToggle={() => {}} />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
   const [above, strip = ''] = html.split('<div class="cell-footer">')
   return { above, strip }
@@ -254,18 +253,18 @@ describe('cell 02, Process, and its layout tuning', () => {
       ...idle,
       snapshot: { ...idle.snapshot, state: 'running', stages: freshStages() },
     } as unknown as LayoutRun
-    const state = {
+    const state: ProjectState = {
+      ...defaultProjectState(),
       project: { ...record, readOnly: false },
       engine: READY,
       run: running,
       runSnapshot: running.snapshot,
-      exporting: false,
       layingOut: true,
-    } as unknown as ProjectState
+    }
     const html = renderToStaticMarkup(
-      <ProjectProvider value={state}>
+      <ProjectProviders state={state}>
         <ProcessCell cell={CELL} state="running" open={true} onToggle={() => {}} />
-      </ProjectProvider>,
+      </ProjectProviders>,
     )
     expect(html).toContain('</section><div class="layout-tuning">')
   })
@@ -315,22 +314,19 @@ describe('cell 02, Process, after a rebuild of cell 03’s failed', () => {
   } as unknown as LayoutRun
   const drawFailed = (redrawAsked: string | null): string =>
     renderToStaticMarkup(
-      <ProjectProvider
-        value={
-          {
-            project: { ...record, readOnly: false },
-            engine: READY,
-            run: failed,
-            runSnapshot: failed.snapshot,
-            exporting: false,
-            layingOut: false,
-            redrawAsked,
-            openedSeams: [],
-          } as unknown as ProjectState
-        }
+      <ProjectProviders
+        state={{
+          ...defaultProjectState(),
+          project: { ...record, readOnly: false },
+          engine: READY,
+          run: failed,
+          runSnapshot: failed.snapshot,
+          redrawAsked,
+          openedSeams: [],
+        }}
       >
         <ProcessCell cell={CELL} state="ready" open={true} onToggle={() => {}} />
-      </ProjectProvider>,
+      </ProjectProviders>,
     )
   const ORDINARY =
     'The map was not drawn for that day. The project keeps its day; the map on screen may be the old one until the next build.'

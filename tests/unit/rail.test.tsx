@@ -17,7 +17,7 @@ import { resolve } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { stateIcon } from '../../src/renderer/src/notebook/Cell'
 import { EXPORT_ONE, NOTHING_YET, OutputsEmpty } from '../../src/renderer/src/notebook/Outputs'
 import Rail, { RAIL_LABEL, goToCell, stepName } from '../../src/renderer/src/notebook/Rail'
@@ -27,7 +27,6 @@ import {
   scrollTargetFor,
   type CellBox,
 } from '../../src/renderer/src/notebook/railScroll'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import {
   CELLS,
   CELL_LIST,
@@ -35,6 +34,7 @@ import {
   type CellState,
   type CellStatus,
 } from '../../src/renderer/src/runGraph'
+import { defaultProjectState } from '../support/project-state'
 
 const READY: CellStatus = { state: 'ready', because: null }
 
@@ -47,17 +47,14 @@ const allOpen = (): Record<CellId, boolean> =>
 /**
  * The rail reads two things from the screen's state - the project's id, for
  * the outputs it asks for, and the export run's state, which is when it
- * asks again - so the rest of the context is not built.
+ * asks again - and the default's project and idle export are both.
  */
 function draw(states: Record<CellId, CellStatus> = allReady()): string {
-  const state = {
-    project: { id: 'kq7x2mzp4dna', name: 'Los Angeles' },
-    exportSnapshot: { state: 'idle' },
-  } as unknown as ProjectState
+  const state: ProjectState = defaultProjectState()
   return renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <Rail states={states} open={allOpen()} onOpen={() => {}} />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
 }
 
