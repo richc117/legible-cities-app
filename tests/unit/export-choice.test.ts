@@ -269,7 +269,9 @@ describe('the lines to keep, beside the lines cell 05 hides', () => {
     expect(source).toMatch(
       /<ExportRunView\s+run=\{run\}\s+project=\{project\}\s+engine=\{engine\}\s+choice=\{asked\}/,
     )
-    expect(source).toMatch(/keepableLines\(\s*linesOf\(inspection, \{ mode, agency \}\)/)
+    expect(read('export/useExportLines.ts')).toMatch(
+      /keepableLines\(\s*linesOf\(inspection, \{ mode, agency \}\)/,
+    )
   })
 
   it('keeps a hidden line a person kept when another is turned on or off', () => {

@@ -1745,6 +1745,17 @@ The export's choices are cell 06 (`ExportTab.tsx`, `exportChoice.ts`; A5-01,
 mounted, so a colour released while a run held the page, or a line order
 waiting on its debounce, is not thrown away by closing a cell.
 
+`ExportTab.tsx` is the composition, and each concern is a piece of its
+own under `src/renderer/src/export/` (issue 433): `useExportTables` asks
+the engine's tables, `useExportLines` reads the feed's lines,
+`useExportChoice` holds the choice and is the one place it is written,
+`useExportPreview` plans the preview, `ExportForm` draws every field from
+Preset to the alt text with the typed drafts, and `ExportDestination` is
+"Where it goes", drawn as the form's last field. `ExportOpening.tsx` and
+`ExportRun.tsx` stay where they were. No piece reaches into another: the
+composition hands each what it needs of the others as props, and the
+rules every piece applies are `exportChoice.ts`'s, which renders nothing.
+
 Every list is the engine's. `export.presets` and `export.storyboards` are
 asked once while the engine stays up, and the presets are narrowed to
 `OFFERED_PRESETS` - the social ones, each checked against the generated

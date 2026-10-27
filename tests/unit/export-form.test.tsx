@@ -94,7 +94,8 @@ async function draw(choice: ExportChoice, { locked = false } = {}) {
         played={playedBy(choice, row, TABLES)}
         change={change}
         choicesRef={createRef()}
-        planNotes={null}
+        refusal={null}
+        notes={[]}
       >
         <p>Where it goes</p>
       </ExportForm>

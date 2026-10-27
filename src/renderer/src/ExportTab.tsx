@@ -1,61 +1,29 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX,
-  type ReactNode,
-  type RefObject,
-} from 'react'
-import { type EngineState } from '../../shared/engine'
-import { type ExportChoice } from '../../shared/export'
-import { type ProjectRecord } from '../../shared/project/types'
+import { useEffect, useMemo, useRef, type JSX, type ReactNode, type RefObject } from 'react'
+import type { EngineState } from '../../shared/engine'
+import type { ExportChoice } from '../../shared/export'
+import type { ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
-import { linesOf } from './colours'
 import type { ExportRun as Run } from './engine/exportRun'
 import ExportDestination from './export/ExportDestination'
 import ExportForm from './export/ExportForm'
 import { useExportChoice } from './export/useExportChoice'
+import { useExportLines } from './export/useExportLines'
 import { useExportPreview } from './export/useExportPreview'
 import { useExportTables } from './export/useExportTables'
 import ExportRunView from './ExportRun'
-import {
-  defaultsFor,
-  keepableLines,
-  plannedChoice,
-  playedBy,
-  type PreviewAddress,
-} from './exportChoice'
+import { defaultsFor, plannedChoice, playedBy, type PreviewAddress } from './exportChoice'
 import { openingOf, PREVIEW_NOTE } from './opening'
 import { useSnapshot } from './useSnapshot'
 
-// The export (A5-01, specs/022-export-tab), cell 06 of the notebook since
-// A5.5-08 and its own tab before that: a preset from the engine's
-// table, grouped by platform; a storyboard for a video or a GIF; the
-// options, a caption and the clock's corner among them, and the sidecar's
-// alt text beside them (issue 352, ADR-052); for a video or a GIF, the
-// opening it plays first, a title card or the network drawing in
-// (`ExportOpening.tsx`, issue 392); and the export itself, with the
-// progress line, cancel and "Reveal" it always had.
-//
-// The panel has no heading of its own: cell 06's row is its heading, and
-// focus a disabling control drops is handed there (`handback`).
-//
-// The preview is not drawn here. While this cell is open a frame of the
-// cell's own (`ExportPreview.tsx`, ADR-046) shows the address `export.plan`
-// answers for the choice, with the platform's safe zones asked for where
-// the preset has them, and the page draws the frame, the title, the clock
-// and the zones itself (principle I). This panel says which address,
-// through `onPreview`, and where the cell's frame goes (`preview`). The
-// map's own frame is never sent there.
-//
-// Every list and every refusal is the engine's. A choice is written to the
-// project record the moment it is made (a text field when it is committed),
-// so a project opens on what it was last set to export.
-//
-// Where the file goes is the one choice that is not the engine's and not
-// the page's either (A5.5-19), and no path crosses the bridge inward for
-// it: `export/ExportDestination.tsx` says how.
+// The export (A5-01, specs/022-export-tab), cell 06 of the notebook: the composition
+// of its pieces (issue 433, part b). It reads the engine's tables (`useExportTables`)
+// and the feed's lines (`useExportLines`), holds the choice and writes it
+// (`useExportChoice`), plans the preview (`useExportPreview`), and draws the form
+// (`ExportForm`), the destination as the form's last field (`ExportDestination`) and
+// the run (`ExportRun`), handing each what it needs of the others. The preview's
+// frame is the cell's own (`ExportPreview.tsx`, ADR-046): this panel hands up the
+// address a plan answers (`onPreview`) and draws the frame it is given (`preview`).
+// Every list and every refusal is the engine's.
 
 interface Props {
   project: ProjectRecord & { readOnly: boolean }
@@ -71,18 +39,12 @@ interface Props {
   onChoice: (choice: ExportChoice) => Promise<void>
   /** The address cell 06's preview should show, when a plan answers. */
   onPreview: (address: PreviewAddress) => void
-  /**
-   * Cell 06's preview frame, which the cell mounts only while it is open
-   * (ADR-046), drawn after the sentence that says what it is.
-   */
+  /** Cell 06's preview frame, mounted only while the cell is open, drawn after its sentence. */
   preview?: ReactNode
   /**
-   * The heading of the cell this is drawn in (A5.5-19). The panel has no
-   * heading of its own: the cell's row says "06 Export" already, and a
-   * second heading saying "Export" under it is one a screen reader reads
-   * twice. Focus that a disabling control drops lands here - on the
-   * heading and not on the toggle inside it, which a reflexive Space after
-   * the handback would collapse.
+   * The heading of the cell this is drawn in (A5.5-19): the panel has none of its own, since the
+   * row says "06 Export" already, and focus a disabling control drops lands here - on the heading,
+   * not on the toggle inside it, which a reflexive Space after the handback would collapse.
    */
   handback: RefObject<HTMLHeadingElement | null>
 }
@@ -103,72 +65,35 @@ export default function ExportTab({
   const runState = useSnapshot(run).state
   const exporting = runState === 'running'
   const tables = useExportTables(ready)
-  const [inspection, setInspection] = useState<Inspection | null>(null)
-  const choicesRef = useRef<HTMLFormElement>(null)
-
-  // The lines, by the labels the line colours use, for the lines option.
-  useEffect(() => {
-    if (!ready) return
-    let left = false
-    inspect(project.feed).then(
-      (answer) => {
-        if (!left) setInspection(answer)
-      },
-      () => undefined,
-    )
-    return () => {
-      left = true
-    }
-  }, [ready, project.feed, inspect])
-  const mode = project.built === null ? project.mode : project.built.mode
-  const agency = project.built === null ? project.agency : project.built.agency
-  // A line hidden in cell 05 is not offered (issue 399): the page has no
-  // such line to keep, and keeping only hidden lines would hide them all.
-  const lines = useMemo(
-    () =>
-      inspection === null
-        ? []
-        : keepableLines(
-            linesOf(inspection, { mode, agency }).map((l) => l.label),
-            project.lines,
-          ),
-    [inspection, mode, agency, project.lines],
-  )
-
+  const read = tables.status === 'ready' ? tables.tables : null
+  const { inspection, lines } = useExportLines(project, ready, inspect)
   const { choice, dropped, change, writeProblem } = useExportChoice({
     record: project.export,
-    tables: tables.status === 'ready' ? tables.tables : null,
+    tables: read,
     readOnly: project.readOnly,
     onChoice,
   })
-  const preset =
-    tables.status === 'ready' ? tables.tables.presets.find((p) => p.name === choice.preset) : null
-  const defaults = preset ? defaultsFor(preset) : null
-  // The storyboard this choice plays, as the engine lists it, which an
-  // opening is made from; none for a still (issue 392).
-  const played =
-    preset && tables.status === 'ready' ? playedBy(choice, preset, tables.tables) : undefined
-  const opening = played === undefined ? 'none' : openingOf(choice)
-  // What the preview and the export are planned from: the choice, less any
-  // line hidden in cell 05 among the lines to keep, which the stored choice
-  // keeps for a line shown again (issue 399).
+  const preset = read?.presets.find((p) => p.name === choice.preset)
+  // The storyboard it plays, which an opening is made from; none for a still.
+  const played = preset && read ? playedBy(choice, preset, read) : undefined
+  // What the preview and the export are planned from: the choice, less a line
+  // hidden in cell 05, which the stored choice keeps for it shown again (issue 399).
   const asked = useMemo(() => plannedChoice(choice, project.lines), [choice, project.lines])
-
   const { refused, refusal, notes } = useExportPreview({
     project,
     asked,
     active,
     ready,
-    tables: tables.status === 'ready' ? tables.tables : null,
+    tables: read,
     layingOut,
     exporting,
     onPreview,
   })
 
-  // An export locks the choices: it planned from them, and a change now
-  // could not reach the file being made. Chromium blurs a disabled control,
-  // so focus goes to the cell's own heading first.
+  // An export locks the choices it was planned from, which a change could not reach
+  // now; Chromium blurs a disabled control, so focus goes to the cell's heading first.
   const locked = project.readOnly || exporting
+  const choicesRef = useRef<HTMLFormElement>(null)
   useEffect(() => {
     if (!exporting) return
     const focused = document.activeElement
@@ -176,35 +101,19 @@ export default function ExportTab({
       handback.current?.focus()
   }, [exporting, handback])
 
-  // A read-only project is shown nothing to choose and nothing previewed
-  // (ADR-046, FR-019): the preview promises an export that cannot be made
-  // here, and options that cannot be changed are a page of disabled
-  // controls. One sentence says why, as cells 02 to 05 say theirs. What a
-  // project holds as its export choice is not shown either, which is the
-  // trade-off spec 029 records.
-  if (project.readOnly) {
+  // A read-only project is shown nothing to choose and nothing previewed (ADR-046,
+  // FR-019), not even its choice (spec 029's trade-off), and one not laid out has
+  // nothing to export: one sentence each says why, as cells 02 to 05 say theirs.
+  if (project.readOnly || project.layout === null)
     return (
       <div className="export-tab">
         <p className="prose">
-          This project was made by a newer version of the app, so its export cannot be changed or
-          made here.
+          {project.readOnly
+            ? 'This project was made by a newer version of the app, so its export cannot be changed or made here.'
+            : 'There is no map to export yet. Lay the project out first, and its export is previewed here.'}
         </p>
       </div>
     )
-  }
-
-  if (project.layout === null) {
-    return (
-      <div className="export-tab">
-        <p className="prose">
-          There is no map to export yet. Lay the project out first, and its export is previewed
-          here.
-        </p>
-      </div>
-    )
-  }
-
-  const showRun = runState !== 'idle' || (ready && tables.status === 'ready' && !project.readOnly)
 
   return (
     <div className="export-tab" aria-busy={exporting}>
@@ -223,7 +132,7 @@ export default function ExportTab({
           {tables.message}
         </p>
       )}
-      {ready && tables.status === 'ready' && preset && defaults && (
+      {ready && read !== null && preset !== undefined && (
         <>
           {dropped !== null && (
             <p className="notice" role="status">
@@ -235,13 +144,15 @@ export default function ExportTab({
             The preview shows the frame the export will have, with the parts a platform covers with
             its own buttons shaded where it has them. The theme is the map&rsquo;s own.
           </p>
-          {opening !== 'none' && <p className="prose">{PREVIEW_NOTE}</p>}
+          {played !== undefined && openingOf(choice) !== 'none' && (
+            <p className="prose">{PREVIEW_NOTE}</p>
+          )}
           {preview}
           <ExportForm
             projectId={project.id}
-            tables={tables.tables}
+            tables={read}
             preset={preset}
-            defaults={defaults}
+            defaults={defaultsFor(preset)}
             choice={choice}
             dropped={dropped}
             locked={locked}
@@ -250,25 +161,11 @@ export default function ExportTab({
             played={played}
             change={change}
             choicesRef={choicesRef}
-            planNotes={
-              <>
-                {refused && refusal !== null && (
-                  <p className="message error" role="alert">
-                    {refusal.sentence}
-                  </p>
-                )}
-                {notes.length > 0 && (
-                  <p className="hint" role="status">
-                    {notes.join(' ')}
-                  </p>
-                )}
-              </>
-            }
+            refusal={refused && refusal !== null ? refusal.sentence : null}
+            notes={notes}
           >
-            {/* Where the file goes. Inside the form with the rest of the
-                choices, so an export that starts takes focus off these two
-                as it does off every other control here; neither is a
-                submit, so neither ends the two typed fields' commit. */}
+            {/* Inside the form, so an export that starts takes focus off its two
+                buttons as off every other choice; neither is a submit. */}
             <ExportDestination
               projectId={project.id}
               destination={project.destination}
@@ -288,13 +185,13 @@ export default function ExportTab({
           )}
         </>
       )}
-      {showRun && (
+      {(runState !== 'idle' || (ready && read !== null)) && (
         <ExportRunView
           run={run}
           project={project}
           engine={engine}
           choice={asked}
-          disabled={layingOut || refused || tables.status !== 'ready'}
+          disabled={layingOut || refused || read === null}
         />
       )}
     </div>

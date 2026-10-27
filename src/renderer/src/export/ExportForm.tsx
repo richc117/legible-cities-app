@@ -46,9 +46,10 @@ import TextInput from '../kit/TextInput'
 // the alt text, the four typed fields' drafts and their commit on Enter or
 // on leaving the field. The opening is its own file (`ExportOpening.tsx`)
 // and is drawn here, after the storyboard it opens. What the form changes
-// it hands to `change`, which writes it (`useExportChoice`); what it is
-// told of the preview's plan, and where the file goes, the composition
-// draws in the two places it leaves for them (`planNotes`, `children`).
+// it hands to `change`, which writes it (`useExportChoice`). What the
+// preview's plan said it is told (`useExportPreview`, through the
+// composition), and where the file goes is drawn as its last field
+// (`children`, `ExportDestination.tsx`).
 
 const VIEW_WORDS: Record<View, string> = {
   geographic: 'geographic',
@@ -79,8 +80,10 @@ interface Props {
   change: (next: ExportChoice) => void
   /** The form, so the composition can take focus off it as an export starts. */
   choicesRef: RefObject<HTMLFormElement | null>
-  /** What the preview's plan said: its refusal, or its notes, after the opening. */
-  planNotes: ReactNode
+  /** The engine's refusal of the choice as it is now, from the preview's plan; null when none. */
+  refusal: string | null
+  /** The engine's notes on the last plan it answered. */
+  notes: readonly string[]
   /** Where the file goes, the form's last field. */
   children: ReactNode
 }
@@ -98,7 +101,8 @@ export default function ExportForm({
   played,
   change,
   choicesRef,
-  planNotes,
+  refusal,
+  notes,
   children,
 }: Props): JSX.Element {
   // A JPEG still, read from the engine's table: made at standard quality only.
@@ -226,7 +230,16 @@ export default function ExportForm({
       {played !== undefined && (
         <ExportOpening key={projectId} choice={choice} locked={locked} onChange={change} />
       )}
-      {planNotes}
+      {refusal !== null && (
+        <p className="message error" role="alert">
+          {refusal}
+        </p>
+      )}
+      {notes.length > 0 && (
+        <p className="hint" role="status">
+          {notes.join(' ')}
+        </p>
+      )}
 
       {/* A storyboard's first beat names its own view and its own
           clock, and the capture applies them: a view or a start time
