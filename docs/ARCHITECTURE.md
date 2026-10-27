@@ -2510,7 +2510,11 @@ and with nothing else that writes, holds each file to its line in
 `SHA256SUMS.txt` and attests the installers and `SHA256SUMS.txt` with
 Sigstore through `actions/attest-build-provenance` (issue 434, ADR-057).
 Nothing is published: the maintainer reads the draft and publishes it by
-hand, only after the attest job is green.
+hand, only after the attest job is green. If `vendor / electron ffmpeg
+(source)` fails on a tag's run, re-run the failed jobs before anything
+else (`gh run rerun <id> --failed`): its fetch from Chromium's mirror can
+stall on every attempt, and the packaging jobs, and so the release job,
+refuse to go on without it (issue 585).
 `docs/install.md` is what a person follows with the assets, and the
 first-run dialog's "How to install" opens it on `main`.
 
@@ -2542,7 +2546,12 @@ fetched with git (Chromium's own repository from the GitHub mirror the pins
 name, since an object id names the same bytes wherever they come from) -
 and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
-moves that block. Each packaging job refuses, before `npm ci`, to go on
+moves that block. It caches the archive, keyed on the Electron version and
+the three files the archive carries copies of (the pins, the script and
+`vendor.yml`), and trusts no hit: `--verify` unpacks it and holds every
+tree and blob id, the copies and `BUILD.txt` to the pins and the checkout
+with no network, and a hit that fails is fetched again; a fetched archive
+passes `--verify` too before it is cached (issue 585). Each packaging job refuses, before `npm ci`, to go on
 without the artefact, so no installer is made in a run whose Electron
 library's source did not verify, and `release.mjs` refuses one for another
 Electron than the pins name.
