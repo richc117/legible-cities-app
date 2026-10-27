@@ -22,9 +22,14 @@
 // is applied to a clean tree, its test is run, and the file is put back by
 // writing the bytes read before it was changed (never by asking git, which
 // would also discard an edit of a person's) and the write is read back and
-// compared. Before the first entry of each test file, that file is run whole
-// and unmutated: red on clean code, a mutation proves nothing. A verdict is
-// one of
+// compared. If the file holds neither the mutation nor the original when it
+// is time to put it back, a person saved it meanwhile: it is left as saved,
+// the original is kept in the work folder, and the run stops. Before the
+// first run of each test and title, that same command is run unmutated: red
+// on clean code, a mutation proves nothing, and a mutated run that ran a
+// different number of tests than the baseline did is refused. Just before an
+// entry's file is changed, git is asked again whether it is clean. A verdict
+// is one of
 //
 //   red       at least one test ran and one failed: the mutation bites
 //   green     tests ran and none failed: the test has gone vacuous
@@ -38,12 +43,15 @@
 // does not take stops the whole run with the file named, since nothing
 // after it would be measured on clean code.
 //
-// Interrupting: the run is synchronous while Vitest runs, so a signal is
-// seen when the entry in flight ends. Ctrl-C in a terminal reaches this
-// process and not Vitest (it is started in a group of its own, so that a
-// timeout can end its workers too), which means the entry in flight finishes
-// or times out, its file is put back, and the run then stops with STOPPED
-// and a non-zero exit. Nothing is left mutated by an interruption.
+// Interrupting (SIGINT, SIGTERM, SIGHUP): the run is synchronous while
+// Vitest runs, so a signal is seen when the run in flight ends. Ctrl-C in a
+// terminal reaches this process and not Vitest (it is started in a group of
+// its own, so that its workers can be ended with it), which means the run in
+// flight finishes or times out, its file is put back, and the run then stops
+// with STOPPED and a non-zero exit. A signal during a baseline stops before
+// the mutation is written. An interruption leaves nothing mutated, except
+// SIGKILL and a crash of node itself, which cannot be caught: the file was
+// clean when the run began, so `git checkout -- <file>` puts it right.
 //
 // Only the unit tests run: a `.browser.test.tsx` entry is refused. On
 // Windows a timeout ends Vitest's own process and not its workers.
@@ -52,6 +60,7 @@
 // (tests/unit/mutations-runner.test.ts); the file and process work is
 // behind `main`, which runs only when this is the entry point.
 
+import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
 import {
   lstatSync,
@@ -251,8 +260,11 @@ function gitEnv() {
   return kept
 }
 
+// --literal-pathspecs as a flag: GIT_LITERAL_PATHSPECS is a GIT_ variable and
+// is dropped with the rest, and a file called `*.ts` must not name its
+// neighbours.
 function git(repo, args) {
-  return spawnSync('git', args, {
+  return spawnSync('git', ['--literal-pathspecs', ...args], {
     cwd: repo,
     encoding: 'utf8',
     windowsHide: true,
@@ -404,16 +416,23 @@ function runVitest(repo, args, outputFile) {
       windowsHide: true,
       timeout: limit,
       killSignal: 'SIGKILL',
+      // The reports go to a file; this is only for stdout and stderr, and an
+      // overflow (ENOBUFS) kills the leader and nothing else.
+      maxBuffer: 256 * 1024 * 1024,
+      // spawnSync honours `detached` on POSIX in practice (it is not in its
+      // documentation); the test of a mutation that never returns proves it.
       detached: process.platform !== 'win32',
     },
   )
   const seconds = (Date.now() - started) / 1000
   const timedOut = result.error?.code === 'ETIMEDOUT'
-  if (timedOut && process.platform !== 'win32' && result.pid) {
+  // The whole group, after every run and not only a timeout: a worker can
+  // outlive a leader that was killed for any reason, and be spinning.
+  if (process.platform !== 'win32' && result.pid) {
     try {
       process.kill(-result.pid, 'SIGKILL')
     } catch {
-      // The group is already gone.
+      // The group is already gone (ESRCH), which is the usual case.
     }
   }
   let report = null
@@ -433,20 +452,31 @@ function runVitest(repo, args, outputFile) {
   }
 }
 
-/** The test file whole and unmutated, once per file; `{ clean, why }`. */
-function baseline(repo, test, workDir, known) {
-  if (known.has(test)) return known.get(test)
-  const run = runVitest(repo, [test], join(workDir, `baseline-${known.size}.json`))
-  const found = run.timedOut
-    ? { clean: false, why: `the unmutated run of ${test} did not finish in ${run.limit / 1000} s` }
-    : baselineOf(run.report)
-  known.set(test, found)
+/** The vitest arguments for one test and title: the measurement's command and the baseline's. */
+const testArgs = (entry) => [entry.test, '-t', escapeForPattern(entry.title)]
+
+/** The measurement's own command, unmutated, once per test and title; `{ clean, why, ran }`. */
+function baseline(repo, entry, workDir, known) {
+  const key = `${entry.test}\0${entry.title}`
+  if (known.has(key)) return known.get(key)
+  const run = runVitest(repo, testArgs(entry), join(workDir, `baseline-${known.size}.json`))
+  let found
+  if (run.timedOut) {
+    found = {
+      clean: false,
+      why: `the unmutated run of ${entry.test} did not finish in ${run.limit / 1000} s`,
+    }
+  } else {
+    found = { ...baselineOf(run.report), ran: 0 }
+    if (found.clean) found.ran = run.report.numPassedTests + run.report.numFailedTests
+  }
+  known.set(key, found)
   return found
 }
 
 /** Run one test file filtered by title; the verdict, the seconds, and why where it is not plain. */
 function runTest(repo, entry, outputFile) {
-  const run = runVitest(repo, [entry.test, '-t', escapeForPattern(entry.title)], outputFile)
+  const run = runVitest(repo, testArgs(entry), outputFile)
   if (run.timedOut) {
     return {
       verdict: 'timed out',
@@ -464,20 +494,44 @@ function runTest(repo, entry, outputFile) {
   return {
     verdict,
     seconds: run.seconds,
+    ran: run.report ? run.report.numPassedTests + run.report.numFailedTests : 0,
     detail: detail.trim(),
     interrupted:
       run.signal === 'SIGINT' || run.signal === 'SIGTERM' || run.status === 130 ? true : undefined,
   }
 }
 
+/** A file somebody saved while its mutation ran: left as saved, its original kept. */
+class ChangedDuringRun extends Error {}
+
 /**
- * Write `original` back to `file` and read it again: the bytes are the ones
- * read before the change, or this throws. Not `git checkout`: that would
- * discard an edit of a person's as well, and a file git does not track would
- * have nothing to restore from.
+ * Put `file` back as it was: write `original` and read it again, or throw.
+ * Not `git checkout`: that would discard an edit of a person's as well, and
+ * a file git does not track would have nothing to restore from. The file is
+ * read first, and unless it holds the mutation (`mutated`) or the original,
+ * a person saved it meanwhile and nothing is written: a copy of `original`
+ * goes to `keepIn` (when given) and this throws.
  */
-export function restoreFile(repo, file, original) {
+export function restoreFile(repo, file, original, mutated, keepIn) {
   const path = join(repo, file)
+  let before = null
+  try {
+    before = readFileSync(path)
+  } catch {
+    // Handled below, as a file that is not what it was.
+  }
+  if (before === null || !(before.equals(mutated) || before.equals(original))) {
+    let kept = ''
+    if (keepIn !== undefined) {
+      const copy = join(keepIn, `original-${file.replaceAll('/', '__')}`)
+      writeFileSync(copy, original)
+      kept = `; the original is kept at ${copy}`
+    }
+    throw new ChangedDuringRun(
+      `${file} changed while its mutation was running, so it was left exactly as it is now${kept}: ` +
+        'look at it with git diff, since the mutation may still be in it',
+    )
+  }
   let why = ''
   try {
     writeFileSync(path, original)
@@ -498,12 +552,28 @@ export function restoreFile(repo, file, original) {
   }
 }
 
-/** Apply one entry, run its test, put the file back; the row for the report. */
-export function runEntry(repo, entry, workDir, baselines, outputFile) {
+/**
+ * Apply one entry, run its test, put the file back; the row for the report.
+ * `stopped()` says whether a signal has arrived; it is asked after the
+ * baseline, which may have been the long part, and before the file is written.
+ */
+export async function runEntry(repo, entry, workDir, baselines, outputFile, stopped = () => false) {
   const problems = checkEntry(repo, entry)
   if (problems.length > 0) return { verdict: 'refused', seconds: 0, detail: problems.join('; ') }
-  const clean = baseline(repo, entry.test, workDir, baselines)
+  const clean = baseline(repo, entry, workDir, baselines)
   if (!clean.clean) return { verdict: 'refused', seconds: 0, detail: clean.why }
+  await tick()
+  if (stopped()) return { verdict: 'stopped', seconds: 0, detail: '' }
+  // Asked again, as late as it can be: an edit saved since the run began (or
+  // since the last entry) is refused here and not measured over.
+  const dirty = dirtyTree(repo, [entry.file])
+  if (dirty.length > 0) {
+    return {
+      verdict: 'refused',
+      seconds: 0,
+      detail: `${entry.file} was edited since the run began (${dirty.join(', ').trim()}): commit or stash it and run again`,
+    }
+  }
   const path = join(repo, entry.file)
   const original = readFileSync(path)
   const mutated = applyMutation(original.toString('utf8'), entry)
@@ -512,9 +582,18 @@ export function runEntry(repo, entry, workDir, baselines, outputFile) {
     writeFileSync(path, mutated)
     outcome = runTest(repo, entry, outputFile)
   } finally {
-    // Whatever happened above, the file goes back; a failure to do so is
-    // the one thing that stops the run.
-    restoreFile(repo, entry.file, original)
+    // Whatever happened above, the file goes back, unless somebody else's
+    // save is in it; a failure either way is what stops the run.
+    restoreFile(repo, entry.file, original, Buffer.from(mutated), workDir)
+  }
+  if ((outcome.verdict === 'red' || outcome.verdict === 'green') && outcome.ran !== clean.ran) {
+    return {
+      verdict: 'refused',
+      seconds: outcome.seconds,
+      detail:
+        `the mutation changed which tests ran (${clean.ran} on clean code, ${outcome.ran} mutated), ` +
+        'so its verdict compares different things: name a title that matches the same tests',
+    }
   }
   return outcome
 }
@@ -603,33 +682,46 @@ export async function main(args, repo = process.cwd(), out = process.stdout) {
 
   const workDir = mkdtempSync(join(tmpdir(), 'lc-mutations-'))
   let stopping = null
-  const onInt = () => (stopping ??= { name: 'SIGINT', code: 130 })
-  const onTerm = () => (stopping ??= { name: 'SIGTERM', code: 143 })
-  process.on('SIGINT', onInt)
-  process.on('SIGTERM', onTerm)
+  let keepWork = false
+  const handlers = [
+    ['SIGINT', () => (stopping ??= { name: 'SIGINT', code: 130 })],
+    ['SIGTERM', () => (stopping ??= { name: 'SIGTERM', code: 143 })],
+    ['SIGHUP', () => (stopping ??= { name: 'SIGHUP', code: 129 })],
+  ]
+  for (const [name, handler] of handlers) process.on(name, handler)
   const rows = []
   const baselines = new Map()
+  const stoppedLine = () => {
+    say(table(rows))
+    say(
+      `STOPPED: ${stopping.name} received; ${rows.length} of ${chosen.length} mutations ran, ` +
+        'and every file is as it was',
+    )
+    return stopping.code
+  }
   try {
     for (const item of chosen) {
       await tick()
-      if (stopping !== null) {
-        say(table(rows))
-        say(
-          `STOPPED: ${stopping.name} received; ${rows.length} of ${chosen.length} mutations ran, ` +
-            'and every file is as it was',
-        )
-        return stopping.code
-      }
+      if (stopping !== null) return stoppedLine()
       const entry = item.entry
       const outputFile = join(workDir, `report-${rows.length}.json`)
       let outcome
       try {
-        outcome = runEntry(repo, entry, workDir, baselines, outputFile)
+        outcome = await runEntry(
+          repo,
+          entry,
+          workDir,
+          baselines,
+          outputFile,
+          () => stopping !== null,
+        )
       } catch (error) {
+        keepWork = error instanceof ChangedDuringRun
         say(table(rows))
         say(`STOPPED: ${error.message}`)
         return 1
       }
+      if (outcome.verdict === 'stopped') return stoppedLine()
       if (outcome.interrupted) stopping ??= { name: 'an interrupt of Vitest', code: 130 }
       const row = {
         label: label(item),
@@ -643,10 +735,12 @@ export async function main(args, repo = process.cwd(), out = process.stdout) {
       if (outcome.detail)
         process.stderr.write(`${row.label}: ${outcome.verdict}: ${outcome.detail}\n`)
     }
+    // A signal that came during the last run.
+    await tick()
+    if (stopping !== null) return stoppedLine()
   } finally {
-    process.off('SIGINT', onInt)
-    process.off('SIGTERM', onTerm)
-    rmSync(workDir, { recursive: true, force: true })
+    for (const [name, handler] of handlers) process.off(name, handler)
+    if (!keepWork) rmSync(workDir, { recursive: true, force: true })
   }
   say(table(rows))
   say(summary(rows))
