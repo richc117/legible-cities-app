@@ -4,7 +4,17 @@ import type { ProjectState } from './useProjectState'
 export type { ProjectState } from './useProjectState'
 
 // The shared wiring of a project's screen, reaching the six cells without
-// a prop list (A5.5-08).
+// a prop list (A5.5-08): **seven contexts, split by who reads what** (issue
+// 433) - the record, the runs, the export, the actions, the map, the reload
+// and the opening, each memoised over its own fields. The map's four fields
+// are three contexts because their readers differ: cell 03's transport
+// reads `drawn` beside the map's frame, so `themeReloads`, which the frame
+// alone reads, cannot sit with it without rendering cell 03 on a reload;
+// and `redrawAsked` and `openedSeams`, which cells 02 and 03 read, cannot
+// sit with `drawn` without rendering the map for them and cell 02 for a
+// redraw. `exporting` sits with the runs and not with the export's
+// snapshot: five cells read whether an export goes and none reads its
+// frames, so beside the snapshot they would render on every frame.
 //
 // The record, the runs, the writers and the refs the handbacks point at are
 // read by cells that are built one branch each. Threaded as props they
