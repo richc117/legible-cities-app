@@ -266,8 +266,9 @@ describe('whether one engine is older than another', () => {
   })
 
   it('is not below where it is the same', () => {
-    // Mutation (mutations.json): `<=` for `<` - every page drawn at the pin
-    // redrawn on every opening.
+    // Mutation (mutations.json): the same version read as below (the final
+    // `return false` made `return true`; `<=` for `<` inside the loop cannot
+    // change it) - every page drawn at the pin redrawn on every opening.
     expect(engineBefore('0.19.0', '0.19.0')).toBe(false)
   })
 

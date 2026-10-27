@@ -19,20 +19,34 @@
 // `--check` reads every such file and validates every entry against the
 // working tree: it runs nothing and changes nothing, and the unit suite
 // calls it, so a file cannot rot unnoticed. Without it, each entry in turn
-// is applied to a clean tree, its test is run, the file is restored from
-// git and the restore is checked against the bytes read before. A verdict
-// is one of
+// is applied to a clean tree, its test is run, and the file is put back by
+// writing the bytes read before it was changed (never by asking git, which
+// would also discard an edit of a person's) and the write is read back and
+// compared. Before the first entry of each test file, that file is run whole
+// and unmutated: red on clean code, a mutation proves nothing. A verdict is
+// one of
 //
 //   red       at least one test ran and one failed: the mutation bites
 //   green     tests ran and none failed: the test has gone vacuous
 //   no test   `title` matched no test (or the test file would not load)
 //   error     the run produced no report we can read
-//   refused   the entry cannot be applied (find not once, file missing, ...)
+//   refused   the entry cannot be applied (find not once, file not tracked
+//             by git or a symbolic link, the test red on clean code, ...)
 //   timed out Vitest did not finish in time
 //
 // and the exit status is 0 only where every entry is red. A restore that
 // does not take stops the whole run with the file named, since nothing
 // after it would be measured on clean code.
+//
+// Interrupting: the run is synchronous while Vitest runs, so a signal is
+// seen when the entry in flight ends. Ctrl-C in a terminal reaches this
+// process and not Vitest (it is started in a group of its own, so that a
+// timeout can end its workers too), which means the entry in flight finishes
+// or times out, its file is put back, and the run then stops with STOPPED
+// and a non-zero exit. Nothing is left mutated by an interruption.
+//
+// Only the unit tests run: a `.browser.test.tsx` entry is refused. On
+// Windows a timeout ends Vitest's own process and not its workers.
 //
 // Every decision is a function the unit test calls
 // (tests/unit/mutations-runner.test.ts); the file and process work is
@@ -40,6 +54,7 @@
 
 import { spawnSync } from 'node:child_process'
 import {
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -48,14 +63,19 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
 const FIELDS = ['file', 'find', 'replace', 'test', 'title', 'why']
-// The suite's `testTimeout` is 30 s; a filtered run of one file starts
-// Vitest, loads the file and runs a few tests.
+// The suite's `testTimeout` is 30 s; a run of one file starts Vitest, loads
+// the file and runs its tests. The variable is for the unit test, which
+// needs a mutation that never ends to end quickly.
 export const RUN_TIMEOUT_MS = 120_000
+const timeoutMs = () => {
+  const told = Number(process.env.LEGIBLE_MUTATIONS_TIMEOUT_MS)
+  return Number.isInteger(told) && told > 0 ? told : RUN_TIMEOUT_MS
+}
 const GIT_TIMEOUT_MS = 60_000
 const BROWSER_TEST = /\.browser\.test\.tsx?$/
 
@@ -153,6 +173,44 @@ export function verdictOf(report) {
   return failed > 0 ? 'red' : 'green'
 }
 
+/**
+ * Whether a test file's unmutated run can be trusted as a baseline: nothing
+ * failed and something passed. `{ clean, why }`.
+ */
+export function baselineOf(report) {
+  if (report === null || typeof report !== 'object') {
+    return { clean: false, why: 'the unmutated run of the test produced no report' }
+  }
+  const { numPassedTests: passed, numFailedTests: failed } = report
+  if (!Number.isInteger(passed) || !Number.isInteger(failed)) {
+    return { clean: false, why: 'the unmutated run of the test produced no counts' }
+  }
+  if (failed > 0) {
+    return {
+      clean: false,
+      why: `the test is red on clean code (${failed} failed), so a mutation proves nothing: fix the test first`,
+    }
+  }
+  if (passed === 0) {
+    return { clean: false, why: 'no test ran on clean code, so a mutation proves nothing' }
+  }
+  return { clean: true, why: '' }
+}
+
+/** The command line: `{ mode: 'check' | 'run', only }`, or `{ error }`. Nothing else is accepted. */
+export function parseArgs(args) {
+  const use = 'use --check, or --only <text>, or no argument to run every mutation'
+  if (args.length === 0) return { mode: 'run', only: undefined }
+  if (args.length === 1 && args[0] === '--check') return { mode: 'check', only: undefined }
+  if (args[0] === '--only') {
+    if (args.length === 1 || args[1].trim() === '') {
+      return { error: `--only needs the text to look for, and none was given: ${use}` }
+    }
+    if (args.length === 2) return { mode: 'run', only: args[1] }
+  }
+  return { error: `unknown arguments ${JSON.stringify(args.join(' '))}: ${use}` }
+}
+
 /** Whether an entry matches `--only`: a substring of its file, test, title or mutations file. */
 export function selected(entry, source, only) {
   if (only === undefined || only === '') return true
@@ -163,8 +221,8 @@ export function selected(entry, source, only) {
 /** The sentence the dirty-tree refusal is, from `git status --porcelain` lines. */
 export function dirtyRefusal(lines) {
   return (
-    'the tree under src and tests is not clean, and a mutation applied on top of an edit ' +
-    'would be restored over it: commit or stash these first\n' +
+    'the tree under src and tests, or a file an entry names, is not clean, and a mutation ' +
+    'applied on top of an edit would hide it: commit or stash these first\n' +
     lines.map((line) => `  ${line}`).join('\n')
   )
 }
@@ -242,10 +300,50 @@ export function loadEntries(repo) {
   return { entries, unreadable }
 }
 
+/** Whether git tracks `file` (`ls-files` names neither an untracked nor an ignored one). */
+function tracked(repo, file) {
+  const result = git(repo, ['ls-files', '--error-unmatch', '--', file])
+  return !result.error && result.status === 0
+}
+
+/**
+ * What is wrong with `file` as something to write to and put back: it is
+ * missing, a symbolic link, resolves outside the repository, or git does not
+ * track it (an untracked or ignored file has no other copy). Sentences.
+ */
+export function fileProblems(repo, file) {
+  const path = join(repo, file)
+  let stat
+  try {
+    stat = lstatSync(path)
+  } catch {
+    return [`"file" ${file} does not exist`]
+  }
+  if (stat.isSymbolicLink()) {
+    return [
+      `"file" ${file} is a symbolic link: name the file it points to, which is the one that is changed`,
+    ]
+  }
+  if (!stat.isFile()) return [`"file" ${file} is not a file`]
+  try {
+    const inside = realpathSync(path).startsWith(realpathSync(repo) + sep)
+    if (!inside) return [`"file" ${file} resolves to a path outside the repository`]
+  } catch {
+    return [`"file" ${file} could not be resolved`]
+  }
+  if (!tracked(repo, file)) {
+    return [
+      `"file" ${file} is not tracked by git (it is untracked or ignored), so nothing else holds its original: ` +
+        'commit it, or name a tracked file',
+    ]
+  }
+  return []
+}
+
 /**
  * Everything that can be said about an entry without running anything:
- * its shape, that both files are there, that `find` is once, that the title
- * is in the test. The problems, or none.
+ * its shape, that both files are there and the file is safe to change, that
+ * `find` is once, that the title is in the test. The problems, or none.
  */
 export function checkEntry(repo, entry) {
   const shape = validateEntry(entry)
@@ -253,13 +351,13 @@ export function checkEntry(repo, entry) {
   const problems = []
   if (BROWSER_TEST.test(entry.test)) {
     problems.push(
-      `"test" is a browser test (${entry.test}): this job runs the unit project only, until it learns the browser`,
+      `"test" is a browser test (${entry.test}): this job runs the unit tests only, until it learns the browser`,
     )
   }
-  const sourceText = readText(repo, entry.file)
-  if (sourceText === null) problems.push(`"file" ${entry.file} does not exist`)
-  else {
-    const problem = findProblem(sourceText, entry)
+  const unsafe = fileProblems(repo, entry.file)
+  problems.push(...unsafe)
+  if (unsafe.length === 0) {
+    const problem = findProblem(readFileSync(join(repo, entry.file), 'utf8'), entry)
     if (problem !== null) problems.push(problem)
   }
   const testText = readText(repo, entry.test)
@@ -280,70 +378,134 @@ function readText(repo, path) {
   }
 }
 
-/** Run one test file filtered by title with the JSON reporter; the verdict and the seconds it took. */
-function runTest(repo, entry, outputFile) {
+const tail = (text, lines = 3) =>
+  String(text ?? '')
+    .trim()
+    .split('\n')
+    .slice(-lines)
+    .join(' | ')
+
+/**
+ * One Vitest run over `args` with the JSON reporter. On POSIX it is started
+ * in a group of its own, so that a timeout ends its workers as well as it
+ * (a mutation that loops for ever loops in a worker).
+ */
+function runVitest(repo, args, outputFile) {
   const vitest = join(repo, 'node_modules', 'vitest', 'vitest.mjs')
-  const base = ['run', entry.test, '-t', escapeForPattern(entry.title)]
-  const tail = ['--reporter=json', `--outputFile=${outputFile}`]
+  const limit = timeoutMs()
   const started = Date.now()
-  const attempt = (project) =>
-    spawnSync(process.execPath, [vitest, ...base, ...project, ...tail], {
+  const result = spawnSync(
+    process.execPath,
+    [vitest, 'run', ...args, '--reporter=json', `--outputFile=${outputFile}`],
+    {
       cwd: repo,
       encoding: 'utf8',
       windowsHide: true,
-      timeout: RUN_TIMEOUT_MS,
-    })
-  // The unit project is the one that runs without a browser. A configuration
-  // that names no projects has only the one, so it is run without the filter.
-  let result = attempt(['--project', 'unit'])
-  if (/No projects matched/.test(`${result.stderr}${result.stdout}`)) result = attempt([])
+      timeout: limit,
+      killSignal: 'SIGKILL',
+      detached: process.platform !== 'win32',
+    },
+  )
   const seconds = (Date.now() - started) / 1000
-  if (result.error && result.error.code === 'ETIMEDOUT') {
-    return { verdict: 'timed out', seconds, detail: `no answer in ${RUN_TIMEOUT_MS / 1000} s` }
+  const timedOut = result.error?.code === 'ETIMEDOUT'
+  if (timedOut && process.platform !== 'win32' && result.pid) {
+    try {
+      process.kill(-result.pid, 'SIGKILL')
+    } catch {
+      // The group is already gone.
+    }
   }
   let report = null
   try {
     report = JSON.parse(readFileSync(outputFile, 'utf8'))
   } catch {
-    // The verdict says it.
+    // The caller's verdict says it.
   }
-  let verdict = verdictOf(report)
-  let detail = ''
-  if (verdict === 'no test' && report.numFailedTestSuites > 0) {
-    detail = 'the test file did not load with the mutation in'
+  return {
+    report,
+    seconds,
+    timedOut,
+    limit,
+    signal: result.signal,
+    status: result.status,
+    why: tail(result.error?.message ?? result.stderr),
   }
-  if (verdict === 'error') {
-    detail = (result.error?.message ?? result.stderr ?? '').trim().split('\n').slice(-3).join(' | ')
-  }
-  return { verdict, seconds, detail }
 }
 
-/** Put `file` back from git and prove the bytes are the ones read before. Throws if not. */
-function restore(repo, entry, original) {
-  const result = git(repo, ['checkout', '--', entry.file])
+/** The test file whole and unmutated, once per file; `{ clean, why }`. */
+function baseline(repo, test, workDir, known) {
+  if (known.has(test)) return known.get(test)
+  const run = runVitest(repo, [test], join(workDir, `baseline-${known.size}.json`))
+  const found = run.timedOut
+    ? { clean: false, why: `the unmutated run of ${test} did not finish in ${run.limit / 1000} s` }
+    : baselineOf(run.report)
+  known.set(test, found)
+  return found
+}
+
+/** Run one test file filtered by title; the verdict, the seconds, and why where it is not plain. */
+function runTest(repo, entry, outputFile) {
+  const run = runVitest(repo, [entry.test, '-t', escapeForPattern(entry.title)], outputFile)
+  if (run.timedOut) {
+    return {
+      verdict: 'timed out',
+      seconds: run.seconds,
+      detail: `no answer in ${run.limit / 1000} s`,
+    }
+  }
+  const verdict = verdictOf(run.report)
+  let detail = ''
+  if (verdict === 'no test' && run.report.numFailedTestSuites > 0) {
+    const reason = String(run.report.testResults?.find((r) => r.message)?.message ?? '')
+    detail = `the test file did not load with the mutation in: ${tail(reason, 2)} ${tail(run.why)}`
+  }
+  if (verdict === 'error') detail = run.why
+  return {
+    verdict,
+    seconds: run.seconds,
+    detail: detail.trim(),
+    interrupted:
+      run.signal === 'SIGINT' || run.signal === 'SIGTERM' || run.status === 130 ? true : undefined,
+  }
+}
+
+/**
+ * Write `original` back to `file` and read it again: the bytes are the ones
+ * read before the change, or this throws. Not `git checkout`: that would
+ * discard an edit of a person's as well, and a file git does not track would
+ * have nothing to restore from.
+ */
+export function restoreFile(repo, file, original) {
+  const path = join(repo, file)
+  let why = ''
+  try {
+    writeFileSync(path, original)
+  } catch (error) {
+    why = error.message
+  }
   let now = null
   try {
-    now = readFileSync(join(repo, entry.file))
-  } catch {
-    // Compared below.
+    now = readFileSync(path)
+  } catch (error) {
+    why ||= error.message
   }
-  if (result.status !== 0 || now === null || !now.equals(original)) {
+  if (now === null || !now.equals(original)) {
     throw new Error(
-      `${entry.file} could not be restored to what it was (${gitWhy(result)}): ` +
-        'stop here and run git checkout -- ' +
-        `${entry.file} by hand; nothing after it would be measured on clean code`,
+      `${file} could not be put back as it was${why ? ` (${why})` : ''}: ` +
+        'look at it with git diff and put it right by hand; nothing after it would be measured on clean code',
     )
   }
 }
 
-/** Apply one entry, run its test, restore; the row for the report. */
-export function runEntry(repo, entry, outputFile) {
+/** Apply one entry, run its test, put the file back; the row for the report. */
+export function runEntry(repo, entry, workDir, baselines, outputFile) {
   const problems = checkEntry(repo, entry)
   if (problems.length > 0) return { verdict: 'refused', seconds: 0, detail: problems.join('; ') }
+  const clean = baseline(repo, entry.test, workDir, baselines)
+  if (!clean.clean) return { verdict: 'refused', seconds: 0, detail: clean.why }
   const path = join(repo, entry.file)
   const original = readFileSync(path)
   const mutated = applyMutation(original.toString('utf8'), entry)
-  inFlight = { repo, entry, original }
   let outcome
   try {
     writeFileSync(path, mutated)
@@ -351,23 +513,9 @@ export function runEntry(repo, entry, outputFile) {
   } finally {
     // Whatever happened above, the file goes back; a failure to do so is
     // the one thing that stops the run.
-    restore(repo, entry, original)
-    inFlight = null
+    restoreFile(repo, entry.file, original)
   }
   return outcome
-}
-
-// What a signal must put back, since the child runs while this process blocks.
-let inFlight = null
-function restoreInFlight() {
-  if (inFlight === null) return
-  const { repo, entry, original } = inFlight
-  inFlight = null
-  try {
-    restore(repo, entry, original)
-  } catch (error) {
-    process.stderr.write(`${error.message}\n`)
-  }
 }
 
 // ---- reports -------------------------------------------------------------
@@ -394,17 +542,21 @@ export function summary(rows) {
   return `${rows.length} mutations: ${parts.join(', ') || 'none'}${bad === 0 ? '' : ` - ${bad} did not go red`}`
 }
 
-function option(args, name) {
-  const at = args.indexOf(name)
-  return at >= 0 ? args[at + 1] : undefined
-}
+// Lets a signal that arrived while Vitest ran be delivered: the handlers
+// run on the event loop, and a synchronous loop never returns to it.
+const tick = () => new Promise((done) => setTimeout(done, 20))
 
-export function main(args, repo = process.cwd(), out = process.stdout) {
+export async function main(args, repo = process.cwd(), out = process.stdout) {
   const say = (text) => out.write(text + '\n')
+  const parsed = parseArgs(args)
+  if (parsed.error) {
+    say(`refused: ${parsed.error}`)
+    return 2
+  }
   const { entries, unreadable } = loadEntries(repo)
   for (const line of unreadable) say(`refused  ${line}`)
 
-  if (args.includes('--check')) {
+  if (parsed.mode === 'check') {
     let bad = unreadable.length
     for (const item of entries) {
       const problems = checkEntry(repo, item.entry)
@@ -421,15 +573,24 @@ export function main(args, repo = process.cwd(), out = process.stdout) {
   }
 
   if (unreadable.length > 0) return 1
-  const only = option(args, '--only')
+  const { only } = parsed
   const chosen = entries.filter((item) => selected(item.entry, item.source, only))
   if (chosen.length === 0) {
     say(`no entry matches --only ${JSON.stringify(only)}: nothing was run, and that is a failure`)
     return 1
   }
+  // The tree under src and tests, and every file an entry that can run names:
+  // an edit in any of them would be written over by the mutation's undoing.
+  const named = [
+    ...new Set(
+      chosen
+        .filter((item) => checkEntry(repo, item.entry).length === 0)
+        .map((item) => item.entry.file),
+    ),
+  ]
   let dirty
   try {
-    dirty = dirtyTree(repo)
+    dirty = dirtyTree(repo, ['src', 'tests', ...named])
   } catch (error) {
     say(`refused: ${error.message}`)
     return 1
@@ -440,38 +601,50 @@ export function main(args, repo = process.cwd(), out = process.stdout) {
   }
 
   const workDir = mkdtempSync(join(tmpdir(), 'lc-mutations-'))
-  process.on('SIGINT', () => {
-    restoreInFlight()
-    process.exit(130)
-  })
-  process.on('SIGTERM', () => {
-    restoreInFlight()
-    process.exit(143)
-  })
+  let stopping = null
+  const onInt = () => (stopping ??= { name: 'SIGINT', code: 130 })
+  const onTerm = () => (stopping ??= { name: 'SIGTERM', code: 143 })
+  process.on('SIGINT', onInt)
+  process.on('SIGTERM', onTerm)
   const rows = []
+  const baselines = new Map()
   try {
     for (const item of chosen) {
+      await tick()
+      if (stopping !== null) {
+        say(table(rows))
+        say(
+          `STOPPED: ${stopping.name} received; ${rows.length} of ${chosen.length} mutations ran, ` +
+            'and every file is as it was',
+        )
+        return stopping.code
+      }
       const entry = item.entry
       const outputFile = join(workDir, `report-${rows.length}.json`)
       let outcome
       try {
-        outcome = runEntry(repo, entry, outputFile)
+        outcome = runEntry(repo, entry, workDir, baselines, outputFile)
       } catch (error) {
         say(table(rows))
         say(`STOPPED: ${error.message}`)
         return 1
       }
+      if (outcome.interrupted) stopping ??= { name: 'an interrupt of Vitest', code: 130 }
       const row = {
         label: label(item),
         test: String(entry?.test ?? ''),
         title: String(entry?.title ?? ''),
-        ...outcome,
+        verdict: outcome.verdict,
+        seconds: outcome.seconds,
+        detail: outcome.detail,
       }
       rows.push(row)
       if (outcome.detail)
         process.stderr.write(`${row.label}: ${outcome.verdict}: ${outcome.detail}\n`)
     }
   } finally {
+    process.off('SIGINT', onInt)
+    process.off('SIGTERM', onTerm)
     rmSync(workDir, { recursive: true, force: true })
   }
   say(table(rows))
@@ -490,5 +663,5 @@ function invokedDirectly() {
 }
 if (invokedDirectly()) {
   const here = resolve(fileURLToPath(import.meta.url), '..', '..')
-  process.exitCode = main(process.argv.slice(2), here)
+  process.exitCode = await main(process.argv.slice(2), here)
 }
