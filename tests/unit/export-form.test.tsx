@@ -8,7 +8,7 @@
 
 import { act, createRef, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import ExportForm from '../../src/renderer/src/export/ExportForm'
+import ExportForm, { useExportDrafts } from '../../src/renderer/src/export/ExportForm'
 import {
   defaultsFor,
   offeredOf,
@@ -80,6 +80,8 @@ async function draw(choice: ExportChoice, { locked = false } = {}) {
   const change = vi.fn<(next: ExportChoice) => void>()
   const row = rowOf(choice)
   function Form(): JSX.Element {
+    // The drafts held above the form, as the composition holds them.
+    const drafts = useExportDrafts(choice, null)
     return (
       <ExportForm
         projectId="kq7x2mzp4dna"
@@ -87,7 +89,7 @@ async function draw(choice: ExportChoice, { locked = false } = {}) {
         preset={row}
         defaults={defaultsFor(row)}
         choice={choice}
-        dropped={null}
+        drafts={drafts}
         locked={locked}
         lines={LINES}
         inspection={INSPECTION}

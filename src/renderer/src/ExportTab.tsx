@@ -5,7 +5,7 @@ import type { ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
 import type { ExportRun as Run } from './engine/exportRun'
 import ExportDestination, { useDestination } from './export/ExportDestination'
-import ExportForm from './export/ExportForm'
+import ExportForm, { useExportDrafts } from './export/ExportForm'
 import { useExportChoice } from './export/useExportChoice'
 import { useExportLines } from './export/useExportLines'
 import { useExportPreview } from './export/useExportPreview'
@@ -90,7 +90,8 @@ export default function ExportTab({
     exporting,
     onPreview,
   })
-  // Held here, so a form drawn again shows the folder the last press answered.
+  // Held here, so a form drawn again shows what was typed and the folder answered.
+  const drafts = useExportDrafts(choice, dropped)
   const destination = useDestination(project.destination)
 
   // An export locks the choices it was planned from, which a change could not reach
@@ -156,7 +157,7 @@ export default function ExportTab({
             preset={preset}
             defaults={defaultsFor(preset)}
             choice={choice}
-            dropped={dropped}
+            drafts={drafts}
             locked={locked}
             lines={lines}
             inspection={inspection}

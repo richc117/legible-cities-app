@@ -43,13 +43,83 @@ import Select from '../kit/Select'
 import TextInput from '../kit/TextInput'
 
 // Cell 06's choices (issue 433, part b): every field from the preset to
-// the alt text, the four typed fields' drafts and their commit on Enter or
-// on leaving the field. The opening is its own file (`ExportOpening.tsx`)
-// and is drawn here, after the storyboard it opens. What the form changes
+// the alt text, and the four typed fields' commit on Enter or on leaving
+// the field; their drafts are held above the form (`useExportDrafts`).
+// The opening is its own file (`ExportOpening.tsx`) and is drawn here,
+// after the storyboard it opens. What the form changes
 // it hands to `change`, which writes it (`useExportChoice`). What the
 // preview's plan said it is told (`useExportPreview`, through the
 // composition), and where the file goes is drawn as its last field
 // (`children`, `ExportDestination.tsx`).
+
+/** A typed field as typed: its draft, and the refusal beside it. */
+export interface TypedField {
+  draft: string
+  setDraft: (draft: string) => void
+  /** Null when the draft is one the field takes. */
+  problem: string | null
+}
+
+/** A field judged when it is committed rather than as it is typed. */
+export interface CommittedField extends TypedField {
+  setProblem: (problem: string | null) => void
+}
+
+/** The four typed fields of cell 06's form. */
+export interface ExportDrafts {
+  at: CommittedField
+  tag: CommittedField
+  caption: TypedField
+  alt: TypedField
+}
+
+/**
+ * The drafts of the four typed fields, held by the composition rather than
+ * by the form, so a form drawn again - the engine restarted, its tables
+ * asked again - shows what was typed and not yet committed, as the folder
+ * is held (`useDestination`).
+ *
+ * The start time and the filename tag are written to the choice when they
+ * are committed (Enter, or leaving the field), never on every keystroke,
+ * and judged then. The caption and the alt text are typed the same way and
+ * judged as they are typed: the engine's sentence is beside the field at
+ * the 81st character and not after it has been left, and nothing refused
+ * is ever written or planned. What is written is what is committed.
+ *
+ * Each draft starts from the choice as it is when the composition mounts,
+ * which is the record's before the engine's tables are read; a saved
+ * choice that the tables then drop takes its fields with it.
+ */
+export function useExportDrafts(choice: ExportChoice, dropped: string | null): ExportDrafts {
+  const [atDraft, setAtDraft] = useState(choice.options.at ?? '')
+  const [tagDraft, setTagDraft] = useState(choice.options.tag ?? '')
+  const [atProblem, setAtProblem] = useState<string | null>(null)
+  const [tagProblem, setTagProblem] = useState<string | null>(null)
+  const [captionDraft, setCaptionDraft] = useState(choice.options.caption ?? '')
+  const [altDraft, setAltDraft] = useState(choice.alt ?? '')
+  useEffect(() => {
+    // A saved choice that fell back takes its fields with it.
+    if (dropped === null) return
+    setAtDraft('')
+    setTagDraft('')
+    setCaptionDraft('')
+    setAltDraft('')
+  }, [dropped])
+  return {
+    at: { draft: atDraft, setDraft: setAtDraft, problem: atProblem, setProblem: setAtProblem },
+    tag: { draft: tagDraft, setDraft: setTagDraft, problem: tagProblem, setProblem: setTagProblem },
+    caption: {
+      draft: captionDraft,
+      setDraft: setCaptionDraft,
+      problem: readCaption(captionDraft).problem,
+    },
+    alt: {
+      draft: altDraft,
+      setDraft: setAltDraft,
+      problem: altDraft.trim() === '' ? null : validateAlt(altDraft),
+    },
+  }
+}
 
 const VIEW_WORDS: Record<View, string> = {
   geographic: 'geographic',
@@ -67,8 +137,8 @@ interface Props {
   /** What the engine does for the preset when it is told nothing. */
   defaults: OptionDefaults
   choice: ExportChoice
-  /** The preset or storyboard the record named and the engine no longer lists; null when none. */
-  dropped: string | null
+  /** The four typed fields as typed, held above the form (`useExportDrafts`). */
+  drafts: ExportDrafts
   /** An export is running, or the project cannot be written. */
   locked: boolean
   /** The lines that can be kept, by the labels the line colours use. */
@@ -94,7 +164,7 @@ export default function ExportForm({
   preset,
   defaults,
   choice,
-  dropped,
+  drafts,
   locked,
   lines,
   inspection,
@@ -120,28 +190,17 @@ export default function ExportForm({
   // choice's own is on offer whenever it names one.
   const corner = choice.options.clock_corner ?? defaultCorner(preset)
 
-  // The drafts of the two typed fields: written to the choice when they are
-  // committed (Enter, or leaving the field), never on every keystroke.
-  const [atDraft, setAtDraft] = useState(choice.options.at ?? '')
-  const [tagDraft, setTagDraft] = useState(choice.options.tag ?? '')
-  const [atProblem, setAtProblem] = useState<string | null>(null)
-  const [tagProblem, setTagProblem] = useState<string | null>(null)
-  // The caption and the alt text are typed the same way, and are judged as
-  // they are typed: the engine's sentence is beside the field at the 81st
-  // character and not after it has been left, and nothing refused is ever
-  // written or planned. What is written is what is committed.
-  const [captionDraft, setCaptionDraft] = useState(choice.options.caption ?? '')
-  const [altDraft, setAltDraft] = useState(choice.alt ?? '')
+  const {
+    draft: atDraft,
+    setDraft: setAtDraft,
+    problem: atProblem,
+    setProblem: setAtProblem,
+  } = drafts.at
+  const { draft: tagDraft, setDraft: setTagDraft, problem: tagProblem } = drafts.tag
+  const setTagProblem = drafts.tag.setProblem
+  const { draft: captionDraft, setDraft: setCaptionDraft } = drafts.caption
+  const { draft: altDraft, setDraft: setAltDraft, problem: altProblem } = drafts.alt
   const caption = readCaption(captionDraft)
-  const altProblem = altDraft.trim() === '' ? null : validateAlt(altDraft)
-  useEffect(() => {
-    // A saved choice that fell back takes its fields with it.
-    if (dropped === null) return
-    setAtDraft('')
-    setTagDraft('')
-    setCaptionDraft('')
-    setAltDraft('')
-  }, [dropped])
 
   const commitAt = (): void => {
     const value = atDraft.trim()

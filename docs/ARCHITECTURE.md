@@ -1750,7 +1750,8 @@ own under `src/renderer/src/export/` (issue 433): `useExportTables` asks
 the engine's tables, `useExportLines` reads the feed's lines,
 `useExportChoice` holds the choice and is the one place it is written,
 `useExportPreview` plans the preview, `ExportForm` draws every field from
-Preset to the alt text with the typed drafts, and `ExportDestination` is
+Preset to the alt text, its typed drafts held above the form like the
+folder (`useExportDrafts`), and `ExportDestination` is
 "Where it goes", drawn as the form's last field, its folder held above the
 form (`useDestination`) so a form drawn again after the engine comes back
 shows what the last press answered. `ExportOpening.tsx` and

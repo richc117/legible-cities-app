@@ -85,6 +85,7 @@ async function draw(
     async (): Promise<ExportPreview> =>
       over.preview ?? { ok: true, url: 'app://local/p', width: 540, height: 960, notes: [] },
   )
+  const onChoice = vi.fn(async (_choice: ExportChoice) => undefined)
   function Cell({ engine = over.engine === undefined ? READY : over.engine }): JSX.Element {
     return (
       <section>
@@ -100,7 +101,7 @@ async function draw(
           inspect={async () => {
             throw new Error('not read here')
           }}
-          onChoice={async () => undefined}
+          onChoice={onChoice}
           onPreview={() => undefined}
           handback={heading}
         />
@@ -117,7 +118,7 @@ async function draw(
     view.rerender(<Cell engine={engine} />)
     await answered()
   }
-  return { view, run, heading, start, preview, engineNow }
+  return { view, run, heading, start, preview, engineNow, onChoice }
 }
 
 const text = (): string => (document.querySelector('.export-tab')?.textContent ?? '').trim()
@@ -215,6 +216,51 @@ describe('cell 06’s composition', () => {
     expect(document.querySelector('form'), 'no form while the engine is away').toBeNull()
     await engineNow(READY)
     expect(where()).toBe('/srv/exports')
+  })
+
+  it('keeps what was typed and not committed after the engine has gone and come back', async () => {
+    // The drafts are held above the form, as the folder is. Mutation: the
+    // drafts held by the form itself (`useExportDrafts` called inside it) -
+    // the form is then drawn afresh from the choice, and the tag is gone.
+    const { engineNow, onChoice } = await draw()
+    const tag = (): HTMLInputElement => byName('textbox', 'Filename tag') as HTMLInputElement
+    act(() => tag().focus())
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+        tag(),
+        'draft',
+      )
+      tag().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await engineNow(null)
+    expect(document.querySelector('form'), 'no form while the engine is away').toBeNull()
+    await engineNow(READY)
+    expect(tag().value).toBe('draft')
+    expect(onChoice, 'nothing typed was written').not.toHaveBeenCalled()
+  })
+
+  it('empties the typed fields when the engine’s tables drop the saved choice', async () => {
+    // The saved storyboard is one the tables no longer list, so the choice
+    // falls back to the reel with the engine's defaults, and the fields the
+    // saved choice filled go with it. Mutation: the reset on `dropped`
+    // taken out of `useExportDrafts` - the saved words stay in the fields.
+    await draw({
+      project: {
+        ...PROJECT,
+        export: {
+          preset: 'instagram-reel',
+          storyboard: 'gone' as never,
+          options: { tag: 'old', caption: 'An old caption' },
+          alt: 'An old alt text',
+        },
+      },
+    })
+    expect(document.querySelector('.export-tab > .notice'), 'the choice was dropped').not.toBeNull()
+    expect((byName('textbox', 'Filename tag') as HTMLInputElement).value).toBe('')
+    expect((byName('textbox', 'Caption') as HTMLInputElement).value).toBe('')
+    expect(
+      (byName('textbox', 'Alt text for the file’s sidecar') as HTMLTextAreaElement).value,
+    ).toBe('')
   })
 
   it('holds Export while the engine refuses the choice, and says why under the choosers', async () => {
