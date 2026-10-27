@@ -65,6 +65,7 @@ import {
 import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve, sep } from 'node:path'
 import process from 'node:process'
+import { setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
 
 const FIELDS = ['file', 'find', 'replace', 'test', 'title', 'why']
