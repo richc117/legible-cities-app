@@ -3,7 +3,12 @@
 // once the script's --verify, which needs no network, has held it to the
 // pins and this checkout. A small archive of the pins' shape, with pins made
 // from its own trees, stands in for the real one, whose fetch takes minutes
-// and the network; the real archive was put through the same checks by hand.
+// and the network. The real one, build.yml run 40425512956's (765 folders
+// and 14,755 regular files, no links), was put through the same --verify by
+// hand on ubuntu:22.04 with this branch's copies in its legible-cities/:
+// green, and refused with a byte of an FFmpeg file changed, an Electron
+// file removed, another vendor.yml, a symbolic link for an FFmpeg file, and
+// bytes after its end.
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import {
@@ -280,17 +285,19 @@ describe.skipIf(lacking)(
       refused(pack(again), pinsFile, `${ARCHIVE}'s src/${dep} makes tree `)
     })
 
-    it('refuses an FFmpeg configuration that reports another version', () => {
-      const { pinsFile, pack, copy } = fixture()
-      const other = copy()
-      const header = join(
+    it('refuses an FFmpeg configuration that reports another version than the pins', () => {
+      // The archive and its trees are left alone; the pins say another
+      // version, so the tree ids hold and the version check is what refuses.
+      const { good, pinsFile } = fixture()
+      const pins = JSON.parse(readFileSync(pinsFile, 'utf8')) as { electron_ffmpeg: Pins }
+      pins.electron_ffmpeg.ffmpeg.reports = 'n0.0'
+      const other = join(scratch(), 'pins.json')
+      writeFileSync(other, `${JSON.stringify(pins, null, 2)}\n`)
+      refused(
+        good,
         other,
-        NAME,
-        'src/third_party/ffmpeg/chromium/config/Chrome/mac/arm64/libavutil/ffversion.h',
+        `${ARCHIVE}'s FFmpeg Chrome config says #define FFMPEG_VERSION "${PINS.ffmpeg.reports}", and the pins say n0.0`,
       )
-      writeFileSync(header, '#define FFMPEG_VERSION "n0.0"\n')
-      // The tree id changes too, and it is checked first.
-      refused(pack(other), pinsFile, `${ARCHIVE}'s src/third_party/ffmpeg makes tree `)
     })
 
     it('refuses an Electron file by its blob id, and a missing one by name', () => {
@@ -419,6 +426,14 @@ describe.skipIf(lacking)(
     it('refuses a symbolic link, a hard link and a name twice, before anything is unpacked', () => {
       const { pinsFile, pack, copy } = fixture()
       const ffmpeg = join(NAME, 'src', 'third_party', 'ffmpeg')
+      // Each run works in a folder of its own, kept, which must still be
+      // empty after the refusal: nothing was unpacked.
+      const works: string[] = []
+      const work = (): Record<string, string> => {
+        const folder = join(scratch(), 'work')
+        works.push(folder)
+        return { ELECTRON_FFMPEG_WORK: folder }
+      }
       const soft = copy()
       rmSync(join(soft, ffmpeg, 'BUILD.gn'))
       symlinkSync('COPYING.LGPLv2.1', join(soft, ffmpeg, 'BUILD.gn'))
@@ -426,12 +441,13 @@ describe.skipIf(lacking)(
         pack(soft),
         pinsFile,
         `${ARCHIVE} holds ${ffmpeg}/BUILD.gn, which is a symbolic link: only files and folders are packed`,
+        work(),
       )
       const hard = copy()
       rmSync(join(hard, ffmpeg, 'BUILD.gn'))
       linkSync(join(hard, ffmpeg, 'COPYING.LGPLv2.1'), join(hard, ffmpeg, 'BUILD.gn'))
       // Which of the two the tar records as the link is the tar's to choose.
-      const linked = script(['--verify', pack(hard)], pinsFile)
+      const linked = script(['--verify', pack(hard)], pinsFile, work())
       expect(linked.stderr).toMatch(
         new RegExp(
           `::error::${literal(`${ARCHIVE} holds ${ffmpeg}/`)}(BUILD\\.gn|COPYING\\.LGPLv2\\.1)${literal(', which is a hard link: only files and folders are packed')}`,
@@ -450,7 +466,10 @@ describe.skipIf(lacking)(
       writeFileSync(join(twice, NAME, 'BUILD.txt'), 'another\n')
       expect(tool('tar', ['-r', '-f', tar, '-C', twice, `${NAME}/BUILD.txt`], env).status).toBe(0)
       expect(tool('xz', ['-z', '-T1', tar]).status).toBe(0)
-      refused(join(out, ARCHIVE), pinsFile, `${ARCHIVE} holds ${NAME}/BUILD.txt twice`)
+      refused(join(out, ARCHIVE), pinsFile, `${ARCHIVE} holds ${NAME}/BUILD.txt twice`, work())
+
+      expect(works).toHaveLength(3)
+      for (const folder of works) expect(readdirSync(folder)).toEqual([])
     })
 
     it('refuses the good archive with bytes after its end, inside the xz or as a second stream', () => {
