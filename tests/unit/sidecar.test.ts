@@ -279,8 +279,9 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     if (state.state === 'restarting') expect(state.reason).toContain('not a message')
   })
 
-  // Issue 207: the reason quotes the head of the stray line, and the state
-  // goes to the page as it is, so a web address in it is redacted here. A
+  // Issue 207: the state goes to the page as it is, so a web address in the
+  // stray line must not reach it (since issue 580 the reason quotes nothing,
+  // and this holds that it stays so, in the state and its description). A
   // percent-encoded one, because a line with a colon in it reads as a frame
   // header, and because an encoded address has no slash for the stderr
   // tail's own filter to catch either.
@@ -293,6 +294,28 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(state.reason).not.toContain('planted207')
     expect(JSON.stringify(h.sidecar.state)).not.toContain('planted207')
   })
+
+  // Issue 580: a reason is drawn on screen, and a screenshot sent with a bug
+  // report would carry a path the engine printed (a library's warning begins
+  // with the file it came from). The snippet stays in the log, the one place a
+  // path may be; the reason says what to do and quotes nothing.
+  it.each([
+    ['a POSIX path', '/opt/engine/lib/site-packages/warn_planted580'],
+    ['a Windows path', String.raw`Engine\lib\site-packages\warn_planted580`],
+  ])(
+    'shows no path in the reason for a stray line that is %s, and keeps it in the log',
+    async (_name, stray) => {
+      const h = harness({ garbage: stray })
+      h.sidecar.start()
+      const state = await h.until((s) => s.state === 'restarting')
+      if (state.state !== 'restarting') throw new Error('expected restarting')
+      expect(state.reason).toContain('not a message')
+      expect(state.reason).not.toMatch(/[\\/]/)
+      expect(state.reason).not.toContain('planted580')
+      expect(describeState(state)).not.toContain('planted580')
+      expect(h.log.some((l) => l.startsWith('protocol error:') && l.includes(stray))).toBe(true)
+    },
+  )
 
   it('is unavailable with the reason when there is no interpreter, or it cannot be started', async () => {
     const none = new Sidecar({

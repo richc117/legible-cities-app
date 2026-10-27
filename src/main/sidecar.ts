@@ -97,6 +97,18 @@ export function interpreterFailedReason(what: string, bundledInterpreter: boolea
   return `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`
 }
 
+/**
+ * Why the engine was stopped for writing on its output what is not a message,
+ * as a sentence for whoever is looking at the screen: what to do first, and
+ * nothing the engine wrote. A stray line is often a library's warning, which
+ * begins with the file it came from, and a reason is drawn on screen and may
+ * be photographed into a bug report; the snippet stays in the log, which is
+ * where the sentence sends the person (issue 580). It reads the same for the
+ * installer's runtime and any other, since neither has a step of its own.
+ */
+export const PROTOCOL_ERROR_REASON =
+  'Open the logs folder in Settings and read engine.log. The engine wrote something that is not a message.'
+
 /** The longest delay a Node timer holds; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647
 
@@ -450,10 +462,7 @@ export class Sidecar {
       onProtocolError: (error: ProtocolError) => {
         if (this.child !== child) return
         this.log(`protocol error: ${error.message}`)
-        void this.failed(
-          `The engine wrote something that is not a message (${error.message}).`,
-          child,
-        )
+        void this.failed(PROTOCOL_ERROR_REASON, child)
       },
       log: (message) => this.log(message),
       onDroppedResponse: (id) => this.lateAnswer(client, id),
