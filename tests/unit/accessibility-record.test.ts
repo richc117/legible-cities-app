@@ -28,8 +28,12 @@ const lines = record.split('\n')
 /** The criteria WCAG 2.2 added at level A or AA. */
 const CRITERIA = ['2.4.11', '2.5.7', '2.5.8', '3.2.6', '3.3.7', '3.3.8'] as const
 
-/** The words a row's status may begin with. */
-const STATUSES = ['pass', 'partial', 'not applicable', 'finding'] as const
+/**
+ * What a status is, exactly: `pass` alone, or `partial (the limit)`,
+ * `not applicable (why)` or `finding <what>`. Nothing else, so "pass, but" and
+ * "pass; with a limit" are refused: a limit is what *partial* is for.
+ */
+const STATUS = /^(?:pass|partial \(.+\)|not applicable \(.+\)|finding .+)$/
 
 const HEADING = '## WCAG 2.2: the criteria it added'
 
@@ -40,13 +44,16 @@ const cellsOf = (row: string): string[] =>
     .split('|')
     .map((cell) => cell.trim())
 
-/** A screen's table has nine columns: the part, five machine checks, two contrasts and two readers. */
+/** A screen's table has nine columns: the part, four machine checks, two contrasts and two readers. */
 const COLUMNS = 9
 /** The machine columns of such a row: Keyboard to Contrast (Parchment). The last two are the readers'. */
 const machineCells = (row: string): string[] => cellsOf(row).slice(1, COLUMNS - 2)
 
 /** What a machine cell may not say of a spec that is in the repository. */
-const SPEC_HAS_NOT_RUN = /not yet run|written, not run/i
+const SPEC_HAS_NOT_RUN = /not yet run|written,? (?:but )?not (?:yet )?run|has not run|not run yet/i
+
+/** A spec named in backticks, bare or by its path, `.spec.ts` or `.spec.tsx`. */
+const SPEC_NAMED = /`((?:[\w./-]+\/)?[\w-]+\.spec\.tsx?)`/g
 
 /** The lines of the section, from its heading to the next second-level one. */
 function section(): string[] {
@@ -75,10 +82,18 @@ function placed(name: string): string | null {
 
 const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Is `title` the title of a `test(`, `it(` or `describe(` in `source`, and not a word in a comment? */
+/**
+ * Is `title` the title of a live `test(`, `it(` or `describe(` in `source`?
+ * The call opens its line, so a comment that quotes one is not a test; only
+ * `.only`, `.serial` and `.parallel` may follow the keyword, so a `.skip`,
+ * `.fixme` or `.todo` is not a test that runs.
+ */
 function isATitle(source: string, title: string): boolean {
   return new RegExp(
-    String.raw`\b(?:test|it|describe)(?:\.\w+)?\(\s*(['"` + '`' + String.raw`])${escaped(title)}\1`,
+    String.raw`^[ \t]*(?:test\.describe|test|it|describe)(?:\.(?:only|serial|parallel))?\(\s*(['"` +
+      '`' +
+      String.raw`])${escaped(title)}\1`,
+    'm',
   ).test(source)
 }
 
@@ -109,8 +124,8 @@ describe('the accessibility record maps WCAG 2.2', () => {
         expect(cells.length, `${id}: criterion, status, evidence, issue or pull request`).toBe(4)
         const [, status, evidence, ref] = cells as [string, string, string, string]
         expect(
-          STATUSES.some((word) => status.toLowerCase().startsWith(word)),
-          `${id}: the status begins with one of ${STATUSES.join(', ')}; it reads "${status}"`,
+          STATUS.test(status),
+          `${id}: the status is "pass", "partial (…)", "not applicable (…)" or "finding …"; it reads "${status}"`,
         ).toBe(true)
         expect(evidence.length, `${id}: the evidence is not empty`).toBeGreaterThan(20)
         expect(
@@ -173,6 +188,27 @@ describe('the accessibility record maps WCAG 2.2', () => {
     expect(isATitle(source, 'a quoted title')).toBe(false)
     expect(isATitle("describe(\n  'split over lines',\n", 'split over lines')).toBe(true)
     expect(isATitle("test('a real title and more', () => {})", 'a real title')).toBe(false)
+    // A test that does not run is not a test the record can cite.
+    expect(isATitle("test.skip('a skipped title', () => {})", 'a skipped title')).toBe(false)
+    expect(isATitle("test.fixme('a title', () => {})", 'a title')).toBe(false)
+    expect(isATitle("it.todo('a title')", 'a title')).toBe(false)
+    expect(isATitle("  // test('a commented title', () => {})", 'a commented title')).toBe(false)
+    expect(isATitle("test.only('an only title', () => {})", 'an only title')).toBe(true)
+    expect(isATitle("  test.describe.serial('a suite', () => {})", 'a suite')).toBe(true)
+  })
+
+  it('reads a status exactly', () => {
+    for (const ok of ['pass', 'partial (a limit)', 'not applicable (no sign-in)', 'finding F7'])
+      expect(STATUS.test(ok), ok).toBe(true)
+    for (const bad of [
+      'pass, with a limit',
+      'pass; mostly',
+      'pass (limit)',
+      'partial',
+      'Pass',
+      'not applicable',
+    ])
+      expect(STATUS.test(bad), bad).toBe(false)
   })
 })
 
@@ -189,9 +225,17 @@ describe('the record does not say a check CI runs has not run', () => {
   const tableRows = lines
     .map((line, i) => ({ line, at: i + 1 }))
     .filter((r) => r.line.startsWith('| '))
-  const screens = tableRows.filter(
-    (r) => cellsOf(r.line).length === COLUMNS && cellsOf(r.line)[0] !== 'Part',
-  )
+  // A screen's table is the one whose header row begins "Part": every row of
+  // it, up to the first line that is not a table row, is a screen's row.
+  const screens: { line: string; at: number }[] = []
+  {
+    let inScreenTable = false
+    lines.forEach((line, i) => {
+      if (!line.startsWith('|')) inScreenTable = false
+      else if (cellsOf(line)[0] === 'Part') inScreenTable = true
+      else if (inScreenTable && line.startsWith('| ')) screens.push({ line, at: i + 1 })
+    })
+  }
 
   it('tells the person’s columns from the machine’s by position', () => {
     const row =
@@ -212,19 +256,34 @@ describe('the record does not say a check CI runs has not run', () => {
     expect(machineCells(readers).some((cell) => SPEC_HAS_NOT_RUN.test(cell))).toBe(false)
     expect(SPEC_HAS_NOT_RUN.test('driven in `tuning.spec.ts`, written, not yet run')).toBe(true)
     expect(SPEC_HAS_NOT_RUN.test('driven in `tuning.spec.ts`, written, not run')).toBe(true)
+    expect(SPEC_HAS_NOT_RUN.test('driven in `tuning.spec.ts`, written but not run')).toBe(true)
+    expect(SPEC_HAS_NOT_RUN.test('`tuning.spec.ts` has not run')).toBe(true)
+    expect(SPEC_HAS_NOT_RUN.test('`tuning.spec.ts` is not run yet')).toBe(true)
+    expect(SPEC_HAS_NOT_RUN.test('`tuning.spec.ts` has not run yet')).toBe(true)
+    expect(SPEC_HAS_NOT_RUN.test('`tuning.spec.ts` was not run yet')).toBe(true)
     // Where the sweep really does not reach a part, saying so is allowed.
     expect(SPEC_HAS_NOT_RUN.test('not yet swept: drawn only once an opening is chosen')).toBe(false)
   })
 
   it('reads the screens’ rows', () => {
     expect(screens.length).toBeGreaterThan(60)
-    expect(screens.filter((r) => /`[\w-]+\.spec\.ts`/.test(r.line)).length).toBeGreaterThan(20)
+    expect(screens.filter((r) => /\.spec\.tsx?`/.test(r.line)).length).toBeGreaterThan(20)
+  })
+
+  it('has nine cells in every row of a screen’s table, and none is skipped', () => {
+    const odd = screens
+      .filter((r) => cellsOf(r.line).length !== COLUMNS)
+      .map((r) => `line ${r.at}: ${cellsOf(r.line).length} cells (${cellsOf(r.line)[0]})`)
+    expect(
+      odd,
+      `a row with a stray bar or a missing cell hides its columns from the rules here`,
+    ).toEqual([])
   })
 
   it('names, in every table row, only specs that exist', () => {
     const missing: string[] = []
     for (const { line, at } of tableRows)
-      for (const m of line.matchAll(/`([\w-]+\.spec\.ts)`/g)) {
+      for (const m of line.matchAll(SPEC_NAMED)) {
         const path = placed(m[1]!)
         if (path === null || !existsSync(path)) missing.push(`line ${at}: ${m[1]}`)
       }
@@ -234,7 +293,7 @@ describe('the record does not say a check CI runs has not run', () => {
   it('says of no spec that exists, in a machine column, that it has not run', () => {
     const stale: string[] = []
     for (const { line, at } of screens) {
-      const specs = [...line.matchAll(/`([\w-]+\.spec\.ts)`/g)].map((m) => m[1]!)
+      const specs = [...line.matchAll(SPEC_NAMED)].map((m) => m[1]!)
       if (!specs.some((name) => existsSync(placed(name) ?? ''))) continue
       cellsOf(line)
         .slice(1, COLUMNS - 2)

@@ -1797,10 +1797,9 @@ test('cell 03 drives the page and changes nothing the project keeps', async () =
 // WCAG 2.5.7 (issue 550): the scrub is dragged, and the keyboard is not a
 // single-pointer alternative (DESIGN.md, the transport). The platform's range
 // takes a press on its track as a value, and that is the alternative: one
-// click, no drag and no key, and the page is sent the seek. Written, not run
-// here; the coordinator runs it. Mutation owed: `pointer-events: none` on the
-// scrub's input in panels.css, or the input made `disabled`, and the click
-// reaches nothing.
+// click, no drag and no key, and the page is sent the seek. Run end to end on
+// 26 Oct 2026, 3 of 3, and red with the scrub's `onChange` made a no-op ("the
+// page was sent a seek for the point pressed").
 test('a press on the scrub’s track seeks the page, with no drag and no key (issue 550)', async () => {
   test.setTimeout(TRANSPORT_TIMEOUT)
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
