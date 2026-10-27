@@ -18,13 +18,15 @@
       "Bash(npm run lint*)",
       "Bash(npm run typecheck*)",
       "Bash(npm test*)",
+      "Bash(npm run test:live)",
       "Bash(npm run test:e2e*)",
       "Bash(npm run build*)",
       "Bash(npm run dist:check darwin-arm64)",
       "Bash(npm run dist:check darwin-x64)",
       "Bash(npm run dist:check win-x64)",
       "Bash(npx install-electron*)",
-      "Bash(npx prettier --check*)"
+      "Bash(npx prettier --check*)",
+      "Bash(node scripts/mutations.mjs --check)"
     ],
     "deny": [
       "Bash(git difftool*)",

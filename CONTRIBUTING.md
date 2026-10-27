@@ -213,6 +213,34 @@ checklist), `docs/acceptance-stranger.md` (the stranger's timed run) and
 per-screen record). Changing a sentence or a control name in the app means
 changing these in the same pull request.
 
+### Mutations
+
+A test whose comment names the fault it guards ("Mutation: the parts compared
+as strings") can have that fault written down as an entry in
+`tests/unit/<name>.mutations.json` beside it: the `file` (tracked by git, not a
+link), a `find` that occurs once in it, what it `replace`s with, the `test` file
+and the `title` that must go red, and a `why`. `node scripts/mutations.mjs
+--check` validates every entry without running anything, and `npm test` runs
+it, so a renamed test or a moved line fails there.
+
+Nothing runs the mutations on a pull request: dispatch the `mutations`
+workflow by hand after a wave of lanes, or run `node scripts/mutations.mjs`
+on a clean tree (it refuses one that is not, naming what is dirty), in a
+checkout nobody commits or stashes in while it runs: a commit or a stash
+mid-run would capture the mutation. It runs
+each test and title unmutated first, and refuses its entries if that is red or
+if the mutation changes how many tests run; then applies each mutation, runs
+the test, and writes the original bytes back, leaving a file alone (and
+keeping the original) if you saved it meanwhile. Any entry whose test stays
+green, finds no test, or cannot load fails the run. Ctrl-C, SIGTERM and SIGHUP
+are honoured when the run in flight ends: its file is put back, and the run
+stops with `STOPPED` and a non-zero exit. After a SIGKILL or a crash,
+`git checkout -- <file>` puts a file right. The job's own tests that start a
+real Vitest and send signals are `npm run test:live` (POSIX only; CI runs it
+as a step after the unit tests). The full run is supported and tested on
+POSIX only, which is where `mutations.yml` runs it; on Windows, `--check`
+is.
+
 ## How work happens
 
 1. **Pick an issue.** Comment that you are taking it. Issues carry a phase,

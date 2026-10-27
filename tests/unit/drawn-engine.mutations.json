@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/record.ts",
+    "find": "  const a = drawn.split('.').map(Number)\n  const b = running.split('.').map(Number)\n",
+    "replace": "  const a = drawn.split('.')\n  const b = running.split('.')\n",
+    "test": "tests/unit/drawn-engine.test.ts",
+    "title": "is below where any part is lower, compared as numbers and not as text",
+    "why": "The parts compared as strings: \"0.9.0\" would read above \"0.10.0\", and a page drawn by the older engine would be kept."
+  },
+  {
+    "file": "src/renderer/src/record.ts",
+    "find": "return a[at] < b[at]\n  return false\n",
+    "replace": "return a[at] < b[at]\n  return true\n",
+    "test": "tests/unit/drawn-engine.test.ts",
+    "title": "is not below where it is the same",
+    "why": "The same version read as below (the comment's `<=` for `<`, written where it can change the answer): every page drawn at the pin would be redrawn on every opening."
+  },
+  {
+    "file": "src/main/record/drawn.ts",
+    "find": "  if (isEngineVersion(engine)) drawn.engine = engine\n",
+    "replace": "  if (isEngineVersion(engine)) drawn.engine = engine\n  else if (before?.engine !== undefined) drawn.engine = before.engine\n",
+    "test": "tests/unit/drawn-engine.test.ts",
+    "title": "stamps nothing where it was told no version, or one it cannot read, and carries none from before",
+    "why": "drawnFromSent keeping the version the block before had: the map drawn now would be said to be the older engine's."
+  }
+]

@@ -30,10 +30,11 @@ const pinned = (name: string, rect: Rect): StopCover['over'][number] => ({ name,
 
 describe('a stop under a pinned box', () => {
   it('is named, with the box that covers it and where each was', () => {
-    // Mutation: `coveredStops` returns [] (or `encloses` always false). The
-    // stops the walk found on main would pass: with cells 02, 04, 05 and 06
-    // open at 1024x768 it read 108 and named, among others, the colour chip
-    // of line A, the input "A" and the select "Interchange marker".
+    // Mutation (mutations.json): `coveredStops` returns [] (or `encloses`
+    // always false). The stops the walk found on main would pass: with cells
+    // 02, 04, 05 and 06 open at 1024x768 it read 108 and named, among others,
+    // the colour chip of line A, the input "A" and the select "Interchange
+    // marker".
     const found = coveredStops([
       stop('button "Choose the colour of line A"', at(4), [
         pinned('header.app-header (sticky)', header),
@@ -80,8 +81,8 @@ describe('a stop under a pinned box', () => {
   })
 
   it('is named when it is wholly outside the window, covered by nothing', () => {
-    // Mutation: drop the window check from `coveredStops`. A control that is
-    // not on the screen would pass as clear.
+    // Mutation (mutations.json): drop the window check from `coveredStops`.
+    // A control that is not on the screen would pass as clear.
     expect(coveredStops([stop('button "Above"', at(-60))])).toEqual([
       'button "Above" at 100,-60 to 160,-32 is wholly outside the window, 1024x768',
     ])

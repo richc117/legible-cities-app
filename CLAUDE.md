@@ -92,12 +92,15 @@ npm run lint                          # eslint and prettier --check
 npm run format                        # prettier --write over what lint checks
 npm run typecheck                     # tsc over the node, the web and the tests project
 npm test                              # vitest in Node, jsdom and headless Chromium (ADR-059); the supervisor runs against a stand-in engine (needs a python3 on PATH)
+npm run test:live                     # the *.live.test.ts files: a real Vitest and real signals (the mutation job's), POSIX only, a CI step of its own
 npm run build                         # electron-vite build into out/
 npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
 npm run typegen                       # the protocol, its fingerprint and the types, from LEGIBLE_ENGINE_CHECKOUT's engine
 npm run dist                          # electron-builder --dir; installers come from build.yml
 npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
 npm run test:acceptance               # the acceptance checklist over the installed app LEGIBLE_ACCEPTANCE_APP names
+node scripts/mutations.mjs --check    # every tests/unit/*.mutations.json entry is well formed (npm test runs it)
+node scripts/mutations.mjs            # each mutation applied to a clean tree, its test run, the file restored; every test must go red
 ```
 
 A second launch of the app quits at once, so `test:acceptance` never runs
