@@ -2514,7 +2514,12 @@ hand, only after the attest job is green. If `vendor / electron ffmpeg
 (source)` fails on a tag's run, re-run the failed jobs before anything
 else (`gh run rerun <id> --failed`): its fetch from Chromium's mirror can
 stall on every attempt, and the packaging jobs, and so the release job,
-refuse to go on without it (issue 585).
+refuse to go on without it (issue 585). Its cache makes that rare, but a
+tag's run reads only entries saved on `main` or under the tag, and an
+entry unread for 7 days is evicted, so a tag cut long after the last run
+on `main` that touched these paths finds none. Shortly before tagging,
+dispatch the vendor workflow on `main` (`gh workflow run vendor.yml --ref
+main`), so the tag finds a warm entry.
 `docs/install.md` is what a person follows with the assets, and the
 first-run dialog's "How to install" opens it on `main`.
 
