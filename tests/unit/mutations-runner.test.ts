@@ -798,6 +798,38 @@ describe('the job over a repository', () => {
     ['SIGINT to its whole group, as a terminal sends it', 'SIGINT', 130, true],
     ['SIGHUP to the script', 'SIGHUP', 129, false],
   ]
+  it.skipIf(!POSIX)(
+    'ends what a finished run left spinning in its group',
+    () => {
+      const pidFile = join(mkdtempSync(join(tmpdir(), 'lc-mutations-test-')), 'pid')
+      made.push(dirname(pidFile))
+      const orphan =
+        `(() => { const c = process.getBuiltinModule('node:child_process').spawn(process.execPath, ['-e', 'for(;;){}'], { stdio: 'ignore' }); ` +
+        `c.unref(); process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(c.pid)); return a < b })()`
+      const { run } = job([{ ...bites, replace: orphan }])
+      const result = run()
+      const pid = existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8')) : 0
+      const alive = (): boolean => {
+        try {
+          process.kill(pid, 0)
+          return true
+        } catch {
+          return false
+        }
+      }
+      const until = Date.now() + 3000
+      while (pid > 0 && alive() && Date.now() < until) {
+        spawnSync(process.execPath, ['-e', ''], { timeout: 5000 })
+      }
+      const survived = pid > 0 && alive()
+      if (survived) process.kill(pid, 'SIGKILL')
+      expect(result.stdout).toMatch(/\sgreen\s/)
+      expect(pid).toBeGreaterThan(0)
+      expect(survived).toBe(false)
+    },
+    60_000,
+  )
+
   it.skipIf(!POSIX).each(signals)(
     'stops between entries on %s, with every file put back and a non-zero exit',
     async (_name, signal, exitCode, group) => {
@@ -814,7 +846,7 @@ describe('the job over a repository', () => {
           `STOPPED: ${signal} received; 1 of 2 mutations ran, and every file is as it was`,
         ),
       )
-      expect(seen.stdout).toMatch(/is slow\s+(red|green|no test|error)\s/)
+      expect(seen.stdout).toMatch(/is slow\s+red\s/)
       expect(seen.stdout).not.toContain('mutations:')
       expect(code).toBe(exitCode)
       expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
