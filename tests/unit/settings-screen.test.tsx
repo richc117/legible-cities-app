@@ -139,7 +139,7 @@ describe('one glyph, one meaning', () => {
     }
     expect(wrong).toEqual([])
     // And the check above found the buttons it speaks of.
-    const exportTab = readFileSync(join(root, 'ExportTab.tsx'), 'utf8')
-    expect(exportTab).toMatch(/<Icon name="folder" \/>\s*Choose folder/)
+    const destination = readFileSync(join(root, 'export/ExportDestination.tsx'), 'utf8')
+    expect(destination).toMatch(/<Icon name="folder" \/>\s*Choose folder/)
   })
 })
