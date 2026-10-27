@@ -85,7 +85,7 @@ async function draw(
     async (): Promise<ExportPreview> =>
       over.preview ?? { ok: true, url: 'app://local/p', width: 540, height: 960, notes: [] },
   )
-  const onChoice = vi.fn(async (_choice: ExportChoice) => undefined)
+  const onChoice = vi.fn<(choice: ExportChoice) => Promise<void>>(async () => undefined)
   function Cell({ engine = over.engine === undefined ? READY : over.engine }): JSX.Element {
     return (
       <section>
