@@ -2,12 +2,18 @@
 // How often a cell renders, counted (ADR-059, measurement 10; codebase
 // review R4-02, issue 433). Every cell reads the whole project screen's
 // state through one context, which is a fresh object on every render of the
-// screen, so a render that changes nothing a cell shows renders every cell
-// again. This file counts it, so that the split which ends it (issue 433,
-// part a) has a number to move.
+// screen, so a change to a field a cell does not read renders it again. This
+// file counts it, so that the split which ends it (issue 433, part a) has a
+// number to move.
+//
+// The split must sit where `renderCell` passes through, or this count says
+// nothing of the app: 433a puts it in one `ProjectProviders({ state,
+// children })` in `notebook/context.tsx`, which `ProjectView` and the
+// harness both draw, so the harness cannot drift from the screen.
 //
 // The count is of the lines cell's own renders: its adapter, wrapped by a
-// mock that counts each call and draws what the adapter draws. A
+// mock that counts each call and draws what the adapter draws (the function
+// itself, or the one inside it if it is ever wrapped in `memo`). A
 // `Profiler` cannot count these. React 19 finds a context's readers late, as
 // it passes them, so a `Profiler` that is not itself drawn again is not told
 // of a render only the context caused (measured here: a reader rendered
@@ -27,10 +33,14 @@ const renders = vi.hoisted(() => ({ lines: 0 }))
 vi.mock('../../src/renderer/src/notebook/cells/LinesCell', async (original) => {
   const { default: LinesCell } =
     await original<typeof import('../../src/renderer/src/notebook/cells/LinesCell')>()
+  const draw =
+    typeof LinesCell === 'function'
+      ? LinesCell
+      : (LinesCell as unknown as { type: typeof LinesCell }).type
   return {
     default: function Counted(props: CellViewProps) {
       renders.lines += 1
-      return LinesCell(props)
+      return draw(props)
     },
   }
 })
@@ -38,21 +48,42 @@ vi.mock('../../src/renderer/src/notebook/cells/LinesCell', async (original) => {
 afterEach(cleanup)
 
 describe('the lines cell, counted', () => {
-  it('renders again for a render of the screen that changes nothing it shows', async () => {
-    // Mutation: the screen handing the provider the same state for a render
-    // that changes nothing (`useMemo` over the patch in `renderCell`) - the
-    // count is zero and this fails. That is what issue 433a's split does in
-    // the app, and it will turn this assertion around (`toBe(0)`).
+  it('renders again when the screen changes a field the cell does not read', async () => {
+    // `LinesCell` reads `project`, `engine`, `run`, `runSnapshot`,
+    // `exporter`, `inspect`, `exporting` and `settling`; `themeReloads` is
+    // the map frame's, and none of the cell's business. Mutations: a memo
+    // over the whole state in `renderCell` keeps the count above zero, since
+    // the state did change; one over the fields the cell reads, which is
+    // what 433a's split amounts to, brings it to zero and fails this. 433a
+    // turns the assertion around (`toBe(0)`).
     renders.lines = 0
     const view = renderCell('lines')
     await answered()
     expect(renders.lines, 'the count sees the cell drawn').toBeGreaterThan(0)
     const before = renders.lines
-    view.rerender({})
+    view.rerender({ themeReloads: 1 })
     expect(
       renders.lines - before,
-      'every render of the screen renders the cell again, today',
+      'a field the cell does not read renders it again, today',
     ).toBeGreaterThan(0)
+  })
+})
+
+// Two tests in order: the first stubs the bridge with a spy, the second
+// finds it gone. Mutation: `cleanup` not putting `window.api` back - the
+// second fails on the spy still there.
+describe('the render helper puts the bridge back between tests', () => {
+  const spy = vi.fn(async () => {
+    throw new Error('not this test’s bridge')
+  })
+
+  it('stubs the bridge a test hands it', () => {
+    renderPanel(<p>Nothing to draw</p>, { api: { projects: { get: spy } } })
+    expect(window.api.projects.get).toBe(spy)
+  })
+
+  it('and the next test finds no bridge at all', () => {
+    expect((window as { api?: unknown }).api).toBeUndefined()
   })
 })
 
@@ -76,6 +107,26 @@ describe('the render helper finds a control by its role and name', () => {
       </>,
     )
     expect(() => byName('button', 'Cancel')).toThrow('2 of role button are named "Cancel"')
+  })
+
+  it('looks only within its own screen when asked through that screen', () => {
+    // Mutation: a screen's `byName` and `press` searching the whole
+    // document - the two screens' Go buttons are then two of one name.
+    const pressed = vi.fn()
+    const first = renderPanel(
+      <button type="button" onClick={() => pressed('first')}>
+        Go
+      </button>,
+    )
+    const second = renderPanel(
+      <button type="button" onClick={() => pressed('second')}>
+        Go
+      </button>,
+    )
+    expect(first.byName('button', 'Go')).toBe(first.host.querySelector('button'))
+    second.press('Go')
+    expect(pressed.mock.calls).toEqual([['second']])
+    expect(() => byName('button', 'Go'), 'the document holds both').toThrow('2 of role button')
   })
 
   it('answers the kit button’s inner button, which a press reaches', async () => {

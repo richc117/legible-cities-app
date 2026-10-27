@@ -35,7 +35,7 @@
 import { act, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { LiveRegion, useAnnouncer } from '../../src/renderer/src/Jobs'
-import { renderPanel, type RenderedPanel } from '../support/render'
+import { cleanup, renderPanel, type RenderedPanel } from '../support/render'
 
 let announce: (sentence: string) => void
 /** The frames the announcer waits on, run by hand: a frame is a thing that happens or does not. */
@@ -97,7 +97,7 @@ beforeEach(() => {
 
 afterEach(() => {
   observer.disconnect()
-  view.unmount()
+  cleanup()
 })
 
 const SENTENCE = 'Los Angeles: Layout run, failed.'

@@ -32,7 +32,8 @@
 // cell needs a mock of `engine/runs.ts`. A test replaces any part of it
 // through `options.api`; the stub stays in place after an unmount, since a
 // change flushed as its panel goes reads the record after the panel is
-// gone.
+// gone, and `cleanup()` puts back whatever was there before the first
+// stub, so one test's bridge never reaches the next.
 
 import { act, createRef, type JSX, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -204,7 +205,11 @@ export function defaultApi(record: () => ProjectRecord & { readOnly: boolean }):
 }
 
 /** The default bridge with a test's parts laid over it, one part at a time. */
+/** What `window` held as `api` before the first stub since the last `cleanup`; null when nothing is stubbed. */
+let apiBefore: { had: boolean; api: unknown } | null = null
+
 function installApi(base: ApiStub, over: ApiStub = {}): void {
+  apiBefore ??= { had: 'api' in window, api: (window as { api?: unknown }).api }
   const api: Record<string, unknown> = { ...base }
   for (const [part, methods] of Object.entries(over))
     api[part] = { ...(base[part as keyof Api] ?? {}), ...methods }
@@ -305,7 +310,9 @@ interface Mounted {
   /** The element the screen is drawn into, appended to the document's body. */
   host: HTMLElement
   unmount(): void
+  /** `byName`, within this screen's host only. */
   byName(role: string, name: string): HTMLElement
+  /** `press`, within this screen's host only. */
   press(name: string): void
 }
 
@@ -314,10 +321,16 @@ const drawnNow = new Set<() => void>()
 
 /**
  * Unmounts every screen still drawn, so a test that failed before its own
- * unmount leaves nothing for the next one to find: `afterEach(cleanup)`.
+ * unmount leaves nothing for the next one to find, and puts `window.api`
+ * back as it was before the first stub: `afterEach(cleanup)`.
  */
 export function cleanup(): void {
   for (const unmount of [...drawnNow]) unmount()
+  if (apiBefore === null) return
+  const target = window as { api?: unknown }
+  if (apiBefore.had) target.api = apiBefore.api
+  else delete target.api
+  apiBefore = null
 }
 
 function mount(element: ReactElement): Mounted & { render(element: ReactElement): void } {
@@ -335,8 +348,8 @@ function mount(element: ReactElement): Mounted & { render(element: ReactElement)
     host,
     render: (next) => act(() => root.render(next)),
     unmount,
-    byName: (role, name) => byName(role, name),
-    press: (name) => press(name),
+    byName: (role, name) => byName(role, name, host),
+    press: (name) => press(name, host),
   }
 }
 

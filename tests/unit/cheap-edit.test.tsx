@@ -43,6 +43,7 @@ import {
   answered,
   BASE,
   byName,
+  cleanup,
   defaultProjectState,
   INSPECTION,
   press,
@@ -91,7 +92,6 @@ const bridge: {
 }
 
 let view: RenderedCell
-let mounted = false
 let run: StandInRun
 
 /** The record the screen holds now. */
@@ -132,7 +132,6 @@ function gesture(call: () => void): void {
 
 function unmount(): void {
   view.unmount()
-  mounted = false
 }
 
 /** Opens the screen on `cell`, and lets the feed's lines arrive. */
@@ -163,7 +162,6 @@ async function open(cell: 'lines' | 'style', project: Partial<ProjectRecord> = {
       },
     },
   )
-  mounted = true
   await act(async () => {
     await inspected
   })
@@ -346,7 +344,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (mounted) unmount()
+  cleanup()
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })

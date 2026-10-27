@@ -6,10 +6,15 @@
 // does. A test about what the kit itself does with focus is a browser test
 // (`*.browser.test.tsx`), with the kit real.
 //
-// `vi.mock` is hoisted to the top of the file that calls it, so it cannot
-// sit here; a test passes this factory to it:
+// `vi.mock` is hoisted to the top of the file that calls it, above its
+// imports, so it cannot sit here, and its factory cannot name an imported
+// binding (the import is not made yet); a test imports this inside it:
 //
-//   vi.mock('../../src/renderer/src/kit/Button', kitButtonStub)
+//   vi.mock('../../src/renderer/src/kit/Button', async () =>
+//     (await import('../support/kit-stubs')).kitButtonStub(),
+//   )
+//
+// `tests/unit/kit-button-stub.test.tsx` holds the stub to what it forwards.
 
 import { createElement, forwardRef } from 'react'
 
