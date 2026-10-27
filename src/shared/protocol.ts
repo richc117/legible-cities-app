@@ -1,7 +1,7 @@
 // Generated from the engine's own description of its protocol.
 // Run `npm run typegen` to regenerate; edits here are lost.
 //
-// Engine: v0.20.0, protocol 1.
+// Engine: v0.21.0, protocol 1.
 // Source: vendor/protocol.schema.json, printed by the engine's
 // `python -m schematic.serve --schema` and committed verbatim.
 
@@ -1572,6 +1572,154 @@ export interface ErrorData {
    * stored nor building.
    */
   building?: true
+}
+
+/**
+ * A layout the page's setView takes and its state() reports: the map, the
+ * map unfolded into a row per line, or the time chart.
+ */
+export type PageMode = 'map' | 'linear' | 'string'
+
+/**
+ * What the page's bounds() answers: the first and the last second of the
+ * service day its trips run over.
+ */
+export interface PageBounds {
+  /**
+   * Seconds after the service day's midnight.
+   */
+  t0: number
+  /**
+   * Seconds after the service day's midnight; past midnight stays past
+   * midnight.
+   */
+  t1: number
+}
+
+/**
+ * What the page's state() answers: what it is showing. A page answers the
+ * fields of its version: `theme` since 0.11.0, `trip` and `changePenalty`
+ * since 0.13.0, `card` and `drawn` since 0.15.0 and `draws` since 0.20.0,
+ * the rest since 0.1.0; this is the current page's answer, every field
+ * required.
+ */
+export interface PageState {
+  /**
+   * The clock, in seconds of the service day.
+   */
+  now: number
+  /**
+   * The clock as the page shows it, HH:MM, with ` +1d` past midnight.
+   */
+  clock: string
+  /**
+   * The trains the last draw placed.
+   */
+  shown: number
+  mode: PageMode
+  /**
+   * Where the layout is between the map, 0, and the rows, 1; between the two
+   * while it morphs.
+   */
+  view: number
+  /**
+   * Where the layout is between the network, 0, and the time chart, 1.
+   */
+  str: number
+  /**
+   * Where the map is between the schematic, 0, and the geographic, 1.
+   */
+  geo: number
+  /**
+   * The box the map was last drawn in, as the SVG's viewBox says it.
+   */
+  box: [number, number, number, number]
+  /**
+   * The view showView would be given to reach what is showing.
+   */
+  viewName: View
+  /**
+   * Whether the station names are shown.
+   */
+  labels: boolean
+  theme: 'warm-dark' | 'sepia'
+  /**
+   * What setTrip last answered, as the lines now shown find it.
+   */
+  trip: PageTrip
+  /**
+   * The stops a change costs a trip.
+   */
+  changePenalty: number
+  /**
+   * Whether the title card is up.
+   */
+  card: boolean
+  /**
+   * The share of the network showing; 1 when it is whole.
+   */
+  drawn: number
+  /**
+   * The calls of the page's draw since it loaded; the strip shows it modulo
+   * 65536.
+   */
+  draws: number
+}
+
+/**
+ * What the page's setTrip answers and its state() reports as `trip`: null
+ * when no trip is asked for, else the trip between two stations, with its
+ * legs, or with `legs` null and the reason there is none, the map left
+ * whole.
+ */
+export type PageTrip = null | {
+  /**
+   * The station asked from.
+   */
+  from: string
+  /**
+   * The station asked to; null when none was given.
+   */
+  to: string | null
+  /**
+   * The legs from `from` to `to`, or null when no trip joins them.
+   */
+  legs: PageLeg[] | null
+  /**
+   * One fewer than the legs; 0 when there are none.
+   */
+  changes: number
+  /**
+   * Why there is no trip, or the caveat a trip found carries; absent from a
+   * trip found without one.
+   */
+  reason?: string | null
+  /**
+   * The lines hidden on the page, which the trip was found without; absent
+   * when none is.
+   */
+  hidden?: string[]
+}
+
+/**
+ * One leg of a trip the page found: a line boarded at one station and left
+ * at another, by the ids map.build's stations lists.
+ */
+export interface PageLeg {
+  /**
+   * The line's label, verbatim.
+   */
+  line: string
+  /**
+   * The station at the end of the line it is heading for.
+   */
+  towards: string
+  board: string
+  alight: string
+  /**
+   * Stops after boarding, the alighting one included.
+   */
+  stops: number
 }
 
 /** Every request the engine answers, with its parameters and its result. */
