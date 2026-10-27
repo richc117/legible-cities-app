@@ -2666,7 +2666,11 @@ from the tokens and described to assistive technology as one sentence.
 (`docs/repository-settings.md` lists the required checks, and
 `specs/038-test-pyramid/contracts/ci-layers.md` is their contract). `ci (<os>)` is the
 fast one, on Ubuntu, macOS and Windows for every pull request and every push
-to `main`: lint, typecheck, unit tests and a build. `e2e (<os>)` is the
+to `main`: lint, typecheck, unit tests and a build. The tests of the mutation
+job that start a real Vitest and send signals
+(`tests/unit/mutations-runner.live.test.ts`) are `npm run test:live`, a step of
+their own after the unit tests on the runners that are not Windows, so that
+`npm test` stays quick. `e2e (<os>)` is the
 Playwright Electron suite over the built app, on macOS and Windows only; it
 always reports, and a pull request whose every changed path is documentation
 passes it without running the suite (`scripts/ci-decide.mjs`), while a push

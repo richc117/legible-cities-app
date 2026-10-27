@@ -5,32 +5,43 @@
 // edit, is worse than none, so each decision has a row that passes through
 // it and a row that would but for one thing.
 //
-// The last blocks run the script: `--check` over this repository's own
-// mutations files, so an entry that has rotted fails `npm test`; and the
-// whole job over a throwaway repository with its own tiny test, to see a
-// mutation go red, one go green, a title match nothing, a refusal, and the
-// file come back byte for byte after each.
+// The last blocks run the script, never Vitest: `--check` over this
+// repository's own mutations files, so an entry that has rotted fails
+// `npm test`, and over throwaway repositories; and the refusals the job
+// makes before it runs anything. What starts a real Vitest or sends a
+// signal is in mutations-runner.live.test.ts, a step of its own
+// (`npm run test:live`). This file is meant to take a few seconds.
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
-  rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import {
+  bites,
+  cleanup,
+  env,
+  git,
+  job,
+  made,
+  repo,
+  repository,
+  SCRIPT,
+  SOURCE,
+} from './mutations-lab'
 
 const POSIX = process.platform !== 'win32'
 
-const repo = resolve(__dirname, '../..')
-const SCRIPT = join(repo, 'scripts', 'mutations.mjs')
+afterEach(cleanup)
 
 interface Entry {
   file: string
@@ -54,7 +65,14 @@ interface Module {
   summary(rows: { verdict: string }[]): string
   baselineOf(report: unknown): { clean: boolean; why: string }
   parseArgs(args: string[]): { mode?: string; only?: string; error?: string }
-  restoreFile(repo: string, file: string, original: Buffer, mutated: Buffer, keepIn?: string): void
+  restoreFile(
+    repo: string,
+    file: string,
+    original: Buffer,
+    mutated: Buffer,
+    keepIn?: string,
+    written?: boolean,
+  ): void
 }
 // A URL built at run time, so the type checker does not look for
 // declarations of a plain JavaScript module.
@@ -283,9 +301,13 @@ describe('the command line', () => {
 })
 
 describe('putting a file back', () => {
-  const dirWith = (content: string | Buffer): string => {
+  const folder = (): string => {
     const dir = mkdtempSync(join(tmpdir(), 'lc-mutations-test-'))
     made.push(dir)
+    return dir
+  }
+  const dirWith = (content: string | Buffer): string => {
+    const dir = folder()
     writeFileSync(join(dir, 'f.txt'), content)
     return dir
   }
@@ -309,78 +331,77 @@ describe('putting a file back', () => {
   it('leaves a file as a person saved it, keeps the original, and says so', async () => {
     const { restoreFile } = await load()
     const dir = dirWith('what the person saved\n')
-    const keep = mkdtempSync(join(tmpdir(), 'lc-mutations-test-'))
-    made.push(keep)
+    const keep = folder()
     expect(() => restoreFile(dir, 'f.txt', original, mutated, keep)).toThrow(
       /^f\.txt changed while its mutation was running, so it was left exactly as it is now; the original is kept at /,
     )
     expect(readFileSync(join(dir, 'f.txt'), 'utf8')).toBe('what the person saved\n')
-    expect(readFileSync(join(keep, 'original-f.txt')).equals(original)).toBe(true)
+    const [copy] = readdirSync(keep)
+    expect(copy).toMatch(/^original-[0-9a-f]{8}-f\.txt$/)
+    expect(readFileSync(join(keep, copy)).equals(original)).toBe(true)
   })
 
-  it('stops, naming the file, where it cannot be written back', async () => {
+  it('still says the file changed where the copy of the original cannot be made, and where git has it', async () => {
     const { restoreFile } = await load()
-    const dir = mkdtempSync(join(tmpdir(), 'lc-mutations-test-'))
-    made.push(dir)
+    const dir = dirWith('what the person saved\n')
+    const missing = join(folder(), 'no', 'such', 'folder')
+    let message = ''
+    try {
+      restoreFile(dir, 'f.txt', original, mutated, missing)
+    } catch (error) {
+      message = (error as Error).message
+    }
+    expect(message).toMatch(/^f\.txt changed while its mutation was running/)
+    expect(message).toMatch(/a copy of the original could not be made \(.*\), but git holds it/)
+    expect(message).toContain('git show HEAD:f.txt')
+    expect(readFileSync(join(dir, 'f.txt'), 'utf8')).toBe('what the person saved\n')
+  })
+
+  it('names a copy by a short hash, so a deep path does not make a name too long', async () => {
+    const { restoreFile } = await load()
+    const deep = `${'a'.repeat(40)}/${'b'.repeat(40)}/${'c'.repeat(40)}/${'d'.repeat(40)}/f.txt`
+    const dir = folder()
+    mkdirSync(join(dir, dirname(deep)), { recursive: true })
+    writeFileSync(join(dir, deep), 'saved')
+    const keep = folder()
+    expect(() => restoreFile(dir, deep, original, mutated, keep)).toThrow(/is kept at /)
+    expect(readdirSync(keep)[0]).toMatch(/^original-[0-9a-f]{8}-f\.txt$/)
+  })
+
+  it('writes the original over a half-written mutation: the file is ours where the write did not finish', async () => {
+    const { restoreFile } = await load()
+    // A full disk leaves the start of the mutation: neither it nor the original.
+    const dir = dirWith(mutated.subarray(0, 4))
+    restoreFile(dir, 'f.txt', original, mutated, undefined, false)
+    expect(readFileSync(join(dir, 'f.txt')).equals(original)).toBe(true)
+  })
+
+  it('does not take that file for ours where the write finished: a person saved it', async () => {
+    const { restoreFile } = await load()
+    const dir = dirWith(mutated.subarray(0, 4))
+    expect(() => restoreFile(dir, 'f.txt', original, mutated, undefined, true)).toThrow(
+      /^f\.txt changed while/,
+    )
+    expect(readFileSync(join(dir, 'f.txt')).equals(mutated.subarray(0, 4))).toBe(true)
+  })
+
+  it('stops, naming the file, where it is not a file that can be put back', async () => {
+    const { restoreFile } = await load()
+    const dir = folder()
     mkdirSync(join(dir, 'f.txt'))
     // A directory is neither the mutation nor the original: it was changed.
     expect(() => restoreFile(dir, 'f.txt', original, mutated)).toThrow(/^f\.txt changed while/)
   })
+
+  it('stops, naming the file, where even the original cannot be written', async () => {
+    const { restoreFile } = await load()
+    const dir = folder()
+    mkdirSync(join(dir, 'f.txt'))
+    expect(() => restoreFile(dir, 'f.txt', original, mutated, undefined, false)).toThrow(
+      /^f\.txt could not be put back as it was/,
+    )
+  })
 })
-
-// A temporary directory per test, removed after.
-const made: string[] = []
-afterEach(() => {
-  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true })
-})
-
-/**
- * The environment of every git this file starts, and of the script: whatever
- * git exports to a hook (GIT_DIR, GIT_INDEX_FILE) is dropped, or the
- * throwaway repository would be the real one. The ceiling stops git looking
- * above the temporary folder.
- */
-function env(): NodeJS.ProcessEnv {
-  const kept: NodeJS.ProcessEnv = {}
-  for (const [name, value] of Object.entries(process.env)) {
-    if (!name.startsWith('GIT_')) kept[name] = value
-  }
-  return { ...kept, GIT_CEILING_DIRECTORIES: tmpdir() }
-}
-
-function git(cwd: string, ...args: string[]): string {
-  const result = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 30_000, env: env() })
-  if (result.status !== 0) throw new Error(`git ${args.join(' ')}: ${result.stderr}`)
-  return result.stdout.trim()
-}
-
-/** A repository with a base commit holding `files`. */
-function repository(files: Record<string, string>): {
-  dir: string
-  put(n: string, c: string): void
-} {
-  const root = mkdtempSync(join(tmpdir(), 'lc-mutations-test-'))
-  made.push(root)
-  const dir = join(root, 'work')
-  const hooks = join(root, 'no-hooks')
-  mkdirSync(dir)
-  mkdirSync(hooks)
-  git(dir, 'init', '--quiet', '--initial-branch=main')
-  git(dir, 'config', 'user.name', 'Test')
-  git(dir, 'config', 'user.email', 'test@example.invalid')
-  git(dir, 'config', 'commit.gpgsign', 'false')
-  // Git on Windows would otherwise rewrite line ends on the way in and out.
-  git(dir, 'config', 'core.autocrlf', 'false')
-  git(dir, 'config', 'core.hooksPath', hooks)
-  const put = (name: string, content: string): void => {
-    mkdirSync(dirname(join(dir, name)), { recursive: true })
-    writeFileSync(join(dir, name), content)
-  }
-  for (const [name, content] of Object.entries(files)) put(name, content)
-  git(dir, 'add', '-A')
-  git(dir, 'commit', '--quiet', '-m', 'base')
-  return { dir, put }
-}
 
 describe('the dirty-tree refusal', () => {
   it('lets a clean tree through', async () => {
@@ -529,81 +550,7 @@ describe('--check over a repository', () => {
   })
 })
 
-describe('the job over a repository', () => {
-  const SOURCE = 'export const below = (a: number, b: number): boolean => a < b\n'
-  const TEST = [
-    "import { expect, it } from 'vitest'",
-    "import { below } from '../../src/a'",
-    "it('is below where lower', () => expect(below(1, 2)).toBe(true))",
-    "it('is not below where equal', () => expect(below(2, 2)).toBe(false))",
-    "it('is a test the mutation cannot reach', () => expect(1 + 1).toBe(2))",
-    '// a ghost title that no test carries',
-    '',
-  ].join('\n')
-  const bites = {
-    file: 'src/a.ts',
-    find: 'a < b',
-    replace: 'a <= b',
-    test: 'tests/unit/a.test.ts',
-    title: 'is not below where equal',
-    why: 'the comparison widened',
-  }
-  const vacuous = { ...bites, title: 'is a test the mutation cannot reach' }
-  const ghost = { ...bites, title: 'a ghost title that no test carries' }
-  const twice = { ...bites, find: 'a' }
-
-  function job(list: unknown[], files: Record<string, string> = {}, extraEnv = {}) {
-    const { dir, put } = repository({
-      'src/a.ts': SOURCE,
-      'tests/unit/a.test.ts': TEST,
-      'tests/unit/a.mutations.json': JSON.stringify(list),
-      ...files,
-    })
-    // The script and the repository's own Vitest, which the throwaway
-    // repository reaches through a link; neither is committed.
-    mkdirSync(join(dir, 'scripts'))
-    copyFileSync(SCRIPT, join(dir, 'scripts', 'mutations.mjs'))
-    symlinkSync(join(repo, 'node_modules'), join(dir, 'node_modules'), 'junction')
-    appendExclude(dir)
-    const run = (...args: string[]) =>
-      spawnSync(process.execPath, ['scripts/mutations.mjs', ...args], {
-        cwd: dir,
-        encoding: 'utf8',
-        timeout: 170_000,
-        env: { ...env(), ...extraEnv },
-      })
-    return { dir, put, run }
-  }
-  function appendExclude(dir: string): void {
-    writeFileSync(join(dir, '.git', 'info', 'exclude'), '/scripts/\n/node_modules\n', { flag: 'a' })
-  }
-
-  it('says red for the mutation that bites, and green and refused (twice) for those that do not, and puts every file back', () => {
-    const { dir, run } = job([bites, vacuous, ghost, twice])
-    const result = run()
-    const out = result.stdout
-    const verdictOf = (title: string): string =>
-      out
-        .split('\n')
-        .find((line) => line.includes(title) && /\s(red|green|no test|refused)\s/.test(line)) ?? ''
-    expect(verdictOf('is not below where equal')).toMatch(/\sred\s/)
-    expect(verdictOf('is a test the mutation cannot reach')).toMatch(/\sgreen\s/)
-    expect(verdictOf('a ghost title that no test carries')).toMatch(/\srefused\s/)
-    expect(result.stderr).toMatch(/#3: refused: no test ran on clean code/)
-    expect(out).toMatch(/#4\s.*\srefused\s/)
-    expect(out).toContain('4 mutations: 1 red, 1 green, 2 refused - 3 did not go red')
-    expect(result.status).toBe(1)
-    expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
-    expect(git(dir, 'status', '--porcelain', '--', 'src', 'tests')).toBe('')
-  }, 180_000)
-
-  it('exits 0 where every entry is red, and --only runs just the one asked for', () => {
-    const { run } = job([bites, vacuous])
-    const result = run('--only', 'not below')
-    expect(result.stdout).toContain('1 mutations: 1 red')
-    expect(result.status).toBe(0)
-  }, 120_000)
-
+describe('the job refuses before it runs anything', () => {
   it('refuses to start over an edit under src, and leaves the edit alone', () => {
     const { dir, put, run } = job([bites])
     put('src/a.ts', SOURCE + '// my edit\n')
@@ -680,24 +627,6 @@ describe('the job over a repository', () => {
     },
   )
 
-  it('refuses an entry whose test is red on clean code, since a mutation proves nothing', () => {
-    const red = [
-      "import { expect, it } from 'vitest'",
-      "it('is red already', () => expect(1).toBe(2))",
-      "it('passes', () => expect(1).toBe(1))",
-      '',
-    ].join('\n')
-    const { dir, run } = job(
-      [{ ...bites, test: 'tests/unit/red.test.ts', title: 'is red already' }],
-      { 'tests/unit/red.test.ts': red },
-    )
-    const result = run()
-    expect(result.stdout).toContain('1 mutations: 1 refused - 1 did not go red')
-    expect(result.stderr).toMatch(/mutations\.json#1: refused: the test is red on clean code/)
-    expect(result.status).toBe(1)
-    expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
-  }, 120_000)
-
   it('does not run the mutations for an argument it does not know, or for --only with nothing after it', () => {
     const { dir, run } = job([bites])
     for (const [args, phrase] of [
@@ -711,276 +640,6 @@ describe('the job over a repository', () => {
     }
     expect(git(dir, 'status', '--porcelain', '--', 'src', 'tests')).toBe('')
   })
-
-  it('says why a test file would not load with the mutation in', () => {
-    const { run } = job([{ ...bites, replace: 'a <' }])
-    const result = run()
-    expect(result.stdout).toMatch(/\sno test\s/)
-    expect(result.stderr).toMatch(/no test: the test file did not load with the mutation in: \S/)
-  }, 120_000)
-
-  it.skipIf(!POSIX)(
-    'ends a mutation that never returns, and the worker it was running in',
-    () => {
-      const pidFile = join(mkdtempSync(join(tmpdir(), 'lc-mutations-test-')), 'pid')
-      made.push(dirname(pidFile))
-      const spin = `(process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)), (() => { for (;;) {} })(), a < b)`
-      const { run } = job(
-        [{ ...bites, replace: spin }],
-        {},
-        { LEGIBLE_MUTATIONS_TIMEOUT_MS: '8000' },
-      )
-      const result = run()
-      const pid = existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8')) : 0
-      const alive = (): boolean => {
-        try {
-          process.kill(pid, 0)
-          return true
-        } catch {
-          return false
-        }
-      }
-      // Wait for the kill to land, then make sure nothing is left spinning
-      // whatever the answer.
-      const until = Date.now() + 3000
-      while (alive() && Date.now() < until)
-        spawnSync(process.execPath, ['-e', ''], { timeout: 5000 })
-      const survived = pid > 0 && alive()
-      if (survived) process.kill(pid, 'SIGKILL')
-      expect(result.stdout).toMatch(/\stimed out\s/)
-      expect(pid).toBeGreaterThan(0)
-      expect(survived).toBe(false)
-    },
-    60_000,
-  )
-
-  // ---- a run that is watched while it goes -------------------------------
-
-  const slow = [
-    "import { expect, it } from 'vitest'",
-    "import { below } from '../../src/a'",
-    "it('is slow', async () => {",
-    '  await new Promise((done) => setTimeout(done, 1500))',
-    '  expect(below(2, 2)).toBe(false)',
-    '})',
-    '',
-  ].join('\n')
-  const slowEntry = { ...bites, test: 'tests/unit/slow.test.ts', title: 'is slow' }
-  const nap = (ms: number) => new Promise((done) => setTimeout(done, ms))
-
-  /** The script started to run for real, with what it prints and when it ends. */
-  function watch(dir: string, detached = false) {
-    const child = spawn(process.execPath, ['scripts/mutations.mjs'], {
-      cwd: dir,
-      env: env(),
-      detached,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    const seen = { stdout: '', stderr: '' }
-    child.stdout.on('data', (chunk: Buffer) => (seen.stdout += chunk.toString()))
-    child.stderr.on('data', (chunk: Buffer) => (seen.stderr += chunk.toString()))
-    const closed = new Promise<number | null>((done) => child.on('close', (code) => done(code)))
-    /** Until `src/a.ts` holds a mutation. */
-    const mutated = async (): Promise<void> => {
-      const until = Date.now() + 60_000
-      while (readFileSync(join(dir, 'src/a.ts'), 'utf8') === SOURCE && Date.now() < until) {
-        await nap(25)
-      }
-      expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).not.toBe(SOURCE)
-    }
-    return { child, seen, closed, mutated }
-  }
-
-  // [name, the signal, the exit code, whether the signal goes to the script's whole
-  // group, as a terminal's does, or to the script alone]
-  const signals: [string, NodeJS.Signals, number, boolean][] = [
-    ['SIGINT to the script', 'SIGINT', 130, false],
-    ['SIGINT to its whole group, as a terminal sends it', 'SIGINT', 130, true],
-    ['SIGHUP to the script', 'SIGHUP', 129, false],
-  ]
-  it.skipIf(!POSIX)(
-    'ends what a finished run left spinning in its group',
-    () => {
-      const pidFile = join(mkdtempSync(join(tmpdir(), 'lc-mutations-test-')), 'pid')
-      made.push(dirname(pidFile))
-      const orphan =
-        `(() => { const c = process.getBuiltinModule('node:child_process').spawn(process.execPath, ['-e', 'for(;;){}'], { stdio: 'ignore' }); ` +
-        `c.unref(); process.getBuiltinModule('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(c.pid)); return a < b })()`
-      const { run } = job([{ ...bites, replace: orphan }])
-      const result = run()
-      const pid = existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8')) : 0
-      const alive = (): boolean => {
-        try {
-          process.kill(pid, 0)
-          return true
-        } catch {
-          return false
-        }
-      }
-      const until = Date.now() + 3000
-      while (pid > 0 && alive() && Date.now() < until) {
-        spawnSync(process.execPath, ['-e', ''], { timeout: 5000 })
-      }
-      const survived = pid > 0 && alive()
-      if (survived) process.kill(pid, 'SIGKILL')
-      expect(result.stdout).toMatch(/\sgreen\s/)
-      expect(pid).toBeGreaterThan(0)
-      expect(survived).toBe(false)
-    },
-    60_000,
-  )
-
-  it.skipIf(!POSIX).each(signals)(
-    'stops between entries on %s, with every file put back and a non-zero exit',
-    async (_name, signal, exitCode, group) => {
-      const { dir } = job([slowEntry, bites], { 'tests/unit/slow.test.ts': slow })
-      const { child, seen, closed, mutated } = watch(dir, group)
-      await mutated()
-      // In its own group, Vitest does not receive a terminal's SIGINT: it
-      // finishes the run it is in, and that run is counted.
-      if (group) process.kill(-(child.pid as number), signal)
-      else child.kill(signal)
-      const code = await closed
-      expect(seen.stdout).toMatch(
-        new RegExp(
-          `STOPPED: ${signal} received; 1 of 2 mutations ran, and every file is as it was`,
-        ),
-      )
-      expect(seen.stdout).toMatch(/is slow\s+red\s/)
-      expect(seen.stdout).not.toContain('mutations:')
-      expect(code).toBe(exitCode)
-      expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
-    },
-    120_000,
-  )
-
-  it.skipIf(!POSIX)(
-    'stops, and says so, for a signal that came during the last entry',
-    async () => {
-      const { dir } = job([slowEntry], { 'tests/unit/slow.test.ts': slow })
-      const { child, seen, closed, mutated } = watch(dir)
-      await mutated()
-      child.kill('SIGINT')
-      const code = await closed
-      expect(seen.stdout).toMatch(/STOPPED: SIGINT received; 1 of 1 mutations ran/)
-      expect(code).toBe(130)
-      expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
-    },
-    120_000,
-  )
-
-  it.skipIf(!POSIX)(
-    'stops before writing a mutation when the signal came during its baseline',
-    async () => {
-      const { dir } = job([slowEntry], { 'tests/unit/slow.test.ts': slow })
-      const { child, seen, closed } = watch(dir)
-      // The baseline is Vitest and 1.5 s of waiting; this lands in it.
-      await nap(700)
-      child.kill('SIGINT')
-      let everMutated = false
-      const watching = (async () => {
-        while (!seen.stdout.includes('STOPPED')) {
-          if (readFileSync(join(dir, 'src/a.ts'), 'utf8') !== SOURCE) everMutated = true
-          await nap(20)
-        }
-      })()
-      const code = await closed
-      await watching
-      expect(seen.stdout).toMatch(/STOPPED: SIGINT received; 0 of 1 mutations ran/)
-      expect(everMutated).toBe(false)
-      expect(code).toBe(130)
-    },
-    120_000,
-  )
-
-  it.skipIf(!POSIX)(
-    'leaves a file as a person saved it during its mutation, names it, and keeps the original',
-    async () => {
-      const { dir } = job([slowEntry], { 'tests/unit/slow.test.ts': slow })
-      const { seen, closed, mutated } = watch(dir)
-      await mutated()
-      writeFileSync(join(dir, 'src/a.ts'), 'export const below = 1 // saved by a person\n')
-      const code = await closed
-      expect(seen.stdout).toMatch(/STOPPED: src\/a\.ts changed while its mutation was running/)
-      expect(code).toBe(1)
-      expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(
-        'export const below = 1 // saved by a person\n',
-      )
-      const kept = /the original is kept at (\S+?): /.exec(seen.stdout)?.[1]
-      expect(kept).toBeDefined()
-      made.push(dirname(kept as string))
-      expect(readFileSync(kept as string, 'utf8')).toBe(SOURCE)
-    },
-    120_000,
-  )
-
-  it.skipIf(!POSIX)(
-    'refuses an entry whose file was edited between entries, and keeps the edit',
-    async () => {
-      const second = { ...bites, file: 'lib/b.ts' }
-      const { dir } = job([slowEntry, second], {
-        'tests/unit/slow.test.ts': slow,
-        'lib/b.ts': 'export const x = a < b\n',
-      })
-      const { seen, closed, mutated } = watch(dir)
-      await mutated()
-      writeFileSync(join(dir, 'lib/b.ts'), 'export const x = a < b\n// my edit\n')
-      const code = await closed
-      expect(seen.stderr).toMatch(/lib\/b\.ts was edited since the run began/)
-      expect(seen.stdout).toMatch(/#2\s.*\srefused\s/)
-      expect(code).toBe(1)
-      expect(readFileSync(join(dir, 'lib/b.ts'), 'utf8')).toBe(
-        'export const x = a < b\n// my edit\n',
-      )
-      expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
-    },
-    120_000,
-  )
-
-  it("measures with the baseline's own command: a test that needs an earlier one is refused", () => {
-    const needy = [
-      "import { expect, it } from 'vitest'",
-      'let ready = false',
-      "it('first', () => { ready = true })",
-      "it('second needs the first', () => expect(ready).toBe(true))",
-      '',
-    ].join('\n')
-    const { dir, run } = job(
-      [{ ...bites, test: 'tests/unit/needy.test.ts', title: 'second needs the first' }],
-      { 'tests/unit/needy.test.ts': needy },
-    )
-    const result = run()
-    expect(result.stdout).toContain('1 mutations: 1 refused - 1 did not go red')
-    expect(result.stderr).toMatch(/refused: the test is red on clean code/)
-    expect(readFileSync(join(dir, 'src/a.ts'), 'utf8')).toBe(SOURCE)
-  }, 120_000)
-
-  it('refuses a verdict when the mutation changed which tests ran', () => {
-    const many = [
-      "import { it } from 'vitest'",
-      "import { count } from '../../src/c'",
-      'for (let i = 0; i < count; i++) it(`counted ${i}`, () => {})',
-      '',
-    ].join('\n')
-    const { run } = job(
-      [
-        {
-          file: 'src/c.ts',
-          find: 'count = 1',
-          replace: 'count = 2',
-          test: 'tests/unit/many.test.ts',
-          title: 'counted',
-          why: 'the number of tests depends on the source',
-        },
-      ],
-      { 'src/c.ts': 'export const count = 1\n', 'tests/unit/many.test.ts': many },
-    )
-    const result = run()
-    expect(result.stdout).toContain('1 mutations: 1 refused - 1 did not go red')
-    expect(result.stderr).toMatch(
-      /the mutation changed which tests ran \(1 on clean code, 2 mutated\)/,
-    )
-  }, 120_000)
 
   it.skipIf(!POSIX)(
     'takes a path literally: a file called "*.ts" does not name its neighbours',

@@ -62,6 +62,7 @@
 
 import { Buffer } from 'node:buffer'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   lstatSync,
   mkdtempSync,
@@ -72,7 +73,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
@@ -510,9 +511,11 @@ class ChangedDuringRun extends Error {}
  * a file git does not track would have nothing to restore from. The file is
  * read first, and unless it holds the mutation (`mutated`) or the original,
  * a person saved it meanwhile and nothing is written: a copy of `original`
- * goes to `keepIn` (when given) and this throws.
+ * goes to `keepIn` (when given) and this throws. Where the mutation's own
+ * write did not finish (`written` is false: a full disk leaves a truncated
+ * file) the file is ours and the original is written without that look.
  */
-export function restoreFile(repo, file, original, mutated, keepIn) {
+export function restoreFile(repo, file, original, mutated, keepIn, written = true) {
   const path = join(repo, file)
   let before = null
   try {
@@ -520,12 +523,19 @@ export function restoreFile(repo, file, original, mutated, keepIn) {
   } catch {
     // Handled below, as a file that is not what it was.
   }
-  if (before === null || !(before.equals(mutated) || before.equals(original))) {
+  const ours = before !== null && (before.equals(mutated) || before.equals(original))
+  if (written && !ours) {
     let kept = ''
     if (keepIn !== undefined) {
-      const copy = join(keepIn, `original-${file.replaceAll('/', '__')}`)
-      writeFileSync(copy, original)
-      kept = `; the original is kept at ${copy}`
+      // A short name: a deep path flattened into one would be too long for some systems.
+      const short = createHash('sha1').update(file).digest('hex').slice(0, 8)
+      const copy = join(keepIn, `original-${short}-${basename(file)}`)
+      try {
+        writeFileSync(copy, original)
+        kept = `; the original is kept at ${copy}`
+      } catch (error) {
+        kept = `; a copy of the original could not be made (${error.message}), but git holds it: git show HEAD:${file}`
+      }
     }
     throw new ChangedDuringRun(
       `${file} changed while its mutation was running, so it was left exactly as it is now${kept}: ` +
@@ -578,13 +588,15 @@ export async function runEntry(repo, entry, workDir, baselines, outputFile, stop
   const original = readFileSync(path)
   const mutated = applyMutation(original.toString('utf8'), entry)
   let outcome
+  let written = false
   try {
     writeFileSync(path, mutated)
+    written = true
     outcome = runTest(repo, entry, outputFile)
   } finally {
     // Whatever happened above, the file goes back, unless somebody else's
     // save is in it; a failure either way is what stops the run.
-    restoreFile(repo, entry.file, original, Buffer.from(mutated), workDir)
+    restoreFile(repo, entry.file, original, Buffer.from(mutated), workDir, written)
   }
   if ((outcome.verdict === 'red' || outcome.verdict === 'green') && outcome.ran !== clean.ran) {
     return {

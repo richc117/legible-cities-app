@@ -18,6 +18,7 @@
       "Bash(npm run lint*)",
       "Bash(npm run typecheck*)",
       "Bash(npm test*)",
+      "Bash(npm run test:live)",
       "Bash(npm run test:e2e*)",
       "Bash(npm run build*)",
       "Bash(npm run dist:check darwin-arm64)",

@@ -43,7 +43,9 @@ export default defineConfig({
         test: {
           name: 'unit',
           include: ['tests/unit/**/*.test.{ts,tsx}'],
-          exclude: ['tests/unit/**/*.browser.test.tsx'],
+          // The browser project's files, and the mutation runner's live tests,
+          // which run as a step of their own (`npm run test:live`).
+          exclude: ['tests/unit/**/*.browser.test.tsx', 'tests/unit/**/*.live.test.ts'],
           environment: 'node',
           setupFiles: ['tests/support/dom-setup.ts'],
         },

@@ -105,6 +105,13 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Tests that start a Vitest of their own and send signals, kept out of
+      # `npm test` for their time (tests/unit/mutations-runner.live.test.ts).
+      # They rely on POSIX process groups and signals.
+      - name: Live tests of the mutation runner
+        if: runner.os != 'Windows'
+        run: npm run test:live
+
       - name: Build
         run: npm run build
 
