@@ -485,8 +485,15 @@ export class Exporter {
     return this.#live.size
   }
 
-  #emit(id: string, stage: ExportStage, fraction: number, message: string): void {
-    const progress: ExportProgress = { id, stage, fraction, message }
+  #emit(
+    id: string,
+    stage: ExportStage,
+    fraction: number,
+    message: string,
+    /** The frames done and the frames in all, on a report that counts them. */
+    count?: { done: number; of: number },
+  ): void {
+    const progress: ExportProgress = { id, stage, fraction, message, ...count }
     for (const listener of this.#listeners) listener(progress)
   }
 
@@ -677,7 +684,10 @@ export class Exporter {
         still,
         signal: control.abort.signal,
         onProgress: (done, of) =>
-          this.#emit(token, 'capture', done / of, `Captured ${done} of ${of} frames.`),
+          this.#emit(token, 'capture', done / of, `Captured ${done} of ${of} frames.`, {
+            done,
+            of,
+          }),
       })
       this.#stopIfCancelled(control)
 
@@ -710,13 +720,16 @@ export class Exporter {
         'export.encode',
         encodeParams,
         control,
-        (fraction) =>
+        (fraction) => {
+          const count = { done: Math.round(fraction * captured.frames), of: captured.frames }
           this.#emit(
             token,
             'encode',
             fraction,
-            `Encoded ${Math.round(fraction * captured.frames)} of ${captured.frames} frames.`,
-          ),
+            `Encoded ${count.done} of ${count.of} frames.`,
+            count,
+          )
+        },
       )
       const files = isObject(encoded) && Array.isArray(encoded.files) ? encoded.files : []
       const written = files.find((f) => isObject(f) && f.path === dest) ?? files[0]

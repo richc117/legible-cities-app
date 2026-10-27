@@ -18,6 +18,7 @@ import {
   type ExportChoice,
   type ExportProgress,
   type ExportResult,
+  type ExportStage,
 } from '../../src/shared/export'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 
@@ -134,6 +135,8 @@ describe('ExportRun', () => {
       stage: 'capture',
       fraction: 0.5,
       message: 'Captured 30 of 60 frames.',
+      done: 30,
+      of: 60,
     })
     expect(run.snapshot.stages.map((s) => s.state)).toEqual(['done', 'running', 'pending'])
     // A report for another export is ignored.
@@ -144,6 +147,8 @@ describe('ExportRun', () => {
       stage: 'encode',
       fraction: 0.2,
       message: 'Encoded 12 of 60 frames.',
+      done: 12,
+      of: 60,
     })
     expect(run.snapshot.stages.map((s) => s.state)).toEqual(['done', 'done', 'running'])
 
@@ -166,6 +171,8 @@ describe('ExportRun', () => {
       stage: 'capture',
       fraction: 0.1,
       message: 'Captured 6 of 60 frames.',
+      done: 6,
+      of: 60,
     })
     run.cancel()
     expect(stub.cancelled).toEqual(['tok-1'])
@@ -191,6 +198,8 @@ describe('ExportRun', () => {
       stage: 'encode',
       fraction: 0.9,
       message: 'Encoded 54 of 60 frames.',
+      done: 54,
+      of: 60,
     })
     run.cancel()
     expect(stub.cancelled).toEqual(['tok-1'])
@@ -227,7 +236,14 @@ describe('ExportRun', () => {
     const stub = stubBridge()
     const run = new ExportRun(stub.bridge)
     run.start(project(), READY, REEL)
-    stub.report({ id: 'tok-1', stage: 'encode', fraction: 1, message: 'Encoded 60 of 60 frames.' })
+    stub.report({
+      id: 'tok-1',
+      stage: 'encode',
+      fraction: 1,
+      message: 'Encoded 60 of 60 frames.',
+      done: 60,
+      of: 60,
+    })
     stub.resolve({ file: 'x.mp4', bytes: 10, frames: 60, ...flags })
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', file: 'x.mp4', message: said })
@@ -315,6 +331,8 @@ describe('ExportRun', () => {
       stage: 'capture',
       fraction: 0.5,
       message: 'Captured 30 of 60 frames.',
+      done: 30,
+      of: 60,
     })
     stub.reject({ code: ERROR_CODES.engineExited, message: 'The engine stopped.' })
     await tick()
@@ -326,6 +344,8 @@ describe('ExportRun', () => {
       stage: 'encode',
       fraction: 0.5,
       message: 'Encoded 30 of 60 frames.',
+      done: 30,
+      of: 60,
     })
     stub.reject({ code: ERROR_CODES.engineExited, message: 'The engine stopped.' })
     await tick()
@@ -337,6 +357,8 @@ describe('ExportRun', () => {
       stage: 'encode',
       fraction: 0.5,
       message: 'Encoded 30 of 60 frames.',
+      done: 30,
+      of: 60,
     })
     stub.reject({ code: -32000, message: 'ffmpeg exited 1' })
     await tick()
@@ -391,28 +413,49 @@ describe('the small functions', () => {
     expect(stagesAt(same, 'nowhere')).toBe(same)
   })
   it('announcement turns a count of frames into a tenth of them and leaves other sentences be', () => {
-    expect(announcement('Capturing 108 frames.', null)).toBe('Capturing 108 frames.')
-    // Before the first tenth the sentence already spoken stands.
-    expect(announcement('Captured 10 of 108 frames.', 'Capturing 108 frames.')).toBe(
+    // A report as the main process sends one: a count carries `done` and
+    // `of`, a stage's start and the unproven line do not.
+    // Mutation: `announcement` ignoring `of` (a tenth of `done` alone) - the
+    // first count is then spoken too early and the rest wrong.
+    const said = (stage: ExportStage, message: string) => ({ stage, message })
+    const counted = (stage: ExportStage, verb: string, done: number, of: number) => ({
+      stage,
+      message: `${verb} ${done} of ${of} frames.`,
+      done,
+      of,
+    })
+    expect(announcement(said('capture', 'Capturing 108 frames.'), null)).toBe(
       'Capturing 108 frames.',
     )
-    expect(announcement('Captured 11 of 108 frames.', 'Capturing 108 frames.')).toBe(
+    // Before the first tenth the sentence already spoken stands.
+    expect(announcement(counted('capture', 'Captured', 10, 108), 'Capturing 108 frames.')).toBe(
+      'Capturing 108 frames.',
+    )
+    expect(announcement(counted('capture', 'Captured', 11, 108), 'Capturing 108 frames.')).toBe(
       'Captured 10 percent of the frames.',
     )
-    expect(announcement('Encoded 108 of 108 frames.', 'x')).toBe(
+    expect(announcement(counted('encode', 'Encoded', 108, 108), 'x')).toBe(
       'Encoded 100 percent of the frames.',
     )
     // A still is one frame: it goes from nothing to all of it.
-    expect(announcement('Captured 1 of 1 frames.', 'Capturing 1 frames.')).toBe(
+    expect(announcement(counted('capture', 'Captured', 1, 1), 'Capturing 1 frames.')).toBe(
       'Captured 100 percent of the frames.',
     )
     // The sentence that says the frames were not proven fresh is not a count.
     const unproven = `Captured 108 of 108 frames. ${UNPROVEN_FRAMES}`
-    expect(announcement(unproven, 'x')).toBe(unproven)
+    expect(announcement(said('capture', unproven), 'x')).toBe(unproven)
     // A count of nothing out of nothing cannot be a share of it.
-    expect(announcement('Captured 0 of 0 frames.', 'Capturing 0 frames.')).toBe(
+    expect(announcement(counted('capture', 'Captured', 0, 0), 'Capturing 0 frames.')).toBe(
       'Capturing 0 frames.',
     )
+    // The count is the report's, never the words': words that read as a
+    // count, sent without one, are spoken as they were sent.
+    expect(announcement(said('capture', 'Captured 54 of 108 frames.'), 'x')).toBe(
+      'Captured 54 of 108 frames.',
+    )
+    expect(
+      announcement({ stage: 'encode', message: 'Encoding the frames.', done: 54, of: 108 }, 'x'),
+    ).toBe('Encoded 50 percent of the frames.')
   })
   it('sentenceFor prefers the hint, then the message, then a plain sentence', () => {
     expect(

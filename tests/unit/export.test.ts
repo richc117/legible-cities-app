@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { CaptureError, type CaptureOptions, type CaptureResult } from '../../src/main/capture'
-import { ExportRun } from '../../src/renderer/src/engine/exportRun'
+import { announcement, ExportRun } from '../../src/renderer/src/engine/exportRun'
 import {
   destinationLate,
   destinationRefusal,
@@ -527,6 +527,64 @@ describe('the export, step by step', () => {
     expect(UNPROVEN_FRAMES).toBe(
       'The frames could not be proven fresh, because an older engine drew this map; draw the map again to prove them.',
     )
+  })
+
+  it('counts the frames for the page in its reports, which the page speaks in tenths', async () => {
+    // Issue 433, part b: what the main process composes, read by the
+    // renderer's own reader, so the two sides are held together. A count
+    // is `done` and `of` on the report, set where the two counting
+    // sentences are made and nowhere else; the page never reads the words.
+    // Mutation: `done`/`of` left off main's capture report - the capture
+    // is then spoken frame by frame, as sent.
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan())
+    await until('the capture', () => h.cap.calls.length === 1)
+    const reported = h.cap.calls[0].options.onProgress
+    for (let done = 1; done < 60; done++) reported?.(done, 60)
+    h.cap.calls[0].finish(60, false)
+    await until('the encode', () => h.eng.requests.length === 2)
+    for (const fraction of [0.25, 0.5, 1]) h.eng.notify(2, fraction)
+    const dest = join(h.exportFolder, 'Los Angeles', 'la-metro-rail-instagram-reel.mp4')
+    h.eng.requests[1].resolve({ files: [{ path: dest, bytes: 1 }], sidecar: {} })
+    await expect(result).resolves.toMatchObject({ unproven: true })
+
+    const counted = h.progress.filter((p) => p.done !== undefined || p.of !== undefined)
+    expect(
+      h.progress.filter((p) => !counted.includes(p)).map((p) => p.message),
+      'a stage’s start and the unproven line carry no count',
+    ).toEqual([
+      'Planning the export.',
+      'Planned la-metro-rail-instagram-reel.mp4: 60 frames at 30 frames per second.',
+      'Capturing 60 frames.',
+      `Captured 60 of 60 frames. ${UNPROVEN_FRAMES}`,
+      'Encoding 60 frames.',
+    ])
+    for (const p of counted)
+      expect(p.message, 'the count is the sentence’s').toBe(
+        `${p.stage === 'capture' ? 'Captured' : 'Encoded'} ${p.done} of ${p.of} frames.`,
+      )
+    expect(counted.map((p) => [p.stage, p.done, p.of]).slice(-3)).toEqual([
+      ['encode', 15, 60],
+      ['encode', 30, 60],
+      ['encode', 60, 60],
+    ])
+
+    // What the page says of them, one report after another, as the run does.
+    const spoken: string[] = []
+    for (const p of h.progress) spoken.push(announcement(p, spoken.at(-1) ?? null))
+    expect(spoken.filter((now, i) => now !== spoken[i - 1])).toEqual([
+      'Planning the export.',
+      'Planned la-metro-rail-instagram-reel.mp4: 60 frames at 30 frames per second.',
+      'Capturing 60 frames.',
+      ...Array.from({ length: 10 }, (_, i) => `Captured ${(i + 1) * 10} percent of the frames.`),
+      `Captured 60 of 60 frames. ${UNPROVEN_FRAMES}`,
+      'Encoding 60 frames.',
+      'Encoded 20 percent of the frames.',
+      'Encoded 50 percent of the frames.',
+      'Encoded 100 percent of the frames.',
+    ])
   })
 
   it('says nothing of proof when the capture proved its frames', async () => {
