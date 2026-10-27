@@ -8,8 +8,8 @@
 # vendor/pins.json.
 #
 #   engine  https://github.com/richc117/legible-cities
-#   tag     v0.20.0
-#   commit  5145a2c17fac65ab2dc099d8e4c91f2cf4c6001d
+#   tag     v0.21.0
+#   commit  5c05a7bf63067af21d35d20473eacc7dbfa5f038
 #   uv      0.10.2
 #
 # Written by scripts/lock-python.sh; never edited by hand. To regenerate it,
