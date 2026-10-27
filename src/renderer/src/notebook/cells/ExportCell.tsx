@@ -42,7 +42,7 @@ import { useProject } from '../context'
  *
  * Its own function so the order is held to a test rather than to a reading
  * of the file. The planner's own late answers are refused in
- * `ExportTab.tsx`, which is the other half of it.
+ * `export/useExportPreview.ts`, which is the other half of it.
  */
 export const toggleExportCell =
   (clearPreview: () => void, onToggle: (open: boolean) => void) =>
