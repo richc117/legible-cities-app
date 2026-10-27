@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // The jobs' live region, rendered, with what reaches its text (issue 330):
 // the same sentence announced twice has to leave the region empty, full,
 // empty, full, because a screen reader hears a change and nothing else.
@@ -9,11 +10,12 @@
 // had the refill join the clear's batch, equal to what the region already
 // showed, and nothing reached the DOM.
 //
-// The suite renders nothing to a DOM, and needs none for this: the real
-// hook and the real element go through React's own client into a stand-in
-// for the few things a `<p>` asks of a document, and the stand-in keeps
-// every value its text was set to, which is what a MutationObserver would
-// see. No dependency is added (compare line-options-hook.test.tsx).
+// The real hook and the real element are drawn into jsdom through React's
+// own client (`tests/support/render.tsx`, ADR-059), and what reaches the
+// region is read by a MutationObserver on it, which is what a screen reader
+// is told of: each change of its text, in order. A write that changes
+// nothing - the empty text put into a region that is already empty - is no
+// change to the document and is not seen, as it is not heard.
 //
 // Mutations, watched failing:
 // - `writeToRegion` in src/renderer/src/Jobs.tsx putting its text in after a
@@ -25,78 +27,15 @@
 //   microtasks; it is the fault of a state setter, which the microtask only
 //   resembles, and it does not guard the write.
 // - `LiveRegion` drawing the `children` it is given instead of `{null}`: only
-//   "draws no children" fails, on "expected 'text of its own' to be ''". The
+//   "draws no children" fails, on "expected Text{} to be null". The
 //   type half of that refusal (`@ts-expect-error` in the same test) is held
 //   by `npm run typecheck`, which covers the tests, and is what turns
 //   `{announcement}` put back into a region's markup into a build error.
 
 import { act, type JSX } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { LiveRegion, useAnnouncer } from '../../src/renderer/src/Jobs'
-
-// React's client reads this to know it is driven by `act`.
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-/**
- * An element as far as React's client and a ref reach one. Its text is a
- * property whose every assignment is kept, in order: a write of the same
- * text is still a write, as it is to a real element, whose children are
- * replaced.
- */
-class StandInElement {
-  readonly nodeType = 1
-  readonly attributes: Record<string, string> = {}
-  readonly written: string[] = []
-  #text = ''
-  readonly #children: StandInElement[] = []
-  constructor(
-    readonly tagName: string,
-    readonly ownerDocument: unknown,
-  ) {}
-  get nodeName(): string {
-    return this.tagName
-  }
-  get firstChild(): StandInElement | null {
-    return this.#children[0] ?? null
-  }
-  get textContent(): string {
-    return this.#text
-  }
-  set textContent(text: string) {
-    this.#text = text
-    this.written.push(text)
-  }
-  setAttribute(name: string, value: string): void {
-    this.attributes[name] = value
-  }
-  appendChild(child: StandInElement): StandInElement {
-    this.#children.push(child)
-    return child
-  }
-  removeChild(child: StandInElement): StandInElement {
-    this.#children.splice(this.#children.indexOf(child), 1)
-    return child
-  }
-  addEventListener(): void {}
-  removeEventListener(): void {}
-}
-
-/** The container `createRoot` asks for, in a document that makes the elements. */
-function container(): StandInElement {
-  const document: Record<string, unknown> = {
-    nodeType: 9,
-    activeElement: null,
-    body: null,
-    createElement: (tag: string) => new StandInElement(tag.toUpperCase(), document),
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }
-  const window = { document, HTMLIFrameElement: class {} }
-  document.defaultView = window
-  vi.stubGlobal('window', window)
-  return new StandInElement('DIV', document)
-}
+import { cleanup, renderPanel, type RenderedPanel } from '../support/render'
 
 let announce: (sentence: string) => void
 /** The frames the announcer waits on, run by hand: a frame is a thing that happens or does not. */
@@ -122,23 +61,43 @@ function Region({ extra = {} }: { extra?: object }): JSX.Element {
   )
 }
 
-let root: Root
-let region: StandInElement
-let mounted = false
+let view: RenderedPanel
+let region: HTMLParagraphElement
+let observer: MutationObserver
+let seen: string[]
 
-beforeEach(async () => {
+/**
+ * Every text the region has come to show since it was drawn, in order, as
+ * its observer hears the changes: the records it has delivered, and the ones
+ * still queued for it, taken now so a test need not wait for a microtask.
+ */
+function written(): string[] {
+  hear(observer.takeRecords())
+  return seen
+}
+
+/** Each change heard, as the text it leaves: a text node's new value, or the children put in. */
+function hear(records: MutationRecord[]): void {
+  for (const record of records)
+    seen.push(
+      record.type === 'characterData'
+        ? (record.target.textContent ?? '')
+        : [...record.addedNodes].map((node) => node.textContent ?? '').join(''),
+    )
+}
+
+beforeEach(() => {
   frames = []
-  const into = container()
-  root = createRoot(into as unknown as Element)
-  mounted = true
-  await act(async () => root.render(<Region />))
-  region = into.firstChild as StandInElement
+  view = renderPanel(<Region />)
+  region = view.host.firstChild as HTMLParagraphElement
+  seen = []
+  observer = new MutationObserver(hear)
+  observer.observe(region, { childList: true, characterData: true, subtree: true })
 })
 
 afterEach(() => {
-  if (mounted) act(() => root.unmount())
-  mounted = false
-  vi.unstubAllGlobals()
+  observer.disconnect()
+  cleanup()
 })
 
 const SENTENCE = 'Los Angeles: Layout run, failed.'
@@ -146,13 +105,13 @@ const SENTENCE = 'Los Angeles: Layout run, failed.'
 describe('the jobs live region, rendered', () => {
   it('is the element React drew, with the attributes a reader needs', () => {
     expect(region.tagName).toBe('P')
-    expect(region.attributes).toMatchObject({
-      role: 'status',
-      'aria-live': 'polite',
-      'data-announces': 'jobs',
-    })
+    expect(region.getAttribute('role')).toBe('status')
+    expect(region.getAttribute('aria-live')).toBe('polite')
+    expect(region.getAttribute('data-announces')).toBe('jobs')
+    expect(region.className).toBe('visually-hidden')
     // React gave it no text of its own to overwrite or to lose.
-    expect(region.written).toEqual([])
+    expect(region.childNodes).toHaveLength(0)
+    expect(written()).toEqual([])
   })
 
   it('is full a frame later, from one announcement, and not before', () => {
@@ -176,7 +135,9 @@ describe('the jobs live region, rendered', () => {
     ).toBe('')
     frames.shift()?.()
     expect(region.textContent).toBe(SENTENCE)
-    expect(region.written).toEqual(['', SENTENCE, '', SENTENCE])
+    // The first empty text met an empty region and changed nothing; the
+    // second is the one that matters, and it is a change.
+    expect(written()).toEqual([SENTENCE, '', SENTENCE])
   })
 
   it('does so when the second end comes in the frame the first was waiting on and no render ran between', async () => {
@@ -188,7 +149,7 @@ describe('the jobs live region, rendered', () => {
       announce(SENTENCE)
       frames.shift()?.()
     })
-    expect(region.written).toEqual(['', SENTENCE, '', SENTENCE])
+    expect(written()).toEqual([SENTENCE, '', SENTENCE])
     expect(region.textContent).toBe(SENTENCE)
   })
 
@@ -197,13 +158,13 @@ describe('the jobs live region, rendered', () => {
     announce('B: Export as x, cancelled.')
     expect(frames).toHaveLength(1)
     frames.shift()?.()
-    expect(region.written).toEqual(['', 'A: Layout run, finished. B: Export as x, cancelled.'])
+    expect(written()).toEqual(['A: Layout run, finished. B: Export as x, cancelled.'])
   })
 
   it("draws no children, whatever it is given: a text of React's own would be lost to the writer", async () => {
     // The type refuses `children` (below); this is the same refusal at run
     // time, for a caller that got past it.
-    await act(async () => root.render(<Region extra={{ children: 'text of its own' }} />))
+    await act(async () => view.rerender(<Region extra={{ children: 'text of its own' }} />))
     expect(region.firstChild).toBeNull()
     expect(region.textContent).toBe('')
     // @ts-expect-error a live region takes no children
@@ -213,7 +174,7 @@ describe('the jobs live region, rendered', () => {
   it('keeps what it was told across a render of the screen that holds it', async () => {
     announce(SENTENCE)
     frames.shift()?.()
-    await act(async () => root.render(<Region />))
+    await act(async () => view.rerender(<Region />))
     expect(region.textContent, 'a render does not give the region children to overwrite it').toBe(
       SENTENCE,
     )

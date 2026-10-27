@@ -2690,8 +2690,25 @@ wait for "ready" is `READY_DEADLINE_MS` (`tests/support/ready.ts`), a
 handshake, the failed engine's ending (`shutdownMs`), the first restart
 delay and a second handshake from the supervisor's own bounds. With
 `LEGIBLE_KEEP_LOGS` set, which only the loop workflow does, the teardown
-copies the run's logs into `test-results/logs/` so the artefact has them. Unit tests cover, among much else (`tests/unit/` is the
-list), the traversal matrix,
+copies the run's logs into `test-results/logs/` so the artefact has them.
+
+The unit suite is two Vitest projects, and `npm test` runs both (ADR-059).
+`unit` runs in Node; a test that renders a component starts with
+`// @vitest-environment jsdom` and draws it through `tests/support/render.tsx`
+(`renderCell` for a notebook cell, with the screen's state completed from
+one default, `renderPanel` for anything else), presses it with a real click
+or a real `change`, and reads the document. `tests/support/dom-setup.ts`
+stubs the one thing jsdom lacks that the app reaches, `ResizeObserver`, and
+a test that would need a second stub belongs in the other project.
+`browser` runs the files named `*.browser.test.tsx` in Playwright's headless
+Chromium - not Electron - for what jsdom cannot show of the kit: focus
+delegated into a `<fig-button>`'s shadow root, the popover, anchor
+positioning, `checkVisibility`. It is kept small, the kit's tests and not
+every cell's, and it fails, never skips, where the browser is not installed;
+`ci (<os>)` installs it, cached by Playwright's version and the platform.
+The focus ring's width and the kit's geometry stay end to end, since
+neither layer lays anything out as Electron does. Unit tests cover, among
+much else (`tests/unit/` is the list), the traversal matrix,
 configuration parsing, the tokens, the record's validators and versioning,
 the store against a temporary directory, the JSON-RPC framing, the
 interpreter resolution and the environment allowlist, the supervisor

@@ -4,7 +4,7 @@
 
 **Created**: 2026-10-24
 
-**Status**: Partly implemented. Part 1 is built: FR-001 (#503, 2026-10-24), FR-002 (#504, 2026-10-24) and FR-003 (#506, 2026-10-25). Part 2 (the DOM layer, FR-004 to FR-007) and Part 3 (the mutation job, FR-008) are not built; issue 427 is open.
+**Status**: Partly implemented. Part 1 is built: FR-001 (#503, 2026-10-24), FR-002 (#504, 2026-10-24) and FR-003 (#506, 2026-10-25). Part 2 (the DOM layer) is begun, as of 2026-10-26: FR-004 is decided by ADR-059 (jsdom by default, Vitest's browser mode in Chromium for the kit's tests); FR-005 was met before the spike by `cheap-edit.test.tsx` and is kept, now in jsdom with a real press; FR-006 is begun, with `cheap-edit.test.tsx` and `announcer-region.test.tsx` converted to jsdom through `tests/support/render.tsx`, and the first browser test (`export-run-handback.browser.test.tsx`) and render count (`cell-renders.test.tsx`) added. FR-007 and Part 3 (the mutation job, FR-008) are not built; issue 427 is open.
 
 **Input**: Issue 427, "Spec: the test pyramid (DOM layer, conformance, CI split)", from the codebase review of 15 Oct 2026 (findings R7-01, R7-02, R7-04, R7-05, R4-05, R8-01). The review read 667b48c. Every claim below about the code as it stands was re-checked at a3c775d on 24 Oct 2026. Where the review has been overtaken, as #441 overtook it on the CI step's name, timeout and concurrency, this spec says so.
 

@@ -3,7 +3,8 @@
 #
 # `ci (<os>)` is the fast layer, on Ubuntu, macOS and Windows for every pull
 # request and every push to `main`: style, types, unit tests and a build. It
-# launches nothing and answers in minutes.
+# launches no Electron and answers in minutes; the unit tests' browser
+# project runs in a headless Chromium of Playwright's (ADR-059).
 #
 # `e2e (<os>)` is the long layer, on macOS and Windows, the two platforms
 # people install: the Playwright suite over the real application. It always
@@ -42,6 +43,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, macos-15, windows-latest]
+    # Where Playwright keeps the browser the unit suite's browser project
+    # runs in (ADR-059): under the workspace, so that one cache path serves
+    # all three platforms, and under node_modules, which nothing lints,
+    # formats or commits.
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/node_modules/.cache/ms-playwright
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -60,6 +67,34 @@ jobs:
       # install (contracts/ci-layers.md; specs/001, research.md section 3).
       - name: Fetch the Electron binary
         run: npx install-electron --no
+
+      # The unit suite's browser project (`*.browser.test.tsx`, ADR-059) runs
+      # in Playwright's Chromium, not Electron's, and fails rather than skips
+      # where it is missing. The browser is Playwright's own build for its
+      # version, so the cache is keyed on that version and the platform.
+      - name: Read Playwright's version
+        id: playwright
+        shell: bash
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/@playwright/test'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the browser for the DOM tests
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: node_modules/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}
+
+      # Run on a cache hit too: the download is then skipped, and on Linux
+      # the system libraries Chromium needs, which no cache holds, are
+      # installed. The browser project runs headless, so the headless shell
+      # is all it needs, not the full Chromium beside it.
+      - name: Fetch the browser for the DOM tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            npx playwright install chromium --with-deps --only-shell
+          else
+            npx playwright install chromium --only-shell
+          fi
 
       - name: Style
         run: npm run lint

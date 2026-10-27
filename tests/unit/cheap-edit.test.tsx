@@ -1,80 +1,64 @@
+// @vitest-environment jsdom
 // The cheap edits, rendered (spec 037 part 2, issue 490, User Story 3): the
 // line colours, the line order, the sizes with their looks and markers, and
 // the line options, each driven through its own cell by one table of
 // behaviours - the wait, the hold, the put-back, adoption and the panel
 // going - against the one hook they share (`notebook/useCheapEdit.ts`).
 //
-// The suite renders nothing to a real DOM, and needs none for this: the cells
-// go through React's own client, under `act`, into a stand-in for the few
-// things React's client asks of a document (the pattern of
-// `announcer-region.test.tsx`; no dependency is added). The controls at the
-// leaves - the kit's buttons and fields, the colour chip, the line options'
-// disclosure, the looks' selects, the theme switch, the cell's chrome - are
-// stand-ins that keep the props they were last drawn with and draw nothing,
-// so a test presses a control by calling the handler the panel gave it and
-// reads what the control shows from the props it was given. Everything
-// between the cell and those leaves is the app's own: the adapter, the
-// panel, the hook, and the rules it asks.
+// The cells are drawn into jsdom through `tests/support/render.tsx`
+// (ADR-059): the adapter, its panels, the hook and the rules it asks are the
+// app's own, and so are the kit, the cell's chrome and the looks' selects.
+// The line order is pressed as a person presses it, by its "Move line A
+// down" and "Move line A up" buttons, and the station's marker is changed by
+// a real `change` on its select; what they show is read from the document.
+// Two leaves stay stand-ins that keep the props they were last drawn with
+// and draw nothing, because their gestures are a drag in a popover and a
+// disclosure's own controls, which jsdom cannot make: the colour chip
+// (`useColourPanel`, pressed through `onPick`, `onPickEnd`, `onClosed` and
+// its reset) and the line options (`LineOptionsDisclosure`, through
+// `onChoose`).
 //
-// The run is a stand-in too, with what a panel reads of one: its snapshot,
-// a way to hear it change, and the four redraws, which start (`running`, of
-// their kind) or are refused at once (`failed`, of their kind, with the
-// engine's sentence) as `LayoutRun.#begin` does.
+// The run is the stand-in in `tests/support/stand-in-run.ts`, with what a
+// panel reads of one: its snapshot, a way to hear it change, and the four
+// redraws, which start (`running`, of their kind) or are refused at once
+// (`failed`, of their kind, with the engine's sentence) as `LayoutRun.#begin`
+// does.
 //
 // Each row was watched failing under a mutation of the hook, named in its
 // describe or beside it; the run of each is in the pull request.
 
-import { act, type JSX } from 'react'
-import { createRoot, type Root } from 'react-dom/client'
+import { act } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EngineState } from '../../src/shared/engine'
 import type { RunState } from '../../src/shared/layout'
-import {
-  DEFAULT_COLOR,
-  type LineChoice,
-  type LineOrder,
-  type Palette,
-  type ProjectLines,
-  type ProjectRecord,
-  type ProjectStyle,
-} from '../../src/shared/project/types'
-import type { Inspection } from '../../src/shared/protocol'
+import type { LineChoice, ProjectRecord } from '../../src/shared/project/types'
 import { REDRAW_DELAY } from '../../src/renderer/src/colours'
+import type { ExportRun } from '../../src/renderer/src/engine/exportRun'
 import type { LayoutRun, RunSnapshot } from '../../src/renderer/src/engine/layoutRun'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import LinesCell from '../../src/renderer/src/notebook/cells/LinesCell'
-import StyleCell from '../../src/renderer/src/notebook/cells/StyleCell'
 import ProjectHeader from '../../src/renderer/src/notebook/ProjectHeader'
 import { READ_RETRY_MAX, useRefusedGone } from '../../src/renderer/src/notebook/useCheapEdit'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
-import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
+import {
+  answered,
+  BASE,
+  byName,
+  cleanup,
+  defaultProjectState,
+  INSPECTION,
+  press,
+  renderCell,
+  renderPanel,
+  type RenderedCell,
+} from '../support/render'
+import { REFUSAL, snap, StandInRun, type Kind } from '../support/stand-in-run'
 
-// React's client reads this to know it is driven by `act`.
-;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-// The leaves, each keeping the props it was last drawn with by its name.
+// The two leaves, each keeping the props it was last drawn with by its name.
 const leaves = vi.hoisted(() => ({
-  buttons: new Map<string, Record<string, unknown>>(),
   chips: new Map<string, Record<string, unknown>>(),
   options: new Map<string, Record<string, unknown>>(),
-  choices: new Map<string, Record<string, unknown>>(),
 }))
 
-vi.mock('../../src/renderer/src/kit/Button', () => ({
-  default: (props: Record<string, unknown>) => {
-    const name =
-      (props['aria-label'] as string | undefined) ??
-      (typeof props.children === 'string' ? props.children : undefined)
-    if (name !== undefined) leaves.buttons.set(name, props)
-    return null
-  },
-}))
-vi.mock('../../src/renderer/src/kit/TextInput', () => ({ default: () => null }))
-vi.mock('../../src/renderer/src/icons/Icon', () => ({ default: () => null }))
-vi.mock('../../src/renderer/src/notebook/Cell', () => ({
-  default: ({ children }: { children: unknown }) => children,
-}))
 vi.mock('../../src/renderer/src/ColourChip', () => ({
   useColourPanel: (props: Record<string, unknown>) => {
     leaves.chips.set(props.label as string, props)
@@ -87,283 +71,11 @@ vi.mock('../../src/renderer/src/LineOptionsDisclosure', () => ({
     return null
   },
 }))
-vi.mock('../../src/renderer/src/StyleLooks', () => ({
-  LookSelect: () => null,
-  ChoiceSelect: (props: Record<string, unknown>) => {
-    leaves.choices.set(props.choice as string, props)
-    return null
-  },
-}))
-vi.mock('../../src/renderer/src/ThemeSwitch', () => ({
-  default: () => null,
-  themeWord: (theme: string) => theme,
-}))
-
-/**
- * A node as far as React's client reaches one: children in order, text,
- * attributes and a style it can write into. Nothing is laid out and no
- * event is dispatched; the tests press controls through their handlers.
- */
-class StandInNode {
-  parentNode: StandInNode | null = null
-  readonly childNodes: StandInNode[] = []
-  readonly attributes: Record<string, string> = {}
-  readonly style: Record<string, unknown> = {
-    setProperty(this: Record<string, unknown>, name: string, value: string) {
-      this[name] = value
-    },
-    removeProperty(this: Record<string, unknown>, name: string) {
-      delete this[name]
-    },
-  }
-  nodeValue: string | null = null
-  constructor(
-    readonly nodeType: number,
-    readonly nodeName: string,
-    readonly ownerDocument: unknown,
-  ) {}
-  get tagName(): string {
-    return this.nodeName
-  }
-  get namespaceURI(): string {
-    return 'http://www.w3.org/1999/xhtml'
-  }
-  get firstChild(): StandInNode | null {
-    return this.childNodes[0] ?? null
-  }
-  get lastChild(): StandInNode | null {
-    return this.childNodes[this.childNodes.length - 1] ?? null
-  }
-  get nextSibling(): StandInNode | null {
-    const siblings = this.parentNode?.childNodes ?? []
-    return siblings[siblings.indexOf(this) + 1] ?? null
-  }
-  get textContent(): string {
-    return this.nodeType === 3
-      ? (this.nodeValue ?? '')
-      : this.childNodes.map((child) => child.textContent).join('')
-  }
-  set textContent(text: string) {
-    for (const child of this.childNodes.splice(0)) child.parentNode = null
-    if (text !== '') this.appendChild(standInText(text, this.ownerDocument))
-  }
-  appendChild(child: StandInNode): StandInNode {
-    child.parentNode?.removeChild(child)
-    this.childNodes.push(child)
-    child.parentNode = this
-    return child
-  }
-  insertBefore(child: StandInNode, before: StandInNode | null): StandInNode {
-    if (before === null) return this.appendChild(child)
-    child.parentNode?.removeChild(child)
-    this.childNodes.splice(this.childNodes.indexOf(before), 0, child)
-    child.parentNode = this
-    return child
-  }
-  removeChild(child: StandInNode): StandInNode {
-    this.childNodes.splice(this.childNodes.indexOf(child), 1)
-    child.parentNode = null
-    return child
-  }
-  setAttribute(name: string, value: string): void {
-    this.attributes[name] = String(value)
-  }
-  removeAttribute(name: string): void {
-    delete this.attributes[name]
-  }
-  getAttribute(name: string): string | null {
-    return this.attributes[name] ?? null
-  }
-  hasAttribute(name: string): boolean {
-    return name in this.attributes
-  }
-  addEventListener(): void {}
-  removeEventListener(): void {}
-  focus(): void {}
-  contains(other: StandInNode | null): boolean {
-    for (let at = other; at !== null; at = at.parentNode) if (at === this) return true
-    return false
-  }
-  /** Every element under this one carrying `className`, in document order. */
-  every(className: string): StandInNode[] {
-    const found: StandInNode[] = []
-    for (const child of this.childNodes) {
-      if ((child.attributes.class ?? '').split(' ').includes(className)) found.push(child)
-      found.push(...child.every(className))
-    }
-    return found
-  }
-}
-
-const standInText = (text: string, document: unknown): StandInNode => {
-  const node = new StandInNode(3, '#text', document)
-  node.nodeValue = text
-  return node
-}
-
-/** The container `createRoot` asks for, in a document and a window that make and hold the elements. */
-function container(): StandInNode {
-  const document: Record<string, unknown> = {
-    nodeType: 9,
-    activeElement: null,
-    body: null,
-    createElement: (tag: string) => new StandInNode(1, tag.toUpperCase(), document),
-    createTextNode: (text: string) => standInText(text, document),
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }
-  const window = {
-    document,
-    HTMLIFrameElement: class {},
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-    // What a change drawn after its panel went reads now: the store's
-    // record and the engine's state, as main would answer them.
-    api: {
-      projects: {
-        get: () => {
-          bridge.reads += 1
-          const failing = bridge.fails.shift()
-          return failing === undefined
-            ? Promise.resolve(bridge.record ?? screen.project)
-            : Promise.reject(failing)
-        },
-      },
-      engine: { state: () => Promise.resolve(bridge.engine) },
-    },
-  }
-  document.defaultView = window
-  vi.stubGlobal('window', window)
-  vi.stubGlobal('document', document)
-  return new StandInNode(1, 'DIV', document)
-}
-
-type Kind = Pick<RunSnapshot, 'recoloured' | 'optioned' | 'reordered' | 'restyled'>
-const NO_KIND: Kind = { recoloured: false, optioned: false, reordered: false, restyled: false }
-
-/** The engine's own sentence for a start it refuses at once (`LayoutRun.#begin`). */
-const REFUSAL = 'The engine is still starting. Try again in a moment.'
-
-/** A run snapshot in full, as `LayoutRun` keeps one, at `state` and of `kind`. */
-const snap = (
-  state: RunState,
-  kind: Partial<Kind> = {},
-  error: string | null = null,
-): RunSnapshot =>
-  ({
-    state,
-    stages: [],
-    message: null,
-    error,
-    changed: false,
-    relaid: false,
-    forced: false,
-    replaced: false,
-    rebuilt: false,
-    ...NO_KIND,
-    ...kind,
-    unkept: false,
-    day: null,
-    report: null,
-    download: null,
-    feedMissing: false,
-    layout: null,
-  }) as RunSnapshot
-
-/**
- * A run as far as a panel reads one. `moveQuietly` changes its snapshot
- * without telling anyone, which is a run that has moved on since the last
- * render: the listener's re-render has not happened yet.
- */
-class StandInRun {
-  snapshot: RunSnapshot = snap('idle')
-  /** What a redraw's start does: start, or be refused at once as the run does. */
-  starts: 'run' | 'refuse' = 'run'
-  readonly #listeners = new Set<(snapshot: RunSnapshot) => void>()
-  readonly recolour = vi.fn((_p: ProjectRecord, _e: unknown, palette: Palette) => {
-    void palette
-    this.#begin({ recoloured: true })
-  })
-  readonly redrawLines = vi.fn((_p: ProjectRecord, _e: unknown, lines: ProjectLines) => {
-    void lines
-    this.#begin({ recoloured: true, optioned: true })
-  })
-  readonly reorder = vi.fn((_p: ProjectRecord, _e: unknown, order: LineOrder) => {
-    void order
-    this.#begin({ reordered: true })
-  })
-  readonly restyle = vi.fn((_p: ProjectRecord, _e: unknown, style: ProjectStyle) => {
-    void style
-    this.#begin({ restyled: true })
-  })
-  #begin(kind: Partial<Kind>): void {
-    if (this.snapshot.state === 'running') return
-    this.move(this.starts === 'run' ? snap('running', kind) : snap('failed', kind, REFUSAL))
-  }
-  subscribe(listener: (snapshot: RunSnapshot) => void): () => void {
-    this.#listeners.add(listener)
-    return () => this.#listeners.delete(listener)
-  }
-  moveQuietly(next: RunSnapshot): void {
-    this.snapshot = next
-  }
-  move(next: RunSnapshot): void {
-    this.moveQuietly(next)
-    for (const listener of this.#listeners) listener(this.snapshot)
-  }
-}
 
 /** An export, as far as the cells' `busyNow` reads one. */
 const exporter = { snapshot: { state: 'idle' as RunState } }
 
-const READY: EngineState = { state: 'ready', version: '0.19.0', protocol: 1 }
-
-const BASE: ProjectRecord = {
-  version: 2,
-  id: 'kq7x2mzp4dna',
-  name: 'Los Angeles',
-  feed: 'la-metro-rail',
-  mode: 'all',
-  agency: null,
-  date: '2026-09-12',
-  service: { start: '2026-01-01', end: '2026-12-31', busiest: '2026-09-12', anchor: '2026-09-08' },
-  style: {},
-  colors: {},
-  defaultColor: DEFAULT_COLOR,
-  lineOrder: [],
-  theme: 'warm-dark',
-  export: { preset: 'instagram-reel', options: {} },
-  destination: null,
-  opened: null,
-  layout: 'a'.repeat(64),
-  made: '2026-09-10T12:00:00+00:00',
-  drawn: null,
-  built: { mode: 'all', agency: null },
-  created: '2026-09-07T20:00:00.000Z',
-  modified: '2026-09-07T20:00:00.000Z',
-}
-
-/** Three lines, A, B and C, one route each, A in the colour its feed publishes. */
-const INSPECTION = {
-  key: 'la-metro-rail',
-  name: 'LA Metro Rail',
-  routes: ['A', 'B', 'C'].map((label) => ({
-    route_id: label,
-    agency_id: 'M',
-    short_name: label,
-    long_name: '',
-    label,
-    route_type: 1,
-    color: label === 'A' ? '0072BC' : null,
-    text_color: null,
-    trips: 1,
-  })),
-  route_types: [
-    { route_type: 1, name: 'subway', mode: 'subway', modes: ['subway'], routes: 3, trips: 3 },
-  ],
-} as unknown as Inspection
 const inspected = Promise.resolve(INSPECTION)
-const inspect = (): Promise<Inspection> => inspected
 
 /** What the bridge answers for the store's record (the screen's, unless a test moves it) and the engine. */
 const bridge: {
@@ -379,60 +91,27 @@ const bridge: {
   engine: { state: 'ready', version: '0.19.0', protocol: 1 },
 }
 
-/** The bridge's answers arrive, and whatever they start is drawn. */
-async function answered(): Promise<void> {
-  await act(async () => {
-    await Promise.resolve()
-  })
-}
-
-/** What the screen draws the cells from. */
-interface Screen {
-  cell: 'lines' | 'style'
-  project: ProjectRecord
-  settling: boolean
-  exporting: boolean
-}
-
-let root: Root
-let mounted = false
+let view: RenderedCell
 let run: StandInRun
-let screen: Screen
 
-const cellOf = (id: 'lines' | 'style'): Cell => CELL_LIST.find((cell) => cell.id === id) as Cell
-
-function Project({ given }: { given: Screen }): JSX.Element {
-  const state = {
-    project: { ...given.project, readOnly: false },
-    engine: READY,
-    run: run as unknown as LayoutRun,
-    runSnapshot: run.snapshot,
-    exporter,
-    inspect,
-    exporting: given.exporting,
-    layingOut: run.snapshot.state === 'running',
-    settling: given.settling,
-    setTheme: async () => undefined,
-  } as unknown as ProjectState
-  const Shown = given.cell === 'lines' ? LinesCell : StyleCell
-  return (
-    <ProjectProvider value={state}>
-      <Shown cell={cellOf(given.cell)} state="ready" open onToggle={() => undefined} />
-    </ProjectProvider>
-  )
+/** The record the screen holds now. */
+const shownRecord = (): ProjectRecord => {
+  const project = view.state.project
+  if (project === null) throw new Error('the screen holds no record')
+  return project
 }
 
-let host: StandInNode
-
-/** The screen drawn with these, or drawn again with some changed. */
-function draw(next: Partial<Screen>): void {
-  screen = { ...screen, ...next }
-  act(() => root.render(<Project given={screen} />))
+/** The screen drawn again with some of its state changed. */
+function draw(patch: { project?: ProjectRecord; settling?: boolean; exporting?: boolean }): void {
+  const { project, ...rest } = patch
+  view.rerender(
+    project === undefined ? rest : { ...rest, project: { ...project, readOnly: false } },
+  )
 }
 
 /** The project's record moves: an answer to a write, or a finished run's read-back. */
 const record = (patch: Partial<ProjectRecord>): void =>
-  draw({ project: { ...screen.project, ...patch } })
+  draw({ project: { ...shownRecord(), ...patch } })
 
 /** Time passes, and whatever React was told meanwhile is drawn. */
 function wait(ms: number): void {
@@ -446,20 +125,43 @@ function moved(next: RunSnapshot): void {
   act(() => run.move(next))
 }
 
-/** A handler a panel gave one of its controls, called as a press would. */
-function press(call: () => void): void {
+/** A handler a stand-in leaf was given, called as its gesture would call it. */
+function gesture(call: () => void): void {
   act(call)
 }
 
 function unmount(): void {
-  act(() => root.unmount())
-  mounted = false
+  view.unmount()
 }
 
 /** Opens the screen on `cell`, and lets the feed's lines arrive. */
 async function open(cell: 'lines' | 'style', project: Partial<ProjectRecord> = {}): Promise<void> {
-  screen = { cell, project: { ...BASE, ...project }, settling: false, exporting: false }
-  draw({})
+  view = renderCell(
+    cell,
+    {
+      project: { ...BASE, ...project, readOnly: false },
+      exporter: exporter as unknown as ExportRun,
+      exporting: false,
+      settling: false,
+    },
+    {
+      run,
+      // What a change drawn after its panel went reads now: the store's
+      // record and the engine's state, as main would answer them.
+      api: {
+        projects: {
+          get: () => {
+            bridge.reads += 1
+            const failing = bridge.fails.shift()
+            return failing === undefined
+              ? Promise.resolve({ ...(bridge.record ?? shownRecord()), readOnly: false })
+              : Promise.reject(failing)
+          },
+        },
+        engine: { state: () => Promise.resolve(bridge.engine) },
+      },
+    },
+  )
   await act(async () => {
     await inspected
   })
@@ -520,7 +222,7 @@ const COLOURS: Panel = {
   other_: '#333333',
   // A colour chosen is a gesture's end; the feed's own is the line's reset.
   make: (hex) =>
-    press(() =>
+    gesture(() =>
       hex === '#0072bc'
         ? prop<{ onReset: () => void }>(leaves.chips, A, 'reset').onReset()
         : prop<(hex: string) => void>(leaves.chips, A, 'onPickEnd')(hex as string),
@@ -533,9 +235,9 @@ const COLOURS: Panel = {
   }),
 }
 
-/** The order on screen as the panel keeps it: empty while it is the engine's own. */
+/** The order on screen as the panel draws it: empty while it is the engine's own. */
 const orderShown = (): string[] => {
-  const labels = host.every('line-name').map((node) => node.textContent)
+  const labels = [...view.host.querySelectorAll('.line-name')].map((node) => node.textContent)
   const order = labels.filter((label) => ['A', 'B', 'C'].includes(label)).slice(-3)
   return order.join('') === 'ABC' ? [] : order
 }
@@ -550,20 +252,36 @@ const ORDER: Panel = {
   one: ['B', 'A', 'C'],
   two: ['B', 'C', 'A'],
   other_: ['C', 'A', 'B'],
-  // Line A moved down or up, one place a press, until the list stands as asked.
+  // Line A pressed down or up, one place a press, until the list stands as
+  // asked.
   make: (target) => {
     const want = (target as string[]).join('') || 'ABC'
     for (let step = 0; step < 3; step++) {
       const now = orderShown().join('') || 'ABC'
       if (now === want) return
-      const way = want.indexOf('A') > now.indexOf('A') ? 'down' : 'up'
-      press(() => prop<() => void>(leaves.buttons, `Move line A ${way}`, 'onClick')())
+      press(`Move line A ${want.indexOf('A') > now.indexOf('A') ? 'down' : 'up'}`)
     }
   },
   shown: orderShown,
   drawnOn: () => on(run.reorder.mock.calls),
   drawn: () => run.reorder.mock.calls.map(([, , order]) => order),
   record: (order) => ({ lineOrder: order as string[] }),
+}
+
+/** The station marker's select, the platform's own inside the kit's dropdown. */
+const marker = (): HTMLSelectElement => byName('combobox', 'Station marker') as HTMLSelectElement
+
+/**
+ * A choice made on the select named `name`, as a person makes it: its value
+ * set through the platform's own setter, which is what React's tracker
+ * reads, and then the `change` the platform sends.
+ */
+function choose(name: string, value: string): void {
+  const select = byName('combobox', name) as HTMLSelectElement
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
 }
 
 const SIZES: Panel = {
@@ -576,16 +294,10 @@ const SIZES: Panel = {
   one: 'tick',
   two: 'square',
   other_: 'square',
-  // The station's marker, one of the choices a look feeds the sizes with.
-  make: (shape) =>
-    press(() =>
-      prop<(key: string, value: string) => void>(
-        leaves.choices,
-        'stationShape',
-        'onChoose',
-      )('stationShape', shape as string),
-    ),
-  shown: () => prop<ProjectStyle>(leaves.choices, 'stationShape', 'style').stationShape ?? 'circle',
+  // The station's marker, one of the choices a look feeds the sizes with,
+  // changed on its select as a person changes it.
+  make: (shape) => choose('Station marker', shape as string),
+  shown: () => marker().value,
   drawnOn: () => on(run.restyle.mock.calls),
   drawn: () => run.restyle.mock.calls.map(([, , style]) => style.stationShape ?? 'circle'),
   record: (shape) => ({ style: shape === 'circle' ? {} : { stationShape: shape as 'tick' } }),
@@ -602,7 +314,7 @@ const OPTIONS: Panel = {
   two: { width: 1.25 },
   other_: { dash: 'dashed' },
   make: (choice) =>
-    press(() =>
+    gesture(() =>
       prop<(next: LineChoice) => void>(leaves.options, 'A', 'onChoose')(choice as LineChoice),
     ),
   shown: () => prop<LineChoice>(leaves.options, 'A', 'choice'),
@@ -622,9 +334,6 @@ const firstTry = (panel: Panel): void => {
 
 beforeEach(() => {
   vi.useFakeTimers()
-  host = container()
-  root = createRoot(host as unknown as Element)
-  mounted = true
   run = new StandInRun()
   exporter.snapshot = { state: 'idle' }
   bridge.record = null
@@ -635,7 +344,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (mounted) unmount()
+  cleanup()
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -653,7 +362,7 @@ describe.each(PANELS)('$name: a change is drawn after the panel’s delay', (pan
       await open(panel.cell)
       if (panel.atOnce) {
         for (const hex of ['#010101', '#020202', '#030303'])
-          press(() => prop<(hex: string) => void>(leaves.chips, A, 'onPick')(hex))
+          gesture(() => prop<(hex: string) => void>(leaves.chips, A, 'onPick')(hex))
         wait(REDRAW_DELAY * 3)
         expect(panel.drawn(), 'a colour on the way draws nothing').toEqual([])
         panel.make(panel.one)
@@ -838,7 +547,7 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     exporting(true)
     panel.make(panel.one)
     unmount()
-    bridge.record = { ...screen.project, name: 'Read now' }
+    bridge.record = { ...shownRecord(), name: 'Read now' }
     bridge.engine = { state: 'ready', version: '0.19.1', protocol: 1 }
     exporter.snapshot = { state: 'idle' }
     wait(REDRAW_DELAY)
@@ -854,7 +563,7 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     exporting(true)
     panel.make(panel.one)
     unmount()
-    bridge.record = { ...screen.project, ...panel.record(panel.one) }
+    bridge.record = { ...shownRecord(), ...panel.record(panel.one) }
     exporter.snapshot = { state: 'idle' }
     wait(REDRAW_DELAY)
     await answered()
@@ -906,9 +615,6 @@ describe.each(PANELS)('$name: a change waiting as its panel goes is flushed', (p
     panel.make(panel.one)
     unmount()
     for (const map of Object.values(leaves)) map.clear()
-    host = container()
-    root = createRoot(host as unknown as Element)
-    mounted = true
     await open(panel.cell)
     exporting(true)
     expect(panel.shown(), 'the change left behind is on screen again').toEqual(panel.one)
@@ -1071,9 +777,7 @@ function heard(): string | null {
     said = useRefusedGone(run as unknown as LayoutRun, run.snapshot)
     return null
   }
-  const probe = createRoot(container() as unknown as Element)
-  act(() => probe.render(<Probe />))
-  act(() => probe.unmount())
+  renderPanel(<Probe />).unmount()
   return said
 }
 
@@ -1101,8 +805,8 @@ describe('the colours and the line options, in one cell', () => {
 // pause in it, is the same calls in the same order.
 describe('the colours: the map follows the end of a gesture', () => {
   const pick = (hex: string): void =>
-    press(() => prop<(hex: string) => void>(leaves.chips, A, 'onPick')(hex))
-  const closed = (): void => press(() => prop<() => void>(leaves.chips, A, 'onClosed')())
+    gesture(() => prop<(hex: string) => void>(leaves.chips, A, 'onPick')(hex))
+  const closed = (): void => gesture(() => prop<() => void>(leaves.chips, A, 'onClosed')())
 
   it('a gesture of fifty colours is one build, at its end, with the colour it ended on', async () => {
     await open('lines')
@@ -1204,10 +908,7 @@ describe('the line order says it is waiting', () => {
     ORDER.make(ORDER.one)
     wait(REDRAW_DELAY)
     const status = (): string =>
-      host
-        .every('hint')
-        .map((node) => node.textContent)
-        .join(' ')
+      [...view.host.querySelectorAll('.hint')].map((node) => node.textContent).join(' ')
     expect(status()).toContain('Waiting for the map to be free')
     exporting(false)
     wait(REDRAW_DELAY)
@@ -1222,8 +923,11 @@ describe('the line order says it is waiting', () => {
     wait(REDRAW_DELAY)
     expect(run.snapshot.state).toBe('running')
     record({ colors: { A: '#123456' } })
-    const swatches = host.every('swatch').map((node) => node.style.background)
-    expect(swatches).toContain('#123456')
+    // The document writes a colour back in its own form: #123456 is rgb(18, 52, 86).
+    const swatches = [...view.host.querySelectorAll<HTMLElement>('.swatch')].map(
+      (node) => node.style.background,
+    )
+    expect(swatches).toContain('rgb(18, 52, 86)')
   })
 })
 
@@ -1231,23 +935,7 @@ describe('the project’s status line says a refused flush', () => {
   const failed = snap('failed', { recoloured: true }, REFUSAL)
   const line = (refused: string | null): string =>
     renderToStaticMarkup(
-      <ProjectProvider
-        value={
-          {
-            project: { ...BASE, readOnly: false },
-            error: null,
-            headingRef: { current: null },
-            engine: READY,
-            run: { cancel: () => undefined, runAll: () => undefined },
-            runSnapshot: failed,
-            exportSnapshot: { state: 'idle' },
-            layingOut: false,
-            settling: false,
-            exporting: false,
-            refused,
-          } as unknown as ProjectState
-        }
-      >
+      <ProjectProvider value={{ ...defaultProjectState(), runSnapshot: failed, refused }}>
         <ProjectHeader />
       </ProjectProvider>,
     )
