@@ -18,8 +18,9 @@ import {
 
 // Cell 06's Opening (issue 392, spec 035): what plays before the storyboard
 // of a video or GIF - a title card, the network drawing in, or both - and
-// how long each lasts. Drawn by `ExportTab.tsx` after the storyboard, for a
-// preset that plays one, and only once the storyboard is known.
+// how long each lasts. Drawn by `export/ExportForm.tsx` after the
+// storyboard, for a preset that plays one, and only once the storyboard is
+// known.
 //
 // The choice is written the moment it is made, as every choice in the cell
 // is, and the main process makes it into the list of beats the plan is sent

@@ -19,12 +19,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import { ProjectProvider } from '../../src/renderer/src/notebook/context'
 import { stateIcon } from '../../src/renderer/src/notebook/Cell'
-import {
-  EXPORT_ONE,
-  NOTHING_YET,
-  OutputsEmpty,
-  canExportFrom,
-} from '../../src/renderer/src/notebook/Outputs'
+import { EXPORT_ONE, NOTHING_YET, OutputsEmpty } from '../../src/renderer/src/notebook/Outputs'
 import Rail, { RAIL_LABEL, goToCell, stepName } from '../../src/renderer/src/notebook/Rail'
 import {
   clearance,
@@ -322,23 +317,6 @@ describe('Outputs’ empty state', () => {
     const drawn = empty(false)
     expect(drawn).toContain(NOTHING_YET)
     expect(drawn).not.toContain('<button')
-  })
-})
-
-describe('when the empty Outputs may offer an export', () => {
-  const layout = { stations: [] }
-
-  it('does once the project is laid out', () => {
-    expect(canExportFrom({ readOnly: false, layout })).toBe(true)
-  })
-
-  it('does not before a layout, where cell 06 says there is no map to export', () => {
-    expect(canExportFrom({ readOnly: false, layout: null })).toBe(false)
-  })
-
-  it('does not to a read-only project, or before there is a project', () => {
-    expect(canExportFrom({ readOnly: true, layout })).toBe(false)
-    expect(canExportFrom(null)).toBe(false)
   })
 })
 

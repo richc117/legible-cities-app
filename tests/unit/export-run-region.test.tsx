@@ -213,8 +213,14 @@ function started() {
     { state: 'ready', version: '0.3.0', protocol: 1 },
     { preset: 'instagram-reel', options: {} },
   )
-  const report = (stage: ExportProgress['stage'], message: string, fraction = 0): void =>
-    listeners.forEach((listener) => listener({ id: 'tok-1', stage, fraction, message }))
+  /** A report as the main process sends it: a count of frames carries `done` and `of`. */
+  const report = (
+    stage: ExportProgress['stage'],
+    message: string,
+    fraction = 0,
+    count: { done: number; of: number } | Record<string, never> = {},
+  ): void =>
+    listeners.forEach((listener) => listener({ id: 'tok-1', stage, fraction, message, ...count }))
   const drawn = (): string =>
     renderToStaticMarkup(
       <ExportRun
@@ -247,7 +253,10 @@ describe('the export run, for a screen reader while it captures', () => {
     const lines: (string | null)[] = []
     const spoken: (string | null)[] = []
     for (let done = 1; done <= FRAMES; done++) {
-      report('capture', `Captured ${done} of ${FRAMES} frames.`, done / FRAMES)
+      report('capture', `Captured ${done} of ${FRAMES} frames.`, done / FRAMES, {
+        done,
+        of: FRAMES,
+      })
       const html = drawn()
       lines.push(lineOf(html))
       spoken.push(spokenOf(html))
@@ -295,11 +304,22 @@ describe('the export run, for a screen reader while it captures', () => {
     const { report, drawn } = capture()
     report('encode', `Encoding ${FRAMES} frames.`)
     expect(spokenOf(drawn())).toBe(`Encoding ${FRAMES} frames.`)
-    report('encode', `Encoded 5 of ${FRAMES} frames.`, 5 / FRAMES)
+    report('encode', `Encoded 5 of ${FRAMES} frames.`, 5 / FRAMES, { done: 5, of: FRAMES })
     expect(spokenOf(drawn())).toBe(`Encoding ${FRAMES} frames.`)
-    report('encode', `Encoded 54 of ${FRAMES} frames.`, 54 / FRAMES)
+    report('encode', `Encoded 54 of ${FRAMES} frames.`, 54 / FRAMES, { done: 54, of: FRAMES })
     expect(spokenOf(drawn())).toBe('Encoded 50 percent of the frames.')
     expect(lineOf(drawn())).toBe(`Encoded 54 of ${FRAMES} frames.`)
+  })
+
+  it('speaks a report with no count as it was sent, whatever its words', () => {
+    // Issue 433, part b: the count is the report's `done` and `of`, never
+    // its words. The unproven line reads like a count and carries none.
+    const { report, drawn } = capture()
+    const unproven = `Captured ${FRAMES} of ${FRAMES} frames. ${UNPROVEN_FRAMES}`
+    report('capture', unproven, 1)
+    expect(spokenOf(drawn())).toBe(unproven)
+    report('encode', `Encoded 54 of ${FRAMES} frames.`, 54 / FRAMES)
+    expect(spokenOf(drawn()), 'words alone are no count').toBe(`Encoded 54 of ${FRAMES} frames.`)
   })
 
   it('has one live region for progress, and it is the hidden one', () => {
@@ -389,9 +409,9 @@ describe('the export run, as its finish is heard', () => {
     registry.onEnded((job) => ends.push(endSentence(job)))
     report('plan', 'Planning the export.')
     report('capture', 'Capturing 60 frames.')
-    report('capture', 'Captured 60 of 60 frames.', 1)
+    report('capture', 'Captured 60 of 60 frames.', 1, { done: 60, of: 60 })
     report('encode', 'Encoding 60 frames.')
-    report('encode', 'Encoded 60 of 60 frames.', 1)
+    report('encode', 'Encoded 60 of 60 frames.', 1, { done: 60, of: 60 })
     const before = drawn()
     finish({ file: FILE, bytes: 10, frames: 60, ...flags })
     await tick()

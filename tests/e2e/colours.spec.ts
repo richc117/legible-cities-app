@@ -27,6 +27,7 @@ import {
   cellHandback,
   cellHeading,
   closeCell,
+  exportLine,
   laidOutProject,
   openCell,
   openProject,
@@ -1024,11 +1025,8 @@ test('a colour chosen after a cancelled redraw waits for an export, and a rename
       // An export now holds the page.
       await openCell(page, 'export')
       await page.getByRole('button', { name: 'Export', exact: true }).click()
-      // The line the eye follows; the export draws a second, out of sight,
-      // for a screen reader (issue 542).
-      await expect(
-        page.locator('.export-run .progress-message', { hasText: /^Encod/ }),
-      ).toBeVisible({ timeout: 30_000 })
+      // The line the eye follows (`exportLine`).
+      await expect(exportLine(page, /^Encod/)).toBeVisible({ timeout: 30_000 })
 
       // A colour chosen while it does waits, and the swatch shows it.
       const builds = buildsOf(engineHome)

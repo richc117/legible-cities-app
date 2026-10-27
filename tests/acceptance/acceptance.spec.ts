@@ -399,6 +399,9 @@ async function installRecorder(page: Page): Promise<void> {
     // The export's line for the eye, which is not a live region since issue
     // 542 (it changes with every frame): what it shows is kept apart from
     // what is spoken, so the count going up is still seen.
+    // The selector finds the same element `exportLine` finds in
+    // tests/support/project.ts, written out because this runs in the page,
+    // where no locator reaches.
     const line: string[] = []
     holder.__line = line
     const last = new WeakMap<Element, string>()

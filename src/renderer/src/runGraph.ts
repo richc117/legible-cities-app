@@ -46,6 +46,19 @@ export const CELL_LIST: readonly Cell[] = [
 ]
 
 /**
+ * Whether an export can be made from this project: it can be written here
+ * (not read-only) and it has a layout, which is when cell 06 offers its
+ * choices, its preview and Export, and the empty Outputs offers the way
+ * there. One predicate, so cell 06 and what points at it never disagree
+ * about it (issue 433).
+ */
+export function exportable(
+  project: Pick<ProjectRecord, 'layout'> & { readOnly: boolean },
+): boolean {
+  return !project.readOnly && project.layout !== null
+}
+
+/**
  * What a cell is doing, said on screen as an icon and a word and never as a
  * colour alone (DESIGN.md 8.2). `stale` is not a warning about the app: it
  * says the map on screen was drawn before a change above it, and the map

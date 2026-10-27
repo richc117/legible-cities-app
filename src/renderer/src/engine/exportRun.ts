@@ -5,6 +5,7 @@ import {
   type ExportProgress,
   type ExportChoice,
   type ExportResult,
+  type ExportStage,
 } from '../../../shared/export'
 import { failureOf, runFailureSentence, LogBuffer, nextJobId, type Job } from '../../../shared/jobs'
 import type { RunState } from '../../../shared/layout'
@@ -75,25 +76,35 @@ export function stagesAt(stages: Stage[], running: string): Stage[] {
   }))
 }
 
-/** The per-frame sentences the main process sends: "Captured 18 of 108 frames.". */
-const FRAME_COUNT = /^(Captured|Encoded) (\d+) of (\d+) frames\.$/
+/** The verb a count of frames is spoken with, by the stage that counts them. */
+const COUNTED: Record<ExportStage, string> = {
+  plan: 'Planned',
+  capture: 'Captured',
+  encode: 'Encoded',
+}
 
 /**
- * What a screen reader is told for a progress sentence. A reel reports every
+ * What a screen reader is told for a progress report. A reel reports every
  * frame, hundreds of sentences in a few minutes, and a live region that
  * changes with each of them is a running commentary (DESIGN.md section 12,
- * WCAG 4.1.3). So a count of frames is spoken at each tenth of them -
- * "Captured 30 percent of the frames." - and the sentence before it, the
- * stage's own, stands until the first tenth is reached. Any other sentence is
- * spoken as it is: they come once a stage.
+ * WCAG 4.1.3). So a report that counts frames - one that carries `done`
+ * and `of`, which the main process sets on exactly those - is spoken at
+ * each tenth of them, "Captured 30 percent of the frames.", and the
+ * sentence before it, the stage's own, stands until the first tenth is
+ * reached. Any other report is spoken as it was sent: they come once a
+ * stage. The words are never read for the count.
  */
-export function announcement(message: string, previous: string | null): string {
-  const count = FRAME_COUNT.exec(message)
-  if (count === null) return message
-  const of = Number(count[3])
+export function announcement(
+  progress: Pick<ExportProgress, 'stage' | 'message' | 'done' | 'of'>,
+  previous: string | null,
+): string {
+  const { stage, message, done, of } = progress
+  if (done === undefined || of === undefined) return message
   if (!(of > 0)) return previous ?? message
-  const tenth = Math.min(10, Math.floor((Number(count[2]) * 10) / of))
-  return tenth === 0 ? (previous ?? message) : `${count[1]} ${tenth * 10} percent of the frames.`
+  const tenth = Math.min(10, Math.floor((done * 10) / of))
+  return tenth === 0
+    ? (previous ?? message)
+    : `${COUNTED[stage]} ${tenth * 10} percent of the frames.`
 }
 
 /** The sentence a person reads for a failure: the engine's, or the app's; never a path. */
@@ -330,7 +341,7 @@ export class ExportRun {
       announced:
         progress.message === ''
           ? this.#snapshot.announced
-          : announcement(progress.message, this.#snapshot.announced),
+          : announcement(progress, this.#snapshot.announced),
     })
   }
 

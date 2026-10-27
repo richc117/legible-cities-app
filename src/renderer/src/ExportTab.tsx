@@ -1,115 +1,30 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type FormEvent,
-  type JSX,
-  type ReactNode,
-  type RefObject,
-} from 'react'
-import { VIEWS, type View } from '../../shared/capture'
-import { withoutPaths, type EngineState } from '../../shared/engine'
-import {
-  isClockCorner,
-  isOfferedPreset,
-  QUALITIES,
-  standardQualityOnly,
-  validateAlt,
-  validateClock,
-  validateTag,
-  type ExportChoice,
-  type ExportPreview,
-  type Quality,
-} from '../../shared/export'
-import { drawnDate } from '../../shared/project/helpers'
-import { type ProjectRecord } from '../../shared/project/types'
+import { useEffect, useMemo, useRef, type JSX, type ReactNode, type RefObject } from 'react'
+import type { EngineState } from '../../shared/engine'
+import type { ExportChoice } from '../../shared/export'
+import type { ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
-import { linesOf } from './colours'
-import { engineClient } from './engine/runs'
 import type { ExportRun as Run } from './engine/exportRun'
-import ExportOpening from './ExportOpening'
+import ExportDestination, { useDestination } from './export/ExportDestination'
+import ExportForm, { useExportDrafts } from './export/ExportForm'
+import { useExportChoice } from './export/useExportChoice'
+import { useExportLines } from './export/useExportLines'
+import { useExportPreview } from './export/useExportPreview'
+import { useExportTables } from './export/useExportTables'
 import ExportRunView from './ExportRun'
-import {
-  byPlatform,
-  cornerNote,
-  cornerWords,
-  defaultCorner,
-  defaultsFor,
-  exportTablesFor,
-  forgetExportTables,
-  keepableLines,
-  offeredCorners,
-  plannedChoice,
-  playedBy,
-  plays,
-  presetWords,
-  PreviewPlanner,
-  readCaption,
-  refusalWords,
-  sameChoice,
-  storyboardWords,
-  toggledLines,
-  usable,
-  withAlt,
-  withOption,
-  withPreset,
-  withStoryboard,
-  type ExportTables,
-  type PreviewAddress,
-} from './exportChoice'
-import { focusLost } from './focusHandback'
+import { defaultsFor, plannedChoice, playedBy, type PreviewAddress } from './exportChoice'
 import { openingOf, PREVIEW_NOTE } from './opening'
-import Icon from './icons/Icon'
-import Button from './kit/Button'
-import Select from './kit/Select'
-import TextInput from './kit/TextInput'
+import { exportable } from './runGraph'
 import { useSnapshot } from './useSnapshot'
 
-// The export (A5-01, specs/022-export-tab), cell 06 of the notebook since
-// A5.5-08 and its own tab before that: a preset from the engine's
-// table, grouped by platform; a storyboard for a video or a GIF; the
-// options, a caption and the clock's corner among them, and the sidecar's
-// alt text beside them (issue 352, ADR-052); for a video or a GIF, the
-// opening it plays first, a title card or the network drawing in
-// (`ExportOpening.tsx`, issue 392); and the export itself, with the
-// progress line, cancel and "Reveal" it always had.
-//
-// The panel has no heading of its own: cell 06's row is its heading, and
-// focus a disabling control drops is handed there (`handback`).
-//
-// The preview is not drawn here. While this cell is open a frame of the
-// cell's own (`ExportPreview.tsx`, ADR-046) shows the address `export.plan`
-// answers for the choice, with the platform's safe zones asked for where
-// the preset has them, and the page draws the frame, the title, the clock
-// and the zones itself (principle I). This panel says which address,
-// through `onPreview`, and where the cell's frame goes (`preview`). The
-// map's own frame is never sent there.
-//
-// Every list and every refusal is the engine's. A choice is written to the
-// project record the moment it is made (a text field when it is committed),
-// so a project opens on what it was last set to export.
-//
-// Where the file goes is the one choice that is not the engine's and not
-// the page's either (A5.5-19). A folder is chosen in the platform's own
-// dialog, which only the main process can open, and applied there: the
-// page asks for the chooser by naming its project and is told the record
-// that came back, so no path crosses the bridge inward - the rule
-// Settings' two folders have followed since A1-04. What comes back *out*
-// is the folder itself, shown to the person whose folder it is and to
-// nobody else; it is in no message the app sends anywhere.
-
-type Tables =
-  | { status: 'waiting' }
-  | { status: 'ready'; tables: ExportTables }
-  | { status: 'failed'; message: string }
-
-const VIEW_WORDS: Record<View, string> = {
-  geographic: 'geographic',
-  map: 'map',
-  linear: 'linear',
-  time: 'time chart',
-}
+// The export (A5-01, specs/022-export-tab), cell 06 of the notebook: the composition
+// of its pieces (issue 433, part b). It reads the engine's tables (`useExportTables`)
+// and the feed's lines (`useExportLines`), holds the choice and writes it
+// (`useExportChoice`), plans the preview (`useExportPreview`), and draws the form
+// (`ExportForm`), the destination as the form's last field (`ExportDestination`) and
+// the run (`ExportRun`), handing each what it needs of the others. The preview's
+// frame is the cell's own (`ExportPreview.tsx`, ADR-046): this panel hands up the
+// address a plan answers (`onPreview`) and draws the frame it is given (`preview`).
+// Every list and every refusal is the engine's.
 
 interface Props {
   project: ProjectRecord & { readOnly: boolean }
@@ -125,35 +40,15 @@ interface Props {
   onChoice: (choice: ExportChoice) => Promise<void>
   /** The address cell 06's preview should show, when a plan answers. */
   onPreview: (address: PreviewAddress) => void
-  /**
-   * Cell 06's preview frame, which the cell mounts only while it is open
-   * (ADR-046), drawn after the sentence that says what it is.
-   */
+  /** Cell 06's preview frame, mounted only while the cell is open, drawn after its sentence. */
   preview?: ReactNode
   /**
-   * The heading of the cell this is drawn in (A5.5-19). The panel has no
-   * heading of its own: the cell's row says "06 Export" already, and a
-   * second heading saying "Export" under it is one a screen reader reads
-   * twice. Focus that a disabling control drops lands here - on the
-   * heading and not on the toggle inside it, which a reflexive Space after
-   * the handback would collapse.
+   * The heading of the cell this is drawn in (A5.5-19): the panel has none of its own, since the
+   * row says "06 Export" already, and focus a disabling control drops lands here - on the heading,
+   * not on the toggle inside it, which a reflexive Space after the handback would collapse.
    */
   handback: RefObject<HTMLHeadingElement | null>
 }
-
-/**
- * A key for "this choice, for this page, in this theme", so a refusal is
- * tied to what was refused.
- *
- * The day is the one the page was drawn for and not the record's: a day
- * chosen and not yet drawn changes nothing about the page this preview is
- * of, and re-planning for it would draw the preview's beats and clock for a
- * picture that does not exist (A5.5-15).
- */
-const keyOf = (choice: ExportChoice, project: ProjectRecord): string =>
-  // Without the alt text, which is not on the plan and so changes nothing
-  // the preview is of (issue 352).
-  JSON.stringify([{ ...choice, alt: undefined }, project.theme, drawnDate(project), project.layout])
 
 export default function ExportTab({
   project,
@@ -170,253 +65,39 @@ export default function ExportTab({
   const ready = engine?.state === 'ready'
   const runState = useSnapshot(run).state
   const exporting = runState === 'running'
-  const [tables, setTables] = useState<Tables>({ status: 'waiting' })
-  const [saved, setSaved] = useState<ExportChoice>(project.export)
-  const [refusal, setRefusal] = useState<{ key: string; sentence: string } | null>(null)
-  const [notes, setNotes] = useState<string[]>([])
-  const [writeProblem, setWriteProblem] = useState<string | null>(null)
-  const [inspection, setInspection] = useState<Inspection | null>(null)
-  const choicesRef = useRef<HTMLFormElement>(null)
-
-  // Where this project's exports go (A5.5-19). Held here rather than read
-  // from the record on every render because the two calls that change it
-  // answer the written record themselves, and the screen around this panel
-  // is not re-read for a folder: nothing else on it shows one. A record
-  // read again for any other reason - a run finishing, the project opened
-  // afresh - brings the folder with it, and the effect below takes it.
-  const [destination, setDestination] = useState<string | null>(project.destination)
-  const [folderProblem, setFolderProblem] = useState<string | null>(null)
-  useEffect(() => {
-    setDestination(project.destination)
-  }, [project.destination])
-
-  // The engine's two tables, once while it stays up. A restarted engine
-  // may be another version, so they are asked again.
-  useEffect(() => {
-    if (!ready) {
-      forgetExportTables()
-      setTables({ status: 'waiting' })
-      return
-    }
-    let left = false
-    exportTablesFor(engineClient()).then(
-      (answer) => {
-        if (!left) setTables({ status: 'ready', tables: answer })
-      },
-      (error: unknown) => {
-        if (left) return
-        const reason = error as { data?: { hint?: string }; message?: string }
-        setTables({
-          status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The engine did not list its presets.',
-          ),
-        })
-      },
-    )
-    return () => {
-      left = true
-    }
-  }, [ready])
-
-  // The lines, by the labels the line colours use, for the lines option.
-  useEffect(() => {
-    if (!ready) return
-    let left = false
-    inspect(project.feed).then(
-      (answer) => {
-        if (!left) setInspection(answer)
-      },
-      () => undefined,
-    )
-    return () => {
-      left = true
-    }
-  }, [ready, project.feed, inspect])
-  const mode = project.built === null ? project.mode : project.built.mode
-  const agency = project.built === null ? project.agency : project.built.agency
-  // A line hidden in cell 05 is not offered (issue 399): the page has no
-  // such line to keep, and keeping only hidden lines would hide them all.
-  const lines = useMemo(
-    () =>
-      inspection === null
-        ? []
-        : keepableLines(
-            linesOf(inspection, { mode, agency }).map((l) => l.label),
-            project.lines,
-          ),
-    [inspection, mode, agency, project.lines],
-  )
-
-  const { choice, dropped } = useMemo(
-    () =>
-      tables.status === 'ready'
-        ? usable(saved, tables.tables)
-        : { choice: saved, dropped: null as string | null },
-    [saved, tables],
-  )
-  const preset =
-    tables.status === 'ready' ? tables.tables.presets.find((p) => p.name === choice.preset) : null
-  const defaults = preset ? defaultsFor(preset) : null
-  // A JPEG still, read from the engine's table: made at standard quality only.
-  const jpegStill = preset ? standardQualityOnly(preset) : false
-  // The clock's corner: the ones on offer follow the preset and whether the
-  // title or a caption is drawn, and the one shown is the choice's or, where
-  // the choice names none, the engine's own for the preset (issue 352).
-  const clockOn = defaults !== null && (choice.options.clock ?? defaults.clock)
-  const nameBlock = {
-    title: defaults !== null && (choice.options.title ?? defaults.title),
-    caption: choice.options.caption !== undefined,
-  }
-  const corners = preset ? offeredCorners(preset, nameBlock) : []
-  // `usable` has already taken out a corner this preset would refuse, so the
-  // choice's own is on offer whenever it names one.
-  const corner = choice.options.clock_corner ?? (preset ? defaultCorner(preset) : 'bottom-right')
-  // The storyboard this choice plays, as the engine lists it, which an
-  // opening is made from; none for a still (issue 392).
-  const played =
-    preset && tables.status === 'ready' ? playedBy(choice, preset, tables.tables) : undefined
-  const opening = played === undefined ? 'none' : openingOf(choice)
-  // What the preview and the export are planned from: the choice, less any
-  // line hidden in cell 05 among the lines to keep, which the stored choice
-  // keeps for a line shown again (issue 399).
+  const tables = useExportTables(ready)
+  const read = tables.status === 'ready' ? tables.tables : null
+  const { inspection, lines } = useExportLines(project, ready, inspect)
+  const { choice, dropped, change, writeProblem } = useExportChoice({
+    record: project.export,
+    tables: read,
+    readOnly: project.readOnly,
+    onChoice,
+  })
+  const preset = read?.presets.find((p) => p.name === choice.preset)
+  // The storyboard it plays, which an opening is made from; none for a still.
+  const played = preset && read ? playedBy(choice, preset, read) : undefined
+  // What the preview and the export are planned from: the choice, less a line
+  // hidden in cell 05, which the stored choice keeps for it shown again (issue 399).
   const asked = useMemo(() => plannedChoice(choice, project.lines), [choice, project.lines])
-  const key = keyOf(asked, project)
-  const refused = refusal !== null && refusal.key === key
-
-  // The drafts of the two typed fields: written to the choice when they are
-  // committed (Enter, or leaving the field), never on every keystroke.
-  const [atDraft, setAtDraft] = useState(choice.options.at ?? '')
-  const [tagDraft, setTagDraft] = useState(choice.options.tag ?? '')
-  const [atProblem, setAtProblem] = useState<string | null>(null)
-  const [tagProblem, setTagProblem] = useState<string | null>(null)
-  // The caption and the alt text are typed the same way, and are judged as
-  // they are typed: the engine's sentence is beside the field at the 81st
-  // character and not after it has been left, and nothing refused is ever
-  // written or planned. What is written is what is committed.
-  const [captionDraft, setCaptionDraft] = useState(choice.options.caption ?? '')
-  const [altDraft, setAltDraft] = useState(choice.alt ?? '')
-  const caption = readCaption(captionDraft)
-  const altProblem = altDraft.trim() === '' ? null : validateAlt(altDraft)
-  useEffect(() => {
-    // A saved choice that fell back takes its fields with it.
-    if (dropped === null) return
-    setAtDraft('')
-    setTagDraft('')
-    setCaptionDraft('')
-    setAltDraft('')
-  }, [dropped])
-
-  // The preview's planning: debounced, and a late answer dropped. The
-  // callbacks are read through refs, so the planner is made once.
-  const answerRef = useRef<(preview: ExportPreview, asked: ExportChoice) => void>(() => undefined)
-  useEffect(() => {
-    answerRef.current = (preview, asked) => {
-      if (preview.ok) {
-        // Not while the cell is closed. The planner is cancelled in an
-        // effect, which flushes after the commit that closed it, so an
-        // answer already on its way would otherwise leave an address for a
-        // choice a person has left, to be shown the next time the cell
-        // opens. `active` is current here because this callback is written
-        // on every render.
-        if (!active) return
-        setRefusal(null)
-        setNotes(preview.notes)
-        // The preset's own size, from the engine's table, for the frame's
-        // ratio and the caption; the plan's may be at another scale.
-        const entry =
-          tables.status === 'ready'
-            ? tables.tables.presets.find((p) => p.name === asked.preset)
-            : undefined
-        onPreview({
-          url: preview.url,
-          width: entry?.width ?? preview.width,
-          height: entry?.height ?? preview.height,
-          safe: entry?.safe_zones ?? false,
-        })
-      } else {
-        // The last good address stays in the frame; the sentence says why
-        // this one is not there (FR-007).
-        setNotes([])
-        setRefusal({
-          key: keyOf(asked, project),
-          sentence: withoutPaths(refusalWords(preview)),
-        })
-      }
-    }
+  const { refused, refusal, notes } = useExportPreview({
+    project,
+    asked,
+    active,
+    ready,
+    tables: read,
+    layingOut,
+    exporting,
+    onPreview,
   })
-  const planner = useMemo(
-    () =>
-      new PreviewPlanner(
-        (asked) => window.api.export.preview(project.id, asked),
-        (preview, asked) => answerRef.current(preview, asked),
-      ),
-    [project.id],
-  )
-  useEffect(() => () => planner.cancel(), [planner])
+  // Held here, so a form drawn again shows what was typed and the folder answered.
+  const drafts = useExportDrafts(choice, dropped)
+  const destination = useDestination(project.destination)
 
-  const canPlan =
-    active &&
-    !project.readOnly &&
-    ready &&
-    tables.status === 'ready' &&
-    project.layout !== null &&
-    // A run rewrites the page in place; the frame is not reloaded under
-    // it, and an export is planned from the record as it was.
-    !layingOut &&
-    !exporting
-  // Planned again whenever what the address depends on changes: `key`
-  // carries the choice, the theme, the day and the layout, and `made` a
-  // layout laid out again under the same id. Read through a ref, so the
-  // effect's dependencies are exactly those.
-  const choiceRef = useRef(asked)
-  useEffect(() => {
-    choiceRef.current = asked
-  })
-  const made = project.made
-  useEffect(() => {
-    if (!canPlan) {
-      planner.cancel()
-      return
-    }
-    planner.schedule(choiceRef.current)
-  }, [canPlan, key, made, planner])
-
-  // Writing: each change is sent the moment it is made, and nothing here
-  // orders the writes. The bridge hands main a frame's calls in the order
-  // they were sent and the store writes them in that order, answering in it
-  // too (spec 037, "The record session" in docs/ARCHITECTURE.md), so the
-  // newest choice is the record's. What was last sent, not the record in
-  // hand, decides whether a change needs writing: a change back to the
-  // record's value while another write is out would otherwise be skipped,
-  // and the record would keep the one in between.
-  const sent = useRef<ExportChoice | null>(project.export)
-  const latest = useRef<ExportChoice | null>(null)
-  const write = async (next: ExportChoice): Promise<void> => {
-    latest.current = next
-    try {
-      await onChoice(next)
-      // The last answer is the newest choice's: it landed, and with it every
-      // write before it, so nothing is left unsaved.
-      if (latest.current === next) setWriteProblem(null)
-    } catch (error) {
-      // What is on disk is unknown now, so the next change is written
-      // whatever it is.
-      sent.current = null
-      setWriteProblem(error instanceof Error ? error.message : String(error))
-    }
-  }
-  const change = (next: ExportChoice): void => {
-    setSaved(next)
-    if (project.readOnly || (sent.current !== null && sameChoice(next, sent.current))) return
-    sent.current = next
-    void write(next)
-  }
-
-  // An export locks the choices: it planned from them, and a change now
-  // could not reach the file being made. Chromium blurs a disabled control,
-  // so focus goes to the cell's own heading first.
+  // An export locks the choices it was planned from, which a change could not reach
+  // now; Chromium blurs a disabled control, so focus goes to the cell's heading first.
   const locked = project.readOnly || exporting
+  const choicesRef = useRef<HTMLFormElement>(null)
   useEffect(() => {
     if (!exporting) return
     const focused = document.activeElement
@@ -424,112 +105,18 @@ export default function ExportTab({
       handback.current?.focus()
   }, [exporting, handback])
 
-  // The destination's two presses. Neither sends a path: `chooseDestination`
-  // asks the main process to open the platform's dialog and apply what it
-  // answers, and `useAppFolder` takes nothing at all. A cancelled chooser
-  // comes back as the record unchanged, so nothing here has to tell the two
-  // apart.
-  //
-  // "Use the app's folder" is the only control in this panel that removes
-  // itself: it is drawn only while there is a folder to forget. Chromium
-  // blurs an element that leaves the document, so focus is handed to
-  // "Choose folder", where the next press about this would go (A6-07).
-  const chooserRef = useRef<HTMLElement>(null)
-  const handBackToChooser = useRef(false)
-  useEffect(() => {
-    if (!handBackToChooser.current) return
-    handBackToChooser.current = false
-    if (focusLost(document.activeElement, document.body)) chooserRef.current?.focus()
-  }, [destination])
-  // Neither button disables itself while its call is out. The chooser is
-  // modal to the window, so a second press cannot reach it anyway, and a
-  // control that disables itself under a person's hands drops the focus it
-  // holds - which is exactly what the handback above exists to repair. The
-  // guard is a ref rather than state for the same reason it is not drawn:
-  // two presses in one render would both read the same `false`.
-  const changing = useRef(false)
-  const changeFolder = async (
-    ask: () => Promise<ProjectRecord>,
-    /** This press may remove its own button, so focus needs somewhere to go. */
-    handBack = false,
-  ): Promise<void> => {
-    if (changing.current) return
-    changing.current = true
-    try {
-      const record = await ask()
-      setFolderProblem(null)
-      // Only when the button that was pressed has actually gone: a refused
-      // or cancelled change leaves it where it was, holding its own focus.
-      handBackToChooser.current = handBack && record.destination === null
-      setDestination(record.destination)
-    } catch (error) {
-      setFolderProblem(error instanceof Error ? error.message : String(error))
-    } finally {
-      changing.current = false
-    }
-  }
-
-  const commitAt = (): void => {
-    if (preset === null || preset === undefined) return
-    const value = atDraft.trim()
-    const problem = value === '' ? null : validateClock(value)
-    setAtProblem(problem)
-    if (problem === null && value !== (choice.options.at ?? ''))
-      change(withOption(choice, preset, { key: 'at', value }))
-  }
-  const commitTag = (): void => {
-    if (preset === null || preset === undefined) return
-    const value = tagDraft.trim()
-    const problem = value === '' ? null : validateTag(value)
-    setTagProblem(problem)
-    if (problem === null && value !== (choice.options.tag ?? ''))
-      change(withOption(choice, preset, { key: 'tag', value }))
-  }
-  const commitCaption = (): void => {
-    if (preset === null || preset === undefined) return
-    if (caption.problem === null && caption.text !== (choice.options.caption ?? ''))
-      change(withOption(choice, preset, { key: 'caption', value: caption.text }))
-  }
-  const commitAlt = (): void => {
-    if (altProblem === null && altDraft.trim() !== (choice.alt ?? ''))
-      change(withAlt(choice, altDraft))
-  }
-  const submit = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault()
-    commitAt()
-    commitTag()
-    commitCaption()
-  }
-
-  // A read-only project is shown nothing to choose and nothing previewed
-  // (ADR-046, FR-019): the preview promises an export that cannot be made
-  // here, and options that cannot be changed are a page of disabled
-  // controls. One sentence says why, as cells 02 to 05 say theirs. What a
-  // project holds as its export choice is not shown either, which is the
-  // trade-off spec 029 records.
-  if (project.readOnly) {
+  // Nothing to choose or preview, not even the choice held (ADR-046, FR-019, spec 029),
+  // where no export can be made: one sentence says why, as cells 02 to 05 say theirs.
+  if (!exportable(project))
     return (
       <div className="export-tab">
         <p className="prose">
-          This project was made by a newer version of the app, so its export cannot be changed or
-          made here.
+          {project.readOnly
+            ? 'This project was made by a newer version of the app, so its export cannot be changed or made here.'
+            : 'There is no map to export yet. Lay the project out first, and its export is previewed here.'}
         </p>
       </div>
     )
-  }
-
-  if (project.layout === null) {
-    return (
-      <div className="export-tab">
-        <p className="prose">
-          There is no map to export yet. Lay the project out first, and its export is previewed
-          here.
-        </p>
-      </div>
-    )
-  }
-
-  const showRun = runState !== 'idle' || (ready && tables.status === 'ready' && !project.readOnly)
 
   return (
     <div className="export-tab" aria-busy={exporting}>
@@ -548,7 +135,7 @@ export default function ExportTab({
           {tables.message}
         </p>
       )}
-      {ready && tables.status === 'ready' && preset && defaults && (
+      {ready && read !== null && preset !== undefined && (
         <>
           {dropped !== null && (
             <p className="notice" role="status">
@@ -560,384 +147,30 @@ export default function ExportTab({
             The preview shows the frame the export will have, with the parts a platform covers with
             its own buttons shaded where it has them. The theme is the map&rsquo;s own.
           </p>
-          {opening !== 'none' && <p className="prose">{PREVIEW_NOTE}</p>}
+          {played !== undefined && openingOf(choice) !== 'none' && (
+            <p className="prose">{PREVIEW_NOTE}</p>
+          )}
           {preview}
-          <form className="export-choices" ref={choicesRef} noValidate onSubmit={submit}>
-            <div className="field">
-              <span className="field-label" aria-hidden="true">
-                Preset
-              </span>
-              <Select
-                label="Preset"
-                value={choice.preset}
-                disabled={locked}
-                onChange={(name) => {
-                  if (isOfferedPreset(name))
-                    change(
-                      withPreset(
-                        choice,
-                        name,
-                        tables.tables.presets.find((row) => row.name === name),
-                      ),
-                    )
-                }}
-              >
-                {byPlatform(tables.tables.presets).map((group) => (
-                  <optgroup key={group.platform} label={group.platform}>
-                    {group.presets.map((row) => (
-                      <option key={row.name} value={row.name}>
-                        {presetWords(row)}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </Select>
-              {preset.note !== '' && <p className="message">{preset.note}</p>}
-            </div>
-            {plays(preset) && (
-              <div className="field">
-                <span className="field-label" aria-hidden="true">
-                  Storyboard
-                </span>
-                <Select
-                  label="Storyboard"
-                  value={choice.storyboard ?? preset.storyboard ?? ''}
-                  disabled={locked}
-                  onChange={(name) => change(withStoryboard(choice, preset, name))}
-                >
-                  {tables.tables.storyboards.map((board) => (
-                    <option key={board.name} value={board.name}>
-                      {storyboardWords(board)}
-                      {board.name === preset.storyboard ? ' (the preset’s own)' : ''}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-            {/* What plays before the storyboard, and how long: after the
-                storyboard it opens, and only once that is known. */}
-            {played !== undefined && (
-              <ExportOpening key={project.id} choice={choice} locked={locked} onChange={change} />
-            )}
-            {refused && refusal !== null && (
-              <p className="message error" role="alert">
-                {refusal.sentence}
-              </p>
-            )}
-            {notes.length > 0 && (
-              <p className="hint" role="status">
-                {notes.join(' ')}
-              </p>
-            )}
-
-            {/* A storyboard's first beat names its own view and its own
-                clock, and the capture applies them: a view or a start time
-                beside one would change the preview and not the file. Both
-                are a still's only, and the main process leaves them out of
-                any other plan whatever the record holds. */}
-            {!plays(preset) && (
-              <div className="field">
-                <span className="field-label" aria-hidden="true">
-                  View
-                </span>
-                <Select
-                  label="View"
-                  value={choice.options.view ?? defaults.view}
-                  disabled={locked}
-                  onChange={(value) => {
-                    const view = VIEWS.find((v) => v === value)
-                    if (view !== undefined)
-                      change(withOption(choice, preset, { key: 'view', value: view }))
-                  }}
-                >
-                  {VIEWS.map((view) => (
-                    <option key={view} value={view}>
-                      {VIEW_WORDS[view]}
-                      {view === defaults.view ? ' (the preset’s own)' : ''}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-
-            <fieldset className="export-flags" disabled={locked}>
-              <legend>What the frame shows</legend>
-              {(
-                [
-                  ['labels', 'Station names'],
-                  ['title', 'The title: city, network and service day'],
-                  ['clock', 'The clock'],
-                ] as const
-              ).map(([flag, words]) => (
-                <label key={flag} className="check">
-                  <input
-                    type="checkbox"
-                    checked={choice.options[flag] ?? defaults[flag]}
-                    onChange={(event) =>
-                      change(withOption(choice, preset, { key: flag, value: event.target.checked }))
-                    }
-                  />
-                  {words}
-                </label>
-              ))}
-            </fieldset>
-
-            {/* The words the page draws under the title, and where the clock
-                sits. The corners on offer are the ones the engine will plan
-                for this preset and these options; the rest are absent and
-                not disabled. */}
-            <div className="field">
-              <label htmlFor="export-caption">Caption</label>
-              <div onBlur={commitCaption}>
-                <TextInput
-                  id="export-caption"
-                  value={captionDraft}
-                  onChange={setCaptionDraft}
-                  disabled={locked}
-                  aria-describedby="export-caption-message"
-                  aria-invalid={caption.problem !== null ? true : undefined}
-                />
-              </div>
-              <p
-                id="export-caption-message"
-                className={caption.problem === null ? 'message' : 'message error'}
-              >
-                {caption.problem ??
-                  [
-                    caption.count,
-                    'Drawn under the title, in your words: up to 80 characters, on one line.',
-                  ]
-                    .filter((part) => part !== null)
-                    .join('. ')}
-              </p>
-            </div>
-
-            <div className="field">
-              <span className="field-label" aria-hidden="true">
-                Clock corner
-              </span>
-              {/* Keyed by the preset's own corner, which is what the marked
-                  option's words depend on: the kit copies a select's options
-                  into its own when they are added or taken away and not when
-                  one's words change, and the mark moves only when a preset
-                  with safe zones is chosen or left. A caption or the title
-                  changing the list must not make the select afresh: that
-                  happens as focus is moving to it. */}
-              <Select
-                key={defaultCorner(preset)}
-                label="Clock corner"
-                value={corner}
-                disabled={locked || !clockOn}
-                onChange={(value) => {
-                  if (isClockCorner(value))
-                    change(withOption(choice, preset, { key: 'clock_corner', value }))
-                }}
-              >
-                {corners.map((option) => (
-                  <option key={option} value={option}>
-                    {cornerWords(option)}
-                    {option === defaultCorner(preset) ? ' (the preset’s own)' : ''}
-                  </option>
-                ))}
-              </Select>
-              <p className="message">{cornerNote(preset, clockOn, nameBlock)}</p>
-            </div>
-
-            {!plays(preset) && (
-              <div className="field">
-                <label htmlFor="export-at">Start time</label>
-                <div onBlur={commitAt}>
-                  <TextInput
-                    id="export-at"
-                    value={atDraft}
-                    onChange={setAtDraft}
-                    placeholder="07:00"
-                    disabled={locked}
-                    spellCheck={false}
-                    aria-describedby="export-at-message"
-                    aria-invalid={atProblem !== null ? true : undefined}
-                  />
-                </div>
-                <p
-                  id="export-at-message"
-                  className={atProblem === null ? 'message' : 'message error'}
-                >
-                  {atProblem ??
-                    'HH:MM. The still is taken at this time; past midnight stays past midnight, so 25:30 is half past one the next morning.'}
-                </p>
-              </div>
-            )}
-
-            <fieldset className="export-lines" disabled={locked}>
-              <legend>Lines to keep</legend>
-              <p className="message">None chosen draws every line.</p>
-              {inspection === null && (
-                <p className="hint">The lines are read from the feed once the engine answers.</p>
-              )}
-              {lines.map((label) => (
-                <label key={label} className="check">
-                  <input
-                    type="checkbox"
-                    checked={choice.options.lines?.includes(label) ?? false}
-                    onChange={(event) =>
-                      change(
-                        withOption(choice, preset, {
-                          key: 'lines',
-                          value: toggledLines(
-                            lines,
-                            choice.options.lines,
-                            label,
-                            event.target.checked,
-                          ),
-                        }),
-                      )
-                    }
-                  />
-                  {label}
-                </label>
-              ))}
-            </fieldset>
-
-            <div className="field">
-              <span className="field-label" aria-hidden="true">
-                Quality
-              </span>
-              {jpegStill ? (
-                <>
-                  <Select
-                    key="standard-only"
-                    label="Quality"
-                    value="standard"
-                    disabled
-                    onChange={() => undefined}
-                  >
-                    <option value="standard">standard</option>
-                  </Select>
-                  <p className="message">
-                    This preset is a JPEG still, which the engine makes at standard quality only.
-                  </p>
-                </>
-              ) : (
-                <Select
-                  key="any"
-                  label="Quality"
-                  value={choice.options.quality ?? defaults.quality}
-                  disabled={locked}
-                  onChange={(value) => {
-                    const quality = QUALITIES.find((q) => q === value)
-                    if (quality !== undefined)
-                      change(
-                        withOption(choice, preset, { key: 'quality', value: quality as Quality }),
-                      )
-                  }}
-                >
-                  <option value="draft">draft: quick, to check it</option>
-                  <option value="standard">standard (the engine’s own)</option>
-                  <option value="high">high: twice the size, kept</option>
-                </Select>
-              )}
-            </div>
-
-            <div className="field">
-              <label htmlFor="export-tag">Filename tag</label>
-              <div onBlur={commitTag}>
-                <TextInput
-                  id="export-tag"
-                  value={tagDraft}
-                  onChange={setTagDraft}
-                  disabled={locked}
-                  spellCheck={false}
-                  aria-describedby="export-tag-message"
-                  aria-invalid={tagProblem !== null ? true : undefined}
-                />
-              </div>
-              <p
-                id="export-tag-message"
-                className={tagProblem === null ? 'message' : 'message error'}
-              >
-                {tagProblem ??
-                  'Added to the file’s name, so a draft does not replace the last good export.'}
-              </p>
-            </div>
-
-            {/* The sidecar's alt text, in the person's own words. Not a plan
-                option: it goes to the encode, in the provenance. A native
-                field, because the kit has no multi-line one; the kit's own
-                stylesheet draws it. */}
-            <div className="field">
-              <label htmlFor="export-alt">Alt text for the file’s sidecar</label>
-              <textarea
-                id="export-alt"
-                rows={5}
-                value={altDraft}
-                onChange={(event) => setAltDraft(event.target.value)}
-                onBlur={commitAlt}
-                disabled={locked}
-                aria-describedby="export-alt-message"
-                aria-invalid={altProblem !== null ? true : undefined}
-              />
-              <p
-                id="export-alt-message"
-                className={altProblem === null ? 'message' : 'message error'}
-              >
-                {altProblem ??
-                  'Describes the map for someone who cannot see it, in your words. Left blank, the engine writes its own sentence.'}
-              </p>
-            </div>
-
-            {/* Where the file goes. Inside the form with the rest of the
-                choices, so an export that starts takes focus off these two
-                as it does off every other control here; neither is a
-                submit, so neither ends the two typed fields' commit. */}
-            <div className="field export-destination">
-              <p className="field-label" id="export-destination-label">
-                Where it goes
-              </p>
-              {destination === null ? (
-                <p className="message" id="export-destination-where">
-                  This project&rsquo;s exports go to the app&rsquo;s export folder, which Settings
-                  names, in a folder named after the project.
-                </p>
-              ) : (
-                /* A folder's path is shown to the person whose folder it
-                   is, as Settings shows its two; it is in no message the
-                   app sends anywhere else. */
-                <p className="path" id="export-destination-where">
-                  {destination}
-                </p>
-              )}
-              <div className="toolbar">
-                <Button
-                  ref={chooserRef}
-                  disabled={locked}
-                  aria-describedby="export-destination-where"
-                  onClick={() => {
-                    void changeFolder(() => window.api.export.chooseDestination(project.id))
-                  }}
-                >
-                  <Icon name="folder" />
-                  Choose folder
-                </Button>
-                {destination !== null && (
-                  <Button
-                    disabled={locked}
-                    aria-describedby="export-destination-where"
-                    onClick={() => {
-                      void changeFolder(() => window.api.export.useAppFolder(project.id), true)
-                    }}
-                  >
-                    Use the app&rsquo;s folder
-                  </Button>
-                )}
-              </div>
-              {folderProblem !== null && (
-                <p className="message error" role="alert">
-                  {folderProblem}
-                </p>
-              )}
-            </div>
-            <button type="submit" hidden />
-          </form>
+          <ExportForm
+            projectId={project.id}
+            tables={read}
+            preset={preset}
+            defaults={defaultsFor(preset)}
+            choice={choice}
+            drafts={drafts}
+            locked={locked}
+            lines={lines}
+            inspection={inspection}
+            played={played}
+            change={change}
+            choicesRef={choicesRef}
+            refusal={refused && refusal !== null ? refusal.sentence : null}
+            notes={notes}
+          >
+            {/* Inside the form, so an export that starts takes focus off its two
+                buttons as off every other choice; neither is a submit. */}
+            <ExportDestination projectId={project.id} destination={destination} locked={locked} />
+          </ExportForm>
           {exporting && (
             <p className="hint" role="status">
               The choices wait until the export that is going has finished: it was planned from
@@ -951,13 +184,13 @@ export default function ExportTab({
           )}
         </>
       )}
-      {showRun && (
+      {(runState !== 'idle' || (ready && read !== null)) && (
         <ExportRunView
           run={run}
           project={project}
           engine={engine}
           choice={asked}
-          disabled={layingOut || refused || tables.status !== 'ready'}
+          disabled={layingOut || refused || read === null}
         />
       )}
     </div>

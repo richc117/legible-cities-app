@@ -319,11 +319,14 @@ describe('which cells reach for a footer at all', () => {
 
   /**
    * The files a cell with a strip is read from for a list of its own, from
-   * the renderer's root: its adapter, and for cell 06 the three files its
-   * body is drawn by. `ExportCell.tsx` draws nothing of its own but
-   * `ExportTab`, and `ExportTab` draws the run's panel from `ExportRun` and
-   * the opening from `ExportOpening` (issue 392), so a guard that read the
-   * adapter alone would hold nothing about cell 06.
+   * the renderer's root: its adapter, and for cell 06 every file its body
+   * is drawn by. `ExportCell.tsx` draws nothing of its own but `ExportTab`,
+   * which since issue 433 is the composition of the pieces under
+   * `export/` - the form, the destination and their hooks - and draws the
+   * run's panel from `ExportRun`; the form draws the opening from
+   * `ExportOpening` (issue 392). A guard that read the adapter alone would
+   * hold nothing about cell 06, and one that read `ExportTab` alone would
+   * hold nothing about its fields.
    */
   const bodyOf: Record<keyof typeof withFooter, string[]> = {
     'ProcessCell.tsx': ['notebook/cells/ProcessCell.tsx'],
@@ -331,10 +334,27 @@ describe('which cells reach for a footer at all', () => {
     'ExportCell.tsx': [
       'notebook/cells/ExportCell.tsx',
       'ExportTab.tsx',
+      'export/ExportForm.tsx',
+      'export/ExportDestination.tsx',
+      'export/useExportChoice.ts',
+      'export/useExportLines.ts',
+      'export/useExportPreview.ts',
+      'export/useExportTables.ts',
       'ExportRun.tsx',
       'ExportOpening.tsx',
     ],
   }
+
+  it('reads every piece of cell 06 under export/', () => {
+    // A piece added there and not here would be a body this guard never
+    // reads. Mutation: a file under export/ left out of the list above.
+    const pieces = readdirSync(join(renderer, 'export'))
+      .map((file) => `export/${file}`)
+      .sort()
+    expect(bodyOf['ExportCell.tsx'].filter((file) => file.startsWith('export/')).sort()).toEqual(
+      pieces,
+    )
+  })
 
   /** A source file without its comments, which name things to say they are gone. */
   const codeOf = (file: string): string =>

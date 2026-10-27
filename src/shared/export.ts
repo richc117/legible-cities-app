@@ -503,6 +503,15 @@ export interface ExportProgress {
   /** 0 to 1 within the stage. */
   fraction: number
   message: string
+  /**
+   * The frames done so far, on a report that counts them ("Captured 18 of
+   * 108 frames."), with `of`; absent from a stage's start and from the
+   * sentence that says the frames were not proven fresh. The page says a
+   * tenth of the frames at a time from these, never from the words.
+   */
+  done?: number
+  /** The frames in all, on a report that counts them, with `done`. */
+  of?: number
 }
 
 /** What a finished export hands the page: the file's name, never its path. */

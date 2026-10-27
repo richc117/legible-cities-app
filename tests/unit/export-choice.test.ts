@@ -258,14 +258,20 @@ describe('the lines to keep, beside the lines cell 05 hides', () => {
   it('is what cell 06 offers, plans and exports from', () => {
     // Read from the source, since nothing in this suite renders the cell.
     // Mutation: the export or the preview handed the stored choice.
-    const source = readFileSync(resolve(__dirname, '../../src/renderer/src/ExportTab.tsx'), 'utf8')
+    const read = (file: string): string =>
+      readFileSync(resolve(__dirname, '../../src/renderer/src', file), 'utf8')
+    const source = read('ExportTab.tsx')
+    const planning = read('export/useExportPreview.ts')
     expect(source).toContain('const asked = useMemo(() => plannedChoice(choice, project.lines),')
-    expect(source).toContain('const key = keyOf(asked, project)')
-    expect(source).toContain('choiceRef.current = asked')
+    expect(source).toMatch(/useExportPreview\(\{\s+project,\s+asked,/)
+    expect(planning).toContain('const key = keyOf(asked, project)')
+    expect(planning).toContain('choiceRef.current = asked')
     expect(source).toMatch(
       /<ExportRunView\s+run=\{run\}\s+project=\{project\}\s+engine=\{engine\}\s+choice=\{asked\}/,
     )
-    expect(source).toMatch(/keepableLines\(\s*linesOf\(inspection, \{ mode, agency \}\)/)
+    expect(read('export/useExportLines.ts')).toMatch(
+      /keepableLines\(\s*linesOf\(inspection, \{ mode, agency \}\)/,
+    )
   })
 
   it('keeps a hidden line a person kept when another is turned on or off', () => {

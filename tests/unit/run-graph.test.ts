@@ -4,6 +4,7 @@ import {
   CELL_LIST,
   cellOfRun,
   drawnMatchesEdits,
+  exportable,
   runGraph,
   stalenessOf,
   type CellId,
@@ -103,6 +104,22 @@ describe('the six cells', () => {
       'Lines',
       'Export',
     ])
+  })
+})
+
+describe('exportable: whether an export can be made from this project', () => {
+  // One predicate for cell 06's two early sentences, its preview's guard
+  // and the empty Outputs' way to cell 06 (issue 433, the audit's finding
+  // 11). Mutation: `exportable` reading only `readOnly` - the row with no
+  // layout then says it can.
+  const layout = 'a'.repeat(64)
+  it.each<[string, { readOnly: boolean; layout: string | null }, boolean]>([
+    ['writable and laid out', { readOnly: false, layout }, true],
+    ['writable and not laid out', { readOnly: false, layout: null }, false],
+    ['read-only and laid out', { readOnly: true, layout }, false],
+    ['read-only and not laid out', { readOnly: true, layout: null }, false],
+  ])('%s', (_, project, can) => {
+    expect(exportable(project)).toBe(can)
   })
 })
 
