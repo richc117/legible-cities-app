@@ -52,7 +52,11 @@ function put(path: string, content: string): void {
   writeFileSync(path, content)
 }
 /** A tool run with an argument array, never through a shell. */
-function tool(command: string, args: string[], env = GIT_ENV): SpawnSyncReturns<string> {
+function tool(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv = GIT_ENV,
+): SpawnSyncReturns<string> {
   return spawnSync(command, args, { encoding: 'utf8', timeout: 60_000, env, windowsHide: true })
 }
 // The script's --verify needs bash, git, python3, cmp, xz and a tar; the

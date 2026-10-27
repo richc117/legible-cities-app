@@ -1038,7 +1038,9 @@ describe("the source of Electron's FFmpeg library", () => {
     const job = vendor.slice(vendor.indexOf('\n  electron-ffmpeg-source:\n'))
     expect(job).toContain('runs-on: ubuntu-22.04')
     // On a miss, or a cached archive that does not verify (issue 585).
-    expect(job).toContain('\n          bash scripts/electron-ffmpeg-source.sh electron-ffmpeg-source\n')
+    expect(job).toContain(
+      '\n          bash scripts/electron-ffmpeg-source.sh electron-ffmpeg-source\n',
+    )
     expect(job).toContain('name: electron-ffmpeg-source\n')
     expect(job).toContain('if-no-files-found: error')
     // vendor.yml has no push trigger of its own (issue 430); build.yml calls
