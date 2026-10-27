@@ -98,6 +98,8 @@ npm run typegen                       # the protocol, its fingerprint and the ty
 npm run dist                          # electron-builder --dir; installers come from build.yml
 npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
 npm run test:acceptance               # the acceptance checklist over the installed app LEGIBLE_ACCEPTANCE_APP names
+node scripts/mutations.mjs --check    # every tests/unit/*.mutations.json entry is well formed (npm test runs it)
+node scripts/mutations.mjs            # each mutation applied to a clean tree, its test run, the file restored; every test must go red
 ```
 
 A second launch of the app quits at once, so `test:acceptance` never runs

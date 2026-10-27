@@ -1,0 +1,66 @@
+# The mutation job (spec 038, Part 3, FR-008; ADR-059): each mutation a test
+# names as prose, written as an entry in tests/unit/<name>.mutations.json, is
+# applied to a clean checkout, its test is run, and the test must go red. An
+# entry that leaves its test green means the test no longer guards what its
+# comment says; an entry whose title matches no test means it was renamed.
+# Either fails the run, and the table of verdicts is in the log.
+#
+# Dispatched by hand after a wave of lanes, and nothing else, so it never runs
+# on a pull request or a push and is not a required check
+# (docs/repository-settings.md does not list it). Dispatch it on the branch
+# under test:
+#
+#   gh workflow run mutations.yml --ref <branch>
+#   gh workflow run mutations.yml --ref <branch> -f only=obscured
+#
+# Like e2e-loop.yml it names no engine and installs no Electron binary; it
+# runs the unit project only, so it needs no browser either. The same job
+# runs on a clean tree anywhere with `node scripts/mutations.mjs`.
+name: mutations
+
+run-name: >-
+  mutations${{ inputs.only && format(': {0}', inputs.only) || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Run only the entries whose file, test, title or mutations file contains this text (blank: all)'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mutations-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mutations:
+    name: mutations
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # The input reaches the shell as an environment variable, never spliced
+      # into the script.
+      - name: Run the mutations
+        env:
+          ONLY: ${{ inputs.only }}
+        run: |
+          args=()
+          if [ -n "$ONLY" ]; then args=(--only "$ONLY"); fi
+          node scripts/mutations.mjs "${args[@]}"

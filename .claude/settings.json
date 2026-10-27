@@ -24,7 +24,8 @@
       "Bash(npm run dist:check darwin-x64)",
       "Bash(npm run dist:check win-x64)",
       "Bash(npx install-electron*)",
-      "Bash(npx prettier --check*)"
+      "Bash(npx prettier --check*)",
+      "Bash(node scripts/mutations.mjs --check)"
     ],
     "deny": [
       "Bash(git difftool*)",

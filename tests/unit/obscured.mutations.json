@@ -1,0 +1,18 @@
+[
+  {
+    "file": "tests/support/obscured.ts",
+    "find": "  return found\n}",
+    "replace": "  return []\n}",
+    "test": "tests/unit/obscured.test.ts",
+    "title": "is named, with the box that covers it and where each was",
+    "why": "coveredStops returning []: the stops the walk found on main would pass as clear."
+  },
+  {
+    "file": "tests/support/obscured.ts",
+    "find": "if (rect.right <= 0 || rect.bottom <= 0 || rect.left >= width || rect.top >= height) {",
+    "replace": "if (false) {",
+    "test": "tests/unit/obscured.test.ts",
+    "title": "is named when it is wholly outside the window, covered by nothing",
+    "why": "The window check dropped from coveredStops: a control that is not on the screen would pass as clear."
+  }
+]

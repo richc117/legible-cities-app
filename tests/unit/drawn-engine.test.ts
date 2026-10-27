@@ -170,8 +170,8 @@ describe('the store stamps the engine that answered each draw', () => {
   })
 
   it('stamps nothing where it was told no version, or one it cannot read, and carries none from before', async () => {
-    // Mutation: `drawnFromSent` keeping the version the block before had -
-    // the map drawn now would be said to be the older engine's.
+    // Mutation (mutations.json): `drawnFromSent` keeping the version the block
+    // before had - the map drawn now would be said to be the older engine's.
     const id = await laidOut()
     expect((await drawnOnDisk(id)).engine).toBe('0.19.0')
     answering = null
@@ -256,8 +256,8 @@ describe('drawnFromSent and the engine', () => {
 
 describe('whether one engine is older than another', () => {
   it('is below where any part is lower, compared as numbers and not as text', () => {
-    // Mutation: the parts compared as strings - "0.9.0" would read above
-    // "0.10.0", and a page drawn by the older would be kept.
+    // Mutation (mutations.json): the parts compared as strings - "0.9.0" would
+    // read above "0.10.0", and a page drawn by the older would be kept.
     expect(engineBefore('0.18.1', '0.19.0')).toBe(true)
     expect(engineBefore('0.19.0', '0.19.1')).toBe(true)
     expect(engineBefore('0.9.0', '0.10.0')).toBe(true)
@@ -266,7 +266,8 @@ describe('whether one engine is older than another', () => {
   })
 
   it('is not below where it is the same', () => {
-    // Mutation: `<=` for `<` - every page drawn at the pin redrawn on every opening.
+    // Mutation (mutations.json): `<=` for `<` - every page drawn at the pin
+    // redrawn on every opening.
     expect(engineBefore('0.19.0', '0.19.0')).toBe(false)
   })
 

@@ -213,6 +213,19 @@ checklist), `docs/acceptance-stranger.md` (the stranger's timed run) and
 per-screen record). Changing a sentence or a control name in the app means
 changing these in the same pull request.
 
+### Mutations
+
+A test whose comment names the fault it guards ("Mutation: `<=` for `<`")
+can have that fault written down as an entry in `tests/unit/<name>.mutations.json`
+beside it: the `file`, a `find` that occurs once in it, what it `replace`s
+with, the `test` file and the `title` that must go red, and a `why`.
+`node scripts/mutations.mjs --check` validates every entry without running
+anything, and `npm test` runs it, so a renamed test or a moved line fails
+there. Nothing runs the mutations on a pull request: dispatch the
+`mutations` workflow by hand after a wave of lanes (or run
+`node scripts/mutations.mjs` on a clean tree), and any entry whose test stays
+green, or that finds no test, fails the run.
+
 ## How work happens
 
 1. **Pick an issue.** Comment that you are taking it. Issues carry a phase,
