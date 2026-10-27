@@ -237,7 +237,9 @@ are honoured when the run in flight ends: its file is put back, and the run
 stops with `STOPPED` and a non-zero exit. After a SIGKILL or a crash,
 `git checkout -- <file>` puts a file right. The job's own tests that start a
 real Vitest and send signals are `npm run test:live` (POSIX only; CI runs it
-as a step after the unit tests).
+as a step after the unit tests). The full run is supported and tested on
+POSIX only, which is where `mutations.yml` runs it; on Windows, `--check`
+is.
 
 ## How work happens
 
