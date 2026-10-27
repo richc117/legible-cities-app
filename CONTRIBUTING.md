@@ -226,11 +226,14 @@ it, so a renamed test or a moved line fails there.
 Nothing runs the mutations on a pull request: dispatch the `mutations`
 workflow by hand after a wave of lanes, or run `node scripts/mutations.mjs`
 on a clean tree (it refuses one that is not, naming what is dirty). It runs
-each test file whole and unmutated first, and refuses its entries if that is
-red; then applies each mutation, runs the test, and writes the original bytes
-back. Any entry whose test stays green, finds no test, or cannot load fails
-the run. Ctrl-C is honoured when the entry in flight ends: its file is put
-back, and the run stops with `STOPPED` and a non-zero exit.
+each test and title unmutated first, and refuses its entries if that is red or
+if the mutation changes how many tests run; then applies each mutation, runs
+the test, and writes the original bytes back, leaving a file alone (and
+keeping the original) if you saved it meanwhile. Any entry whose test stays
+green, finds no test, or cannot load fails the run. Ctrl-C, SIGTERM and SIGHUP
+are honoured when the run in flight ends: its file is put back, and the run
+stops with `STOPPED` and a non-zero exit. After a SIGKILL or a crash,
+`git checkout -- <file>` puts a file right.
 
 ## How work happens
 
