@@ -52,7 +52,7 @@ Node 22), and git. On a Mac, Windows or Linux machine, with no engine at all:
 ```
 npm ci
 npx install-electron --no         # the Electron binary is fetched separately since Electron 42
-npx playwright install chromium   # once per machine: the browser the unit suite's browser project runs in
+npx playwright install chromium --only-shell   # once per machine: the headless browser npm test's browser project runs in
 npm run lint && npm run typecheck && npm test && npm run build
 npm run test:e2e                  # Playwright launches the built app (on Linux: xvfb-run -a npm run test:e2e)
 ```
@@ -63,17 +63,18 @@ launches of the app at once: its single-instance lock makes the second quit.
 ### Unit tests that render
 
 `npm test` runs two Vitest projects (ADR-059). Most files run in Node. A
-test that renders a component and presses it starts with one of two first
-lines:
+test that renders a component and presses it says where it runs in one of
+two ways:
 
-- `// @vitest-environment jsdom` as the file's first line, for a cell, a
-  panel or a hook drawn into jsdom through `tests/support/render.tsx`
-  (`renderCell`, `renderPanel`, `byName`, `press`);
-- a file name ending `.browser.test.tsx`, for what only a browser shows of
+- by its first line, `// @vitest-environment jsdom`, for a cell, a panel
+  or a hook drawn into jsdom through `tests/support/render.tsx`
+  (`renderCell`, `renderPanel`, `byName`, `press`, and `afterEach(cleanup)`);
+- by its name, ending `.browser.test.tsx`, for what only a browser shows of
   the kit (focus handed into a `<fig-button>`, the popover, anchor
   positioning), which runs in Playwright's headless Chromium. That project
   fails with Playwright's install command where the browser is missing,
-  which is the `npx playwright install chromium` above; it never skips.
+  which is the `npx playwright install chromium --only-shell` above; it
+  never skips.
 
 jsdom unless the test is about what the kit does with focus, a popover or
 layout. A rendered test waits on fake timers or `act`, never the wall clock.

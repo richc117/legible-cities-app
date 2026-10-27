@@ -85,14 +85,15 @@ jobs:
 
       # Run on a cache hit too: the download is then skipped, and on Linux
       # the system libraries Chromium needs, which no cache holds, are
-      # installed.
+      # installed. The browser project runs headless, so the headless shell
+      # is all it needs, not the full Chromium beside it.
       - name: Fetch the browser for the DOM tests
         shell: bash
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            npx playwright install chromium --with-deps
+            npx playwright install chromium --with-deps --only-shell
           else
-            npx playwright install chromium
+            npx playwright install chromium --only-shell
           fi
 
       - name: Style

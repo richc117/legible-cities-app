@@ -64,7 +64,7 @@ lines; each case was then shown red under a named mutation
 | Install | nothing | 13 MB on disk, 5.5 MB unpacked, about 33 lockfile entries, MIT | 18 MB, 9.2 MB unpacked, about 7 entries, MIT | 0.8 MB, MIT, and a Playwright Chromium: a 99 MiB download, 203 MB on disk |
 | On a runner | nothing | nothing | nothing | `npx playwright install chromium --with-deps`, cacheable |
 | `vi.mock` of the bridge and the kit | yes | yes | yes | yes |
-| A cell's renders counted through `Profiler` | yes | yes | yes | yes |
+| A cell's renders countable (by wrapping its adapter in a counting mock; a `Profiler` does not see a context-only render) | yes | yes | yes | yes |
 
 Testing Library was installed beside them and not needed: its queries do
 not pierce shadow roots, and the browser's locators do.
@@ -138,7 +138,7 @@ and not used for a new test.
 - **A rendered test can fail on a press that does not reach its handler,
   and on focus that lands nowhere.** That is what the source guards and the
   handler calls could not do, and it is the point.
-- **Two environments to know.** A file's first line says which. The rule
+- **Two environments to know.** A file's first line, or its name, says which. The rule
   for choosing is short: jsdom unless the test is about what the kit does
   with focus, a popover or layout, and then the browser.
 - **A Chromium on the runners and on a contributor's machine that runs the
@@ -158,6 +158,10 @@ and not used for a new test.
   must occur once, a `replace`, the `test` file and a `title` pattern; the
   job applies one at a time to a clean checkout, runs that test, and
   expects it red. The three mutations measured here are its first entries.
+- **A cell's renders are counted by its adapter.** #433a's acceptance
+  test counts a cell's adapter calls through a mock that wraps it, as
+  `cell-renders.test.tsx` does, with the cell's element made once by
+  `renderCell`, so only a render the context caused is counted.
 - **The suite's time did not move** with the first twenty-two rendered
   tests; the browser project adds about a second an invocation for its
   launch, and more as it grows. It is to be kept small: the kit's tests,

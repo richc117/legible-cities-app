@@ -91,6 +91,7 @@ through it) and point `LEGIBLE_ENGINE_CHECKOUT` at it in `.env.local`:
 cp .env.example .env.local        # then edit; the file is gitignored
 npm ci
 npx install-electron --no         # the Electron binary is fetched separately since Electron 42
+npx playwright install chromium --only-shell   # once per machine: the headless browser npm test needs
 npm run dev                       # the window; interface edits hot-reload
 ```
 
@@ -103,7 +104,7 @@ documentation):
 ```
 npm run lint          # eslint and prettier
 npm run typecheck     # tsc, both projects
-npm test              # vitest: the supervisor, the client, the layout run and the design system, against a stand-in engine
+npm test              # vitest, in Node, jsdom and a headless Chromium: the supervisor, the client, the layout run, the cells and the design system, against a stand-in engine
 npm run build         # electron-vite build into out/
 npm run test:e2e      # Playwright launches the built app and quits it
 ```

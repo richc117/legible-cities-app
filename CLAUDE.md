@@ -86,12 +86,12 @@ The application's own scripts (`package.json`). The checks have permission
 rules in `.claude/settings.json`; `dev`, `start` and `dist` are for a person:
 
 ```
-npm ci && npx install-electron --no   # install; the Electron binary is fetched separately since Electron 42
+npm ci && npx install-electron --no && npx playwright install chromium --only-shell   # install; Electron's binary and npm test's headless browser are fetched separately
 npm run dev                           # the app against the sibling engine checkout; interface changes hot-reload
 npm run lint                          # eslint and prettier --check
 npm run format                        # prettier --write over what lint checks
 npm run typecheck                     # tsc over the node, the web and the tests project
-npm test                              # vitest; the supervisor runs against a stand-in engine (needs a python3 on PATH)
+npm test                              # vitest in Node, jsdom and headless Chromium (ADR-059); the supervisor runs against a stand-in engine (needs a python3 on PATH)
 npm run build                         # electron-vite build into out/
 npm run test:e2e                      # Playwright launches the built app, with and without the stand-in engine
 npm run typegen                       # the protocol, its fingerprint and the types, from LEGIBLE_ENGINE_CHECKOUT's engine
