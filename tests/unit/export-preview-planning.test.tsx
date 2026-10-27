@@ -176,6 +176,28 @@ describe('cell 06’s preview, planned', () => {
     expect(drawn.state.refused, 'and again for the choice it was for').toBe(true)
   })
 
+  it('says a refusal in the sentence every run’s failure is said in, without a path', async () => {
+    // Issue 433, part b, the audit's finding 3: `refusalWords` is
+    // `runFailureSentence`. Mutation: it reads the hint as it came - the
+    // path is then said.
+    const drawn = draw()
+    await settle()
+    drawn.asked[0].resolve({
+      ok: false,
+      error: {
+        code: -32000,
+        message: 'm',
+        data: {
+          kind: 'io',
+          detail: 'd',
+          hint: 'The page at /srv/schematic/out/la.html was not read.',
+        },
+      },
+    })
+    await answered()
+    expect(drawn.state.refusal?.sentence).toBe('The page at a file was not read.')
+  })
+
   it('drops an answer that comes after the cell has closed', async () => {
     // Two guards hold this, and either alone keeps it green: the planner
     // cancelled as `canPlan` goes false, and the answer's own `active`

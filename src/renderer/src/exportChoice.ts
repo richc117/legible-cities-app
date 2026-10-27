@@ -16,6 +16,7 @@ import {
   type OfferedPreset,
   type Quality,
 } from '../../shared/export'
+import { runFailureSentence } from '../../shared/jobs'
 import type { ProjectLines } from '../../shared/project/types'
 import type { ClockCorner, Preset, Storyboard, View } from '../../shared/protocol'
 import { debounce, type Debounced } from './debounce'
@@ -492,9 +493,12 @@ export function previewCaption(address: Pick<PreviewAddress, 'width' | 'height' 
     : `${size}.`
 }
 
-/** A sentence for a refusal: the engine's hint, then its message. */
+/**
+ * A sentence for a refusal: the engine's hint, then its message, without a
+ * path - the sentence every run's failure is said in (`runFailureSentence`).
+ */
 export function refusalWords(preview: Extract<ExportPreview, { ok: false }>): string {
-  return preview.error.data?.hint ?? preview.error.message
+  return runFailureSentence(preview.error, 'The preview could not be planned.')
 }
 
 /**

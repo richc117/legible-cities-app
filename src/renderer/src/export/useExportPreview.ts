@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { withoutPaths } from '../../../shared/engine'
 import type { ExportChoice, ExportPreview } from '../../../shared/export'
 import { drawnDate } from '../../../shared/project/helpers'
 import type { ProjectRecord } from '../../../shared/project/types'
@@ -102,7 +101,7 @@ export function useExportPreview({
         setNotes([])
         setRefusal({
           key: keyOf(asked, project),
-          sentence: withoutPaths(refusalWords(preview)),
+          sentence: refusalWords(preview),
         })
       }
     }

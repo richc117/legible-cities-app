@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { withoutPaths } from '../../../shared/engine'
+import { runFailureSentence } from '../../../shared/jobs'
 import { engineClient } from '../engine/runs'
 import { exportTablesFor, forgetExportTables, type ExportTables } from '../exportChoice'
 
@@ -29,12 +29,9 @@ export function useExportTables(ready: boolean): Tables {
       },
       (error: unknown) => {
         if (left) return
-        const reason = error as { data?: { hint?: string }; message?: string }
         setTables({
           status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The engine did not list its presets.',
-          ),
+          message: runFailureSentence(error, 'The engine did not list its presets.'),
         })
       },
     )

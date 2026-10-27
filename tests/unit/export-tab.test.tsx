@@ -12,13 +12,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ExportTab from '../../src/renderer/src/ExportTab'
 import { ExportRun } from '../../src/renderer/src/engine/exportRun'
 import { forgetExportTables, PREVIEW_DELAY } from '../../src/renderer/src/exportChoice'
+import { EngineError } from '../../src/shared/engine'
 import type { ExportChoice, ExportPreview, ExportResult } from '../../src/shared/export'
 import type { Preset, Storyboard } from '../../src/shared/protocol'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import { answered, BASE, byName, cleanup, READY, renderPanel } from '../support/render'
 
 /** The engine's two tables as a stand-in client answers them, or never. */
-const engine = vi.hoisted(() => ({ answers: true }))
+const engine = vi.hoisted(() => ({ answers: true as boolean | Error }))
 
 const REEL_ROW: Preset = {
   name: 'instagram-reel',
@@ -42,11 +43,14 @@ vi.mock('../../src/renderer/src/engine/runs', async (original) => ({
   ...(await original<typeof import('../../src/renderer/src/engine/runs')>()),
   engineClient: () => ({
     request: (method: string) => ({
-      result: !engine.answers
-        ? new Promise(() => undefined)
-        : Promise.resolve(
-            method === 'export.presets' ? { presets: [REEL_ROW] } : { storyboards: [TOUR] },
-          ),
+      result:
+        engine.answers instanceof Error
+          ? Promise.reject(engine.answers)
+          : !engine.answers
+            ? new Promise(() => undefined)
+            : Promise.resolve(
+                method === 'export.presets' ? { presets: [REEL_ROW] } : { storyboards: [TOUR] },
+              ),
     }),
   }),
 }))
@@ -146,6 +150,22 @@ describe('cell 06’s composition', () => {
     const status = document.querySelector('.export-tab > [role="status"]')
     expect(status?.className).toBe('hint')
     expect(status?.textContent).toBe('Asking the engine for its presets.')
+    expect(document.querySelector('form')).toBeNull()
+  })
+
+  it('says the engine’s refusal of its presets, without a path', async () => {
+    // Issue 433, part b, the audit's finding 3: the sentence is
+    // `runFailureSentence`'s. Mutation: the hint read as it came - the path
+    // is then said.
+    engine.answers = new EngineError(-32000, 'm', {
+      kind: 'io',
+      detail: 'd',
+      hint: 'The table at /srv/schematic/presets.json could not be read.',
+    })
+    await draw()
+    const alert = document.querySelector('.export-tab > [role="alert"]')
+    expect(alert?.className).toBe('message error')
+    expect(alert?.textContent).toBe('The table at a file could not be read.')
     expect(document.querySelector('form')).toBeNull()
   })
 
