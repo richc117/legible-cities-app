@@ -14,21 +14,23 @@
 # The job keeps the archive in its cache (issue 585), keyed on the Electron
 # version, on the tar and xz that pack it and on the three files
 # legible-cities/ copies, because the fetch from Chromium's mirror stalls
-# now and then and a stalled fetch stops every installer of the run. A cached archive is checked before it is used: the
-# job runs --verify on it, which needs no network. That reads its entries
-# first, with the same function that checks a fresh archive, and refuses
-# anything but files and folders (a link, a device, a FIFO), a name twice,
-# an entry the pins do not name, a missing one and git metadata; unpacks it
-# into an empty folder and refuses anything there but files and folders;
-# holds it to the pins exactly as the fetch holds what it fetched: every
-# directory by the tree id its files make, with the same tree_id, FFmpeg's
-# reported version, every Electron file by its blob id; requires
-# legible-cities/'s copies to be this checkout's files byte for byte, and
-# BUILD.txt to be the one the pins make for the commit it names, which is
-# the commit whose run packed it; and last packs what it checked again, with
-# the same function the fetch packs with, and requires that to be the file's
-# own bytes, so nothing in the file went unread. A cached archive that fails
-# is set aside and the source fetched again; a fetched one is put through
+# now and then and a stalled fetch stops every installer of the run. A
+# cached archive is checked before it is used: the job runs --verify on it,
+# which needs no network. That reads its entries first, with the same
+# function that checks a fresh archive, and refuses anything but files and
+# folders (a link, a device, a FIFO), a name twice, a mode the packing would
+# not give, an entry the pins do not name, a missing one and git metadata;
+# unpacks it into an empty folder and refuses anything there but files and
+# folders, and any empty folder; holds it to the pins exactly as the fetch
+# holds what it fetched: every directory by the tree id its files make, with
+# the same tree_id, FFmpeg's reported version, every Electron file by its
+# blob id; requires legible-cities/'s copies to be this checkout's files
+# byte for byte, and BUILD.txt to name a full commit (and, in a workflow,
+# this repository) and to be the one the pins make for it, which is the
+# commit whose run packed it; and last packs what it checked again, with the
+# same function the fetch packs with, and requires that to be the file's own
+# bytes, so nothing in the file went unread. A cached archive that fails is
+# set aside and the source fetched again; a fetched one is put through
 # --verify too before it is cached, which proves on every miss that the
 # archive packs reproducibly. So every run still judges the archive it
 # uploads by its object ids against the pins, and no installer is packaged
@@ -40,7 +42,6 @@
 # this script and the three files it compares against come from that same
 # workspace. No workflow here has a pull_request_target, issue_comment or
 # workflow_run trigger, so only trusted runs on main write such entries.
-#
 #
 # Electron bundles Chromium's FFmpeg as a shared library (libffmpeg.dylib on
 # macOS, ffmpeg.dll on Windows), LGPL-2.1-or-later. LGPL-2.1 section 4 asks
@@ -319,10 +320,14 @@ pack_archive() {
 }
 
 # check_listing <archive>: the archive holds only files and folders, each
-# name once, every part the pins name, no git metadata, and nothing else,
-# all inside its one folder. Read by Python's tarfile, which says what each
-# entry is; a folder's name ends in /. Sets listing, and mtime to the one
-# time every entry carries.
+# name once and at the mode pack_archive gives it (0644 or 0755 for a file,
+# 0755 for a folder), every part the pins name, no git metadata, and nothing
+# else, all inside its one folder. Read by Python's tarfile, which says what
+# each entry is; a folder's name ends in /. Sets listing, and mtime to the
+# one time every entry carries. That time is the FFmpeg commit's committer
+# time, which the fetch reads from the commit and the pins do not hold, so
+# --verify cannot learn it offline: it accepts the one time the archive
+# carries, and packs with it again.
 check_listing() {
   local entry part path allowed expected parts exact listed
   listed=$(python3 - "$1" "$archive" <<'PY'
@@ -345,6 +350,11 @@ try:
                 refuse(f"holds {member.name}, which is {kinds.get(member.type, 'neither a file nor a folder')}: only files and folders are packed")
             if "\n" in name:
                 refuse(f"holds a name with a newline in it, {name!r}")
+            mode = member.mode & 0o7777
+            if member.type == tarfile.DIRTYPE and mode != 0o755:
+                refuse(f"holds {name} at mode {mode:04o}, and a folder is packed 0755")
+            if member.type != tarfile.DIRTYPE and mode not in (0o644, 0o755):
+                refuse(f"holds {name} at mode {mode:04o}, and a file is packed 0644 or 0755")
             if name in seen:
                 refuse(f"holds {name} twice")
             seen.add(name)
@@ -530,6 +540,9 @@ verify() {
   [ "$(ls -A "$work")" = "$name" ] || fail "$archive unpacks to more than $name/"
   found=$(find "$work" ! -type f ! -type d -print -quit)
   [ -z "$found" ] || fail "$archive unpacks to ${found#"$work/"}, which is neither a file nor a folder"
+  # A git tree holds no empty folder, so no tree id would judge one.
+  found=$(find "$work/$name" -type d -empty -print -quit)
+  [ -z "$found" ] || fail "$archive holds the empty folder ${found#"$work/"}/, which no pinned tree can hold"
   # As below, no git command runs inside the checkout.
   cd "$work"
   root="$work/$name"
@@ -562,6 +575,12 @@ verify() {
   built_repository=$(sed -n 's|^of \.github/workflows/vendor\.yml, of \(.*\) at commit \([^ ]*\)\.$|\1|p' "$root/BUILD.txt")
   built_commit=$(sed -n 's|^of \.github/workflows/vendor\.yml, of \(.*\) at commit \([^ ]*\)\.$|\2|p' "$root/BUILD.txt")
   [ -n "$built_repository" ] && [ -n "$built_commit" ] || fail "$archive's BUILD.txt names no repository and commit that packed it"
+  [[ $built_commit =~ ^[0-9a-f]{40}$ ]] || fail "$archive's BUILD.txt names commit $built_commit, which is not 40 lowercase hex digits"
+  # In a workflow, the run that packed it was this repository's.
+  if [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] \
+    && [ "$built_repository" != "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" ]; then
+    fail "$archive's BUILD.txt names $built_repository, and this run is $GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+  fi
   write_build_txt "$work/BUILD.txt" "$built_repository" "$built_commit"
   cmp -s "$root/BUILD.txt" "$work/BUILD.txt" \
     || fail "$archive's BUILD.txt is not the one the pins make for $built_repository at commit $built_commit"

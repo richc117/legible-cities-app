@@ -8,6 +8,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import {
   appendFileSync,
+  chmodSync,
   copyFileSync,
   cpSync,
   linkSync,
@@ -16,6 +17,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -77,9 +79,16 @@ const lacking =
       '{ tar --version 2>/dev/null | grep -q "GNU tar" || gtar --version 2>/dev/null | grep -q "GNU tar"; }',
   ]).status !== 0
 
+/**
+ * The script with the pins given. Outside a workflow by default: in one,
+ * --verify holds BUILD.txt's repository to the run's, and the fixture names
+ * its own.
+ */
 function script(args: string[], pinsFile: string, extra: Record<string, string> = {}) {
   return tool('bash', [SCRIPT, ...args], {
     ...process.env,
+    GITHUB_SERVER_URL: '',
+    GITHUB_REPOSITORY: '',
     ELECTRON_FFMPEG_PINS: pinsFile,
     ...extra,
   })
@@ -93,7 +102,7 @@ function fixture(): {
   base: string
   good: string
   pinsFile: string
-  pack: (from: string) => string
+  pack: (from: string, keepModes?: boolean) => string
   copy: () => string
 } {
   const dir = scratch()
@@ -148,16 +157,24 @@ function fixture(): {
   )
 
   let packs = 0
-  const pack = (from: string): string => {
+  const pack = (from: string, keepModes = false): string => {
     const out = join(dir, `pack-${++packs}`)
     mkdirSync(out)
-    // One time on every entry, as the script packs, so a plain pack is
-    // refused for what it holds rather than for its times. A link is
-    // skipped: utimes would follow it.
+    // One time on every entry, and the modes the script gives, whatever
+    // the umask, so a plain pack is refused for what it holds rather than
+    // for its times or modes; keepModes leaves a case's own. A link is
+    // skipped: utimes and chmod would follow it.
     const tree = join(from, NAME)
     for (const entry of readdirSync(tree, { recursive: true, withFileTypes: true })) {
-      if (!entry.isSymbolicLink()) utimesSync(join(entry.parentPath, entry.name), MTIME, MTIME)
+      if (entry.isSymbolicLink()) continue
+      const path = join(entry.parentPath, entry.name)
+      if (!keepModes) {
+        const executable = (statSync(path).mode & 0o100) !== 0
+        chmodSync(path, entry.isDirectory() || executable ? 0o755 : 0o644)
+      }
+      utimesSync(path, MTIME, MTIME)
     }
+    if (!keepModes) chmodSync(tree, 0o755)
     utimesSync(tree, MTIME, MTIME)
     const tar = join(out, `${NAME}.tar`)
     // COPYFILE_DISABLE keeps macOS's tar from adding ._ files of its own.
@@ -198,8 +215,13 @@ function fixture(): {
 const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** --verify over an archive, which must be refused with the message given. */
-function refused(archive: string, pinsFile: string, message: string): void {
-  const result = script(['--verify', archive], pinsFile)
+function refused(
+  archive: string,
+  pinsFile: string,
+  message: string,
+  extra: Record<string, string> = {},
+): void {
+  const result = script(['--verify', archive], pinsFile, extra)
   expect(result.stderr).toContain(`::error::${message}`)
   expect(result.status).toBe(1)
   expect(result.stdout).not.toContain('verified')
@@ -320,6 +342,78 @@ describe.skipIf(lacking)(
           `${ARCHIVE} holds ${NAME}/${extra}, which is none of the parts the pins name`,
         )
       }
+    })
+
+    it('refuses an empty folder, which no tree id judges', () => {
+      const { pinsFile, pack, copy } = fixture()
+      const [tree] = Object.keys(PINS.chromium_trees)
+      const other = copy()
+      mkdirSync(join(other, NAME, 'src', tree, 'empty'))
+      refused(
+        pack(other),
+        pinsFile,
+        `${ARCHIVE} holds the empty folder ${NAME}/src/${tree}/empty/, which no pinned tree can hold`,
+      )
+    })
+
+    it('refuses a file or a folder at a mode the packing would not give', () => {
+      const { pinsFile, pack, copy } = fixture()
+      const ffmpeg = join(NAME, 'src', 'third_party', 'ffmpeg')
+      // Git records 0600 and 0664 as 100644 and 0700 as 100755, so no tree
+      // id tells them apart; the listing must.
+      for (const [mode, kind] of [
+        [0o600, 'file'],
+        [0o664, 'file'],
+        [0o700, 'file'],
+      ] as const) {
+        const other = copy()
+        chmodSync(join(other, ffmpeg, 'BUILD.gn'), mode)
+        refused(
+          pack(other, true),
+          pinsFile,
+          `${ARCHIVE} holds ${ffmpeg}/BUILD.gn at mode ${mode.toString(8).padStart(4, '0')}, and a ${kind} is packed 0644 or 0755`,
+        )
+      }
+      for (const mode of [0o700, 0o775]) {
+        const other = copy()
+        chmodSync(join(other, ffmpeg, 'chromium'), mode)
+        refused(
+          pack(other, true),
+          pinsFile,
+          `${ARCHIVE} holds ${ffmpeg}/chromium/ at mode ${mode.toString(8).padStart(4, '0')}, and a folder is packed 0755`,
+        )
+      }
+    })
+
+    it('refuses a BUILD.txt whose commit is not 40 lowercase hex digits', () => {
+      const { pinsFile, pack, copy } = fixture()
+      for (const commit of ['unknown', 'A'.repeat(40), 'a'.repeat(39)]) {
+        const other = copy()
+        const build = join(other, NAME, 'BUILD.txt')
+        writeFileSync(build, readFileSync(build, 'utf8').replace('a'.repeat(40), commit))
+        refused(
+          pack(other),
+          pinsFile,
+          `${ARCHIVE}'s BUILD.txt names commit ${commit}, which is not 40 lowercase hex digits`,
+        )
+      }
+    })
+
+    it("refuses, in a workflow, a BUILD.txt for another repository than the run's", () => {
+      const { good, pinsFile } = fixture()
+      const run = { GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'other/app' }
+      refused(
+        good,
+        pinsFile,
+        `${ARCHIVE}'s BUILD.txt names https://github.com/example/app, and this run is https://github.com/other/app`,
+        run,
+      )
+      const same = script(['--verify', good], pinsFile, {
+        ...run,
+        GITHUB_REPOSITORY: 'example/app',
+      })
+      expect(same.stderr).toBe('')
+      expect(same.status).toBe(0)
     })
 
     it('refuses a symbolic link, a hard link and a name twice, before anything is unpacked', () => {
