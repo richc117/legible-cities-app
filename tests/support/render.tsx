@@ -204,10 +204,10 @@ export function defaultApi(record: () => ProjectRecord & { readOnly: boolean }):
   }
 }
 
-/** The default bridge with a test's parts laid over it, one part at a time. */
 /** What `window` held as `api` before the first stub since the last `cleanup`; null when nothing is stubbed. */
 let apiBefore: { had: boolean; api: unknown } | null = null
 
+/** The default bridge with a test's parts laid over it, one part at a time. */
 function installApi(base: ApiStub, over: ApiStub = {}): void {
   apiBefore ??= { had: 'api' in window, api: (window as { api?: unknown }).api }
   const api: Record<string, unknown> = { ...base }

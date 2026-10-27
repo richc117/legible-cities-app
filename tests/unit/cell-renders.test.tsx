@@ -9,7 +9,9 @@
 // The split must sit where `renderCell` passes through, or this count says
 // nothing of the app: 433a puts it in one `ProjectProviders({ state,
 // children })` in `notebook/context.tsx`, which `ProjectView` and the
-// harness both draw, so the harness cannot drift from the screen.
+// harness both draw, so the harness cannot drift from the screen. A split
+// into slices must also keep `themeReloads` out of every slice `LinesCell`
+// and its hooks read, or a sound split still counts above zero.
 //
 // The count is of the lines cell's own renders: its adapter, wrapped by a
 // mock that counts each call and draws what the adapter draws (the function
