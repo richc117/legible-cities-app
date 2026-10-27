@@ -14,8 +14,10 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -39,6 +41,7 @@ const PINS = (
 ).electron_ffmpeg
 const NAME = `electron-ffmpeg-${PINS.electron.version}-source`
 const ARCHIVE = `${NAME}.tar.xz`
+const MTIME = 1_700_000_000
 const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
 
 const made: string[] = []
@@ -148,6 +151,14 @@ function fixture(): {
   const pack = (from: string): string => {
     const out = join(dir, `pack-${++packs}`)
     mkdirSync(out)
+    // One time on every entry, as the script packs, so a plain pack is
+    // refused for what it holds rather than for its times. A link is
+    // skipped: utimes would follow it.
+    const tree = join(from, NAME)
+    for (const entry of readdirSync(tree, { recursive: true, withFileTypes: true })) {
+      if (!entry.isSymbolicLink()) utimesSync(join(entry.parentPath, entry.name), MTIME, MTIME)
+    }
+    utimesSync(tree, MTIME, MTIME)
     const tar = join(out, `${NAME}.tar`)
     // COPYFILE_DISABLE keeps macOS's tar from adding ._ files of its own.
     const made = tool('tar', ['-c', '-f', tar, '-C', from, NAME], {
@@ -182,6 +193,9 @@ function fixture(): {
   expect(second.status).toBe(1)
   return { base, good: join(again, 'repacked', ARCHIVE), pinsFile, pack, copy }
 }
+
+/** Text for a regular expression that matches it literally. */
+const literal = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 /** --verify over an archive, which must be refused with the message given. */
 function refused(archive: string, pinsFile: string, message: string): void {
@@ -322,7 +336,14 @@ describe.skipIf(lacking)(
       const hard = copy()
       rmSync(join(hard, ffmpeg, 'BUILD.gn'))
       linkSync(join(hard, ffmpeg, 'COPYING.LGPLv2.1'), join(hard, ffmpeg, 'BUILD.gn'))
-      refused(pack(hard), pinsFile, 'which is a hard link: only files and folders are packed')
+      // Which of the two the tar records as the link is the tar's to choose.
+      const linked = script(['--verify', pack(hard)], pinsFile)
+      expect(linked.stderr).toMatch(
+        new RegExp(
+          `::error::${literal(`${ARCHIVE} holds ${ffmpeg}/`)}(BUILD\\.gn|COPYING\\.LGPLv2\\.1)${literal(', which is a hard link: only files and folders are packed')}`,
+        ),
+      )
+      expect(linked.status).toBe(1)
 
       // A file appended to the tar again, so the name is there twice and
       // unpacking would keep only the second.
