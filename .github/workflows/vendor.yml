@@ -1295,7 +1295,7 @@ jobs:
             echo "The cached $ARCHIVE verified against the pins, offline: it is uploaded, and nothing is fetched"
           else
             rm -rf electron-ffmpeg-source
-            echo "::warning::The cached $ARCHIVE did not verify against the pins, so the source is fetched again. A cache entry cannot be replaced: delete this one (gh cache delete "$KEY"), or every run with this key fetches too"
+            echo "::warning::The cached $ARCHIVE did not verify against the pins, so the source is fetched again. A cache entry cannot be replaced: delete this one (gh cache delete $KEY), or every run with this key fetches too"
           fi
       - name: Fetch and verify the source of Electron's FFmpeg library, and archive it
         if: steps.cached.outputs.verified != 'true'
