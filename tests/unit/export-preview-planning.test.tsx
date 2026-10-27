@@ -24,6 +24,23 @@ import type { ExportChoice, ExportPreview } from '../../src/shared/export'
 import type { Preset } from '../../src/shared/protocol'
 import { answered, BASE, cleanup, renderPanel } from '../support/render'
 
+/**
+ * While `on`, the planner's `cancel` does nothing, so an answer already on
+ * its way is not dropped by the planner: the one row that sets it holds the
+ * hook's own `active` check alone. Every other row has the real planner.
+ */
+const leaky = vi.hoisted(() => ({ on: false }))
+
+vi.mock('../../src/renderer/src/exportChoice', async (original) => {
+  const real = await original<typeof import('../../src/renderer/src/exportChoice')>()
+  class PreviewPlanner extends real.PreviewPlanner {
+    cancel(): void {
+      if (!leaky.on) super.cancel()
+    }
+  }
+  return { ...real, PreviewPlanner }
+})
+
 const REEL_ROW: Preset = {
   name: 'instagram-reel',
   platform: 'Instagram',
@@ -62,6 +79,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  leaky.on = false
 })
 
 /** The hook, drawn with `given` laid over an open cell of a laid-out project that can plan. */
@@ -199,17 +217,32 @@ describe('cell 06’s preview, planned', () => {
   })
 
   it('drops an answer that comes after the cell has closed', async () => {
-    // Two guards hold this, and either alone keeps it green: the planner
-    // cancelled as `canPlan` goes false, and the answer's own `active`
-    // check. Mutations: each taken out alone leaves this passing; both
-    // taken out together fail it. The `active` check is for an answer that
-    // lands between the commit that closes the cell and that commit's
-    // effects, which no test here can place an answer in.
+    // Two guards hold this: the planner cancelled as `canPlan` goes false,
+    // and the answer's own `active` check. Mutations: each taken out alone
+    // leaves this passing; both taken out together fail it. The next row
+    // holds the `active` check alone.
     const drawn = draw()
     await settle()
     expect(drawn.asked).toHaveLength(1)
     drawn.redraw({ active: false })
     drawn.asked[0].resolve(ok('app://local/late'))
+    await answered()
+    expect(drawn.onPreview).not.toHaveBeenCalled()
+    expect(drawn.state.notes).toEqual([])
+  })
+
+  it('drops a late answer by the cell being closed, whatever the planner does', async () => {
+    // The `active` check is for an answer that lands between the commit
+    // that closes the cell and that commit's effects, where the planner's
+    // cancel has not run yet; no test can place an answer there, so the
+    // planner's cancel is made to do nothing instead. Mutation: `if
+    // (!active) return` removed - the late address reaches the frame.
+    leaky.on = true
+    const drawn = draw()
+    await settle()
+    expect(drawn.asked).toHaveLength(1)
+    drawn.redraw({ active: false })
+    drawn.asked[0].resolve(ok('app://local/late', ['A late note.']))
     await answered()
     expect(drawn.onPreview).not.toHaveBeenCalled()
     expect(drawn.state.notes).toEqual([])
