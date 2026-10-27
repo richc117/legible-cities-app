@@ -25,7 +25,7 @@ import {
 } from '@playwright/test'
 import { staleFrame } from '../../src/main/capture'
 import { readPng, stripOf } from '../../src/main/capture-strip'
-import { openCell } from '../support/project'
+import { exportLine, openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { capturedStandInSource, type CapturedStandInOptions } from '../support/standInPage'
 
@@ -154,13 +154,9 @@ test('an export of a page that never paints its step fails with the capture’s 
   await withApp(h, async (page) => {
     await laidOutProject(page, h, { late: true })
     await page.getByRole('button', { name: 'Export', exact: true }).click()
-    // As the export's other failures are read (export.spec.ts): the sentence
-    // on the line the eye follows; the export draws it a second time, out of
-    // sight, for a screen reader (issue 542), so a text match over the page
-    // would find two.
-    await expect(
-      page.locator('.export-run .progress-message', { hasText: staleFrame(0) }),
-    ).toBeVisible({ timeout: 60_000 })
+    // As the export's other failures are read: the sentence on the line the
+    // eye follows (`exportLine`).
+    await expect(exportLine(page, staleFrame(0))).toBeVisible({ timeout: 60_000 })
     expect(existsSync(deliverable(h)), 'no file').toBe(false)
     expect(existsSync(deliverable(h) + '.json'), 'no sidecar').toBe(false)
     expect(framesLeft(h), 'no frames').toEqual([])

@@ -24,10 +24,9 @@ import {
   expect,
   test,
   type ElectronApplication,
-  type Locator,
   type Page,
 } from '@playwright/test'
-import { openCell, openProject } from '../support/project'
+import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -298,16 +297,6 @@ test('cancelled during the capture: nothing written, no frames left, and it can 
   })
 })
 
-// The export's line is drawn twice since issue 542: once for the eye, which
-// changes with every frame, and once out of sight for a screen reader, which
-// changes at a tenth of them. A text locator over the page finds both, so
-// these read the line the eye follows.
-const exportLine = (page: Page, text: RegExp): Locator =>
-  page
-    .getByRole('region', { name: 'Export run', exact: true })
-    .locator('.progress-message')
-    .filter({ hasText: text })
-
 /**
  * Until the stand-in's encode has written its first step: the page shows
  * "Encoded <n> of <m> frames." only from the encode's first `job/progress`,
@@ -414,9 +403,7 @@ test('cancelled during the encode after the file was in place: the export finish
     await expect.poll(() => existsSync(deliverable(h) + '.json'), { timeout: 45_000 }).toBe(true)
     await run.getByRole('button', { name: 'Cancel' }).click()
     await expect(
-      run.locator('.progress-message', {
-        hasText: 'The export was already written when you cancelled; it is kept.',
-      }),
+      exportLine(page, 'The export was already written when you cancelled; it is kept.'),
     ).toBeVisible({ timeout: 20_000 })
     await expect(run.locator('p.prose', { hasText: /^Exported / })).toHaveText(`Exported ${REEL}.`)
     await expect(run.getByRole('button', { name: 'Reveal' })).toBeVisible()

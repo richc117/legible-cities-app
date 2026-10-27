@@ -64,6 +64,16 @@ export const panel = (page: Page, name: string): Locator =>
   page.getByRole('region', { name, exact: true })
 
 /**
+ * The export's progress line, the one the eye follows, holding `text`. The
+ * line is drawn twice since issue 542: once for the eye, which changes with
+ * every frame, and once out of sight for a screen reader, which changes at
+ * a tenth of them. A text locator over the page finds both, so this reads
+ * the line inside the export's run region only (issue 433, finding 9).
+ */
+export const exportLine = (page: Page, text: string | RegExp): Locator =>
+  panel(page, 'Export run').locator('.progress-message').filter({ hasText: text })
+
+/**
  * A named button inside a panel, a dialog or the screen. `exact` is passed
  * through because several names are prefixes of others ("Reset line A" and
  * "Reset every line"), and a spec that meant one must not reach two.
