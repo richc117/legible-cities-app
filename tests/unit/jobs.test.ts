@@ -199,6 +199,24 @@ describe('the sentence said when a job ends', () => {
       'A project: Layout run, finished.',
     )
   })
+
+  it('names the file an export finished with, then what its result said beside it (issue 570)', () => {
+    const exported = (said: string | null): Partial<Job> => ({
+      kind: 'export',
+      label: 'Export as instagram-reel',
+      exported: { file: 'la-metro-rail-instagram-reel.mp4', said },
+    })
+    expect(endSentence(job({ ...exported(null), state: 'done' }))).toBe(
+      'Los Angeles: Export as instagram-reel, finished: la-metro-rail-instagram-reel.mp4.',
+    )
+    expect(endSentence(job({ ...exported('It is kept.'), state: 'done' }))).toBe(
+      'Los Angeles: Export as instagram-reel, finished: la-metro-rail-instagram-reel.mp4. It is kept.',
+    )
+    // Only a finish names a file: a job that did not finish wrote none.
+    expect(endSentence(job({ ...exported(null), state: 'failed' }))).toBe(
+      'Los Angeles: Export as instagram-reel, failed.',
+    )
+  })
 })
 
 describe('the text "Copy log" sends', () => {

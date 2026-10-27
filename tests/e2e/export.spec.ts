@@ -262,15 +262,15 @@ test('exports the day the page was drawn for, not a day chosen and not yet drawn
     await openCell(page, 'export')
 
     await exportButton(page).click()
-    // What this waits for is the run's own status line saying the export
-    // finished, not any text on the screen beginning "Exported": cell 06's
-    // provenance strip has an `Exported` term of its own since A5.5-11, and
-    // a page-wide match resolves to both.
+    // What this waits for is the run's own line saying the export finished,
+    // not any text on the screen beginning "Exported": cell 06's provenance
+    // strip has an `Exported` term of its own since A5.5-11, and a page-wide
+    // match resolves to both. The line is shown and not a live region since
+    // issue 570, so it is read by its class.
     await expect(
       page
         .getByRole('region', { name: 'Export run', exact: true })
-        .getByRole('status')
-        .filter({ hasText: /^Exported / }),
+        .locator('p.prose', { hasText: /^Exported / }),
     ).toBeVisible({ timeout: 60_000 })
     const sidecar = JSON.parse(readFileSync(deliverable(h) + '.json', 'utf8')) as Record<
       string,
@@ -418,9 +418,7 @@ test('cancelled during the encode after the file was in place: the export finish
         hasText: 'The export was already written when you cancelled; it is kept.',
       }),
     ).toBeVisible({ timeout: 20_000 })
-    await expect(run.getByRole('status').filter({ hasText: /^Exported / })).toHaveText(
-      `Exported ${REEL}.`,
-    )
+    await expect(run.locator('p.prose', { hasText: /^Exported / })).toHaveText(`Exported ${REEL}.`)
     await expect(run.getByRole('button', { name: 'Reveal' })).toBeVisible()
     await expect(run.getByText(/was cancelled/i)).toHaveCount(0)
     expect(existsSync(deliverable(h)), 'the file is at the destination').toBe(true)

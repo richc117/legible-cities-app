@@ -109,9 +109,11 @@ export default function ExportRun({
         )}
         {state === 'done' && (
           <>
-            <p className="prose" role="status">
-              Exported {file}.
-            </p>
+            {/* Shown, not spoken: a live region inserted with its text
+                already in it is not reliably announced, and the finish is
+                said once, with the file's name, by the job's end sentence
+                on every screen (`endSentence`, issue 570). */}
+            <p className="prose">Exported {file}.</p>
             <div className="toolbar">
               <Button ref={revealRef} onClick={() => run.reveal()}>
                 <Icon name="forward" />

@@ -46,6 +46,13 @@ export interface Job {
   ended: number | null
   /** The detail as the engine sent it, paths and all, for the copied log only. */
   rawDetail: string | null
+  /**
+   * For an export that finished: the file's name, never its path, and what
+   * its result said beside it ("it is kept", "could not be proven fresh"),
+   * or null. The end sentence says both (issue 570). Absent for every other
+   * job.
+   */
+  exported?: { file: string; said: string | null }
 }
 
 /** The finished jobs a session keeps, newest first; running jobs are never dropped. */
@@ -196,9 +203,18 @@ export function jobSubject(job: Pick<Job, 'projectId' | 'projectName' | 'kind'>)
  * what it was, and how it ended. Short, and never the engine's hint, which
  * the run's own screen and the inspector already show in full; a sentence
  * that repeated it would be read twice.
+ *
+ * An export that finished also names its file, which is what a person needs
+ * next, and then whatever its result said beside it. This is the one place
+ * the finish is spoken: cell 06 shows "Exported <file>." in a line that is
+ * not live, and its hidden status does not change at the finish, so the
+ * file's name is heard once, on whichever screen the person is (issue 570).
  */
 export function endSentence(job: Job): string {
-  return `${jobSubject(job)}: ${job.label}, ${describeJobState(job.state)}.`
+  const ended = `${jobSubject(job)}: ${job.label}, ${describeJobState(job.state)}`
+  const exported = job.state === 'done' ? job.exported : undefined
+  if (exported === undefined) return `${ended}.`
+  return `${ended}: ${exported.file}.${exported.said === null ? '' : ` ${exported.said}`}`
 }
 
 const encoder = new TextEncoder()
