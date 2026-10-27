@@ -8,6 +8,11 @@ writes before the app starts (every key optional):
     exit              "at-once" | "after-handshake" | null       exit code 3 at that moment
     garbage           true: write a line that is not a frame before anything else; a
                       string: write that string as the line
+    stderr_line       a string: written to stderr once, after the banner and before anything
+                      else, so a test can have the supervisor's stderr tail hold a chosen line
+    info_refuses      a sentence: engine.info answers with a JSON-RPC error carrying it as the
+                      message (code -32000, kind engine), as an engine whose start-up failed
+                      on a file would; the handshake fails with it
     ignore_shutdown   true: answer engine.shutdown and keep running
     silent            true: long requests send no progress and never answer
     mute              true: answer nothing at all, not even engine.info
@@ -1486,6 +1491,9 @@ class Engine:
             return True
         if method == "engine.info":
             time.sleep(self.control.get("handshake_delay_ms", 0) / 1000)
+            if self.control.get("info_refuses"):
+                error(msg_id, -32000, self.control["info_refuses"], "engine")
+                return True
             write({"jsonrpc": "2.0", "id": msg_id, "result": self.info()})
             if self.control.get("exit") == "after-handshake":
                 sys.stderr.write("fake engine: exiting after the handshake as told\n")
@@ -2646,6 +2654,9 @@ def main() -> int:
     sys.stderr.write("fake engine %s, protocol %s, home %s\n"
                      % (control.get("version", "0.2.0"), control.get("protocol", 1), HOME))
     sys.stderr.flush()
+    if control.get("stderr_line"):
+        sys.stderr.write(str(control["stderr_line"]) + "\n")
+        sys.stderr.flush()
     if control.get("exit") == "at-once":
         sys.stderr.write("fake engine: exiting at once as told\n")
         return 3

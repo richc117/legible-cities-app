@@ -159,7 +159,7 @@ describe('what the samples region says when it has no presets to draw', () => {
   }
   const stopped: EngineState = {
     state: 'stopped',
-    reason: 'It exited. It failed 3 times in a row.',
+    reason: 'It exited. The engine failed 3 times in a row.',
   }
 
   it('says the engine is on its way while it is starting or restarting, or not yet heard from', () => {
@@ -200,7 +200,7 @@ describe('what the samples region says when it has no presets to draw', () => {
   it('carries the whole reason, first, which the status line cuts short', () => {
     expect(samplesSentence(unavailable, 'unread')?.startsWith(unavailable.reason)).toBe(true)
     expect(samplesSentence(stopped, 'unread')).toContain(` ${stopped.reason} `)
-    expect(samplesSentence(stopped, 'unread')).toContain('It failed 3 times in a row.')
+    expect(samplesSentence(stopped, 'unread')).toContain('The engine failed 3 times in a row.')
     expect(samplesSentence(stopped, 'unread')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
   })
 
