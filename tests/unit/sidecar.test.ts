@@ -8,7 +8,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
-import { engineWorkRefusal, Sidecar, type Bounds } from '../../src/main/sidecar'
+import {
+  engineWorkRefusal,
+  HANDSHAKE_FAILED_REASON,
+  PROTOCOL_ERROR_REASON,
+  Sidecar,
+  WROTE_IN_THE_LOG,
+  type Bounds,
+} from '../../src/main/sidecar'
 import {
   describeState,
   ERROR_CODES,
@@ -279,26 +286,32 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     if (state.state === 'restarting') expect(state.reason).toContain('not a message')
   })
 
-  // Issue 207: the state goes to the page as it is, so a web address in the
-  // stray line must not reach it (since issue 580 the reason quotes nothing,
-  // and this holds that it stays so, in the state and its description). A
-  // percent-encoded one, because a line with a colon in it reads as a frame
-  // header, and because an encoded address has no slash for the stderr
-  // tail's own filter to catch either.
-  it('redacts a web address the stray line quotes, in the state the page reads', async () => {
-    const h = harness({ garbage: 'https%3A%2F%2Ffeeds.example.org%2Fg.zip%3Fapi_key%3Dplanted207' })
+  // Issue 207: the state goes to the page as it is, so a web address in a
+  // reason must not reach it whole. The reason that can still quote the
+  // engine is the exit's, which tails its stderr and drops any line holding a
+  // path separator; an address percent-encoded has no slash, so it passes that
+  // filter and `setState`'s `redactUrls` is what keeps its key off the screen.
+  it('redacts a web address the stderr tail quotes, in the state the page reads', async () => {
+    const h = harness({
+      exit: 'at-once',
+      stderr_line: 'fetch failed https%3A%2F%2Ffeeds.example.org%2Fg.zip%3Fapi_key%3Dplanted207',
+    })
     h.sidecar.start()
     const state = await h.until((s) => s.state === 'restarting')
     if (state.state !== 'restarting') throw new Error('expected restarting')
-    expect(state.reason).toContain('not a message')
+    expect(state.reason).toContain('fetch failed')
     expect(state.reason).not.toContain('planted207')
     expect(JSON.stringify(h.sidecar.state)).not.toContain('planted207')
+    expect(describeState(state)).not.toContain('planted207')
   })
 
   // Issue 580: a reason is drawn on screen, and a screenshot sent with a bug
   // report would carry a path the engine printed (a library's warning begins
   // with the file it came from). The snippet stays in the log, the one place a
-  // path may be; the reason says what to do and quotes nothing.
+  // path may be; the reason says what happened and where, and quotes nothing.
+  // The Windows case has no drive letter on purpose: a line with a colon
+  // reads as a frame header, and `C:\\...` would fail as a missing
+  // Content-Length, not as a line that is not a frame.
   it.each([
     ['a POSIX path', '/opt/engine/lib/site-packages/warn_planted580'],
     ['a Windows path', String.raw`Engine\lib\site-packages\warn_planted580`],
@@ -316,6 +329,29 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       expect(h.log.some((l) => l.startsWith('protocol error:') && l.includes(stray))).toBe(true)
     },
   )
+
+  // Issue 580, the handshake: an engine that fails on a file answers
+  // engine.info with an error whose message holds the path. It goes to the log
+  // and the reason says what happened.
+  it('shows no path in the reason for a refused handshake, and keeps the message in the log', async () => {
+    const message = 'cannot read /opt/engine/data/planted580/registry.json'
+    const h = harness({ info_refuses: message })
+    h.sidecar.start()
+    const state = await h.until((s) => s.state === 'restarting')
+    if (state.state !== 'restarting') throw new Error('expected restarting')
+    expect(state.reason).toContain('handshake')
+    expect(state.reason).not.toMatch(/[\\/]/)
+    expect(state.reason).not.toContain('planted580')
+    expect(describeState(state)).not.toContain('planted580')
+    expect(h.log.some((l) => l.includes(message))).toBe(true)
+  })
+
+  it('names the same file, the same way, in every reason that sends the person to the log', () => {
+    for (const sentence of [PROTOCOL_ERROR_REASON, HANDSHAKE_FAILED_REASON, WROTE_IN_THE_LOG]) {
+      expect(sentence).toContain('engine.log in the logs folder')
+      expect(sentence).not.toMatch(/[\\/]/)
+    }
+  })
 
   it('is unavailable with the reason when there is no interpreter, or it cannot be started', async () => {
     const none = new Sidecar({

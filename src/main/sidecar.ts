@@ -102,13 +102,29 @@ export function interpreterFailedReason(what: string, bundledInterpreter: boolea
  * and nothing the engine wrote. A stray line is often a library's warning,
  * which begins with the file it came from, and a reason is drawn on screen and
  * may be photographed into a bug report; the snippet stays in the log, and
- * the sentence says so (issue 580). Like the supervisor's other reasons it
- * says what happened and gives no step of its own: the engine restarts by
- * itself, and where it does not, the Library leads with what to do and ends
- * with where to report it (issue 547), so a step here would be a second order.
+ * the sentence says where (issue 580). Like the supervisor's other restarting
+ * and stopped reasons it says what happened and gives no step of its own: the
+ * engine restarts by itself, and where it does not, the Library leads with
+ * what to do and ends with where to report it (issue 547), so a step here
+ * would be a second order. (`interpreterFailedReason`'s unavailable reasons do
+ * give steps; that screen has nothing else to say.) The file is named as the
+ * logs folder holds it, not as "the engine's log", which is cell 02's panel
+ * and never holds this line.
  */
 export const PROTOCOL_ERROR_REASON =
-  "The engine wrote something that is not a message. What it wrote is in the engine's log."
+  'The engine wrote something that is not a message. What it wrote is in engine.log in the logs folder.'
+
+/**
+ * Why the handshake failed, for the screen: what happened and where the
+ * engine's own words went. The engine's error message is not shown: for a
+ * failure on a file it carries an absolute path (issue 580). Same file, same
+ * wording, as `PROTOCOL_ERROR_REASON` and the exit reason's tail.
+ */
+export const HANDSHAKE_FAILED_REASON =
+  'The engine did not complete the handshake. What it said is in engine.log in the logs folder.'
+
+/** The tail of an exit reason when every stderr line the engine wrote holds a path. */
+export const WROTE_IN_THE_LOG = 'what it wrote is in engine.log in the logs folder'
 
 /** The longest delay a Node timer holds; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647
@@ -486,7 +502,7 @@ export class Sidecar {
         shown.length > 0
           ? `; it wrote: ${shown.join(' | ')}`
           : this.tail.length > 0
-            ? '; what it wrote is in the log'
+            ? `; ${WROTE_IN_THE_LOG}`
             : ''
       void this.failed(`The engine ${unexpected}${tail}.`, null)
     }
@@ -549,7 +565,9 @@ export class Sidecar {
         clearTimeout(timer)
         if (this.child !== child) return
         if (error.code === ERROR_CODES.engineExited) return // the exit handler reports it
-        void this.failed(`The engine did not complete the handshake: ${error.message}.`, child)
+        // The engine's message goes to the log, the one place a path may be.
+        this.log(`handshake: failed: ${error.message}`)
+        void this.failed(HANDSHAKE_FAILED_REASON, child)
       },
     )
   }
@@ -801,11 +819,12 @@ export class Sidecar {
   // -- state --
 
   private setState(next: EngineState): void {
-    // A reason can hold text the engine wrote - the head of a line on
-    // stdout that was not a frame, or the last lines of its stderr - and
-    // the state is sent to the page as it is (the status line, the
-    // mismatch dialog). So its web addresses are redacted here, once, for
-    // every reader, as an error's are in `ipc-shape.ts` (issue 207).
+    // A reason can hold text the engine wrote - the last lines of its
+    // stderr, the ones without a path - and the state is sent to the page
+    // as it is (the status line, the mismatch dialog). So its web addresses
+    // are redacted here, once, for every reader, as an error's are in
+    // `ipc-shape.ts` (issue 207). What the engine wrote on stdout, or
+    // answered with an error, is never in a reason (issue 580).
     const state = 'reason' in next ? { ...next, reason: redactUrls(next.reason) } : next
     this._state = state
     this.log(`state: ${describeState(state)}`)
