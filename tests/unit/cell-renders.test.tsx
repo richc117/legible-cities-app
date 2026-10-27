@@ -157,6 +157,17 @@ const only = (rendered: Partial<Record<Part, number>>): Record<Part, number> => 
 })
 
 /**
+ * Nothing renders while nothing changes: whatever the screen asked as it
+ * mounted, or as a row set it up, has answered and been drawn, so a read
+ * that settles late is not counted as the change that follows.
+ */
+async function still(): Promise<void> {
+  const idle = counted()
+  await answered()
+  expect(idle, 'the screen is still before the change').toEqual(only({}))
+}
+
+/**
  * The feed's three lines as the default inspection has them, with the rest
  * of what cell 01 says of a feed: its stop count, its tables, its trips.
  */
@@ -267,6 +278,7 @@ describe('the project screen, counted', () => {
     // renders, and this fails.
     const screen = renderScreen()
     await answered()
+    await still()
     const count = counted()
     screen.rerender({})
     expect(count).toEqual(only({}))
@@ -283,6 +295,7 @@ describe('the project screen, counted', () => {
     await answered()
     press('Rename')
     const field = byName('textbox', 'New name') as HTMLInputElement
+    await still()
     const count = counted()
     act(() => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
@@ -292,6 +305,26 @@ describe('the project screen, counted', () => {
       field.dispatchEvent(new Event('input', { bubbles: true }))
     })
     expect(count).toEqual(only({ footer: 1 }))
+  })
+
+  it('renders cell 04 alone when its heading is pressed', async () => {
+    // Whether a cell is open is the one prop of a notebook slot a person
+    // changes by hand: the column holds it, so the column renders, and the
+    // slot of the cell pressed is the only one whose props moved. Mutation:
+    // the slot passing a cell by whatever its `open` - the press renders
+    // nothing.
+    renderScreen()
+    await answered()
+    const toggle = document.querySelector<HTMLElement>(
+      '.cell[data-cell="04"] button[aria-expanded]',
+    )
+    if (toggle === null) throw new Error('cell 04 has no heading to press')
+    expect(toggle.getAttribute('aria-expanded'), 'cell 04 opens open').toBe('true')
+    await still()
+    const count = counted()
+    act(() => toggle.click())
+    expect(count).toEqual(only({ style: 1 }))
+    expect(toggle.getAttribute('aria-expanded'), 'the press closed it').toBe('false')
   })
 
   it('renders cell 06, the header and the outputs for a frame of the export', async () => {
@@ -309,6 +342,7 @@ describe('the project screen, counted', () => {
     await answered()
     screen.rerender({ exporting: true, exportSnapshot: exportFrame(1) })
     await answered()
+    await still()
     const count = counted()
     screen.rerender({ exportSnapshot: exportFrame(2) })
     expect(count).toEqual(only({ export: 1, header: 1, outputs: 1 }))
@@ -325,6 +359,7 @@ describe('the project screen, counted', () => {
     // memoised - the outputs render with the rail, which the column renders.
     const screen = renderScreen()
     await answered()
+    await still()
     const count = counted()
     act(() => screen.run.move(snap('running')))
     expect(count).toEqual(
@@ -340,6 +375,7 @@ describe('the project screen, counted', () => {
     // cell 03 renders for a reload it does not read.
     const screen = renderScreen()
     await answered()
+    await still()
     const count = counted()
     screen.rerender({ drawn: 1 })
     expect(count, 'a redraw').toEqual(only({ preview: 1, frame: 1 }))
@@ -354,6 +390,7 @@ describe('the project screen, counted', () => {
     // slice with `drawn` - the map renders for them too.
     const screen = renderScreen()
     await answered()
+    await still()
     const count = counted()
     screen.rerender({ redrawAsked: 'job-9' })
     expect(count, 'the redraw asked').toEqual(only({ process: 1, frame: 1 }))
@@ -368,6 +405,7 @@ describe('the project screen, counted', () => {
     // they draw.
     const screen = renderScreen()
     await answered()
+    await still()
     const count = counted()
     screen.rerender({ project: { ...defaultProjectState().project!, date: '2026-09-13' } })
     expect(count).toEqual(
@@ -403,6 +441,7 @@ describe('the project screen as ProjectView draws it, counted', () => {
       api: SCREEN_API,
     })
     await answered()
+    await still()
     const count = counted()
     screenState.current = { ...state }
     view.rerender(<ProjectView id={BASE.id} onBack={() => undefined} />)
@@ -420,6 +459,7 @@ describe('a cell drawn through the render helper, counted', () => {
     // the count goes above zero.
     const view = renderCell('lines')
     await answered()
+    await still()
     const count = counted()
     view.rerender({ themeReloads: 1 })
     expect(count.lines).toBe(0)
