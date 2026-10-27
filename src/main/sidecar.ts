@@ -99,15 +99,16 @@ export function interpreterFailedReason(what: string, bundledInterpreter: boolea
 
 /**
  * Why the engine was stopped for writing on its output what is not a message,
- * as a sentence for whoever is looking at the screen: what to do first, and
- * nothing the engine wrote. A stray line is often a library's warning, which
- * begins with the file it came from, and a reason is drawn on screen and may
- * be photographed into a bug report; the snippet stays in the log, which is
- * where the sentence sends the person (issue 580). It reads the same for the
- * installer's runtime and any other, since neither has a step of its own.
+ * and nothing the engine wrote. A stray line is often a library's warning,
+ * which begins with the file it came from, and a reason is drawn on screen and
+ * may be photographed into a bug report; the snippet stays in the log, and
+ * the sentence says so (issue 580). Like the supervisor's other reasons it
+ * says what happened and gives no step of its own: the engine restarts by
+ * itself, and where it does not, the Library leads with what to do and ends
+ * with where to report it (issue 547), so a step here would be a second order.
  */
 export const PROTOCOL_ERROR_REASON =
-  'Open the logs folder in Settings and read engine.log. The engine wrote something that is not a message.'
+  "The engine wrote something that is not a message. What it wrote is in the engine's log."
 
 /** The longest delay a Node timer holds; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647
