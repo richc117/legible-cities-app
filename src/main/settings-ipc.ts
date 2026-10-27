@@ -23,6 +23,7 @@ import {
   type FolderSize,
   type FolderSource,
   type SettingsView,
+  type WindowBounds,
 } from '../shared/settings'
 import type { FirstRunResult } from '../shared/first-run'
 import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
@@ -248,6 +249,35 @@ export class SettingsService {
       stored.theme === theme ? null : { ...stored, theme },
     )
     return this.view()
+  }
+
+  /** Where the app's window was last kept, as the file holds it; null for nowhere. */
+  storedWindow(): WindowBounds | null {
+    return this.#deps.store.current.window
+  }
+
+  /**
+   * Keep where the app's own window is (issue 549), through the store's
+   * one queue, so this and a press on the Settings screen are one writer:
+   * whichever lands second keeps what the first wrote. Never refused aloud
+   * and never thrown: a place that cannot be kept costs the next launch its
+   * place, and a person has nothing to do about it. It is refused, with a
+   * log line, while a reset is running, as the engine's requests, an export
+   * and a record's writes are; and a write that fails is a log line (the
+   * store's own, with its code, and this one).
+   */
+  async keepWindow(bounds: WindowBounds): Promise<void> {
+    if (this.#resetting) {
+      this.#deps.log("the window's place was not kept: the engine data is being reset")
+      return
+    }
+    try {
+      await this.#deps.store.update((stored) =>
+        sameBounds(stored.window, bounds) ? null : { ...stored, window: { ...bounds } },
+      )
+    } catch {
+      this.#deps.log("the window's place could not be kept")
+    }
   }
 
   /**
@@ -654,6 +684,17 @@ export class SettingsService {
   #folderOf(which: Which): string {
     return which === 'engine' ? this.#deps.engineHome : this.#exportFolder
   }
+}
+
+function sameBounds(a: WindowBounds | null, b: WindowBounds): boolean {
+  return (
+    a !== null &&
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height &&
+    a.maximized === b.maximized
+  )
 }
 
 function refusalForLocked(which: Which): string {

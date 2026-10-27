@@ -19,6 +19,27 @@ export interface AppSettings {
   /** Where exports go; null to take a `Legible Cities` folder on the desktop. */
   exportFolder: string | null
   theme: AppTheme
+  /**
+   * Where the app's own window was left, and whether it was maximised; null
+   * for none, which opens it at its default size in the platform's place
+   * (issue 549). Not a setting a person sees: the screen never shows it, and
+   * the capture window and the export preview are never it.
+   */
+  window: WindowBounds | null
+}
+
+/**
+ * The app window's place in its normal state - never its maximised one, so
+ * a window un-maximised after a restore goes back to where it was - in the
+ * screen's own coordinates (device-independent pixels), and whether it was
+ * maximised.
+ */
+export interface WindowBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+  maximized: boolean
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -26,6 +47,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   engineFolder: null,
   exportFolder: null,
   theme: DEFAULT_APP_THEME,
+  window: null,
 }
 
 /** Where a folder in force came from. `.env.local` counts as the environment: it is one, in development. */
@@ -118,11 +140,39 @@ export function isStorableFolder(value: unknown): value is string {
 }
 
 /**
+ * No screen the app will meet is this far from its origin or this wide; a
+ * number past it is not a place a window was left in, and is read as none.
+ */
+export const WINDOW_COORDINATE_MAX = 1_000_000
+
+const isCoordinate = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && Math.abs(value) <= WINDOW_COORDINATE_MAX
+
+const isExtent = (value: unknown): value is number => isCoordinate(value) && value > 0
+
+/**
+ * A window's stored place, or null for anything that is not one: a missing
+ * field, a field of the wrong type, a size of nothing. Whole or nothing,
+ * because half a rectangle is no place to open a window. Never throws.
+ */
+export function parseWindowBounds(json: unknown): WindowBounds | null {
+  if (typeof json !== 'object' || json === null || Array.isArray(json)) return null
+  const value = json as Record<string, unknown>
+  const { x, y, width, height, maximized } = value
+  if (!isCoordinate(x) || !isCoordinate(y) || !isExtent(width) || !isExtent(height)) return null
+  if (typeof maximized !== 'boolean') return null
+  return { x, y, width, height, maximized }
+}
+
+/**
  * Read settings from parsed JSON. Total: every field that is missing or
  * wrong takes its default, so a half-written or hand-edited file starts the
  * app rather than stopping it (FR-001), exactly as `parseRecord` does for a
  * project. The version is kept as read, so a file from a newer app is
  * recognisable; nothing here refuses one, because every field is optional.
+ * A key it does not know is dropped, which is how an older app reads a file
+ * a newer one wrote: the window's place (issue 549) is one such key to the
+ * app before it.
  */
 export function parseSettings(json: unknown): AppSettings {
   if (typeof json !== 'object' || json === null || Array.isArray(json)) {
@@ -138,6 +188,7 @@ export function parseSettings(json: unknown): AppSettings {
     engineFolder: isStorableFolder(value.engineFolder) ? value.engineFolder : null,
     exportFolder: isStorableFolder(value.exportFolder) ? value.exportFolder : null,
     theme: isAppTheme(value.theme) ? value.theme : DEFAULT_APP_THEME,
+    window: parseWindowBounds(value.window),
   }
 }
 

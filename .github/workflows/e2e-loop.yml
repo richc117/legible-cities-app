@@ -11,9 +11,10 @@
 #
 # The steps are ci.yml's: the same Node, `npm ci`, the Electron binary, the
 # build, and `xvfb-run -a` on Linux. Like ci.yml it names no engine, so a test
-# that needs a real generated page skips here and says so in the log. The log
-# folder is the suite's own (tests/e2e/global-setup.ts sets `LEGIBLE_LOGS`
-# before any worker starts); `LEGIBLE_KEEP_LOGS` below has the teardown copy
+# that needs a real generated page skips here and says so in the log. The
+# profile and its log folder are the run's own (tests/e2e/global-setup.ts
+# sets `LEGIBLE_USER_DATA` and `LEGIBLE_LOGS` before any worker starts);
+# `LEGIBLE_KEEP_LOGS` below has the teardown copy
 # the logs into test-results/logs/ before they go, so the artefact carries
 # the engine's handshake time for every launch (issue 529).
 #

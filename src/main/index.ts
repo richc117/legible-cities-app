@@ -6,7 +6,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readFile, realpath } from 'node:fs/promises'
 import { homedir, release, tmpdir, type } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { BrowserWindow, app, clipboard, dialog, ipcMain, session, shell } from 'electron'
+import { BrowserWindow, app, clipboard, dialog, ipcMain, screen, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import type { AppSettings, FolderSource } from '../shared/settings'
@@ -47,6 +47,7 @@ import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
+import { keepBounds, MINIMUM_WINDOW_SIZE, placeWindow } from './window-bounds'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
 import { engineWorkRefusal, Sidecar } from './sidecar'
@@ -99,10 +100,10 @@ if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserD
 }
 // The logs, moved for a test run, on the same terms as the user-data folder:
 // development only, an absolute path, and a bad value costs the switch and
-// not the launch. The end-to-end suite sets LEGIBLE_LOGS for every launch
-// (tests/e2e/global-setup.ts), because most of its launches keep the default
-// profile and would otherwise write and rotate a person's own log. A moved
-// profile wins: its logs follow it. On Windows and Linux Electron keeps the
+// not the launch. The end-to-end suite moves the profile for every launch
+// that names none (tests/e2e/global-setup.ts), and its logs with it, so no
+// launch writes a person's own settings or log. A moved profile wins: its
+// logs follow it. On Windows and Linux Electron keeps the
 // logs inside the user-data folder already; on macOS it does not
 // (specs/023, FR-009).
 const movedLogs = !app.isPackaged ? process.env.LEGIBLE_LOGS : undefined
@@ -187,6 +188,8 @@ let firstRun: FirstRunCheck | null = null
 // it whether a reset is under way; it is assigned once, during startup.
 let settings: SettingsService | null = null
 const quit = quitGate()
+/** The app window's last place being written as it closed; a quit waits for it (issue 549). */
+let windowKept: Promise<void> = Promise.resolve()
 
 /** Why nothing may write under the engine's home right now, or null. */
 const resetInProgress = (): string | null => settings?.refuseWhileResetting() ?? null
@@ -204,12 +207,19 @@ function sourceOf(source: Source): FolderSource {
 }
 
 function createWindow(): BrowserWindow {
+  // Where the person left it, on a display still attached; else the default
+  // size in the platform's place (issue 549, src/main/window-bounds.ts).
+  const place = placeWindow(
+    settings?.storedWindow() ?? null,
+    screen.getAllDisplays().map((display) => display.bounds),
+  )
   const window = new BrowserWindow({
     title: PRODUCT_NAME,
-    width: 1100,
-    height: 720,
-    minWidth: 640,
-    minHeight: 480,
+    width: place.width,
+    height: place.height,
+    ...(place.x === undefined ? {} : { x: place.x, y: place.y }),
+    minWidth: MINIMUM_WINDOW_SIZE.width,
+    minHeight: MINIMUM_WINDOW_SIZE.height,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -266,7 +276,29 @@ function createWindow(): BrowserWindow {
     () => app.quit(),
   )
 
-  window.on('ready-to-show', () => window.show())
+  window.on('ready-to-show', () => {
+    window.show()
+    // After showing, so it maximises on the display it opened on.
+    if (place.maximize) window.maximize()
+  })
+  // Its place is kept a moment after it comes to rest, and as it closes,
+  // through the settings file's one queue. This window only: the capture
+  // window and the export preview are never the app's window.
+  const keeper = keepBounds({
+    read: () =>
+      window.isDestroyed() || window.isMinimized()
+        ? null
+        : { ...window.getNormalBounds(), maximized: window.isMaximized() },
+    keep: (bounds) => settings?.keepWindow(bounds) ?? Promise.resolve(),
+  })
+  const moved = (): void => keeper.changed()
+  window.on('move', moved)
+  window.on('resize', moved)
+  window.on('maximize', moved)
+  window.on('unmaximize', moved)
+  window.on('close', () => {
+    windowKept = keeper.closing()
+  })
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
   // Windows and Linux quit when the app's own window closes, whatever else
@@ -852,14 +884,21 @@ if (!hasLock) {
   // printed on the way out are queued by then. Lines logged after this
   // reach standard error in development and nowhere else.
   app.on('will-quit', (event) => {
-    if (logFiles === null || logsClosed) return
+    if (logsClosed) return
     event.preventDefault()
     logsClosed = true
     const files = logFiles
-    // Bounded: a disk that does not answer costs the last lines, not the quit.
-    void within(Promise.all([files.main.close(), files.engine.close()]), LOG_WAIT_MS).finally(() =>
-      app.quit(),
-    )
+    // The window's last place first, begun as it closed, so it lands before
+    // the process goes and its log lines reach the files. Bounded, both: a
+    // disk that does not answer costs the place and the last lines, not the
+    // quit.
+    void within(windowKept, LOG_WAIT_MS)
+      .then(() =>
+        files === null
+          ? undefined
+          : within(Promise.all([files.main.close(), files.engine.close()]), LOG_WAIT_MS),
+      )
+      .finally(() => app.quit())
   })
 
   app.on('window-all-closed', () => {

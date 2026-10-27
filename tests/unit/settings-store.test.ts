@@ -74,6 +74,7 @@ describe('SettingsStore', () => {
       engineFolder: null,
       exportFolder: chosen,
       theme: 'sepia',
+      window: null,
     })
   })
 
@@ -92,6 +93,24 @@ describe('SettingsStore', () => {
   it('falls back to the defaults for JSON that is not an object', async () => {
     await writeFile(file(), '[1, 2, 3]')
     expect(await store.load()).toEqual(DEFAULT_SETTINGS)
+  })
+
+  it('opens a window of the wrong shape as none, and says so without its numbers', async () => {
+    await writeFile(
+      file(),
+      JSON.stringify({ version: 1, theme: 'sepia', window: { x: 4321, y: 'top' } }),
+    )
+    const read = await store.load()
+    expect(read.window).toBeNull()
+    expect(read.theme).toBe('sepia')
+    expect(lines.join(' ')).toMatch(/window's place was not usable/)
+    expect(lines.join(' ')).not.toContain('4321')
+  })
+
+  it('says nothing about a file with no window, which every earlier file is', async () => {
+    await writeFile(file(), JSON.stringify({ version: 1, theme: 'sepia' }))
+    expect((await store.load()).window).toBeNull()
+    expect(lines).toEqual([])
   })
 
   it('keeps the good fields of a file with a bad one, and names what it dropped', async () => {
