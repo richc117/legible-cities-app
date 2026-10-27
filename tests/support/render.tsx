@@ -18,6 +18,8 @@
 //   looked for, when nothing or more than one answers, so a test can never
 //   pass over a control that is not there. `press(name)` clicks the button
 //   of that name inside `act`.
+// - `cleanup()` unmounts whatever is still drawn: `afterEach(cleanup)` in a
+//   file that does not unmount each screen itself.
 //
 // The kit is real here: its script registers the custom elements, and a
 // press reaches the inner `<button>` of a `<fig-button>` as it does in the
@@ -32,14 +34,7 @@
 // change flushed as its panel goes reads the record after the panel is
 // gone.
 
-import {
-  act,
-  createRef,
-  Profiler,
-  type JSX,
-  type ProfilerOnRenderCallback,
-  type ReactElement,
-} from 'react'
+import { act, createRef, type JSX, type ReactElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../../src/renderer/src/kit'
 import type { Api } from '../../src/shared/api'
@@ -304,8 +299,6 @@ export interface CellOptions extends RenderOptions {
   open?: boolean
   /** The run the cell is drawn with; a fresh one unless a test hands its own. */
   run?: StandInRun
-  /** Told of every commit of the cell's view, through a `Profiler` around it: to count renders. */
-  onRender?: ProfilerOnRenderCallback
 }
 
 interface Mounted {
@@ -316,21 +309,32 @@ interface Mounted {
   press(name: string): void
 }
 
+/** Every screen drawn and not yet unmounted, for `cleanup`. */
+const drawnNow = new Set<() => void>()
+
+/**
+ * Unmounts every screen still drawn, so a test that failed before its own
+ * unmount leaves nothing for the next one to find: `afterEach(cleanup)`.
+ */
+export function cleanup(): void {
+  for (const unmount of [...drawnNow]) unmount()
+}
+
 function mount(element: ReactElement): Mounted & { render(element: ReactElement): void } {
   const host = document.createElement('div')
   document.body.appendChild(host)
   const root = createRoot(host)
-  let mounted = true
+  const unmount = (): void => {
+    if (!drawnNow.delete(unmount)) return
+    act(() => root.unmount())
+    host.remove()
+  }
+  drawnNow.add(unmount)
   act(() => root.render(element))
   return {
     host,
     render: (next) => act(() => root.render(next)),
-    unmount: () => {
-      if (!mounted) return
-      mounted = false
-      act(() => root.unmount())
-      host.remove()
-    },
+    unmount,
     byName: (role, name) => byName(role, name),
     press: (name) => press(name),
   }
@@ -366,6 +370,19 @@ export function renderCell(
   let patch = state
   let drawn: ProjectState = { ...base, ...patch }
 
+  // The cell's element is made once, so a render of the screen reaches the
+  // cell only through the state it reads from the provider: what the cell
+  // is rendered for is then what that state makes it render for, and not
+  // that the harness drew it again.
+  const view = (
+    <View
+      cell={cell}
+      state={options.cellState ?? 'ready'}
+      open={options.open ?? true}
+      onToggle={nothing}
+    />
+  )
+
   function Screen({ given }: { given: Partial<ProjectState> }): JSX.Element {
     const snapshot = useSnapshot<RunSnapshot>(given.run ?? run)
     drawn = {
@@ -374,25 +391,7 @@ export function renderCell(
       layingOut: snapshot.state === 'running',
       ...given,
     }
-    const view = (
-      <View
-        cell={cell}
-        state={options.cellState ?? 'ready'}
-        open={options.open ?? true}
-        onToggle={nothing}
-      />
-    )
-    return (
-      <ProjectProvider value={drawn}>
-        {options.onRender === undefined ? (
-          view
-        ) : (
-          <Profiler id={id} onRender={options.onRender}>
-            {view}
-          </Profiler>
-        )}
-      </ProjectProvider>
-    )
+    return <ProjectProvider value={drawn}>{view}</ProjectProvider>
   }
 
   installApi(
