@@ -50,6 +50,11 @@ export default defineConfig({
       },
       {
         extends: true,
+        // The page Vite serves the browser is bundled ahead of the run, from
+        // the imports it finds; the automatic JSX transform's runtime is not
+        // one it finds, and bundling it late reloads the page under a test
+        // that has started.
+        optimizeDeps: { include: ['react/jsx-dev-runtime'] },
         test: {
           name: 'browser',
           include: ['tests/unit/**/*.browser.test.tsx'],
