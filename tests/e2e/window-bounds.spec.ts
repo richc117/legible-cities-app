@@ -265,6 +265,19 @@ test('opens maximised when it was left maximised', async () => {
     userData,
     async (app) => {
       await appBounds(app)
+      // Smaller than the work area first. On a display no bigger than the
+      // default window (the macOS runner's), the window opens filling it:
+      // macOS already calls that maximised, and maximize() then moves
+      // nothing and sends no event, so nothing would be kept before the
+      // close.
+      const area = await app.evaluate(({ screen }) => screen.getPrimaryDisplay().workArea)
+      await moveTo(app, {
+        x: area.x + 60,
+        y: area.y + 50,
+        width: Math.min(760, area.width - 120),
+        height: Math.min(540, area.height - 100),
+      })
+      await expect.poll(() => isMaximized(app), { timeout: 10_000 }).toBe(false)
       await app.evaluate(({ BrowserWindow }) => {
         BrowserWindow.getAllWindows()
           .find((w) => w.webContents.getURL().startsWith('app://local/ui/'))
