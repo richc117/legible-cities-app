@@ -1236,24 +1236,33 @@ jobs:
   #
   # The archive is cached (issue 585): the fetch from Chromium's mirror
   # stalled on every attempt in three of eight runs on 26 Oct 2026, and each
-  # stall stopped every installer of its run. The key is the Electron
-  # version, a hash of the versions of the tar and xz that pack it, and the
-  # hash of the three files the archive carries copies of in legible-cities/
-  # (the pins, the script and this workflow), so any change that could
-  # change the archive's bytes is a new key, and there are no
-  # restore keys, because a near match is another archive. A hit is never
-  # trusted: the script's --verify, with no network, refuses any entry but a
-  # file or a folder and any name twice, unpacks it, holds every tree id,
-  # blob id and copy to the pins and this checkout as the fetch holds what it
-  # fetched, then packs what it checked again and requires the cached file's
-  # own bytes, so nothing in it went unread; an archive that fails is set
-  # aside and the source fetched again. A miss fetches as before and puts its
-  # own archive through --verify before it is saved, so the check runs on
-  # every run, a miss proves the archive reproducible, and a failed run saves
-  # nothing. The cache saves the fetch, never the check:
-  # every run still verifies, against the pins, the archive it uploads, which
-  # is ADR-043's rule. A cache entry cannot be replaced, so one that keeps
-  # failing --verify is deleted by hand (gh cache delete <key>).
+  # stall stopped every installer of its run. The key is the Electron version,
+  # a hash of the versions of the tar and xz that pack it, and the hash of the
+  # three files the archive carries copies of in legible-cities/ (the pins,
+  # the script and this workflow), so any change that could change the
+  # archive's bytes is a new key, and there are no restore keys, because a
+  # near match is another archive. A hit is checked before it is used: the
+  # script's --verify, with no network, refuses any entry but a file or a
+  # folder and any name twice, unpacks it, holds every tree id, blob id and
+  # copy to the pins and this checkout as the fetch holds what it fetched,
+  # then packs what it checked again and requires the cached file's own bytes,
+  # so nothing in it went unread; an archive that fails is set aside and the
+  # source fetched again. A miss fetches as before and puts its own archive
+  # through --verify before it is saved, so the check runs on every run, a
+  # miss proves the archive reproducible, and a failed run saves nothing. The
+  # cache saves the fetch, never the check: every run still verifies, against
+  # the pins, the archive it uploads, which is ADR-043's rule. A cache entry
+  # cannot be replaced, so one that keeps failing --verify is deleted by hand
+  # (gh cache delete <key>).
+  #
+  # What that defends against is a corrupted entry, drift and a bad entry, not
+  # someone who can already write an entry in main's scope, such as a
+  # compromised action in a workflow running on main: the restore unpacks into
+  # the workspace before --verify runs, and the verifier and the three files
+  # it compares against come from that same workspace. No workflow here has a
+  # pull_request_target, issue_comment or workflow_run trigger, so only
+  # trusted runs on main write entries every ref can read, as with
+  # determinism.yml's caches.
   electron-ffmpeg-source:
     name: electron ffmpeg (source)
     runs-on: ubuntu-22.04

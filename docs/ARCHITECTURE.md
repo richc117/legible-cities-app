@@ -2548,15 +2548,24 @@ and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
 moves that block. It caches the archive, keyed on the Electron version and
 the three files the archive carries copies of (the pins, the script and
-`vendor.yml`), and trusts no hit: `--verify`, with no network, refuses
-any entry but a file or a folder, unpacks it, holds every tree and blob
-id, the copies and `BUILD.txt` to the pins and the checkout, and packs
-what it checked again, which must be the cached file's own bytes; a hit
-that fails is fetched again, and a fetched archive passes `--verify` too
-before it is cached (issue 585). Each packaging job refuses, before `npm ci`, to go on
-without the artefact, so no installer is made in a run whose Electron
-library's source did not verify, and `release.mjs` refuses one for another
-Electron than the pins name.
+`vendor.yml`) and the versions of the tar and xz that pack it, and checks
+a hit before using it: `--verify`, with no network, refuses any entry but
+a file or a folder, unpacks it, holds every tree and blob id, the copies
+and `BUILD.txt` to the pins and the checkout, and packs what it checked
+again, which must be the cached file's own bytes; a hit that fails is
+fetched again, and a fetched archive passes `--verify` too before it is
+cached (issue 585). That defends against a corrupted entry, drift and a
+bad entry, not against someone who can already write a cache entry in
+`main`'s scope, such as a compromised action in a workflow running on
+`main`: the entry is unpacked into the workspace before `--verify` runs,
+and the verifier and the three files it compares against come from that
+same workspace. No workflow here has a `pull_request_target`,
+`issue_comment` or `workflow_run` trigger, so only trusted runs on `main`
+write such entries, as with `determinism.yml`'s caches. Each packaging
+job refuses, before `npm ci`, to go on without the artefact, so no
+installer is made in a run whose Electron library's source did not
+verify, and `release.mjs` refuses one for another Electron than the pins
+name.
 
 ## Design tokens
 

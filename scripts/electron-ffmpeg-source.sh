@@ -12,28 +12,35 @@
 # release job attaches to each GitHub Release.
 #
 # The job keeps the archive in its cache (issue 585), keyed on the Electron
-# version and on the three files legible-cities/ copies, because the fetch
-# from Chromium's mirror stalls now and then and a stalled fetch stops every
-# installer of the run. A cached archive is never trusted: the job runs
-# --verify on it, which needs no network. That reads its entries first,
-# with the same function that checks a fresh archive, and refuses anything
-# but files and folders (a link, a device, a FIFO), a name twice, an entry
-# the pins do not name, a missing one and git metadata; unpacks it into an
-# empty folder and refuses anything there but files and folders; holds it
-# to the pins exactly as the fetch holds what it fetched: every directory
-# by the tree id its files make, with the same tree_id, FFmpeg's reported
-# version, every Electron file by its blob id; requires legible-cities/'s
-# copies to be this checkout's files byte for byte, and BUILD.txt to be the
-# one the pins make for the commit it names, which is the commit whose run
-# packed it; and last packs what it checked again, with the same function
-# the fetch packs with, and requires that to be the file's own bytes, so
-# nothing in the file went unread. A cached archive that fails is set aside
-# and the source fetched again; a fetched one is put through --verify too
-# before it is cached, which proves on every miss that the archive packs
-# reproducibly. So every run still judges the archive it uploads by its
-# object ids against the pins, and no installer is packaged in a run whose
-# Electron library's source did not verify (ADR-043): the cache saves the
-# fetch, never the check.
+# version, on the tar and xz that pack it and on the three files
+# legible-cities/ copies, because the fetch from Chromium's mirror stalls
+# now and then and a stalled fetch stops every installer of the run. A cached archive is checked before it is used: the
+# job runs --verify on it, which needs no network. That reads its entries
+# first, with the same function that checks a fresh archive, and refuses
+# anything but files and folders (a link, a device, a FIFO), a name twice,
+# an entry the pins do not name, a missing one and git metadata; unpacks it
+# into an empty folder and refuses anything there but files and folders;
+# holds it to the pins exactly as the fetch holds what it fetched: every
+# directory by the tree id its files make, with the same tree_id, FFmpeg's
+# reported version, every Electron file by its blob id; requires
+# legible-cities/'s copies to be this checkout's files byte for byte, and
+# BUILD.txt to be the one the pins make for the commit it names, which is
+# the commit whose run packed it; and last packs what it checked again, with
+# the same function the fetch packs with, and requires that to be the file's
+# own bytes, so nothing in the file went unread. A cached archive that fails
+# is set aside and the source fetched again; a fetched one is put through
+# --verify too before it is cached, which proves on every miss that the
+# archive packs reproducibly. So every run still judges the archive it
+# uploads by its object ids against the pins, and no installer is packaged
+# in a run whose Electron library's source did not verify (ADR-043): the
+# cache saves the fetch, never the check. That defends against a corrupted
+# entry, drift and a bad entry, not against someone who can already write a
+# cache entry in main's scope (a compromised action in a workflow running on
+# main): the entry is unpacked into the workspace before --verify runs, and
+# this script and the three files it compares against come from that same
+# workspace. No workflow here has a pull_request_target, issue_comment or
+# workflow_run trigger, so only trusted runs on main write such entries.
+#
 #
 # Electron bundles Chromium's FFmpeg as a shared library (libffmpeg.dylib on
 # macOS, ffmpeg.dll on Windows), LGPL-2.1-or-later. LGPL-2.1 section 4 asks
