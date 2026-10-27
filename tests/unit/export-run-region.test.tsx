@@ -21,12 +21,15 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import ExportRun, { ENCODE_UNFINISHED } from '../../src/renderer/src/ExportRun'
 import {
+  EXPORT_KEPT,
   ExportRun as Run,
   freshStages,
   stagesAt,
   type ExportBridge,
 } from '../../src/renderer/src/engine/exportRun'
-import type { ExportProgress, ExportResult } from '../../src/shared/export'
+import { JobRegistry } from '../../src/renderer/src/engine/runs'
+import { UNPROVEN_FRAMES, type ExportProgress, type ExportResult } from '../../src/shared/export'
+import { endSentence } from '../../src/shared/jobs'
 import type { Stage } from '../../src/renderer/src/ProgressLine'
 import type { RunState } from '../../src/shared/layout'
 import { describePair, duplicatedNames } from '../support/a11y-names'
@@ -332,6 +335,105 @@ describe('the export run, for a screen reader while it captures', () => {
     )
     expect(spokenOf(html)).toBe('Lay the project out before exporting it.')
     expect(lineOf(html)).toBe('Lay the project out before exporting it.')
+  })
+})
+
+// The finish, heard once (issue 570). Before it, cell 06 drew "Exported
+// <file>." in a `role="status"` paragraph inserted with its text already in
+// it, which a screen reader may not announce, beside the hidden status that
+// is mounted from the start, and the window's job-end line said "<project>:
+// Export as <preset>, finished." without the file. Now the job-end line,
+// which is heard on every screen, is the one live region that changes at
+// the finish, and it names the file; cell 06 shows the sentence and does
+// not speak it.
+//
+// The export is driven to its end through a stub bridge, tracked by a job
+// registry as the app's runs are, and the end sentence the registry hands
+// out is what `App.tsx` writes into its `data-announces="jobs"` line. The
+// live regions are read out of what cell 06 draws before the result and
+// after it: an element with a live role or `aria-live` other than "off".
+// The project's header line ("The map is drawn from every cell.") is the
+// notebook's state, not the export's, and is not drawn here.
+describe('the export run, as its finish is heard', () => {
+  const FILE = 'la-metro-rail-instagram-reel.mp4'
+  const tick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve))
+
+  /** Every live region cell 06 draws, by its opening tag and its place among the same tags, with its text. */
+  function liveRegions(html: string): Map<string, string> {
+    const regions = new Map<string, string>()
+    const seen = new Map<string, number>()
+    for (const match of html.matchAll(/<([a-z][\w-]*)\b([^>]*)>/g)) {
+      const [open, tag, attributes] = match
+      const live =
+        /\brole="(status|alert|log)"/.test(attributes) ||
+        /\baria-live="(polite|assertive)"/.test(attributes)
+      if (!live || /\baria-live="off"/.test(attributes)) continue
+      const start = (match.index ?? 0) + open.length
+      const text = html.slice(start, html.indexOf(`</${tag}>`, start))
+      // A region holding markup would be read here as its tags; none does.
+      expect(text, `${open} holds text alone`).not.toMatch(/</)
+      const n = seen.get(open) ?? 0
+      seen.set(open, n + 1)
+      regions.set(`${open}#${n}`, text)
+    }
+    return regions
+  }
+
+  /** Drive an export to its end, and read the live regions before and after it. */
+  async function finished(flags: Partial<ExportResult>) {
+    const { run, report, drawn, finish } = started()
+    const registry = new JobRegistry()
+    registry.setNames([['abcdefghijk1', 'Los Angeles']])
+    registry.track(run)
+    const ends: string[] = []
+    registry.onEnded((job) => ends.push(endSentence(job)))
+    report('plan', 'Planning the export.')
+    report('capture', 'Capturing 60 frames.')
+    report('capture', 'Captured 60 of 60 frames.', 1)
+    report('encode', 'Encoding 60 frames.')
+    report('encode', 'Encoded 60 of 60 frames.', 1)
+    const before = drawn()
+    finish({ file: FILE, bytes: 10, frames: 60, ...flags })
+    await tick()
+    const after = drawn()
+    // The window's job-end line, as `App.tsx` holds it: empty until a job
+    // ends, then the end sentence.
+    const regions = (html: string, jobs: string): Map<string, string> =>
+      new Map([...liveRegions(html), ['jobs', jobs]])
+    return {
+      before: regions(before, ''),
+      after: regions(after, ends.join(' ')),
+      ends,
+      shown: /<p class="prose">([^<]*)<\/p>/.exec(after)?.[1] ?? null,
+    }
+  }
+
+  /** The regions whose text the finish changed, a region drawn only after it among them. */
+  const changed = (before: Map<string, string>, after: Map<string, string>): [string, string][] =>
+    [...after].filter(([key, text]) => text !== (before.get(key) ?? ''))
+
+  it.each<[string, Partial<ExportResult>, string]>([
+    ['an ordinary finish', {}, ''],
+    ['a finish the cancel came too late for', { late: true }, ` ${EXPORT_KEPT}`],
+    ['a finish whose frames were not proven fresh', { unproven: true }, ` ${UNPROVEN_FRAMES}`],
+    ['both', { late: true, unproven: true }, ` ${EXPORT_KEPT} ${UNPROVEN_FRAMES}`],
+  ])('%s: one live region changes, and it names the file', async (_what, flags, beside) => {
+    // Mutations, each red here: `role="status"` put back on cell 06's
+    // "Exported" line (two regions change); `endSentence` not naming the
+    // file, or the job not carrying it (the one region says no file); and
+    // the finish's sentences written to the hidden status again (two
+    // regions change, for every case but the first).
+    const { before, after, ends, shown } = await finished(flags)
+    expect(ends, 'the job ends once').toHaveLength(1)
+    expect(changed(before, after)).toEqual([
+      ['jobs', `Los Angeles: Export as instagram-reel, finished: ${FILE}.${beside}`],
+    ])
+    // The cell still shows the sentence, where it was, and no live region of
+    // its own carries the file's name.
+    expect(shown).toBe(`Exported ${FILE}.`)
+    const cells = [...after].filter(([key]) => key !== 'jobs')
+    expect(cells.length, 'cell 06 draws its hidden status').toBeGreaterThan(0)
+    expect(cells.filter(([, text]) => text.includes(FILE))).toEqual([])
   })
 })
 

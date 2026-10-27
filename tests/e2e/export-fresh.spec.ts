@@ -123,11 +123,8 @@ test('an export of a page that draws its frame counter keeps every frame, the ba
   await withApp(h, async (page) => {
     await laidOutProject(page, h, {})
     await page.getByRole('button', { name: 'Export', exact: true }).click()
-    await expect(
-      run(page)
-        .getByRole('status')
-        .filter({ hasText: /^Exported / }),
-    ).toBeVisible({
+    // The finished line is shown and not a live region (issue 570).
+    await expect(run(page).locator('p.prose', { hasText: /^Exported / })).toBeVisible({
       timeout: 60_000,
     })
     expect(existsSync(deliverable(h)), 'the file is under the export folder').toBe(true)

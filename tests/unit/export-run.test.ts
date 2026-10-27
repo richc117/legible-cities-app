@@ -232,11 +232,12 @@ describe('ExportRun', () => {
     await tick()
     expect(run.snapshot).toMatchObject({ state: 'done', file: 'x.mp4', message: said })
     expect(run.job()?.message).toBe(said)
-    // What a screen reader is told is the same sentence, except that a
-    // count of frames is a share of them.
-    expect(run.snapshot.announced).toBe(
-      flags.late === true || flags.unproven === true ? said : 'Encoded 100 percent of the frames.',
-    )
+    // A screen reader is told the finish once, by the job's end sentence,
+    // which names the file and then says what the result said beside it
+    // (issue 570); cell 06's hidden status keeps its last progress sentence.
+    const beside = flags.late === true || flags.unproven === true ? said : null
+    expect(run.job()?.exported).toEqual({ file: 'x.mp4', said: beside })
+    expect(run.snapshot.announced).toBe('Encoded 100 percent of the frames.')
   })
 
   it('ends failed with the engine’s sentence for a destination that is its own source', async () => {

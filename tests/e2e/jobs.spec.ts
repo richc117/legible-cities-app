@@ -169,7 +169,10 @@ test('an export started in a project is followed from Settings, to its end', asy
     })
     await expect(job.getByRole('button', { name: /^Cancel:/ })).toHaveCount(0)
     await expect(toggle(page)).toHaveAccessibleName('Jobs, none running')
-    await expect(announcement(page)).toHaveText('Los Angeles: Export as instagram-reel, finished.')
+    // An export that finished names its file, once, here (issue 570).
+    await expect(announcement(page)).toHaveText(
+      'Los Angeles: Export as instagram-reel, finished: la-metro-rail-instagram-reel.mp4.',
+    )
     // The finished layout run is listed after it: running first, then newest first.
     await expect(jobs(page)).toHaveCount(2)
     await expect(jobs(page).nth(0)).toHaveAccessibleName('Los Angeles Export as instagram-reel')

@@ -48,6 +48,8 @@ export interface ExportSnapshot {
    * What a screen reader is told of the progress: the last sentence, except
    * that the per-frame counts become a tenth of the frames at a time
    * (`announcement`). `message` is for the eye and changes every frame.
+   * It does not change at the finish, which the job's end sentence says,
+   * with the file's name (issue 570).
    */
   announced: string | null
 }
@@ -134,6 +136,8 @@ interface Attempt {
   log: LogBuffer
   detail: string | null
   rawDetail: string | null
+  /** What the result said beside "Exported", for the job's end sentence; null when nothing. */
+  said: string | null
 }
 
 export class ExportRun {
@@ -180,9 +184,12 @@ export class ExportRun {
    */
   job(): Job | null {
     const attempt = this.#attempt
-    const { state, stages, message, error } = this.#snapshot
+    const { state, stages, message, error, file } = this.#snapshot
     if (attempt === null || state === 'idle') return null
     const failed = state === 'failed'
+    // The finish is spoken by the job's end sentence alone, which names the
+    // file (issue 570); cell 06 shows it and does not speak it.
+    const exported = state === 'done' && file !== null ? { file, said: attempt.said } : null
     return {
       id: attempt.id,
       kind: 'export',
@@ -199,6 +206,7 @@ export class ExportRun {
       dropped: attempt.log.dropped,
       started: attempt.started,
       ended: attempt.ended,
+      ...(exported === null ? {} : { exported }),
     }
   }
 
@@ -218,6 +226,7 @@ export class ExportRun {
       log: new LogBuffer(),
       detail: null,
       rawDetail: null,
+      said: null,
     }
 
     if (engine === null || engine.state !== 'ready') {
@@ -269,11 +278,16 @@ export class ExportRun {
         // says so as it finishes, beside "Exported", and so does its job.
         const unproven = (result as { unproven?: unknown }).unproven === true
         const said = [...(late ? [EXPORT_KEPT] : []), ...(unproven ? [UNPROVEN_FRAMES] : [])]
+        // Shown in the line beside the progress line, and spoken by the
+        // job's end sentence after the file's name. `announced` is left as
+        // it was, so cell 06's hidden status does not change at the finish:
+        // the end sentence is the one live line that says it (issue 570).
+        if (this.#attempt !== null) this.#attempt.said = said.length > 0 ? said.join(' ') : null
         this.#set({
           state: 'done',
           stages: this.#snapshot.stages.map((s) => ({ ...s, state: 'done' as const })),
           file: result.file,
-          ...(said.length > 0 ? { message: said.join(' '), announced: said.join(' ') } : {}),
+          ...(said.length > 0 ? { message: said.join(' ') } : {}),
         })
       },
       (reason: unknown) => {
