@@ -123,6 +123,17 @@ export const PROTOCOL_ERROR_REASON =
 export const HANDSHAKE_FAILED_REASON =
   'The engine did not complete the handshake. What it said is in engine.log in the logs folder.'
 
+/**
+ * Why the handshake failed when the engine said nothing in time: the app's
+ * own limit and nothing the engine wrote, so a slow start reads differently
+ * from a refusal (issue 529). To a tenth of a second, so that a limit under a
+ * second never reads "0 seconds".
+ */
+export function handshakeTimedOutReason(limitMs: number): string {
+  const seconds = Math.max(0.1, Math.round(limitMs / 100) / 10)
+  return `The engine did not answer the handshake within ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`
+}
+
 /** The tail of an exit reason when every stderr line the engine wrote holds a path. */
 export const WROTE_IN_THE_LOG = 'what it wrote is in engine.log in the logs folder'
 
@@ -567,7 +578,14 @@ export class Sidecar {
         if (error.code === ERROR_CODES.engineExited) return // the exit handler reports it
         // The engine's message goes to the log, the one place a path may be.
         this.log(`handshake: failed: ${error.message}`)
-        void this.failed(HANDSHAKE_FAILED_REASON, child)
+        // Our own timer says it was never answered; any other error is the
+        // engine's, and its words stay in the log.
+        void this.failed(
+          error.code === ERROR_CODES.inactive
+            ? handshakeTimedOutReason(this.bounds.handshakeMs)
+            : HANDSHAKE_FAILED_REASON,
+          child,
+        )
       },
     )
   }
@@ -628,7 +646,7 @@ export class Sidecar {
       this.log(`giving up after ${this.failures} consecutive failures: ${reason}`)
       this.setState({
         state: 'stopped',
-        reason: `${reason} It failed ${this.failures} times in a row.`,
+        reason: `${reason} The engine failed ${this.failures} times in a row.`,
       })
     } else {
       const attempt = this.failures + 1

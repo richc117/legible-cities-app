@@ -11,6 +11,7 @@ import { engineEnvironment } from '../../src/main/interpreter'
 import {
   engineWorkRefusal,
   HANDSHAKE_FAILED_REASON,
+  handshakeTimedOutReason,
   PROTOCOL_ERROR_REASON,
   Sidecar,
   WROTE_IN_THE_LOG,
@@ -263,7 +264,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     if (state.state === 'stopped') {
       expect(state.reason).toContain('exited with code 3')
       expect(state.reason).toContain('exiting at once as told')
-      expect(state.reason).toContain('4 times in a row')
+      expect(state.reason).toContain('The engine failed 4 times in a row.')
     }
     const error = (await h.sidecar
       .request('engine.info')
@@ -276,7 +277,19 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     const h = harness({ mute: true }, { handshakeMs: 200 })
     h.sidecar.start()
     const state = await h.until((s) => s.state === 'restarting')
-    if (state.state === 'restarting') expect(state.reason).toContain('handshake')
+    if (state.state !== 'restarting') throw new Error('expected restarting')
+    // The app's own limit, as the app wrote it: nothing the engine said, and
+    // not the sentence for an engine that answered with an error.
+    expect(state.reason).toBe(handshakeTimedOutReason(200))
+    expect(state.reason).toContain('within 0.2 seconds')
+    expect(state.reason).not.toBe(HANDSHAKE_FAILED_REASON)
+  })
+
+  it('says how long the handshake was given, never 0 seconds, and a second as one', () => {
+    expect(handshakeTimedOutReason(10_000)).toContain('within 10 seconds.')
+    expect(handshakeTimedOutReason(1_000)).toContain('within 1 second.')
+    expect(handshakeTimedOutReason(300)).toContain('within 0.3 seconds.')
+    expect(handshakeTimedOutReason(10)).toContain('within 0.1 seconds.')
   })
 
   it('treats a stray line on stdout as a failure', async () => {
