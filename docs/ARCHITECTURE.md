@@ -2510,7 +2510,16 @@ and with nothing else that writes, holds each file to its line in
 `SHA256SUMS.txt` and attests the installers and `SHA256SUMS.txt` with
 Sigstore through `actions/attest-build-provenance` (issue 434, ADR-057).
 Nothing is published: the maintainer reads the draft and publishes it by
-hand, only after the attest job is green.
+hand, only after the attest job is green. If `vendor / electron ffmpeg
+(source)` fails on a tag's run, re-run the failed jobs before anything
+else (`gh run rerun <id> --failed`): its fetch from Chromium's mirror can
+stall on every attempt, and the packaging jobs, and so the release job,
+refuse to go on without it (issue 585). Its cache makes that rare, but a
+tag's run reads only entries saved on `main` or under the tag, and an
+entry unread for 7 days is evicted, so a tag cut long after the last run
+on `main` that touched these paths finds none. Shortly before tagging,
+dispatch the vendor workflow on `main` (`gh workflow run vendor.yml --ref
+main`), so the tag finds a warm entry.
 `docs/install.md` is what a person follows with the assets, and the
 first-run dialog's "How to install" opens it on `main`.
 
@@ -2542,10 +2551,27 @@ fetched with git (Chromium's own repository from the GitHub mirror the pins
 name, since an object id names the same bytes wherever they come from) -
 and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
-moves that block. Each packaging job refuses, before `npm ci`, to go on
-without the artefact, so no installer is made in a run whose Electron
-library's source did not verify, and `release.mjs` refuses one for another
-Electron than the pins name.
+moves that block. It caches the archive, keyed on the repository (which its
+`BUILD.txt` names), the Electron version and
+the three files the archive carries copies of (the pins, the script and
+`vendor.yml`) and the versions of the tar and xz that pack it, and checks
+a hit before using it: `--verify`, with no network, refuses any entry but
+a file or a folder, unpacks it, holds every tree and blob id, the copies
+and `BUILD.txt` to the pins and the checkout, and packs what it checked
+again, which must be the cached file's own bytes; a hit that fails is
+fetched again, and a fetched archive passes `--verify` too before it is
+cached (issue 585). That defends against a corrupted entry, drift and a
+bad entry, not against someone who can already write a cache entry in
+`main`'s scope, such as a compromised action in a workflow running on
+`main`: the entry is unpacked into the workspace before `--verify` runs,
+and the verifier and the three files it compares against come from that
+same workspace. No workflow here has a `pull_request_target`,
+`issue_comment` or `workflow_run` trigger, so only trusted runs on `main`
+write such entries, as with `determinism.yml`'s caches. Each packaging
+job refuses, before `npm ci`, to go on without the artefact, so no
+installer is made in a run whose Electron library's source did not
+verify, and `release.mjs` refuses one for another Electron than the pins
+name.
 
 ## Design tokens
 

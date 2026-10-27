@@ -4,11 +4,45 @@
 # archive (issue 109, ADR-043).
 #
 #   scripts/electron-ffmpeg-source.sh <outdir>
-#   scripts/electron-ffmpeg-source.sh --tree-id <dir>    print a folder's tree id, as the checks take it
+#   scripts/electron-ffmpeg-source.sh --verify <archive>  check an archive against the pins, offline
+#   scripts/electron-ffmpeg-source.sh --tree-id <dir>     print a folder's tree id, as the checks take it
 #
 # Writes <outdir>/electron-ffmpeg-<electron version>-source.tar.xz, which the
 # electron-ffmpeg-source job of .github/workflows/vendor.yml uploads and the
 # release job attaches to each GitHub Release.
+#
+# The job keeps the archive in its cache (issue 585), keyed on the repository
+# its BUILD.txt names, the Electron
+# version, on the tar and xz that pack it and on the three files
+# legible-cities/ copies, because the fetch from Chromium's mirror stalls
+# now and then and a stalled fetch stops every installer of the run. A
+# cached archive is checked before it is used: the job runs --verify on it,
+# which needs no network. That reads its entries first, with the same
+# function that checks a fresh archive, and refuses anything but files and
+# folders (a link, a device, a FIFO), a name twice, a mode the packing would
+# not give, an entry the pins do not name, a missing one and git metadata;
+# unpacks it into an empty folder and refuses anything there but files and
+# folders, and any empty folder; holds it to the pins exactly as the fetch
+# holds what it fetched: every directory by the tree id its files make, with
+# the same tree_id, FFmpeg's reported version, every Electron file by its
+# blob id; requires legible-cities/'s copies to be this checkout's files
+# byte for byte, and BUILD.txt to name a full commit (and, in a workflow,
+# this repository) and to be the one the pins make for it, which is the
+# commit whose run packed it; and last packs what it checked again, with the
+# same function the fetch packs with, and requires that to be the file's own
+# bytes, so nothing in the file went unread. A cached archive that fails is
+# set aside and the source fetched again; a fetched one is put through
+# --verify too before it is cached, which proves on every miss that the
+# archive packs reproducibly. So every run still judges the archive it
+# uploads by its object ids against the pins, and no installer is packaged
+# in a run whose Electron library's source did not verify (ADR-043): the
+# cache saves the fetch, never the check. That defends against a corrupted
+# entry, drift and a bad entry, not against someone who can already write a
+# cache entry in main's scope (a compromised action in a workflow running on
+# main): the entry is unpacked into the workspace before --verify runs, and
+# this script and the three files it compares against come from that same
+# workspace. No workflow here has a pull_request_target, issue_comment or
+# workflow_run trigger, so only trusted runs on main write such entries.
 #
 # Electron bundles Chromium's FFmpeg as a shared library (libffmpeg.dylib on
 # macOS, ffmpeg.dll on Windows), LGPL-2.1-or-later. LGPL-2.1 section 4 asks
@@ -64,18 +98,22 @@
 # ubuntu-22.04. The archive is packed with names sorted, owner and group 0,
 # modes normalised and every time the FFmpeg commit's, and compressed with
 # one xz thread, so the same pins and the same copies make the same bytes on
-# the same tar and xz.
+# the same tar and xz, but for the commit BUILD.txt names. --verify needs
+# bash, git, python3, cmp, xz and GNU tar (gtar on macOS), and the tar and
+# xz that packed the archive, or its bytes differ and it fails.
 #
 # ELECTRON_FFMPEG_PINS names another pins file, and ELECTRON_FFMPEG_LOCK
 # another package-lock.json, so a wrong pin can be tried without editing the
 # committed files. ELECTRON_FFMPEG_WORK names a folder to work in and keep,
-# which must not exist or be empty; by default the work is in a temporary
-# folder removed at exit.
+# which must not exist or be empty (with --verify, the archive is unpacked
+# there, beside the BUILD.txt the pins make); by default the work is in a
+# temporary folder removed at exit.
 set -euo pipefail
 umask 022
 
 usage() {
   echo "usage: electron-ffmpeg-source.sh <outdir>" >&2
+  echo "       electron-ffmpeg-source.sh --verify <archive>" >&2
   echo "       electron-ffmpeg-source.sh --tree-id <dir>" >&2
   exit 2
 }
@@ -127,13 +165,23 @@ if [ "${1:-}" = --tree-id ]; then
   exit 0
 fi
 
-[ $# -eq 1 ] && [ -n "$1" ] || usage
+mode=build
+if [ "${1:-}" = --verify ]; then
+  [ $# -eq 2 ] && [ -f "$2" ] || usage
+  mode=verify
+else
+  [ $# -eq 1 ] && [ -n "$1" ] || usage
+fi
 command -v python3 >/dev/null 2>&1 || fail "electron-ffmpeg-source.sh needs python3"
 
 absolute() {
   python3 -c 'import os, sys; print(os.path.abspath(sys.argv[1]))' "$1"
 }
-outdir=$(absolute "$1")
+if [ "$mode" = verify ]; then
+  target=$(absolute "$2")
+else
+  outdir=$(absolute "$1")
+fi
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 pins=$(absolute "${ELECTRON_FFMPEG_PINS:-$here/vendor/pins.json}")
 lock=$(absolute "${ELECTRON_FFMPEG_LOCK:-$here/package-lock.json}")
@@ -147,19 +195,38 @@ if [ -n "${ELECTRON_FFMPEG_WORK:-}" ]; then
   fi
 fi
 
+# The pins, read once rather than by a python3 for each value (a run asks
+# for about seventy): every non-empty string under electron_ffmpeg, one per
+# line, as its keys joined by a unit separator, a tab, and the value. A key
+# or value holding either separator or a newline is refused.
+pins_flat=$(python3 - "$pins" <<'PY'
+import json, sys
+def walk(node, keys):
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield from walk(value, keys + [key])
+    elif isinstance(node, str) and node != "":
+        yield keys, node
+for keys, value in walk(json.load(open(sys.argv[1], encoding="utf-8"))["electron_ffmpeg"], []):
+    if any(c in part for part in keys + [value] for c in "\t\n\x1f"):
+        raise SystemExit(f"::error::electron_ffmpeg {keys} holds a tab, a newline or a unit separator in the pins")
+    print("\x1f".join(keys) + "\t" + value)
+PY
+)
+
 # pin <key>...: a value under electron_ffmpeg in the pins, one key per
 # argument, since Electron's file names have dots in them; a missing one ends
 # the run rather than passing a blank.
 pin() {
-  python3 - "$pins" "$@" <<'PY'
-import json, sys
-node = json.load(open(sys.argv[1], encoding="utf-8"))["electron_ffmpeg"]
-for key in sys.argv[2:]:
-    node = node[key]
-if not isinstance(node, str) or node == "":
-    raise SystemExit(f"::error::electron_ffmpeg {sys.argv[2:]} is not a string in the pins")
-print(node)
-PY
+  local want line
+  want=$(IFS=$'\x1f'; printf '%s' "$*")
+  while IFS= read -r line; do
+    if [ "${line%%$'\t'*}" = "$want" ]; then
+      printf '%s\n' "${line#*$'\t'}"
+      return 0
+    fi
+  done <<< "$pins_flat"
+  fail "electron_ffmpeg $* is not a string in the pins"
 }
 
 # pin_keys <key>: the keys of an object under electron_ffmpeg, one per line;
@@ -206,10 +273,21 @@ if [ "$installed" != "$electron_version" ]; then
 fi
 echo "Electron $electron_version, as package-lock.json installs it"
 
-for tool in git curl tar xz; do
+if [ "$mode" = verify ]; then
+  tools=(git xz cmp)
+else
+  tools=(git curl tar xz)
+fi
+for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null 2>&1 || fail "electron-ffmpeg-source.sh needs $tool"
 done
-tar --version 2>/dev/null | head -1 | grep -q 'GNU tar' || fail "electron-ffmpeg-source.sh needs GNU tar, for --sort=name"
+# GNU tar packs the archive, and --verify packs what it checked again with
+# the same command; as tar, or as gtar where tar is another one (macOS).
+gnu_tar=
+for tool in tar gtar; do
+  if "$tool" --version 2>/dev/null | head -1 | grep -q 'GNU tar'; then gnu_tar=$tool; break; fi
+done
+[ -n "$gnu_tar" ] || fail "electron-ffmpeg-source.sh needs GNU tar, for --sort=name"
 
 name="electron-ffmpeg-$electron_version-source"
 archive="$name.tar.xz"
@@ -221,6 +299,309 @@ else
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
 fi
+
+# check_ffmpeg_version <dir> <what>: the version FFmpeg's Chrome
+# configuration reports is the pins'.
+check_ffmpeg_version() {
+  local version
+  version=$(grep -h '#define FFMPEG_VERSION ' "$1"/chromium/config/Chrome/mac/*/libavutil/ffversion.h | sort -u || true)
+  [ "$version" = "#define FFMPEG_VERSION \"$ffmpeg_reports\"" ] || fail "$2 says ${version:-no version}, and the pins say $ffmpeg_reports"
+}
+
+# pack_archive <parent> <mtime> <file>: <parent>/$name packed as the archive
+# is, with names sorted, owner and group 0, modes normalised and every time
+# <mtime>, and one xz thread, since xz's block layout depends on its thread
+# count. The fetch packs with it, and --verify packs what it checked again
+# with it, so the bytes are the same or the check fails.
+pack_archive() {
+  rm -f "$3"
+  LC_ALL=C "$gnu_tar" --create --file - --format=gnu --sort=name --owner=0 --group=0 --numeric-owner \
+    --mode='u+rw,go-w,a+rX' --mtime="@$2" -C "$1" "$name" \
+    | xz -9 -T1 -c > "$3"
+}
+
+# check_listing <archive>: the archive holds only files and folders, each
+# name once and at the mode pack_archive gives it (0644 or 0755 for a file,
+# 0755 for a folder), every part the pins name, no git metadata, and nothing
+# else, all inside its one folder. Read by Python's tarfile, which says what
+# each entry is; a folder's name ends in /. Sets listing, and mtime to the
+# one time every entry carries. That time is the FFmpeg commit's committer
+# time, which the fetch reads from the commit and the pins do not hold, so
+# --verify cannot learn it offline: it accepts the one time the archive
+# carries, and packs with it again.
+check_listing() {
+  local entry part path allowed expected parts exact listed
+  listed=$(python3 - "$1" "$archive" <<'PY'
+import sys, tarfile
+path, archive = sys.argv[1], sys.argv[2]
+kinds = {tarfile.SYMTYPE: "a symbolic link", tarfile.LNKTYPE: "a hard link",
+         tarfile.CHRTYPE: "a character device", tarfile.BLKTYPE: "a block device",
+         tarfile.FIFOTYPE: "a FIFO", tarfile.CONTTYPE: "a contiguous file"}
+def refuse(message):
+    raise SystemExit(f"::error::{archive} {message}")
+seen, mtimes, names = set(), set(), []
+try:
+    with tarfile.open(path, mode="r:xz") as tar:
+        for member in tar:
+            if member.type in (tarfile.REGTYPE, tarfile.AREGTYPE):
+                name = member.name
+            elif member.type == tarfile.DIRTYPE:
+                name = member.name.rstrip("/") + "/"
+            else:
+                refuse(f"holds {member.name}, which is {kinds.get(member.type, 'neither a file nor a folder')}: only files and folders are packed")
+            if "\n" in name:
+                refuse(f"holds a name with a newline in it, {name!r}")
+            mode = member.mode & 0o7777
+            if member.type == tarfile.DIRTYPE and mode != 0o755:
+                refuse(f"holds {name} at mode {mode:04o}, and a folder is packed 0755")
+            if member.type != tarfile.DIRTYPE and mode not in (0o644, 0o755):
+                refuse(f"holds {name} at mode {mode:04o}, and a file is packed 0644 or 0755")
+            if name in seen:
+                refuse(f"holds {name} twice")
+            seen.add(name)
+            mtimes.add(member.mtime)
+            names.append(name)
+except (tarfile.TarError, EOFError, OSError) as error:
+    refuse(f"cannot be read as a tar.xz: {error}")
+if len(mtimes) != 1:
+    refuse(f"carries {len(mtimes)} times, and the archive is packed with one")
+print(mtimes.pop())
+print("\n".join(names))
+PY
+) || exit 1
+  mtime=${listed%%$'\n'*}
+  listing=${listed#*$'\n'}
+  expected=("$name/BUILD.txt" "$name/legible-cities/pins.json"
+    "$name/src/third_party/ffmpeg/BUILD.gn" "$name/src/third_party/ffmpeg/COPYING.LGPLv2.1")
+  while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$tree_keys"
+  while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$deps_keys"
+  while IFS= read -r path; do expected+=("$name/electron/$path"); done <<< "$file_keys"
+  for entry in "${expected[@]}"; do
+    grep -qxF "$entry" <<< "$listing" || fail "$archive does not hold $entry"
+  done
+  if grep -qE '(^|/)\.git(/|$)' <<< "$listing"; then
+    fail "$archive carries git metadata"
+  fi
+  parts=("$name/src/third_party/ffmpeg/")
+  while IFS= read -r path; do parts+=("$name/src/$path/"); done <<< "$tree_keys"
+  while IFS= read -r path; do parts+=("$name/src/$path/"); done <<< "$deps_keys"
+  exact=("$name/BUILD.txt" "$name/legible-cities/electron-ffmpeg-source.sh"
+    "$name/legible-cities/vendor.yml" "$name/legible-cities/pins.json")
+  while IFS= read -r path; do exact+=("$name/electron/$path"); done <<< "$file_keys"
+  while IFS= read -r entry; do
+    case "/$entry/" in */../*) fail "$archive holds $entry, which climbs out of its folder" ;; esac
+    case $entry in "$name"/*) ;; *) fail "$archive holds $entry, outside $name/" ;; esac
+    case $entry in */) continue ;; esac
+    allowed=
+    for part in "${parts[@]}"; do
+      case $entry in "$part"?*) allowed=1; break ;; esac
+    done
+    if [ -z "$allowed" ]; then
+      for part in "${exact[@]}"; do
+        if [ "$entry" = "$part" ]; then allowed=1; break; fi
+      done
+    fi
+    [ -n "$allowed" ] || fail "$archive holds $entry, which is none of the parts the pins name"
+  done <<< "$listing"
+}
+
+# write_build_txt <file> <repository> <commit>: the archive's BUILD.txt, made
+# from the pins alone but for the repository and commit whose run packed it.
+write_build_txt() {
+  local file=$1 repository=$2 commit=$3 trees files path what tree tree_licence dep_repo dep_commit decoders parsers demuxers
+  trees=
+  while IFS= read -r path; do
+    what=$(pin chromium_trees "$path" what)
+    tree=$(pin chromium_trees "$path" tree)
+    tree_licence=$(pin chromium_trees "$path" licence)
+    trees+="src/$path/
+  $what.
+  Chromium $chromium_version, commit $chromium_commit: tree $tree.
+  Licence: $tree_licence.
+"
+  done <<< "$tree_keys"
+  while IFS= read -r path; do
+    what=$(pin chromium_deps "$path" what)
+    tree=$(pin chromium_deps "$path" tree)
+    dep_repo=$(pin chromium_deps "$path" repo)
+    dep_commit=$(pin chromium_deps "$path" commit)
+    tree_licence=$(pin chromium_deps "$path" licence)
+    trees+="src/$path/
+  $what.
+  $dep_repo at commit $dep_commit, as Chromium $chromium_version records it: tree $tree.
+  Licence: $tree_licence.
+"
+  done <<< "$deps_keys"
+  files=
+  while IFS= read -r path; do
+    files+="  $path  blob $(pin electron_files "$path")
+"
+  done <<< "$file_keys"
+  decoders=$(pin components decoders)
+  parsers=$(pin components parsers)
+  demuxers=$(pin components demuxers)
+  {
+    echo "The source of the FFmpeg library Electron $electron_version ships inside Legible Cities:"
+    echo "libffmpeg.dylib in Electron Framework.framework/Versions/A/Libraries/ on macOS, and"
+    echo "ffmpeg.dll beside the executable on Windows. It is Chromium's media decoder; the"
+    echo "app never calls it, and it is not the ffmpeg and ffprobe the app's exports use,"
+    echo "whose source is the ffmpeg-source archive."
+    echo
+    echo "Written by scripts/electron-ffmpeg-source.sh, run by the electron-ffmpeg-source job"
+    echo "of .github/workflows/vendor.yml, of $repository at commit $commit."
+    echo "Copies of that script, of that workflow and of vendor/pins.json as they were then"
+    echo "are in legible-cities/."
+    echo
+    echo "Licence: $licence."
+    echo
+    echo "Every part was verified by its git object id against the pins before it was packed:"
+    echo
+    echo "src/third_party/ffmpeg/"
+    echo "  Chromium's copy of FFmpeg at commit $ffmpeg_commit of"
+    echo "  $ffmpeg_repo: tree $ffmpeg_tree,"
+    echo "  which Chromium $chromium_version's DEPS names as its ffmpeg_revision. It carries"
+    echo "  FFmpeg's sources, the COPYING files, BUILD.gn, ffmpeg_generated.gni, ffmpeg_options.gni,"
+    echo "  and chromium/config/<branding>/<os>/<arch>/, the configuration FFmpeg's configure"
+    echo "  wrote for each branding and target (config.h holds the configure line it was run"
+    echo "  with, and codec_list.c, parser_list.c and demuxer_list.c what it enabled)."
+    echo "  The library reports FFmpeg version $ffmpeg_reports."
+    printf '%s' "$trees"
+    echo "electron/"
+    echo "  Files of Electron $electron_tag, commit $electron_commit of $electron_repo:"
+    printf '%s' "$files"
+    echo "  patches/ffmpeg/ is the one change Electron makes to FFmpeg, applied to"
+    echo "  src/third_party/ffmpeg in the order its .patches lists (it links the macOS library"
+    echo "  with an @loader_path install name). build/args/ holds the gn args Electron's"
+    echo "  release builds use. patches/chromium/ holds, with the list that orders them, the"
+    echo "  patches Electron applies to Chromium that change files under src/build/; apply them"
+    echo "  to src/ with the others that list names. Electron's DEPS at that commit names"
+    echo "  Chromium $chromium_version, and Chromium's tag $chromium_tag is commit $chromium_commit."
+    echo
+    echo "How the library is built: Electron checks out Chromium $chromium_version with gclient,"
+    echo "applies its patches, and builds with electron/build/args/release.gn, which imports"
+    echo "all.gn: ffmpeg_branding = \"Chrome\" and proprietary_codecs = true select the"
+    echo "configuration under src/third_party/ffmpeg/chromium/config/Chrome/, and"
+    echo "is_component_ffmpeg = true with is_official_build = true builds FFmpeg's"
+    echo "shared_library(\"ffmpeg\") target in src/third_party/ffmpeg/BUILD.gn, from the sources"
+    echo "ffmpeg_generated.gni lists for that branding, operating system and architecture,"
+    echo "with //third_party/opus linked in; on x86-64 its assembly is assembled by"
+    echo "//third_party/nasm, and on Windows //tools/generate_stubs writes the DLL's exports."
+    echo "That configuration has CONFIG_GPL, CONFIG_NONFREE and CONFIG_VERSION3 at 0, and"
+    echo "enables:"
+    echo "  decoders: $decoders"
+    echo "  parsers: $parsers"
+    echo "  demuxers: $demuxers"
+    echo "The Chromium branding under chromium/config/Chromium/ is the same without the"
+    echo "aac and h264 decoders and parsers and the aac demuxer. src/media/ffmpeg/scripts/"
+    echo "regenerates the configuration and the GN files; src/build/ is the GN configuration"
+    echo "BUILD.gn imports."
+    echo
+    echo "Left out, as the toolchain and the rest of a Chromium checkout rather than the"
+    echo "library's source: Chromium's clang and its runtime libraries, GN, Python, and the"
+    echo "platform SDKs, which gclient and the host provide; build_overrides/, buildtools/"
+    echo "and the gclient_args.gni gclient writes, which src/build/ reads; the PGO profiles"
+    echo "gclient's hooks download for official builds, which are profile data rather than"
+    echo "source or scripts; and Electron's other patches to Chromium, none of which changes"
+    echo "a file under build/, third_party/ffmpeg/, third_party/opus/, third_party/nasm/,"
+    echo "media/ffmpeg/ or tools/generate_stubs/ (checked when these pins were taken). All of"
+    echo "them are public at the commits named here: $chromium_repo and $electron_repo."
+    echo
+    echo "What this project takes to be the complete source code, in the terms of the GNU"
+    echo "Lesser General Public License, version 2.1, section 0: the source code for all"
+    echo "modules the library contains (FFmpeg's, and libopus's, which is linked into it),"
+    echo "with the scripts used to control its compilation (FFmpeg's BUILD.gn and generated"
+    echo "configuration, the scripts that generate them, the GN configuration and the tools"
+    echo "they use from Chromium's tree, and Electron's patches and gn args). The full text of"
+    echo "the licence is src/third_party/ffmpeg/COPYING.LGPLv2.1, and it is also in"
+    echo "Electron's LICENSES.chromium.html."
+    echo
+    echo "Patent licensing for the H.264 and AAC decoders is not assessed by this project."
+  } > "$file"
+}
+
+# check_tree <dir> <want> <what>: the tree id a folder's files make is the pin.
+check_tree() {
+  local found
+  found=$(tree_id "$1")
+  [ "$found" = "$2" ] || fail "$3 makes tree $found, and the pins say $2"
+}
+
+# verify <archive>: the archive, unpacked into the work folder, holds what
+# the fetch below would have packed from the pins and this checkout, judged
+# by the same ids, with no network. BUILD.txt names the commit whose run
+# packed it, which for a cached archive is an earlier one with the same
+# three copies; the rest of it must be what the pins make.
+verify() {
+  local file=$1 root path want found built_repository built_commit
+  [ "$(basename "$file")" = "$archive" ] || fail "$file is not $archive, the archive the pins name for Electron $electron_version"
+  check_listing "$file"
+  xz -dc "$file" | "$gnu_tar" -x -f - -C "$work" --no-same-owner || fail "$archive does not unpack"
+  # Nothing but its one folder, and in it only files and folders, before any
+  # file's bytes are read.
+  [ "$(ls -A "$work")" = "$name" ] || fail "$archive unpacks to more than $name/"
+  found=$(find "$work" ! -type f ! -type d -print -quit)
+  [ -z "$found" ] || fail "$archive unpacks to ${found#"$work/"}, which is neither a file nor a folder"
+  # A git tree holds no empty folder, so no tree id would judge one.
+  found=$(find "$work/$name" -type d -empty -print -quit)
+  [ -z "$found" ] || fail "$archive holds the empty folder ${found#"$work/"}/, which no pinned tree can hold"
+  # As below, no git command runs inside the checkout.
+  cd "$work"
+  root="$work/$name"
+  check_tree "$root/src/third_party/ffmpeg" "$ffmpeg_tree" "$archive's src/third_party/ffmpeg"
+  check_ffmpeg_version "$root/src/third_party/ffmpeg" "$archive's FFmpeg Chrome config"
+  echo "src/third_party/ffmpeg: tree $ffmpeg_tree, reports $ffmpeg_reports"
+  while IFS= read -r path; do
+    want=$(pin chromium_trees "$path" tree)
+    check_tree "$root/src/$path" "$want" "$archive's src/$path"
+    echo "src/$path: tree $want"
+  done <<< "$tree_keys"
+  while IFS= read -r path; do
+    want=$(pin chromium_deps "$path" tree)
+    check_tree "$root/src/$path" "$want" "$archive's src/$path"
+    echo "src/$path: tree $want"
+  done <<< "$deps_keys"
+  while IFS= read -r path; do
+    want=$(pin electron_files "$path")
+    found=$(gitc hash-object --no-filters "$root/electron/$path")
+    [ "$found" = "$want" ] || fail "$archive's electron/$path is blob $found, and the pins say $want"
+  done <<< "$file_keys"
+  echo "electron/: every file its pinned blob"
+  cmp -s "$root/legible-cities/electron-ffmpeg-source.sh" "$here/scripts/electron-ffmpeg-source.sh" \
+    || fail "$archive's legible-cities/electron-ffmpeg-source.sh is not this checkout's scripts/electron-ffmpeg-source.sh"
+  cmp -s "$root/legible-cities/vendor.yml" "$here/.github/workflows/vendor.yml" \
+    || fail "$archive's legible-cities/vendor.yml is not this checkout's .github/workflows/vendor.yml"
+  cmp -s "$root/legible-cities/pins.json" "$pins" \
+    || fail "$archive's legible-cities/pins.json is not the pins this run reads"
+  echo "legible-cities/: this checkout's script, workflow and pins, byte for byte"
+  built_repository=$(sed -n 's|^of \.github/workflows/vendor\.yml, of \(.*\) at commit \([^ ]*\)\.$|\1|p' "$root/BUILD.txt")
+  built_commit=$(sed -n 's|^of \.github/workflows/vendor\.yml, of \(.*\) at commit \([^ ]*\)\.$|\2|p' "$root/BUILD.txt")
+  [ -n "$built_repository" ] && [ -n "$built_commit" ] || fail "$archive's BUILD.txt names no repository and commit that packed it"
+  [[ $built_commit =~ ^[0-9a-f]{40}$ ]] || fail "$archive's BUILD.txt names commit $built_commit, which is not 40 lowercase hex digits"
+  # In a workflow, the run that packed it was this repository's.
+  if [ -n "${GITHUB_SERVER_URL:-}" ] && [ -n "${GITHUB_REPOSITORY:-}" ] \
+    && [ "$built_repository" != "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" ]; then
+    fail "$archive's BUILD.txt names $built_repository, and this run is $GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+  fi
+  write_build_txt "$work/BUILD.txt" "$built_repository" "$built_commit"
+  cmp -s "$root/BUILD.txt" "$work/BUILD.txt" \
+    || fail "$archive's BUILD.txt is not the one the pins make for $built_repository at commit $built_commit"
+  echo "BUILD.txt: the pins', packed by $built_repository at commit $built_commit"
+  # What was checked, packed again as the fetch packs it, must be the file
+  # itself, so nothing in it (bytes after the tar's end, a second xz stream,
+  # an entry the unpacking overwrote) went unread.
+  mkdir "$work/repacked"
+  pack_archive "$work" "$mtime" "$work/repacked/$archive"
+  cmp -s "$file" "$work/repacked/$archive" \
+    || fail "$archive is not what its checked files pack to, so it holds bytes the checks did not read"
+  echo "$archive: its checked files, packed again, are its bytes"
+  echo "verified $file against the pins, offline: $(grep -vc '/$' <<< "$listing") files"
+}
+
+if [ "$mode" = verify ]; then
+  verify "$target"
+  exit 0
+fi
+
 mkdir -p "$outdir"
 # Every git command below runs outside any repository, the checkout's
 # included: a worktree's .git names a folder another machine may not have.
@@ -351,8 +732,7 @@ mkdir -p "$root/src/third_party/ffmpeg"
 gitc --git-dir="$repo" archive --format=tar "$ffmpeg_commit" | tar -x -C "$root/src/third_party/ffmpeg"
 found=$(tree_id "$root/src/third_party/ffmpeg")
 [ "$found" = "$ffmpeg_tree" ] || fail "FFmpeg's exported files make tree $found, and the pins say $ffmpeg_tree"
-version=$(grep -h '#define FFMPEG_VERSION ' "$root"/src/third_party/ffmpeg/chromium/config/Chrome/mac/*/libavutil/ffversion.h | sort -u)
-[ "$version" = "#define FFMPEG_VERSION \"$ffmpeg_reports\"" ] || fail "FFmpeg's Chrome config says ${version:-no version}, and the pins say $ffmpeg_reports"
+check_ffmpeg_version "$root/src/third_party/ffmpeg" "FFmpeg's Chrome config"
 rm -rf "$repo"
 echo "FFmpeg $ffmpeg_commit: tree $ffmpeg_tree, $(find "$root/src/third_party/ffmpeg" -type f | wc -l | tr -d ' ') files, reports $ffmpeg_reports"
 
@@ -439,131 +819,9 @@ repository="this repository"
 if [ -n "${GITHUB_REPOSITORY:-}" ]; then
   repository="${GITHUB_SERVER_URL:-https://github.com}/$GITHUB_REPOSITORY"
 fi
-trees=
-while IFS= read -r path; do
-  what=$(pin chromium_trees "$path" what)
-  tree=$(pin chromium_trees "$path" tree)
-  tree_licence=$(pin chromium_trees "$path" licence)
-  trees+="src/$path/
-  $what.
-  Chromium $chromium_version, commit $chromium_commit: tree $tree.
-  Licence: $tree_licence.
-"
-done <<< "$tree_keys"
-while IFS= read -r path; do
-  what=$(pin chromium_deps "$path" what)
-  tree=$(pin chromium_deps "$path" tree)
-  dep_repo=$(pin chromium_deps "$path" repo)
-  dep_commit=$(pin chromium_deps "$path" commit)
-  tree_licence=$(pin chromium_deps "$path" licence)
-  trees+="src/$path/
-  $what.
-  $dep_repo at commit $dep_commit, as Chromium $chromium_version records it: tree $tree.
-  Licence: $tree_licence.
-"
-done <<< "$deps_keys"
-files=
-while IFS= read -r path; do
-  files+="  $path  blob $(pin electron_files "$path")
-"
-done <<< "$file_keys"
-decoders=$(pin components decoders)
-parsers=$(pin components parsers)
-demuxers=$(pin components demuxers)
-{
-  echo "The source of the FFmpeg library Electron $electron_version ships inside Legible Cities:"
-  echo "libffmpeg.dylib in Electron Framework.framework/Versions/A/Libraries/ on macOS, and"
-  echo "ffmpeg.dll beside the executable on Windows. It is Chromium's media decoder; the"
-  echo "app never calls it, and it is not the ffmpeg and ffprobe the app's exports use,"
-  echo "whose source is the ffmpeg-source archive."
-  echo
-  echo "Written by scripts/electron-ffmpeg-source.sh, run by the electron-ffmpeg-source job"
-  echo "of .github/workflows/vendor.yml, of $repository at commit $commit."
-  echo "Copies of that script, of that workflow and of vendor/pins.json as they were then"
-  echo "are in legible-cities/."
-  echo
-  echo "Licence: $licence."
-  echo
-  echo "Every part was verified by its git object id against the pins before it was packed:"
-  echo
-  echo "src/third_party/ffmpeg/"
-  echo "  Chromium's copy of FFmpeg at commit $ffmpeg_commit of"
-  echo "  $ffmpeg_repo: tree $ffmpeg_tree,"
-  echo "  which Chromium $chromium_version's DEPS names as its ffmpeg_revision. It carries"
-  echo "  FFmpeg's sources, the COPYING files, BUILD.gn, ffmpeg_generated.gni, ffmpeg_options.gni,"
-  echo "  and chromium/config/<branding>/<os>/<arch>/, the configuration FFmpeg's configure"
-  echo "  wrote for each branding and target (config.h holds the configure line it was run"
-  echo "  with, and codec_list.c, parser_list.c and demuxer_list.c what it enabled)."
-  echo "  The library reports FFmpeg version $ffmpeg_reports."
-  printf '%s' "$trees"
-  echo "electron/"
-  echo "  Files of Electron $electron_tag, commit $electron_commit of $electron_repo:"
-  printf '%s' "$files"
-  echo "  patches/ffmpeg/ is the one change Electron makes to FFmpeg, applied to"
-  echo "  src/third_party/ffmpeg in the order its .patches lists (it links the macOS library"
-  echo "  with an @loader_path install name). build/args/ holds the gn args Electron's"
-  echo "  release builds use. patches/chromium/ holds, with the list that orders them, the"
-  echo "  patches Electron applies to Chromium that change files under src/build/; apply them"
-  echo "  to src/ with the others that list names. Electron's DEPS at that commit names"
-  echo "  Chromium $chromium_version, and Chromium's tag $chromium_tag is commit $chromium_commit."
-  echo
-  echo "How the library is built: Electron checks out Chromium $chromium_version with gclient,"
-  echo "applies its patches, and builds with electron/build/args/release.gn, which imports"
-  echo "all.gn: ffmpeg_branding = \"Chrome\" and proprietary_codecs = true select the"
-  echo "configuration under src/third_party/ffmpeg/chromium/config/Chrome/, and"
-  echo "is_component_ffmpeg = true with is_official_build = true builds FFmpeg's"
-  echo "shared_library(\"ffmpeg\") target in src/third_party/ffmpeg/BUILD.gn, from the sources"
-  echo "ffmpeg_generated.gni lists for that branding, operating system and architecture,"
-  echo "with //third_party/opus linked in; on x86-64 its assembly is assembled by"
-  echo "//third_party/nasm, and on Windows //tools/generate_stubs writes the DLL's exports."
-  echo "That configuration has CONFIG_GPL, CONFIG_NONFREE and CONFIG_VERSION3 at 0, and"
-  echo "enables:"
-  echo "  decoders: $decoders"
-  echo "  parsers: $parsers"
-  echo "  demuxers: $demuxers"
-  echo "The Chromium branding under chromium/config/Chromium/ is the same without the"
-  echo "aac and h264 decoders and parsers and the aac demuxer. src/media/ffmpeg/scripts/"
-  echo "regenerates the configuration and the GN files; src/build/ is the GN configuration"
-  echo "BUILD.gn imports."
-  echo
-  echo "Left out, as the toolchain and the rest of a Chromium checkout rather than the"
-  echo "library's source: Chromium's clang and its runtime libraries, GN, Python, and the"
-  echo "platform SDKs, which gclient and the host provide; build_overrides/, buildtools/"
-  echo "and the gclient_args.gni gclient writes, which src/build/ reads; the PGO profiles"
-  echo "gclient's hooks download for official builds, which are profile data rather than"
-  echo "source or scripts; and Electron's other patches to Chromium, none of which changes"
-  echo "a file under build/, third_party/ffmpeg/, third_party/opus/, third_party/nasm/,"
-  echo "media/ffmpeg/ or tools/generate_stubs/ (checked when these pins were taken). All of"
-  echo "them are public at the commits named here: $chromium_repo and $electron_repo."
-  echo
-  echo "What this project takes to be the complete source code, in the terms of the GNU"
-  echo "Lesser General Public License, version 2.1, section 0: the source code for all"
-  echo "modules the library contains (FFmpeg's, and libopus's, which is linked into it),"
-  echo "with the scripts used to control its compilation (FFmpeg's BUILD.gn and generated"
-  echo "configuration, the scripts that generate them, the GN configuration and the tools"
-  echo "they use from Chromium's tree, and Electron's patches and gn args). The full text of"
-  echo "the licence is src/third_party/ffmpeg/COPYING.LGPLv2.1, and it is also in"
-  echo "Electron's LICENSES.chromium.html."
-  echo
-  echo "Patent licensing for the H.264 and AAC decoders is not assessed by this project."
-} > "$root/BUILD.txt"
+write_build_txt "$root/BUILD.txt" "$repository" "$commit"
 
-rm -f "$outdir/$archive"
-# Sorted names, fixed owners and modes, every time the FFmpeg commit's, and
-# one xz thread: xz's block layout depends on its thread count.
-tar --create --file - --format=gnu --sort=name --owner=0 --group=0 --numeric-owner \
-  --mode='u+rw,go-w,a+rX' --mtime="@$when" -C "$work" "$name" \
-  | xz -9 -T1 -c > "$outdir/$archive"
-listing=$(xz -dc "$outdir/$archive" | tar --list --file -)
-expected=("$name/BUILD.txt" "$name/legible-cities/pins.json"
-  "$name/src/third_party/ffmpeg/BUILD.gn" "$name/src/third_party/ffmpeg/COPYING.LGPLv2.1")
-while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$tree_keys"
-while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$deps_keys"
-while IFS= read -r path; do expected+=("$name/electron/$path"); done <<< "$file_keys"
-for entry in "${expected[@]}"; do
-  grep -qxF "$entry" <<< "$listing" || fail "$archive does not hold $entry"
-done
-if grep -qE '(^|/)\.git(/|$)' <<< "$listing"; then
-  fail "$archive carries git metadata"
-fi
+# Every time the FFmpeg commit's.
+pack_archive "$work" "$when" "$outdir/$archive"
+check_listing "$outdir/$archive"
 echo "wrote $outdir/$archive: $(wc -c < "$outdir/$archive" | tr -d ' ') bytes, $(grep -vc '/$' <<< "$listing") files"
