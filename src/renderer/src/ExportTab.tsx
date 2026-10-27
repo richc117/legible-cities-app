@@ -26,7 +26,6 @@ import { drawnDate } from '../../shared/project/helpers'
 import { type ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
 import { linesOf } from './colours'
-import { engineClient } from './engine/runs'
 import type { ExportRun as Run } from './engine/exportRun'
 import ExportOpening from './ExportOpening'
 import ExportRunView from './ExportRun'
@@ -36,8 +35,6 @@ import {
   cornerWords,
   defaultCorner,
   defaultsFor,
-  exportTablesFor,
-  forgetExportTables,
   keepableLines,
   offeredCorners,
   plannedChoice,
@@ -47,15 +44,12 @@ import {
   PreviewPlanner,
   readCaption,
   refusalWords,
-  sameChoice,
   storyboardWords,
   toggledLines,
-  usable,
   withAlt,
   withOption,
   withPreset,
   withStoryboard,
-  type ExportTables,
   type PreviewAddress,
 } from './exportChoice'
 import { focusLost } from './focusHandback'
@@ -64,6 +58,8 @@ import Icon from './icons/Icon'
 import Button from './kit/Button'
 import Select from './kit/Select'
 import TextInput from './kit/TextInput'
+import { useExportChoice } from './export/useExportChoice'
+import { useExportTables } from './export/useExportTables'
 import { useSnapshot } from './useSnapshot'
 
 // The export (A5-01, specs/022-export-tab), cell 06 of the notebook since
@@ -98,11 +94,6 @@ import { useSnapshot } from './useSnapshot'
 // Settings' two folders have followed since A1-04. What comes back *out*
 // is the folder itself, shown to the person whose folder it is and to
 // nobody else; it is in no message the app sends anywhere.
-
-type Tables =
-  | { status: 'waiting' }
-  | { status: 'ready'; tables: ExportTables }
-  | { status: 'failed'; message: string }
 
 const VIEW_WORDS: Record<View, string> = {
   geographic: 'geographic',
@@ -170,11 +161,9 @@ export default function ExportTab({
   const ready = engine?.state === 'ready'
   const runState = useSnapshot(run).state
   const exporting = runState === 'running'
-  const [tables, setTables] = useState<Tables>({ status: 'waiting' })
-  const [saved, setSaved] = useState<ExportChoice>(project.export)
+  const tables = useExportTables(ready)
   const [refusal, setRefusal] = useState<{ key: string; sentence: string } | null>(null)
   const [notes, setNotes] = useState<string[]>([])
-  const [writeProblem, setWriteProblem] = useState<string | null>(null)
   const [inspection, setInspection] = useState<Inspection | null>(null)
   const choicesRef = useRef<HTMLFormElement>(null)
 
@@ -189,35 +178,6 @@ export default function ExportTab({
   useEffect(() => {
     setDestination(project.destination)
   }, [project.destination])
-
-  // The engine's two tables, once while it stays up. A restarted engine
-  // may be another version, so they are asked again.
-  useEffect(() => {
-    if (!ready) {
-      forgetExportTables()
-      setTables({ status: 'waiting' })
-      return
-    }
-    let left = false
-    exportTablesFor(engineClient()).then(
-      (answer) => {
-        if (!left) setTables({ status: 'ready', tables: answer })
-      },
-      (error: unknown) => {
-        if (left) return
-        const reason = error as { data?: { hint?: string }; message?: string }
-        setTables({
-          status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The engine did not list its presets.',
-          ),
-        })
-      },
-    )
-    return () => {
-      left = true
-    }
-  }, [ready])
 
   // The lines, by the labels the line colours use, for the lines option.
   useEffect(() => {
@@ -248,13 +208,12 @@ export default function ExportTab({
     [inspection, mode, agency, project.lines],
   )
 
-  const { choice, dropped } = useMemo(
-    () =>
-      tables.status === 'ready'
-        ? usable(saved, tables.tables)
-        : { choice: saved, dropped: null as string | null },
-    [saved, tables],
-  )
+  const { choice, dropped, change, writeProblem } = useExportChoice({
+    record: project.export,
+    tables: tables.status === 'ready' ? tables.tables : null,
+    readOnly: project.readOnly,
+    onChoice,
+  })
   const preset =
     tables.status === 'ready' ? tables.tables.presets.find((p) => p.name === choice.preset) : null
   const defaults = preset ? defaultsFor(preset) : null
@@ -381,37 +340,6 @@ export default function ExportTab({
     }
     planner.schedule(choiceRef.current)
   }, [canPlan, key, made, planner])
-
-  // Writing: each change is sent the moment it is made, and nothing here
-  // orders the writes. The bridge hands main a frame's calls in the order
-  // they were sent and the store writes them in that order, answering in it
-  // too (spec 037, "The record session" in docs/ARCHITECTURE.md), so the
-  // newest choice is the record's. What was last sent, not the record in
-  // hand, decides whether a change needs writing: a change back to the
-  // record's value while another write is out would otherwise be skipped,
-  // and the record would keep the one in between.
-  const sent = useRef<ExportChoice | null>(project.export)
-  const latest = useRef<ExportChoice | null>(null)
-  const write = async (next: ExportChoice): Promise<void> => {
-    latest.current = next
-    try {
-      await onChoice(next)
-      // The last answer is the newest choice's: it landed, and with it every
-      // write before it, so nothing is left unsaved.
-      if (latest.current === next) setWriteProblem(null)
-    } catch (error) {
-      // What is on disk is unknown now, so the next change is written
-      // whatever it is.
-      sent.current = null
-      setWriteProblem(error instanceof Error ? error.message : String(error))
-    }
-  }
-  const change = (next: ExportChoice): void => {
-    setSaved(next)
-    if (project.readOnly || (sent.current !== null && sameChoice(next, sent.current))) return
-    sent.current = next
-    void write(next)
-  }
 
   // An export locks the choices: it planned from them, and a change now
   // could not reach the file being made. Chromium blurs a disabled control,
