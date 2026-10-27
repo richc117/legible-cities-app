@@ -121,7 +121,7 @@ you add a row, fill this column from your record's header.
 | 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted | - |
 | 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted | Amends 020, 041 |
 | 058 | [Contributions carry a DCO sign-off](058-contributions-carry-a-dco-sign-off.md) | Accepted | - |
-| 059 | [Rendered unit tests run in jsdom, and the kit-facing ones in a browser](059-rendered-unit-tests-run-in-jsdom-and-the-kit-facing-ones-in-a-browser.md) | Proposed | - |
+| 059 | [Rendered unit tests run in jsdom, and the kit-facing ones in a browser](059-rendered-unit-tests-run-in-jsdom-and-the-kit-facing-ones-in-a-browser.md) | Accepted | - |
 
 ## Amending rather than superseding
 
