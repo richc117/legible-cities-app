@@ -1,6 +1,6 @@
 # ADR-059: Rendered unit tests run in jsdom, and the kit-facing ones in a browser
 
-- **Status:** Proposed
+- **Status:** Accepted, 27 Oct 2026
 - **Date:** 2026-10-26
 - **Supersedes:** none
 - **Superseded by:** none
