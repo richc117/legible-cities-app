@@ -11,7 +11,8 @@
 # electron-ffmpeg-source job of .github/workflows/vendor.yml uploads and the
 # release job attaches to each GitHub Release.
 #
-# The job keeps the archive in its cache (issue 585), keyed on the Electron
+# The job keeps the archive in its cache (issue 585), keyed on the repository
+# its BUILD.txt names, the Electron
 # version, on the tar and xz that pack it and on the three files
 # legible-cities/ copies, because the fetch from Chromium's mirror stalls
 # now and then and a stalled fetch stops every installer of the run. A

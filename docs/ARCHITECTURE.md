@@ -2551,7 +2551,8 @@ fetched with git (Chromium's own repository from the GitHub mirror the pins
 name, since an object id names the same bytes wherever they come from) -
 and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
-moves that block. It caches the archive, keyed on the Electron version and
+moves that block. It caches the archive, keyed on the repository (which its
+`BUILD.txt` names), the Electron version and
 the three files the archive carries copies of (the pins, the script and
 `vendor.yml`) and the versions of the tar and xz that pack it, and checks
 a hit before using it: `--verify`, with no network, refuses any entry but

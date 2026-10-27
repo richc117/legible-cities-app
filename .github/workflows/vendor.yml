@@ -1236,7 +1236,9 @@ jobs:
   #
   # The archive is cached (issue 585): the fetch from Chromium's mirror
   # stalled on every attempt in three of eight runs on 26 Oct 2026, and each
-  # stall stopped every installer of its run. The key is the Electron version,
+  # stall stopped every installer of its run. The key is the repository (its
+  # BUILD.txt names it, so a renamed one must miss, not fail every hit), the
+  # Electron version,
   # a hash of the versions of the tar and xz that pack it, and the hash of the
   # three files the archive carries copies of in legible-cities/ (the pins,
   # the script and this workflow), so any change that could change the
@@ -1294,7 +1296,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: electron-ffmpeg-cache
-          key: electron-ffmpeg-source-${{ steps.pins.outputs.electron }}-${{ steps.pins.outputs.tools }}-${{ hashFiles('vendor/pins.json', 'scripts/electron-ffmpeg-source.sh', '.github/workflows/vendor.yml') }}
+          key: electron-ffmpeg-source-${{ github.repository }}-${{ steps.pins.outputs.electron }}-${{ steps.pins.outputs.tools }}-${{ hashFiles('vendor/pins.json', 'scripts/electron-ffmpeg-source.sh', '.github/workflows/vendor.yml') }}
       # Its failures are warnings, not errors, since the fetch below is the
       # remedy and the job fails only if that fails too.
       - name: Verify the cached archive against the pins, offline

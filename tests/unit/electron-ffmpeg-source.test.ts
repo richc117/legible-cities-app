@@ -545,7 +545,7 @@ describe('the electron-ffmpeg-source job, for the cache', () => {
     expect(job).not.toContain('restore-keys')
   })
 
-  it('keys the cache on the Electron version, the packing tools and the three files the archive copies', () => {
+  it('keys the cache on the repository, the Electron version, the packing tools and the three files the archive copies', () => {
     const source = readFileSync(SCRIPT, 'utf8')
     // What the script copies into legible-cities/, and nothing else.
     const copies = source
@@ -557,7 +557,7 @@ describe('the electron-ffmpeg-source job, for the cache', () => {
     ])
     const restore = steps[at('uses: actions/cache/restore@')]
     expect(restore).toContain(
-      "key: electron-ffmpeg-source-${{ steps.pins.outputs.electron }}-${{ steps.pins.outputs.tools }}-${{ hashFiles('vendor/pins.json', 'scripts/electron-ffmpeg-source.sh', '.github/workflows/vendor.yml') }}\n",
+      "key: electron-ffmpeg-source-${{ github.repository }}-${{ steps.pins.outputs.electron }}-${{ steps.pins.outputs.tools }}-${{ hashFiles('vendor/pins.json', 'scripts/electron-ffmpeg-source.sh', '.github/workflows/vendor.yml') }}\n",
     )
     expect(restore).toContain('path: electron-ffmpeg-cache\n')
     // The tools are the tar the script picks, the same way, and xz.

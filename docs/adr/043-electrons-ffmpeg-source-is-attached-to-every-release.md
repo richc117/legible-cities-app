@@ -149,7 +149,7 @@ to control compilation", not a lawyer's.
   commit's) and one xz thread, and uploads it as `electron-ffmpeg-source`.
 
 (Amended 2026-10-26, issue 585: the job now caches the archive, keyed on
-the Electron version, the versions of the tar and xz that pack it, and the
+the repository its `BUILD.txt` names, the Electron version, the versions of the tar and xz that pack it, and the
 three files it carries copies of, the pins, the script and `vendor.yml`,
 because the fetch from the mirror stalled on every attempt in three of
 eight runs that day. A miss runs every check above, then the offline
