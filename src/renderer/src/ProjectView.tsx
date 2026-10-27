@@ -32,15 +32,24 @@ interface Props {
   onBack: (notice?: string) => void
 }
 
+/**
+ * The screen's body, made once. It is one element for the life of the
+ * module, so a render of `ProjectView` - every run snapshot, every export
+ * frame, every answer to a write - passes it by as unchanged, and what
+ * under it renders again is what reads the context that changed (issue
+ * 433). Made inside the component, it would be a new element each time and
+ * every part of the screen would render with it, whatever it reads. The
+ * render-count test draws this same element.
+ */
+export const PROJECT_SCREEN = (
+  <main className="panel project" aria-labelledby="project-heading">
+    <ProjectHeader />
+    <Notebook />
+    <ProjectFooter />
+  </main>
+)
+
 export default function ProjectView({ id, layOut = false, onBack }: Props): JSX.Element {
   const state = useProjectState(id, onBack, layOut)
-  return (
-    <ProjectProviders state={state}>
-      <main className="panel project" aria-labelledby="project-heading">
-        <ProjectHeader />
-        <Notebook />
-        <ProjectFooter />
-      </main>
-    </ProjectProviders>
-  )
+  return <ProjectProviders state={state}>{PROJECT_SCREEN}</ProjectProviders>
 }

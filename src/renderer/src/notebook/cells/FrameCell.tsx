@@ -6,7 +6,13 @@ import Trip from '../../Trip'
 import Cell from '../Cell'
 import { frameFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
-import { useProject } from '../context'
+import {
+  useProjectActions,
+  useProjectMap,
+  useProjectOpening,
+  useProjectRecord,
+  useProjectRuns,
+} from '../context'
 import { frameFailure, frameFailureWords } from '../olderPage'
 import { runRowStatus } from '../runRow'
 
@@ -94,18 +100,11 @@ export function frameSummary(
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const {
-    project,
-    engine,
-    run,
-    runSnapshot,
-    setDate,
-    exporting,
-    layingOut,
-    drawn,
-    redrawAsked,
-    openedSeams,
-  } = useProject()
+  const { project, engine } = useProjectRecord()
+  const { run, runSnapshot, exporting, layingOut } = useProjectRuns()
+  const { setDate } = useProjectActions()
+  const { drawn } = useProjectMap()
+  const { redrawAsked, openedSeams } = useProjectOpening()
   const heading = useRef<HTMLHeadingElement>(null)
   // A failed rebuild of this cell's own, the opening's redraw among them
   // (issue 517): derived from the run's latest job against the one the

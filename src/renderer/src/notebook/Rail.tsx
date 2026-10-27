@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useState, type JSX } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useState, type JSX } from 'react'
 import Icon from '../icons/Icon'
 import { CELL_LIST, type Cell, type CellId, type CellStatus } from '../runGraph'
 import { cellNumber, stateIcon, stateWord } from './Cell'
-import { useProject } from './context'
+import { useProjectRecord } from './context'
 import Outputs from './Outputs'
 import { clearance, currentStepOf, scrollTargetFor, type CellBox } from './railScroll'
 
@@ -109,6 +109,13 @@ function boxes(): CellBox[] {
   return found
 }
 
+/**
+ * The outputs, passed by while their one prop is the same function: the
+ * rail renders with the notebook on every run snapshot and export frame,
+ * and the outputs read the record and the export for themselves.
+ */
+const OutputsSlot = memo(Outputs)
+
 export default function Rail({ states, open, onOpen }: Props): JSX.Element {
   const [current, setCurrent] = useState<CellId | null>(null)
   // The step a press is waiting on. Its scroll is measured after the open
@@ -151,7 +158,13 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
     follow()
   }, [pending, follow])
 
-  const { project } = useProject()
+  const { project } = useProjectRecord()
+  // The Outputs' empty state sends a person to cell 06, as its step does.
+  const openExport = open.export
+  const onExport = useCallback(
+    (): void => goToCell('export', openExport, onOpen, setPending),
+    [openExport, onOpen],
+  )
 
   return (
     <div className="rail">
@@ -190,7 +203,7 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
           })}
         </ol>
       </nav>
-      <Outputs onExport={() => goToCell('export', open.export, onOpen, setPending)} />
+      <OutputsSlot onExport={onExport} />
     </div>
   )
 }

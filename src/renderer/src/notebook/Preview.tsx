@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 import SkipPastMap from '../SkipPastMap'
 import Viewer from '../Viewer'
-import { useProject } from './context'
+import { useProjectActions, useProjectMap, useProjectRecord, useProjectReload } from './context'
 
 // The map in the notebook's flow (ADR-046, DESIGN.md 8.2, "The map"): the
 // engine's own page in its frame, between cell 02, whose layout it is drawn
@@ -44,7 +44,10 @@ export default function Preview({
   /** Take a person to cell 02, opening it if it is closed. */
   onLayOut: () => void
 }): JSX.Element | null {
-  const { project, drawn, themeReloads, pageSeams, skipPastMap } = useProject()
+  const { project } = useProjectRecord()
+  const { drawn } = useProjectMap()
+  const { themeReloads } = useProjectReload()
+  const { pageSeams, skipPastMap } = useProjectActions()
   if (project === null) return null
   const hasMap = project.layout !== null
   return (

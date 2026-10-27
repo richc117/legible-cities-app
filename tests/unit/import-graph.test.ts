@@ -251,4 +251,102 @@ describe('the import graph under src/', () => {
     const importers = everywhere.filter((e) => old.has(e.to))
     expect(importers.map(said), importers.map(said).join('\n')).toEqual([])
   })
+
+  it('has the project screen’s contexts private to notebook/context.tsx', () => {
+    // Issue 433: the screen's state reaches its parts through contexts that
+    // only `ProjectProviders` provides, so a test draws a cell under exactly
+    // what `ProjectView` draws it under. The type checker holds the callers
+    // to the module's exports; this holds the exports, and keeps out a
+    // context of the screen's made anywhere else, or the one-context reader
+    // the split removed. Read as identifiers, so a comment or a string that
+    // names one is not one. Mutation: `export` on `RecordContext`, or a
+    // `useProject` hook put back beside the slices - this fails.
+    const module = 'src/renderer/src/notebook/context.tsx'
+    const text = readFileSync(join(root, ...module.split('/')), 'utf8')
+    const source = ts.createSourceFile(
+      module,
+      text,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    )
+    const exported: string[] = []
+    for (const statement of source.statements) {
+      const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined
+      const isExported = modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) === true
+      if (ts.isExportDeclaration(statement)) {
+        // `export { a, type B } from '...'`, and `export * from '...'`, which
+        // names nothing and would hand on everything.
+        const clause = statement.exportClause
+        if (clause !== undefined && ts.isNamedExports(clause)) {
+          for (const element of clause.elements) exported.push(element.name.text)
+        } else {
+          exported.push(statement.getText(source))
+        }
+      } else if (ts.isExportAssignment(statement)) {
+        exported.push(statement.getText(source))
+      } else if (isExported && ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations)
+          exported.push(declaration.name.getText(source))
+      } else if (
+        isExported &&
+        (ts.isFunctionDeclaration(statement) ||
+          ts.isClassDeclaration(statement) ||
+          ts.isInterfaceDeclaration(statement) ||
+          ts.isTypeAliasDeclaration(statement) ||
+          ts.isEnumDeclaration(statement))
+      ) {
+        exported.push(statement.name?.text ?? statement.getText(source))
+      } else if (isExported) {
+        exported.push(statement.getText(source))
+      }
+    }
+    expect(exported.sort(), 'what notebook/context.tsx exports').toEqual(
+      [
+        'ProjectProviders',
+        'ProjectState',
+        'useProjectActions',
+        'useProjectExport',
+        'useProjectMap',
+        'useProjectOpening',
+        'useProjectRecord',
+        'useProjectReload',
+        'useProjectRuns',
+      ].sort(),
+    )
+
+    const identifiers = (file: string): { name: string; line: number }[] => {
+      const body = readFileSync(file, 'utf8')
+      const kind = file.endsWith('x') ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      const tree = ts.createSourceFile(file, body, ts.ScriptTarget.Latest, true, kind)
+      const found: { name: string; line: number }[] = []
+      const visit = (node: ts.Node): void => {
+        if (ts.isIdentifier(node))
+          found.push({
+            name: node.text,
+            line: tree.getLineAndCharacterOfPosition(node.getStart(tree)).line + 1,
+          })
+        ts.forEachChild(node, visit)
+      }
+      visit(tree)
+      return found
+    }
+    const screen = (path: string): boolean =>
+      path.startsWith('src/renderer/src/notebook/') ||
+      path === 'src/renderer/src/ProjectView.tsx' ||
+      path.startsWith('tests/')
+    const named: string[] = []
+    for (const file of [...files, ...walk(join(root, 'tests'))]) {
+      const path = relative(root, file).split(sep).join('/')
+      if (path === module) continue
+      for (const { name, line } of identifiers(file))
+        if (
+          name === 'useProject' ||
+          name === 'ProjectProvider' ||
+          (name === 'createContext' && screen(path))
+        )
+          named.push(`${path}:${line} names ${name}`)
+    }
+    expect(named, named.join('\n')).toEqual([])
+  })
 })

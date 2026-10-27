@@ -6,7 +6,7 @@ import { exportable } from '../../runGraph'
 import Cell from '../Cell'
 import { exportFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
-import { useProject } from '../context'
+import { useProjectActions, useProjectExport, useProjectRecord, useProjectRuns } from '../context'
 
 // Cell 06, Export: the preset, the storyboard and everything the reel is
 // made of (ADR-045), and a preview of the frame it will make (ADR-046).
@@ -52,7 +52,13 @@ export const toggleExportCell =
   }
 
 export default function ExportCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const { project, engine, exporter, layingOut, inspect, setExport } = useProject()
+  const { project, engine } = useProjectRecord()
+  const { exporter, layingOut } = useProjectRuns()
+  const { inspect, setExport } = useProjectActions()
+  // The strip's facts move with the export (its state, the file it wrote),
+  // so the cell reads the snapshot it is drawn from rather than the run's
+  // own, which nothing would render it for.
+  const { exportSnapshot } = useProjectExport()
   const [address, setAddress] = useState<PreviewAddress | null>(null)
   const toggle = toggleExportCell(() => setAddress(null), onToggle)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -64,7 +70,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
       open={open}
       onToggle={toggle}
       headingRef={heading}
-      footer={exportFooter(exporter.snapshot)}
+      footer={exportFooter(exportSnapshot)}
     >
       {project !== null && (
         <ExportTab

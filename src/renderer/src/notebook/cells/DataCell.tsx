@@ -6,7 +6,7 @@ import StageView from '../../StageView'
 import DownloadLine from '../../DownloadLine'
 import Cell from '../Cell'
 import type { CellViewProps } from '../cells'
-import { useProject } from '../context'
+import { useProjectActions, useProjectRecord, useProjectRuns } from '../context'
 import { runRowStatus } from '../runRow'
 import { EVERY_OPERATOR } from '../../record'
 
@@ -123,19 +123,9 @@ function useInspection(
 }
 
 export default function DataCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
-  const {
-    project,
-    engine,
-    inspect,
-    setInputs,
-    registry,
-    readStage,
-    layingOut,
-    exporting,
-    run,
-    runSnapshot,
-    settling,
-  } = useProject()
+  const { project, engine, registry } = useProjectRecord()
+  const { inspect, setInputs, readStage } = useProjectActions()
+  const { layingOut, exporting, run, runSnapshot, settling } = useProjectRuns()
   const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
   const heading = useRef<HTMLHeadingElement>(null)
   // The run's job id is its identity for the drawings it asks for, one per

@@ -1,8 +1,17 @@
-import { Fragment, useLayoutEffect, useState, type JSX } from 'react'
+import {
+  Fragment,
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useState,
+  type Dispatch,
+  type JSX,
+  type SetStateAction,
+} from 'react'
 import type { ProjectRecord } from '../../../shared/project/types'
-import { CELL_LIST, runGraph, type CellId } from '../runGraph'
+import { CELL_LIST, runGraph, type Cell, type CellId, type CellState } from '../runGraph'
 import { CELL_VIEWS } from './cells'
-import { useProject } from './context'
+import { useProjectExport, useProjectRecord, useProjectRuns } from './context'
 import Preview from './Preview'
 import Rail, { landOnCell } from './Rail'
 
@@ -24,6 +33,14 @@ import Rail, { landOnCell } from './Rail'
 // cell 02's fragment, whatever the record says - so the frame inside it is
 // never moved between parents, which is the one operation ADR-045 forbids
 // and ADR-046 keeps forbidding. Nothing in the column is pinned.
+//
+// The column reads the runs and the export, for the run graph, so it renders
+// on every run snapshot and every export frame; each cell and the map sit
+// in a slot that passes them by when what it hands them has not changed -
+// the cell's number, its state and whether it is open, and a press that
+// is the same function every time - so a cell renders for the contexts it
+// reads and for a change to its own state, and not because the column did
+// (issue 433, `tests/unit/cell-renders.test.tsx`).
 
 /**
  * Which cells a project's screen opens with, from its record (ADR-046,
@@ -51,7 +68,7 @@ export function startOpen(record: Pick<ProjectRecord, 'layout'>): Record<CellId,
 }
 
 export default function Notebook(): JSX.Element | null {
-  const { project } = useProject()
+  const { project } = useProjectRecord()
   // Nothing until the record has been read: six empty cells while it is, or
   // after a read that failed, would say there is work to do on a project
   // the screen cannot describe. The screen showed nothing then before.
@@ -61,7 +78,9 @@ export default function Notebook(): JSX.Element | null {
 
 /** The column, from the first render that has a record. */
 function Column({ initial }: { initial: Record<CellId, boolean> }): JSX.Element {
-  const { project, runSnapshot, exportSnapshot } = useProject()
+  const { project } = useProjectRecord()
+  const { runSnapshot } = useProjectRuns()
+  const { exportSnapshot } = useProjectExport()
   // `initial` is read by the first render alone: which cells are open is
   // the person's from then on.
   const [open, setOpen] = useState<Record<CellId, boolean>>(initial)
@@ -78,10 +97,16 @@ function Column({ initial }: { initial: Record<CellId, boolean> }): JSX.Element 
     run: runSnapshot,
     exportRun: exportSnapshot,
   })
-  const goTo = (cell: CellId): void => {
-    setOpen((was) => ({ ...was, [cell]: true }))
-    setLanding(cell)
-  }
+  const onOpen = useCallback(
+    (cell: CellId): void => setOpen((was) => ({ ...was, [cell]: true })),
+    [],
+  )
+  // The map's empty state sends a person to cell 02: one function for the
+  // screen's life, so the map's slot passes it by.
+  const layOut = useCallback((): void => {
+    setOpen((was) => ({ ...was, process: true }))
+    setLanding('process')
+  }, [])
   return (
     <>
       {/* The rail is placed from here and not from `ProjectView.tsx`
@@ -89,27 +114,51 @@ function Column({ initial }: { initial: Record<CellId, boolean> }): JSX.Element 
           component's state, and a step's press opens one. It stays outside
           `.notebook` - the column's children are the six cells and the map
           between 02 and 03. */}
-      <Rail
-        states={states}
-        open={open}
-        onOpen={(cell) => setOpen((was) => ({ ...was, [cell]: true }))}
-      />
+      <Rail states={states} open={open} onOpen={onOpen} />
       <div className="notebook">
-        {CELL_LIST.map((cell) => {
-          const View = CELL_VIEWS[cell.id]
-          return (
-            <Fragment key={cell.id}>
-              <View
-                cell={cell}
-                state={states[cell.id].state}
-                open={open[cell.id]}
-                onToggle={(next) => setOpen((was) => ({ ...was, [cell.id]: next }))}
-              />
-              {cell.id === 'process' && <Preview onLayOut={() => goTo('process')} />}
-            </Fragment>
-          )
-        })}
+        {CELL_LIST.map((cell) => (
+          <Fragment key={cell.id}>
+            <CellSlot
+              cell={cell}
+              state={states[cell.id].state}
+              open={open[cell.id]}
+              setOpen={setOpen}
+            />
+            {cell.id === 'process' && <MapSlot onLayOut={layOut} />}
+          </Fragment>
+        ))}
       </div>
     </>
   )
 }
+
+/**
+ * One cell, by the view the registry names for it, passed by while its
+ * number, state and openness are what they were. Its toggle is made here,
+ * once per cell, so it is the same function from render to render.
+ */
+const CellSlot = memo(function CellSlot({
+  cell,
+  state,
+  open,
+  setOpen,
+}: {
+  cell: Cell
+  state: CellState
+  open: boolean
+  setOpen: Dispatch<SetStateAction<Record<CellId, boolean>>>
+}): JSX.Element {
+  const View = CELL_VIEWS[cell.id]
+  const onToggle = useCallback(
+    (next: boolean): void => setOpen((was) => ({ ...was, [cell.id]: next })),
+    [cell.id, setOpen],
+  )
+  return <View cell={cell} state={state} open={open} onToggle={onToggle} />
+})
+
+/**
+ * The map, passed by while its one prop is the same function. The slot is
+ * in the same place in every render, as the map is, so the frame inside it
+ * is never moved between parents.
+ */
+const MapSlot = memo(Preview)

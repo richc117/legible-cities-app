@@ -50,24 +50,20 @@ vi.mock('../../src/renderer/src/notebook/cells/LinesCell', async (original) => {
 afterEach(cleanup)
 
 describe('the lines cell, counted', () => {
-  it('renders again when the screen changes a field the cell does not read', async () => {
+  it('renders no more when the screen changes a field the cell does not read', async () => {
     // `LinesCell` reads `project`, `engine`, `run`, `runSnapshot`,
     // `exporter`, `inspect`, `exporting` and `settling`; `themeReloads` is
-    // the map frame's, and none of the cell's business. Mutations: a memo
-    // over the whole state in `renderCell` keeps the count above zero, since
-    // the state did change; one over the fields the cell reads, which is
-    // what 433a's split amounts to, brings it to zero and fails this. 433a
-    // turns the assertion around (`toBe(0)`).
+    // the map frame's, and none of the cell's business. Since 433a's split
+    // it sits in a context of its own, which the cell does not read, so the
+    // count stays at zero. The whole screen's counts follow in the next
+    // change.
     renders.lines = 0
     const view = renderCell('lines')
     await answered()
     expect(renders.lines, 'the count sees the cell drawn').toBeGreaterThan(0)
     const before = renders.lines
     view.rerender({ themeReloads: 1 })
-    expect(
-      renders.lines - before,
-      'a field the cell does not read renders it again, today',
-    ).toBeGreaterThan(0)
+    expect(renders.lines - before, 'a field the cell does not read').toBe(0)
   })
 })
 

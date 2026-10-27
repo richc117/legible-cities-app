@@ -4,7 +4,7 @@ import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
 import { exportable } from '../runGraph'
-import { useProject } from './context'
+import { useProjectExport, useProjectRecord } from './context'
 import Time from './Time'
 
 // What this project has produced, under the stepper in the rail (A5.5-21,
@@ -74,7 +74,8 @@ export function OutputsEmpty({
 }
 
 export default function Outputs({ onExport }: { onExport: () => void }): JSX.Element | null {
-  const { project, exportSnapshot } = useProject()
+  const { project } = useProjectRecord()
+  const { exportSnapshot } = useProjectExport()
   const id = project?.id ?? null
   const [rows, setRows] = useState<ExportOutput[] | null>(null)
   const sectionRef = useRef<HTMLElement>(null)

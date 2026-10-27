@@ -1,5 +1,5 @@
 // The project screen's delete, confirmed (issue 491, spec 037 FR-012):
-// `remove.confirm` re-reads the two runs at the moment of confirming, not
+// `deleteProject` re-reads the two runs at the moment of confirming, not
 // at the render that drew the dialog. The footer's button is disabled while
 // a run goes, but the dialog can have been opened before the run began, and
 // the function it holds was made at that render. Main refuses too
@@ -153,19 +153,19 @@ afterEach(() => {
 
 describe('confirming a deletion', () => {
   it('goes ahead when neither run is going', async () => {
-    await act(async () => shown.remove.confirm())
+    await act(async () => shown.deleteProject())
     expect(deleted).toHaveBeenCalledWith('p1')
     expect(left).toHaveBeenCalled()
   })
   it('is refused when the export began after the dialog was drawn', async () => {
     // The function the dialog holds, made at a render when nothing ran.
-    const confirm = shown.remove.confirm
+    const confirm = shown.deleteProject
     runs.exporter.snapshot = { state: 'running' }
     await expect(confirm()).rejects.toThrow(DELETE_WHILE_EXPORTING)
     expect(deleted).not.toHaveBeenCalled()
   })
   it('is refused when a run began after the dialog was drawn', async () => {
-    const confirm = shown.remove.confirm
+    const confirm = shown.deleteProject
     act(() => shown.run.start(shown.project as ProjectRecord, shown.engine))
     expect(shown.run.snapshot.state).toBe('running')
     await expect(confirm()).rejects.toThrow(DELETE_WHILE_DRAWING)
