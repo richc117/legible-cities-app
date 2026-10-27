@@ -1751,7 +1751,11 @@ describe("keeping the window's place", () => {
     const h = await harness({ replace: r.replace })
     const window = h.settings.keepWindow(place)
     const theme = h.settings.setTheme('sepia')
-    // The window's write is still held: the theme waits in the same queue.
+    // The window's write reaches the disk and is held there; a deadline, not a
+    // fixed wait, since a slow runner takes longer than any fixed count to
+    // get the first write as far as its rename.
+    await vi.waitFor(() => expect(r.seen).toHaveLength(1), { timeout: 5_000 })
+    // The theme waits behind it in the same queue, however long it is held.
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(r.seen, 'only the window has reached the disk').toHaveLength(1)
     r.release()
