@@ -9,37 +9,26 @@
 
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import ProjectFooter from '../../src/renderer/src/notebook/ProjectFooter'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { BASE, defaultProjectState } from '../support/project-state'
 
-const state = {
+const state: ProjectState = {
+  ...defaultProjectState(),
   project: {
+    ...BASE,
     id: 'p1',
-    name: 'Los Angeles',
     created: '2026-09-13T14:03:00+00:00',
     modified: '2026-09-13T14:03:00+00:00',
     readOnly: false,
   },
-  rename: { open: false, buttonRef: { current: null } },
-  remove: {
-    confirming: false,
-    problem: null,
-    buttonRef: { current: null },
-    begin: () => {},
-    confirm: async () => {},
-    cancel: () => {},
-    setProblem: () => {},
-  },
-  exporting: false,
-  layingOut: false,
-} as unknown as ProjectState
+}
 
 describe('the delete confirmation', () => {
   const html = renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <ProjectFooter />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
 
   it('says what goes, what stays and that exported files stay where they are', () => {

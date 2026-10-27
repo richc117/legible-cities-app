@@ -37,12 +37,12 @@ import { sentenceFor as exportSentence } from '../../src/renderer/src/engine/exp
 import { removalOutcome } from '../../src/renderer/src/Library'
 import { inUseSentence } from '../../src/main/feeds-ipc'
 import ProcessCell from '../../src/renderer/src/notebook/cells/ProcessCell'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { ERROR_CODES, withoutPaths, type EngineState } from '../../src/shared/engine'
 import { composeJobLog, runFailureSentence, screenPaths, type Job } from '../../src/shared/jobs'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
+import { defaultProjectState } from '../support/project-state'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
 const WINDOWS = ['C:', 'Users', 'someone', 'AppData', 'engine-home', 'feeds', 'la-metro.zip'].join(
@@ -126,21 +126,18 @@ async function failedLayout(
 
 /** Cell 02, open, over a run. */
 function cellOver(run: LayoutRun): string {
-  const state = {
+  const state: ProjectState = {
+    ...defaultProjectState(),
     project: { ...record, readOnly: false },
     engine: READY,
     run,
     runSnapshot: run.snapshot,
-    exporting: false,
-    layingOut: false,
-    redrawAsked: null,
-    openedSeams: null,
-  } as unknown as ProjectState
+  }
   const cell = CELL_LIST.find((c) => c.id === 'process') as Cell
   return renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <ProcessCell cell={cell} state="error" open={true} onToggle={() => {}} />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
 }
 

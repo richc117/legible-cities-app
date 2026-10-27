@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { ProjectProvider } from './notebook/context'
+import { ProjectProviders } from './notebook/context'
 import Notebook from './notebook/Notebook'
 import ProjectFooter from './notebook/ProjectFooter'
 import ProjectHeader from './notebook/ProjectHeader'
@@ -35,12 +35,12 @@ interface Props {
 export default function ProjectView({ id, layOut = false, onBack }: Props): JSX.Element {
   const state = useProjectState(id, onBack, layOut)
   return (
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <main className="panel project" aria-labelledby="project-heading">
         <ProjectHeader />
         <Notebook />
         <ProjectFooter />
       </main>
-    </ProjectProvider>
+    </ProjectProviders>
   )
 }

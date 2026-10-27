@@ -14,13 +14,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { freshStages, type LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import FrameCell from '../../src/renderer/src/notebook/cells/FrameCell'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { DRAW_AGAIN, NOT_LAID_OUT, TRIP_INTRO } from '../../src/renderer/src/tripWords'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 import type { Station } from '../../src/shared/trip'
+import { defaultProjectState } from '../support/project-state'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'frame') as Cell
 
@@ -78,20 +78,17 @@ const idle = {
 } as unknown as LayoutRun
 
 function draw(project: ProjectRecord, { readOnly = false } = {}): string {
-  const state = {
+  const state: ProjectState = {
+    ...defaultProjectState(),
     project: { ...project, readOnly },
     engine: null,
     run: idle,
     runSnapshot: idle.snapshot,
-    setDate: async () => {},
-    exporting: false,
-    layingOut: false,
-    drawn: 0,
-  } as unknown as ProjectState
+  }
   return renderToStaticMarkup(
-    <ProjectProvider value={state}>
+    <ProjectProviders state={state}>
       <FrameCell cell={CELL} state="ready" open={true} onToggle={() => {}} />
-    </ProjectProvider>,
+    </ProjectProviders>,
   )
 }
 

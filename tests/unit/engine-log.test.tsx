@@ -36,12 +36,12 @@ import EngineLog, {
   type Box,
 } from '../../src/renderer/src/notebook/EngineLog'
 import ProcessCell from '../../src/renderer/src/notebook/cells/ProcessCell'
-import { ProjectProvider } from '../../src/renderer/src/notebook/context'
-import type { ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { freshStages, type LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { composeJobLog, MAX_LOG_LINES, type Job } from '../../src/shared/jobs'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
+import { defaultProjectState } from '../support/project-state'
 
 const job = (over: Partial<Job> = {}): Job => ({
   id: 'job-1',
@@ -436,18 +436,17 @@ describe('cell 02', () => {
   // and look for it.
   it('draws the engine log under the stages', () => {
     const run = runWith(job({ log: ['[info] parsed 3 stops'] }))
-    const state = {
+    const state: ProjectState = {
+      ...defaultProjectState(),
       project: { ...record, readOnly: false },
       engine: null,
       run,
       runSnapshot: run.snapshot,
-      exporting: false,
-      layingOut: false,
-    } as unknown as ProjectState
+    }
     const html = renderToStaticMarkup(
-      <ProjectProvider value={state}>
+      <ProjectProviders state={state}>
         <ProcessCell cell={CELL} state="running" open={true} onToggle={() => {}} />
-      </ProjectProvider>,
+      </ProjectProviders>,
     )
     expect(html).toContain('engine-log')
     expect(html).toContain('[info] parsed 3 stops')
