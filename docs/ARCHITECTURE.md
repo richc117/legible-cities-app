@@ -1751,7 +1751,9 @@ the engine's tables, `useExportLines` reads the feed's lines,
 `useExportChoice` holds the choice and is the one place it is written,
 `useExportPreview` plans the preview, `ExportForm` draws every field from
 Preset to the alt text with the typed drafts, and `ExportDestination` is
-"Where it goes", drawn as the form's last field. `ExportOpening.tsx` and
+"Where it goes", drawn as the form's last field, its folder held above the
+form (`useDestination`) so a form drawn again after the engine comes back
+shows what the last press answered. `ExportOpening.tsx` and
 `ExportRun.tsx` stay where they were. No piece reaches into another: the
 composition hands each what it needs of the others as props, and the
 rules every piece applies are `exportChoice.ts`'s, which renders nothing.

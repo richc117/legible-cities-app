@@ -5,9 +5,9 @@
 // takes itself away. The kit's button is a native one here, since jsdom
 // does not delegate focus into a shadow root (`kit-stubs.ts`).
 
-import { act } from 'react'
+import { act, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import ExportDestination from '../../src/renderer/src/export/ExportDestination'
+import ExportDestination, { useDestination } from '../../src/renderer/src/export/ExportDestination'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import { answered, BASE, byName, cleanup, press, renderPanel } from '../support/render'
 
@@ -30,11 +30,16 @@ function draw(
 ) {
   const chooseDestination = vi.fn(bridge.chooseDestination ?? (async () => record(FOLDER)))
   const useAppFolder = vi.fn(bridge.useAppFolder ?? (async () => record(null)))
-  const view = renderPanel(
-    <ExportDestination projectId={BASE.id} destination={destination} locked={locked} />,
-    { api: { export: { chooseDestination, useAppFolder } } },
-  )
+  const view = renderPanel(<Field recorded={destination} locked={locked} />, {
+    api: { export: { chooseDestination, useAppFolder } },
+  })
   return { view, chooseDestination, useAppFolder }
+}
+
+/** The field with its folder held above it, as the composition holds it. */
+function Field({ recorded, locked }: { recorded: string | null; locked: boolean }): JSX.Element {
+  const destination = useDestination(recorded)
+  return <ExportDestination projectId={BASE.id} destination={destination} locked={locked} />
 }
 
 const where = (): Element | null => document.getElementById('export-destination-where')
@@ -122,7 +127,7 @@ describe('where cell 06’s export goes', () => {
 
   it('takes a folder the record brings when it is read again', () => {
     const { view } = draw(null, {})
-    view.rerender(<ExportDestination projectId={BASE.id} destination={FOLDER} locked={false} />)
+    view.rerender(<Field recorded={FOLDER} locked={false} />)
     expect(where()?.textContent).toBe(FOLDER)
   })
 })

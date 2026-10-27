@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useEffect, useRef, useState, type JSX, type SetStateAction } from 'react'
 import type { ProjectRecord } from '../../../shared/project/types'
 import { focusLost } from '../focusHandback'
 import Icon from '../icons/Icon'
@@ -15,33 +15,50 @@ import Button from '../kit/Button'
 //
 // Drawn inside the form with the rest of the choices (`ExportForm.tsx`),
 // so an export that starts takes focus off it as it does off every other
-// control there.
+// control there; what it shows is held above the form (`useDestination`).
+
+/** Where this project's exports go, as cell 06 holds it. */
+export interface Destination {
+  /** The folder shown: the record's, or what the last press answered; null for the app's own. */
+  folder: string | null
+  /** The last press's refusal, until a press lands. */
+  problem: string | null
+  set: (next: SetStateAction<Omit<Destination, 'set'>>) => void
+}
+
+/**
+ * The folder, held by the composition rather than by the field, so a form
+ * drawn again - the engine restarted, its tables asked again - shows what
+ * the last press answered and not a record that has not been read since.
+ *
+ * Held rather than read from the record on every render because the two
+ * calls that change it answer the written record themselves, and the
+ * screen around this panel is not re-read for a folder: nothing else on it
+ * shows one. A record read again for any other reason - a run finishing,
+ * the project opened afresh - brings the folder with it, and the effect
+ * below takes it (A5.5-19).
+ */
+export function useDestination(recorded: string | null): Destination {
+  const [held, set] = useState<Omit<Destination, 'set'>>({ folder: recorded, problem: null })
+  useEffect(() => {
+    set((now) => ({ ...now, folder: recorded }))
+  }, [recorded])
+  return { ...held, set }
+}
 
 interface Props {
   projectId: string
-  /** The record's folder for this project's exports; null for the app's own. */
-  destination: string | null
+  /** The folder and the last refusal, from `useDestination`. */
+  destination: Destination
   /** An export is running, or the project cannot be written. */
   locked: boolean
 }
 
 export default function ExportDestination({
   projectId,
-  destination: recorded,
+  destination: { folder: destination, problem: folderProblem, set },
   locked,
 }: Props): JSX.Element {
-  // Where this project's exports go (A5.5-19). Held here rather than read
-  // from the record on every render because the two calls that change it
-  // answer the written record themselves, and the screen around this panel
-  // is not re-read for a folder: nothing else on it shows one. A record
-  // read again for any other reason - a run finishing, the project opened
-  // afresh - brings the folder with it, and the effect below takes it.
-  const [destination, setDestination] = useState<string | null>(recorded)
-  const [folderProblem, setFolderProblem] = useState<string | null>(null)
-  useEffect(() => {
-    setDestination(recorded)
-  }, [recorded])
-
   // The destination's two presses. Neither sends a path: `chooseDestination`
   // asks the main process to open the platform's dialog and apply what it
   // answers, and `useAppFolder` takes nothing at all. A cancelled chooser
@@ -75,13 +92,13 @@ export default function ExportDestination({
     changing.current = true
     try {
       const record = await ask()
-      setFolderProblem(null)
       // Only when the button that was pressed has actually gone: a refused
       // or cancelled change leaves it where it was, holding its own focus.
       handBackToChooser.current = handBack && record.destination === null
-      setDestination(record.destination)
+      set({ folder: record.destination, problem: null })
     } catch (error) {
-      setFolderProblem(error instanceof Error ? error.message : String(error))
+      const problem = error instanceof Error ? error.message : String(error)
+      set((now) => ({ ...now, problem }))
     } finally {
       changing.current = false
     }

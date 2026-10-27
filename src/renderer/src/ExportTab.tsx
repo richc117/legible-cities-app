@@ -4,7 +4,7 @@ import type { ExportChoice } from '../../shared/export'
 import type { ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
 import type { ExportRun as Run } from './engine/exportRun'
-import ExportDestination from './export/ExportDestination'
+import ExportDestination, { useDestination } from './export/ExportDestination'
 import ExportForm from './export/ExportForm'
 import { useExportChoice } from './export/useExportChoice'
 import { useExportLines } from './export/useExportLines'
@@ -90,6 +90,8 @@ export default function ExportTab({
     exporting,
     onPreview,
   })
+  // Held here, so a form drawn again shows the folder the last press answered.
+  const destination = useDestination(project.destination)
 
   // An export locks the choices it was planned from, which a change could not reach
   // now; Chromium blurs a disabled control, so focus goes to the cell's heading first.
@@ -166,11 +168,7 @@ export default function ExportTab({
           >
             {/* Inside the form, so an export that starts takes focus off its two
                 buttons as off every other choice; neither is a submit. */}
-            <ExportDestination
-              projectId={project.id}
-              destination={project.destination}
-              locked={locked}
-            />
+            <ExportDestination projectId={project.id} destination={destination} locked={locked} />
           </ExportForm>
           {exporting && (
             <p className="hint" role="status">

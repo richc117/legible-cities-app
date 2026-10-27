@@ -85,7 +85,7 @@ async function draw(
     async (): Promise<ExportPreview> =>
       over.preview ?? { ok: true, url: 'app://local/p', width: 540, height: 960, notes: [] },
   )
-  function Cell(): JSX.Element {
+  function Cell({ engine = over.engine === undefined ? READY : over.engine }): JSX.Element {
     return (
       <section>
         <h3 ref={heading} tabIndex={-1}>
@@ -93,7 +93,7 @@ async function draw(
         </h3>
         <ExportTab
           project={project}
-          engine={over.engine === undefined ? READY : over.engine}
+          engine={engine}
           run={run}
           layingOut={false}
           active
@@ -107,11 +107,17 @@ async function draw(
       </section>
     )
   }
-  const view = renderPanel(<Cell />, { api: { export: { preview } } })
+  const chooseDestination = vi.fn(async () => ({ ...project, destination: '/srv/exports' }))
+  const view = renderPanel(<Cell />, { api: { export: { preview, chooseDestination } } })
   await answered()
   const start = (choice: ExportChoice = project.export): void =>
     act(() => run.start(project, READY, choice))
-  return { view, run, heading, start, preview }
+  /** The engine as it is now, the panel drawn again. */
+  const engineNow = async (engine: typeof READY | null): Promise<void> => {
+    view.rerender(<Cell engine={engine} />)
+    await answered()
+  }
+  return { view, run, heading, start, preview, engineNow }
 }
 
 const text = (): string => (document.querySelector('.export-tab')?.textContent ?? '').trim()
@@ -192,6 +198,23 @@ describe('cell 06’s composition', () => {
     expect(form?.nextElementSibling?.className).toBe('focus-region')
     expect(byName('button', 'Export')).toBeTruthy()
     expect(byName('button', 'Choose folder')).toBeTruthy()
+  })
+
+  it('shows the folder a press answered after the engine has gone and come back', async () => {
+    // The form is not drawn while the engine is away, and the record the
+    // panel was given is not read again for a folder. Mutation: the folder
+    // held by the field itself rather than above the form - it is then made
+    // afresh from that record, and says the app's own folder again.
+    const { engineNow } = await draw()
+    act(() => byName('button', 'Choose folder').click())
+    await answered()
+    const where = (): string | null | undefined =>
+      document.getElementById('export-destination-where')?.textContent
+    expect(where()).toBe('/srv/exports')
+    await engineNow(null)
+    expect(document.querySelector('form'), 'no form while the engine is away').toBeNull()
+    await engineNow(READY)
+    expect(where()).toBe('/srv/exports')
   })
 
   it('holds Export while the engine refuses the choice, and says why under the choosers', async () => {
