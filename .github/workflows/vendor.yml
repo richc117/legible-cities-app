@@ -1236,10 +1236,11 @@ jobs:
   #
   # The archive is cached (issue 585): the fetch from Chromium's mirror
   # stalled on every attempt in three of eight runs on 26 Oct 2026, and each
-  # stall stopped every installer of its run. The key is the Electron version
-  # and the hash of the three files the archive carries copies of in
-  # legible-cities/ (the pins, the script and this workflow), so any change
-  # that could change the archive's contents is a new key, and there are no
+  # stall stopped every installer of its run. The key is the Electron
+  # version, a hash of the versions of the tar and xz that pack it, and the
+  # hash of the three files the archive carries copies of in legible-cities/
+  # (the pins, the script and this workflow), so any change that could
+  # change the archive's bytes is a new key, and there are no
   # restore keys, because a near match is another archive. A hit is never
   # trusted: the script's --verify, with no network, refuses any entry but a
   # file or a folder and any name twice, unpacks it, holds every tree id,
@@ -1261,19 +1262,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Name the archive the pins are for
+      # The tar and xz that pack the archive are in the key too: --verify packs
+      # what it checked again and needs the same bytes, so a runner image with
+      # another tar or xz would fail every hit, fetch, and never replace the
+      # entry, since only a miss saves. The tar is the one the script takes.
+      - name: Name the archive the pins are for, and the tools that pack it
         id: pins
         shell: bash
         run: |
           electron=$(python3 -c 'import json; print(json.load(open("vendor/pins.json", encoding="utf-8"))["electron_ffmpeg"]["electron"]["version"])')
           echo "electron=$electron" >> "$GITHUB_OUTPUT"
           echo "archive=electron-ffmpeg-$electron-source.tar.xz" >> "$GITHUB_OUTPUT"
+          gnu_tar=
+          for tool in tar gtar; do
+            if "$tool" --version 2>/dev/null | head -1 | grep -q 'GNU tar'; then gnu_tar=$tool; break; fi
+          done
+          versions=$(printf '%s\n' "$("${gnu_tar:-tar}" --version | head -1)" "$(xz --version | head -1)")
+          echo "$versions"
+          echo "tools=$(printf '%s\n' "$versions" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
       - name: Restore the archive from the cache
         id: restore
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: electron-ffmpeg-cache
-          key: electron-ffmpeg-source-${{ steps.pins.outputs.electron }}-${{ hashFiles('vendor/pins.json', 'scripts/electron-ffmpeg-source.sh', '.github/workflows/vendor.yml') }}
+          key: electron-ffmpeg-source-${{ steps.pins.outputs.electron }}-${{ steps.pins.outputs.tools }}-${{ hashFiles('vendor/pins.json', 'scripts/electron-ffmpeg-source.sh', '.github/workflows/vendor.yml') }}
       # Its failures are warnings, not errors, since the fetch below is the
       # remedy and the job fails only if that fails too.
       - name: Verify the cached archive against the pins, offline
