@@ -15,6 +15,7 @@ import Library, {
   PROJECTS_NONE,
   ProjectCards,
   SAMPLES_AWAY,
+  SAMPLES_ENGINE_DOWN,
   SAMPLES_NONE,
   SAMPLES_UNREAD,
   projectFacts,
@@ -30,6 +31,7 @@ import { samplePicture } from '../../src/renderer/src/samplePictures'
 import { summarise } from '../../src/main/record/helpers'
 import { type DrawnFrom, type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
+import { QUITTING_REASON, type EngineState } from '../../src/shared/engine'
 import type { FeedRecord } from '../../src/shared/protocol'
 
 // The screen's run helpers reach for the bridge when they are made. A
@@ -148,18 +150,86 @@ describe('the front door', () => {
 })
 
 describe('what the samples region says when it has no presets to draw', () => {
-  it('says the engine is not ready only when it is not', () => {
-    expect(samplesSentence(false, 'unread')).toBe(SAMPLES_AWAY)
-    expect(samplesSentence(false, 'listed')).toBe(SAMPLES_AWAY)
+  const starting: EngineState = { state: 'starting', attempt: 1 }
+  const restarting: EngineState = { state: 'restarting', attempt: 2, reason: 'It exited.' }
+  const ready: EngineState = { state: 'ready', version: '1.0.0', protocol: 1 }
+  const unavailable: EngineState = {
+    state: 'unavailable',
+    reason: 'The engine could not be started.',
+  }
+  const stopped: EngineState = {
+    state: 'stopped',
+    reason: 'It exited. It failed 3 times in a row.',
+  }
+
+  it('says the engine is on its way while it is starting or restarting, or not yet heard from', () => {
+    for (const engine of [null, starting, restarting]) {
+      expect(samplesSentence(engine, 'unread')).toBe(SAMPLES_AWAY)
+      expect(samplesSentence(engine, 'listed')).toBe(SAMPLES_AWAY)
+    }
+  })
+
+  const mismatched: EngineState = {
+    state: 'mismatched',
+    expected: { repo: 'https://github.com/x/y', tag: 'v1.0.0', version: '1.0.0', protocol: 1 },
+    found: { version: '0.9.0', protocol: 1 },
+  }
+
+  it('never promises a wait while the engine is unavailable, mismatched or stopped (issue 547)', () => {
+    for (const engine of [unavailable, mismatched, stopped]) {
+      const sentence = samplesSentence(engine, 'unread')
+      expect(sentence).not.toBeNull()
+      expect(sentence).not.toContain('once the engine is ready')
+      expect(sentence).toContain('Copy diagnostics')
+      expect(sentence).toContain("on the project's tracker")
+    }
+  })
+
+  it('says a mismatched engine is not coming back, in whole sentences of its own', () => {
+    expect(samplesSentence(mismatched, 'unread')).toBe(SAMPLES_ENGINE_DOWN)
+  })
+
+  it('leads a stopped engine with the one thing that begins it anew', () => {
+    expect(
+      samplesSentence(stopped, 'unread')?.startsWith('Quit and open Legible Cities again. '),
+    ).toBe(true)
+    // Not an engine that can still start by itself.
+    expect(samplesSentence(unavailable, 'unread')).not.toContain('Quit and open')
+  })
+
+  it('carries the whole reason, first, which the status line cuts short', () => {
+    expect(samplesSentence(unavailable, 'unread')?.startsWith(unavailable.reason)).toBe(true)
+    expect(samplesSentence(stopped, 'unread')).toContain(` ${stopped.reason} `)
+    expect(samplesSentence(stopped, 'unread')).toContain('It failed 3 times in a row.')
+    expect(samplesSentence(stopped, 'unread')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
+  })
+
+  it('does not report the app’s own quit as a failure', () => {
+    const quitting: EngineState = { state: 'stopped', reason: QUITTING_REASON }
+    expect(samplesSentence(quitting, 'unread')).toBe(SAMPLES_AWAY)
+    expect(samplesSentence(quitting, 'listed')).toBe(SAMPLES_AWAY)
+  })
+
+  it('draws that sentence in the region', () => {
+    const html = renderToStaticMarkup(
+      <SampleCities
+        presets={[]}
+        palette="dark"
+        sentence={samplesSentence(unavailable, 'unread')}
+        onOpen={() => undefined}
+      />,
+    )
+    expect(html).toContain('Copy diagnostics')
+    expect(html).not.toContain('once the engine is ready')
   })
 
   it('says nothing while the first read is on its way', () => {
-    expect(samplesSentence(true, 'unread')).toBeNull()
+    expect(samplesSentence(ready, 'unread')).toBeNull()
   })
 
   it('says the read failed when it did, and that there are none when there are none', () => {
-    expect(samplesSentence(true, 'failed')).toBe(SAMPLES_UNREAD)
-    expect(samplesSentence(true, 'listed')).toBe(SAMPLES_NONE)
+    expect(samplesSentence(ready, 'failed')).toBe(SAMPLES_UNREAD)
+    expect(samplesSentence(ready, 'listed')).toBe(SAMPLES_NONE)
   })
 })
 

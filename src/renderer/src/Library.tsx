@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
-import { ERROR_CODES, isEngineErrorShape } from '../../shared/engine'
+import {
+  ERROR_CODES,
+  isEngineErrorShape,
+  QUITTING_REASON,
+  type EngineState,
+} from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
 import { uniqueName } from './record'
 import Card from './Card'
@@ -187,9 +192,26 @@ export function removalTakesTheRow(outcome: RemovalOutcome): boolean {
 export const INTRODUCTION =
   'Legible Cities draws a transit network as a schematic map and plays a day of its service on it: start from a sample city below, or add a feed of your own.'
 
-/** What the samples region says while the engine cannot list them. */
+/**
+ * What the samples region says while the engine is on its way (starting, or
+ * restarting after a failure): it will be ready, and the status line says
+ * how far it has got.
+ */
 export const SAMPLES_AWAY =
   'The sample cities are listed once the engine is ready; the status line above says what it is doing.'
+
+/**
+ * What follows the engine's reason when it is not coming back by itself
+ * (unavailable, mismatched, or stopped after failing too often): no promise
+ * of a wait, and where to go if it keeps happening (issue 547). The reason
+ * comes first, in full, since the status line cuts a long one short, and a
+ * packaged app's reason leads with its own next step.
+ */
+export const SAMPLES_ENGINE_DOWN =
+  "The sample cities cannot be listed until the engine runs. If this keeps happening, open Settings, press Copy diagnostics and paste what it copies into a new issue on the project's tracker."
+
+/** What a stopped engine leads with: only a quit and a start again begins it anew. */
+export const SAMPLES_STOPPED_FIRST = 'Quit and open Legible Cities again.'
 
 /** What it says when the engine is ready and its answer to `feeds.list` failed. */
 export const SAMPLES_UNREAD =
@@ -204,8 +226,15 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  * its way - a sentence saying the engine is not ready, under a status line
  * that says it is, would be the screen contradicting itself for a beat.
  */
-export function samplesSentence(ready: boolean, read: FeedsRead): string | null {
-  if (!ready) return SAMPLES_AWAY
+export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
+  if (engine?.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+  // The app's own quit stops the engine too, and is no failure to report.
+  if (engine?.state === 'stopped' && engine.reason !== QUITTING_REASON)
+    return `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+  // Ended at the handshake and never restarted: it has no reason of its own,
+  // the dialog says which versions, and the status line the sentence.
+  if (engine?.state === 'mismatched') return SAMPLES_ENGINE_DOWN
+  if (engine?.state !== 'ready') return SAMPLES_AWAY
   if (read === 'failed') return SAMPLES_UNREAD
   if (read === 'listed') return SAMPLES_NONE
   return null
@@ -571,7 +600,7 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   }
 
   const presets = feeds.filter((feed) => feed.source === 'preset')
-  const samples = samplesSentence(ready, feedsRead)
+  const samples = samplesSentence(engine, feedsRead)
   const addedFeeds = feeds.filter((feed) => feed.source === 'user')
   const startFrom = (feed: FeedRecord): void => {
     setFeedNotice(null)

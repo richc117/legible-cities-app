@@ -11,6 +11,7 @@ import {
   describeState,
   EngineError,
   ERROR_CODES,
+  QUITTING_REASON,
   type EnginePin,
   type EngineState,
 } from '../shared/engine'
@@ -72,9 +73,29 @@ export interface SidecarOptions {
   log: (message: string) => void
   bounds?: Partial<Bounds>
   platform?: NodeJS.Platform
+  /**
+   * Whether the interpreter is the installer's own runtime (`isBundledRuntime`),
+   * not a packaged app that was pointed at another: only then can the person
+   * be told to reinstall, and only then has the reason no environment variable
+   * to name (issue 547).
+   */
+  bundledInterpreter?: boolean
 }
 
 const STDERR_TAIL = 20
+
+/**
+ * Why the interpreter could not be started, as a sentence for whoever is
+ * looking at the screen. When the interpreter is the installer's own, the
+ * person is told the next step first and never an environment variable, which
+ * means nothing to them; any other interpreter (a checkout's, or one named by
+ * LEGIBLE_ENGINE_PYTHON) keeps the sentence that names what to check.
+ * What the operating system said goes to the log either way.
+ */
+export function interpreterFailedReason(what: string, bundledInterpreter: boolean): string {
+  if (bundledInterpreter) return 'Reinstall the app. The bundled engine could not be started.'
+  return `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`
+}
 
 /** The longest delay a Node timer holds; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647
@@ -560,9 +581,10 @@ export class Sidecar {
 
   private couldNotStart(what: string): void {
     this.client = null
+    this.log(`the interpreter could not be started: ${what}`)
     this.setState({
       state: 'unavailable',
-      reason: `The interpreter could not be started (${what}); check LEGIBLE_ENGINE_PYTHON or the engine checkout.`,
+      reason: interpreterFailedReason(what, this.options.bundledInterpreter ?? false),
     })
   }
 
@@ -648,7 +670,7 @@ export class Sidecar {
     }
     this.clearStable()
     if (this._state.state !== 'unavailable' && this._state.state !== 'stopped') {
-      this.setState({ state: 'stopped', reason: 'The app is quitting.' })
+      this.setState({ state: 'stopped', reason: QUITTING_REASON })
     }
     // A failure or a mismatch may be ending a child right now: that is the
     // same work, so wait for it rather than quit past it.
