@@ -611,6 +611,12 @@ next before it says what went wrong.
 
 ## 12. Accessibility, made concrete
 
+The standard is WCAG 2.2 AA. Which of its criteria the app meets, and by what
+check, is `docs/accessibility.md`; the six criteria 2.2 added (2.4.11, 2.5.7,
+2.5.8, 3.2.6, 3.3.7, 3.3.8) have a row each in its section "WCAG 2.2: the
+criteria it added", and a unit test fails when one has none. The rules below
+are the design's half of those answers.
+
 - Every control reachable by Tab in reading order; every list navigable by
   arrow keys; every dialog trapped, Escape closes, focus returns.
 - Focus is `--focus-ring` on every focusable element, never removed. The

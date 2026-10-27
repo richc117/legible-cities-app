@@ -1794,6 +1794,38 @@ test('cell 03 drives the page and changes nothing the project keeps', async () =
   })
 })
 
+// WCAG 2.5.7 (issue 550): the scrub is dragged, and the keyboard is not a
+// single-pointer alternative (DESIGN.md, the transport). The platform's range
+// takes a press on its track as a value, and that is the alternative: one
+// click, no drag and no key, and the page is sent the seek. Run end to end on
+// 26 Oct 2026, 3 of 3, and red with the scrub's `onChange` made a no-op ("the
+// page was sent a seek for the point pressed").
+test('a press on the scrub’s track seeks the page, with no drag and no key (issue 550)', async () => {
+  test.setTimeout(TRANSPORT_TIMEOUT)
+  const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
+  await withApp(engineHome, async (page, app) => {
+    await projectWithASeam(page, engineHome)
+    await expect(transport(page)).toBeVisible({ timeout: 20_000 })
+    await expect(scrub(page)).toHaveAttribute('aria-valuetext', '06:00')
+
+    const box = await scrub(page).boundingBox()
+    expect(box, 'the scrub has a box to press').not.toBeNull()
+    await scrub(page).click({ position: { x: box!.width * 0.75, y: box!.height / 2 } })
+
+    // A seek to somewhere past the middle of the day, which is neither where
+    // the page began (21600) nor its last second (93600): the press chose it.
+    const seeks = async (): Promise<number[]> =>
+      (await seenSettled(app)).flatMap(([name, at]) => (name === 'seek' ? [Number(at)] : []))
+    await expect
+      .poll(async () => (await seeks()).some((at) => at > 21600 + 0.5 * 72000 && at < 93600), {
+        timeout: 20_000,
+        message: 'the page was sent a seek for the point pressed',
+      })
+      .toBe(true)
+    await expect(scrub(page)).not.toHaveAttribute('aria-valuetext', '06:00')
+  })
+})
+
 // A theme is taken in place by a page that has `setTheme` (engine v0.11.0,
 // issue 349), so a press is not a navigation and there is no restore for it
 // to lose anything in. A navigation is what a redraw is, and that is where
