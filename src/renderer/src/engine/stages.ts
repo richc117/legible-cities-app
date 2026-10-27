@@ -232,6 +232,39 @@ export function keyed(
   }
 }
 
+/**
+ * A key the pane takes, as a change of view: `keyed`'s keys and `0`, which
+ * fits the drawing whole and so needs the drawing. Null for a key it does
+ * not take, and for `0` where nothing is drawn. The pane's keyboard handler
+ * and its buttons both go through here (issue 546), so a button can never do
+ * something a key does not.
+ */
+export function viewed(
+  view: View,
+  key: string,
+  pane: { width: number; height: number },
+  drawing: { width: number; height: number } | null,
+): View | null {
+  if (key === '0') return drawing === null ? null : fit(drawing, pane)
+  return keyed(view, key, pane)
+}
+
+/**
+ * The pane's buttons (issue 546, WCAG 2.5.7): the single-pointer way to
+ * everything the drag, the wheel and the keys do. Each presses the key it is
+ * named for, so "Pan left" is the left arrow: the view looks to the left and
+ * the drawing moves to the right, as that key has always moved it.
+ */
+export const VIEW_CONTROLS = [
+  { key: '+', name: 'Zoom in', icon: 'add' },
+  { key: '-', name: 'Zoom out', icon: 'minus' },
+  { key: '0', name: 'Fit', icon: 'fit' },
+  { key: 'ArrowLeft', name: 'Pan left', icon: 'back' },
+  { key: 'ArrowRight', name: 'Pan right', icon: 'forward' },
+  { key: 'ArrowUp', name: 'Pan up', icon: 'up' },
+  { key: 'ArrowDown', name: 'Pan down', icon: 'down' },
+] as const
+
 // The layout as it solves (issue 382, specs/032). While a layout run goes,
 // the pane draws each stage as the run reports it, from the engine's own
 // `render.stage` over the build. What decides what to ask, what to show and

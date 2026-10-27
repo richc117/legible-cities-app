@@ -318,7 +318,9 @@ map's top edge, and then **Enter**.
   **Junctions**, **Edges** and **Lines**; and the drawing zooming, panning
   and fitting again from the keyboard, as the line under it says: "Zoom
   with the wheel or plus and minus, pan by dragging or with the arrows, 0
-  to fit."
+  to fit, or use the buttons." The buttons are a row above the drawing,
+  **Zoom in**, **Zoom out**, **Fit**, **Pan left**, **Pan right**, **Pan up**
+  and **Pan down**, and each does what its key does.
 - **The network in words**, a button one Tab after the drawing's pane,
   closed to begin with. The pane's own name (read in a screen reader or the
   browser's accessibility tree) is the stage, its description and the

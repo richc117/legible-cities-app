@@ -24,7 +24,6 @@ import {
   fit,
   forgetStagesOf,
   frameDocument,
-  keyed,
   notDrawnYet,
   pan,
   revealSentence,
@@ -32,6 +31,8 @@ import {
   shownStage,
   stageSet,
   toAsk,
+  VIEW_CONTROLS,
+  viewed,
   waitsOn,
   wordsOf,
   zoomAt,
@@ -197,6 +198,31 @@ export const NetworkInWords = memo(function NetworkInWords({
     </div>
   )
 })
+
+interface ControlsProps {
+  /** Called with the key the pane's keyboard handler takes for the same move. */
+  onPress: (key: string) => void
+}
+
+/**
+ * The pane's buttons (issue 546): zoom in, zoom out, fit, and a pan in each
+ * of the four directions, the single-pointer way to what the drag, the wheel
+ * and the keys do (WCAG 2.5.7). Each hands the pane the key it stands for,
+ * so a button and a key are one path. Words beside the icons: they name the
+ * buttons, and the name holds the visible word (WCAG 2.5.3).
+ */
+export function ViewControls({ onPress }: ControlsProps): JSX.Element {
+  return (
+    <div className="toolbar stage-controls" role="group" aria-label="Pan and zoom">
+      {VIEW_CONTROLS.map((control) => (
+        <Button key={control.key} onClick={() => onPress(control.key)}>
+          <Icon name={control.icon} />
+          {control.name}
+        </Button>
+      ))}
+    </div>
+  )
+}
 
 export default function StageView({ project, engine, read, reveal = null }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
@@ -453,16 +479,19 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
     return () => element.removeEventListener('wheel', onWheel)
   }, [onWheel])
 
+  // A key of the pane's, from the keyboard or from one of its buttons: one
+  // path for both (issue 546). Whether the key was taken is returned, so the
+  // keyboard handler keeps the page from also acting on it.
+  const press = (key: string): boolean => {
+    const size = paneSize()
+    const next = viewed(view, key, size, drawing)
+    if (next !== null) setView(next)
+    return next !== null
+  }
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === '0') {
-      if (drawing !== null) setView(fit(drawing, paneSize()))
-      event.preventDefault()
-      return
-    }
-    const next = keyed(view, event.key, paneSize())
-    if (next === null) return
-    event.preventDefault()
-    setView(next)
+    // `0` is taken even where nothing is drawn, as it always was.
+    if (press(event.key) || event.key === '0') event.preventDefault()
   }
 
   const counts = drawing?.counts ?? null
@@ -569,6 +598,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
           {failure}
         </p>
       )}
+      <ViewControls onPress={press} />
       <div
         ref={pane}
         className="stage-pane"
@@ -617,7 +647,8 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
         <div className="stage-glass" aria-hidden="true" />
       </div>
       <p id="stage-keys" className="hint">
-        Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit.
+        Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit, or use
+        the buttons.
       </p>
       {words !== null && (
         <NetworkInWords

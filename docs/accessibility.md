@@ -209,7 +209,7 @@ The two reader columns are a person's, recorded per run in
 | In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | The feed's download (issue 178) | swept while it downloads (`notebook-a11y.spec.ts`, "a sample's download…"); no control of its own: the header's Stop and cell 02's Cancel stop it | swept (a region "Download"; the byte count a polite `role="status"`); a refusal's `role="alert"` asserted in `layout.spec.ts` | n/a | swept | pass (the progress line's pairs; `--text-muted` on `--surface`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Where the routes run | pass (`+`, `-`, arrows, `0`); the disclosure's buttons swept, open and closed (`network-words.spec.ts`); while a layout runs (#382) neither stage button is disabled and a press on a stage not drawn yet leaves it unpressed (`reveal.spec.ts`) | pass (pane named for the stage and its counts); fixed (F2, #105): "The network in words", a disclosure of the extent and one sentence a line, each line's stations behind a disclosure of its own; while a layout runs (#382), a sentence beside the pane names the stage drawn and the stage running, and a visually hidden polite status says each stage once as it is drawn ("`<stage>` drawn.") and a press on one not drawn yet ("`<stage>` is not drawn yet.") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
+| Where the routes run | pass (`+`, `-`, arrows, `0`); fixed (#546, WCAG 2.5.7): seven buttons in the group "Pan and zoom" (Zoom in, Zoom out, Fit, Pan left, Pan right, Pan up, Pan down), each the kit's button at a control's height with its name visible, doing exactly what the key does, so the drag has a single-pointer alternative (`geographic.spec.ts`, "pans, zooms and fits by the buttons"); the disclosure's buttons swept, open and closed (`network-words.spec.ts`); while a layout runs (#382) neither stage button is disabled and a press on a stage not drawn yet leaves it unpressed (`reveal.spec.ts`) | pass (pane named for the stage and its counts); fixed (F2, #105): "The network in words", a disclosure of the extent and one sentence a line, each line's stations behind a disclosure of its own; while a layout runs (#382), a sentence beside the pane names the stage drawn and the stage running, and a visually hidden polite status says each stage once as it is drawn ("`<stage>` drawn.") and a press on one not drawn yet ("`<stage>` is not drawn yet.") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 
 ### Cell 02, Process
 
@@ -1044,11 +1044,15 @@ a table).
   sentence saying what the two stages are, the group "Stage" (described by
   that sentence, read on entering it, issue 282) with toggle buttons "gtfs2graph" and "loom" (the current one
   pressed), the description list "Counts" (Nodes, Stations, Junctions,
-  Edges, Lines), and a focusable group "The gtfs2graph stage, as the feed
+  Edges, Lines), the group "Pan and zoom" with seven buttons ("Zoom in",
+  "Zoom out", "Fit", "Pan left", "Pan right", "Pan up", "Pan down"), and a
+  focusable group "The gtfs2graph stage, as the feed
   draws its routes: `<L>` lines, `<S>` stations" described by "Zoom with the
-  wheel or plus and minus, pan by dragging or with the arrows, 0 to fit."
+  wheel or plus and minus, pan by dragging or with the arrows, 0 to fit, or
+  use the buttons."
   Press `+`, `-`, an arrow and `0` on it; nothing is announced for them, and
-  the drawing itself is not read. Tab once more: the button "The network in
+  the drawing itself is not read. Each of the seven buttons does what its key
+  does, and says nothing either. Tab once more: the button "The network in
   words", collapsed (F2, issue 105). Press it, and listen for one sentence,
   "On the day drawn, the longest trip on one line takes `<m>` minutes: the
   `<line>` from `<A>` to `<B>`." (a loop reads "the `<line>`, a round trip
