@@ -7,12 +7,15 @@
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import {
+  appendFileSync,
   copyFileSync,
   cpSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -59,11 +62,17 @@ function tool(
 ): SpawnSyncReturns<string> {
   return spawnSync(command, args, { encoding: 'utf8', timeout: 60_000, env, windowsHide: true })
 }
-// The script's --verify needs bash, git, python3, cmp, xz and a tar; the
-// names are fixed, and `command -v` fails when any one is missing.
+// The script's --verify needs bash, git, python3, cmp, xz and GNU tar, as
+// tar or gtar, since it packs what it checked again as the fetch packs; the
+// names are fixed, and the line fails when any one is missing. macOS has
+// no GNU tar unless one was installed, so these run on Linux.
 const lacking =
   process.platform === 'win32' ||
-  tool('bash', ['-c', 'command -v git python3 cmp xz tar']).status !== 0
+  tool('bash', [
+    '-c',
+    'command -v git python3 cmp xz >/dev/null && ' +
+      '{ tar --version 2>/dev/null | grep -q "GNU tar" || gtar --version 2>/dev/null | grep -q "GNU tar"; }',
+  ]).status !== 0
 
 function script(args: string[], pinsFile: string, extra: Record<string, string> = {}) {
   return tool('bash', [SCRIPT, ...args], {
@@ -73,9 +82,13 @@ function script(args: string[], pinsFile: string, extra: Record<string, string> 
   })
 }
 
-/** An archive of the pins' shape: its tree, the pins its ids make, and a packer. */
+/**
+ * An archive of the pins' shape: its tree, the pins its ids make, a plain
+ * packer and the good archive, which is what the script packs the tree to.
+ */
 function fixture(): {
   base: string
+  good: string
   pinsFile: string
   pack: (from: string) => string
   copy: () => string
@@ -159,7 +172,15 @@ function fixture(): {
     `${ARCHIVE}'s BUILD.txt is not the one the pins make for https://github.com/example/app at commit ${'a'.repeat(40)}`,
   )
   copyFileSync(join(work, 'BUILD.txt'), join(root, 'BUILD.txt'))
-  return { base, pinsFile, pack, copy }
+  // Packed by a plain tar, the right files are still not the archive the
+  // script packs; --verify, refusing it, leaves that one in its work folder.
+  const again = join(dir, 'work-again')
+  const second = script(['--verify', pack(base)], pinsFile, { ELECTRON_FFMPEG_WORK: again })
+  expect(second.stderr).toContain(
+    `::error::${ARCHIVE} is not what its checked files pack to, so it holds bytes the checks did not read`,
+  )
+  expect(second.status).toBe(1)
+  return { base, good: join(again, 'repacked', ARCHIVE), pinsFile, pack, copy }
 }
 
 /** --verify over an archive, which must be refused with the message given. */
@@ -177,8 +198,7 @@ describe.skipIf(lacking)(
   { timeout: 90_000 },
   () => {
     it('passes an archive whose every id, copy and BUILD.txt is the pins and the checkout', () => {
-      const { base, pinsFile, pack } = fixture()
-      const archive = pack(base)
+      const { good: archive, pinsFile } = fixture()
       const result = script(['--verify', archive], pinsFile)
       expect(result.stderr).toBe('')
       expect(result.status).toBe(0)
@@ -286,6 +306,56 @@ describe.skipIf(lacking)(
           `${ARCHIVE} holds ${NAME}/${extra}, which is none of the parts the pins name`,
         )
       }
+    })
+
+    it('refuses a symbolic link, a hard link and a name twice, before anything is unpacked', () => {
+      const { pinsFile, pack, copy } = fixture()
+      const ffmpeg = join(NAME, 'src', 'third_party', 'ffmpeg')
+      const soft = copy()
+      rmSync(join(soft, ffmpeg, 'BUILD.gn'))
+      symlinkSync('COPYING.LGPLv2.1', join(soft, ffmpeg, 'BUILD.gn'))
+      refused(
+        pack(soft),
+        pinsFile,
+        `${ARCHIVE} holds ${ffmpeg}/BUILD.gn, which is a symbolic link: only files and folders are packed`,
+      )
+      const hard = copy()
+      rmSync(join(hard, ffmpeg, 'BUILD.gn'))
+      linkSync(join(hard, ffmpeg, 'COPYING.LGPLv2.1'), join(hard, ffmpeg, 'BUILD.gn'))
+      refused(pack(hard), pinsFile, 'which is a hard link: only files and folders are packed')
+
+      // A file appended to the tar again, so the name is there twice and
+      // unpacking would keep only the second.
+      const twice = copy()
+      const out = join(scratch(), 'twice')
+      mkdirSync(out)
+      const tar = join(out, `${NAME}.tar`)
+      const env = { ...GIT_ENV, COPYFILE_DISABLE: '1' }
+      expect(tool('tar', ['-c', '-f', tar, '-C', twice, NAME], env).status).toBe(0)
+      writeFileSync(join(twice, NAME, 'BUILD.txt'), 'another\n')
+      expect(tool('tar', ['-r', '-f', tar, '-C', twice, `${NAME}/BUILD.txt`], env).status).toBe(0)
+      expect(tool('xz', ['-z', '-T1', tar]).status).toBe(0)
+      refused(join(out, ARCHIVE), pinsFile, `${ARCHIVE} holds ${NAME}/BUILD.txt twice`)
+    })
+
+    it('refuses the good archive with bytes after its end, inside the xz or as a second stream', () => {
+      const { good, pinsFile } = fixture()
+      const inside = join(scratch(), 'inside')
+      mkdirSync(inside)
+      copyFileSync(good, join(inside, ARCHIVE))
+      expect(tool('xz', ['-d', join(inside, ARCHIVE)]).status).toBe(0)
+      appendFileSync(join(inside, `${NAME}.tar`), `unread\n${'\0'.repeat(1024)}`)
+      expect(tool('xz', ['-z', '-T1', join(inside, `${NAME}.tar`)]).status).toBe(0)
+      const message = `${ARCHIVE} is not what its checked files pack to, so it holds bytes the checks did not read`
+      refused(join(inside, ARCHIVE), pinsFile, message)
+
+      const stream = join(scratch(), 'stream')
+      mkdirSync(stream)
+      writeFileSync(join(stream, 'junk'), 'unread\n')
+      expect(tool('xz', ['-z', '-T1', join(stream, 'junk')]).status).toBe(0)
+      copyFileSync(good, join(stream, ARCHIVE))
+      appendFileSync(join(stream, ARCHIVE), readFileSync(join(stream, 'junk.xz')))
+      refused(join(stream, ARCHIVE), pinsFile, message)
     })
 
     it('refuses an archive by another name, and a lock for another Electron', () => {

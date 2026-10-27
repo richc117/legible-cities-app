@@ -1241,12 +1241,15 @@ jobs:
   # legible-cities/ (the pins, the script and this workflow), so any change
   # that could change the archive's contents is a new key, and there are no
   # restore keys, because a near match is another archive. A hit is never
-  # trusted: the script's --verify unpacks it and holds every tree id, blob
-  # id and copy to the pins and this checkout with no network, as the fetch
-  # holds what it fetched, and an archive that fails is set aside and the
-  # source fetched again. A miss fetches as before and puts its own archive
-  # through --verify before it is saved, so the check runs on every run and a
-  # failed run saves nothing. The cache saves the fetch, never the check:
+  # trusted: the script's --verify, with no network, refuses any entry but a
+  # file or a folder and any name twice, unpacks it, holds every tree id,
+  # blob id and copy to the pins and this checkout as the fetch holds what it
+  # fetched, then packs what it checked again and requires the cached file's
+  # own bytes, so nothing in it went unread; an archive that fails is set
+  # aside and the source fetched again. A miss fetches as before and puts its
+  # own archive through --verify before it is saved, so the check runs on
+  # every run, a miss proves the archive reproducible, and a failed run saves
+  # nothing. The cache saves the fetch, never the check:
   # every run still verifies, against the pins, the archive it uploads, which
   # is ADR-043's rule. A cache entry cannot be replaced, so one that keeps
   # failing --verify is deleted by hand (gh cache delete <key>).

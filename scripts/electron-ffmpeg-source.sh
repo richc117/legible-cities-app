@@ -15,20 +15,25 @@
 # version and on the three files legible-cities/ copies, because the fetch
 # from Chromium's mirror stalls now and then and a stalled fetch stops every
 # installer of the run. A cached archive is never trusted: the job runs
-# --verify on it, which needs no network. That unpacks it into an empty
-# folder and holds it to the pins exactly as the fetch holds what it
-# fetched: every directory by the tree id its files make, with the same
-# tree_id, FFmpeg's reported version, every Electron file by its blob id;
-# then holds the archive to the entries it must have, to nothing else and to
-# no git metadata, with the same function that checks a fresh archive;
-# requires legible-cities/'s copies to be this checkout's files byte for
-# byte; and requires BUILD.txt to be the one the pins make for the commit it
-# names, which is the commit whose run packed it. A cached archive that
-# fails is set aside and the source fetched again; a fetched one is put
-# through --verify too before it is cached. So every run still judges the
-# archive it uploads by its object ids against the pins, and no installer
-# is packaged in a run whose Electron library's source did not verify
-# (ADR-043): the cache saves the fetch, never the check.
+# --verify on it, which needs no network. That reads its entries first,
+# with the same function that checks a fresh archive, and refuses anything
+# but files and folders (a link, a device, a FIFO), a name twice, an entry
+# the pins do not name, a missing one and git metadata; unpacks it into an
+# empty folder and refuses anything there but files and folders; holds it
+# to the pins exactly as the fetch holds what it fetched: every directory
+# by the tree id its files make, with the same tree_id, FFmpeg's reported
+# version, every Electron file by its blob id; requires legible-cities/'s
+# copies to be this checkout's files byte for byte, and BUILD.txt to be the
+# one the pins make for the commit it names, which is the commit whose run
+# packed it; and last packs what it checked again, with the same function
+# the fetch packs with, and requires that to be the file's own bytes, so
+# nothing in the file went unread. A cached archive that fails is set aside
+# and the source fetched again; a fetched one is put through --verify too
+# before it is cached, which proves on every miss that the archive packs
+# reproducibly. So every run still judges the archive it uploads by its
+# object ids against the pins, and no installer is packaged in a run whose
+# Electron library's source did not verify (ADR-043): the cache saves the
+# fetch, never the check.
 #
 # Electron bundles Chromium's FFmpeg as a shared library (libffmpeg.dylib on
 # macOS, ffmpeg.dll on Windows), LGPL-2.1-or-later. LGPL-2.1 section 4 asks
@@ -85,7 +90,8 @@
 # modes normalised and every time the FFmpeg commit's, and compressed with
 # one xz thread, so the same pins and the same copies make the same bytes on
 # the same tar and xz, but for the commit BUILD.txt names. --verify needs
-# bash, git, python3, cmp, xz and any tar.
+# bash, git, python3, cmp, xz and GNU tar (gtar on macOS), and the tar and
+# xz that packed the archive, or its bytes differ and it fails.
 #
 # ELECTRON_FFMPEG_PINS names another pins file, and ELECTRON_FFMPEG_LOCK
 # another package-lock.json, so a wrong pin can be tried without editing the
@@ -259,16 +265,20 @@ fi
 echo "Electron $electron_version, as package-lock.json installs it"
 
 if [ "$mode" = verify ]; then
-  tools=(git tar xz cmp)
+  tools=(git xz cmp)
 else
   tools=(git curl tar xz)
 fi
 for tool in "${tools[@]}"; do
   command -v "$tool" >/dev/null 2>&1 || fail "electron-ffmpeg-source.sh needs $tool"
 done
-if [ "$mode" = build ]; then
-  tar --version 2>/dev/null | head -1 | grep -q 'GNU tar' || fail "electron-ffmpeg-source.sh needs GNU tar, for --sort=name"
-fi
+# GNU tar packs the archive, and --verify packs what it checked again with
+# the same command; as tar, or as gtar where tar is another one (macOS).
+gnu_tar=
+for tool in tar gtar; do
+  if "$tool" --version 2>/dev/null | head -1 | grep -q 'GNU tar'; then gnu_tar=$tool; break; fi
+done
+[ -n "$gnu_tar" ] || fail "electron-ffmpeg-source.sh needs GNU tar, for --sort=name"
 
 name="electron-ffmpeg-$electron_version-source"
 archive="$name.tar.xz"
@@ -289,11 +299,60 @@ check_ffmpeg_version() {
   [ "$version" = "#define FFMPEG_VERSION \"$ffmpeg_reports\"" ] || fail "$2 says ${version:-no version}, and the pins say $ffmpeg_reports"
 }
 
-# check_listing <archive>: the archive holds every part the pins name, no
-# git metadata, and nothing else, all inside its one folder. Sets listing.
+# pack_archive <parent> <mtime> <file>: <parent>/$name packed as the archive
+# is, with names sorted, owner and group 0, modes normalised and every time
+# <mtime>, and one xz thread, since xz's block layout depends on its thread
+# count. The fetch packs with it, and --verify packs what it checked again
+# with it, so the bytes are the same or the check fails.
+pack_archive() {
+  rm -f "$3"
+  LC_ALL=C "$gnu_tar" --create --file - --format=gnu --sort=name --owner=0 --group=0 --numeric-owner \
+    --mode='u+rw,go-w,a+rX' --mtime="@$2" -C "$1" "$name" \
+    | xz -9 -T1 -c > "$3"
+}
+
+# check_listing <archive>: the archive holds only files and folders, each
+# name once, every part the pins name, no git metadata, and nothing else,
+# all inside its one folder. Read by Python's tarfile, which says what each
+# entry is; a folder's name ends in /. Sets listing, and mtime to the one
+# time every entry carries.
 check_listing() {
-  local entry part path allowed expected parts exact
-  listing=$(xz -dc "$1" | tar -t -f -) || fail "$archive cannot be read as a tar.xz"
+  local entry part path allowed expected parts exact listed
+  listed=$(python3 - "$1" "$archive" <<'PY'
+import sys, tarfile
+path, archive = sys.argv[1], sys.argv[2]
+kinds = {tarfile.SYMTYPE: "a symbolic link", tarfile.LNKTYPE: "a hard link",
+         tarfile.CHRTYPE: "a character device", tarfile.BLKTYPE: "a block device",
+         tarfile.FIFOTYPE: "a FIFO", tarfile.CONTTYPE: "a contiguous file"}
+def refuse(message):
+    raise SystemExit(f"::error::{archive} {message}")
+seen, mtimes, names = set(), set(), []
+try:
+    with tarfile.open(path, mode="r:xz") as tar:
+        for member in tar:
+            if member.type in (tarfile.REGTYPE, tarfile.AREGTYPE):
+                name = member.name
+            elif member.type == tarfile.DIRTYPE:
+                name = member.name.rstrip("/") + "/"
+            else:
+                refuse(f"holds {member.name}, which is {kinds.get(member.type, 'neither a file nor a folder')}: only files and folders are packed")
+            if "\n" in name:
+                refuse(f"holds a name with a newline in it, {name!r}")
+            if name in seen:
+                refuse(f"holds {name} twice")
+            seen.add(name)
+            mtimes.add(member.mtime)
+            names.append(name)
+except (tarfile.TarError, EOFError, OSError) as error:
+    refuse(f"cannot be read as a tar.xz: {error}")
+if len(mtimes) != 1:
+    refuse(f"carries {len(mtimes)} times, and the archive is packed with one")
+print(mtimes.pop())
+print("\n".join(names))
+PY
+) || exit 1
+  mtime=${listed%%$'\n'*}
+  listing=${listed#*$'\n'}
   expected=("$name/BUILD.txt" "$name/legible-cities/pins.json"
     "$name/src/third_party/ffmpeg/BUILD.gn" "$name/src/third_party/ffmpeg/COPYING.LGPLv2.1")
   while IFS= read -r path; do expected+=("$name/src/$path/"); done <<< "$tree_keys"
@@ -458,7 +517,12 @@ verify() {
   local file=$1 root path want found built_repository built_commit
   [ "$(basename "$file")" = "$archive" ] || fail "$file is not $archive, the archive the pins name for Electron $electron_version"
   check_listing "$file"
-  xz -dc "$file" | tar -x -f - -C "$work" || fail "$archive does not unpack"
+  xz -dc "$file" | "$gnu_tar" -x -f - -C "$work" --no-same-owner || fail "$archive does not unpack"
+  # Nothing but its one folder, and in it only files and folders, before any
+  # file's bytes are read.
+  [ "$(ls -A "$work")" = "$name" ] || fail "$archive unpacks to more than $name/"
+  found=$(find "$work" ! -type f ! -type d -print -quit)
+  [ -z "$found" ] || fail "$archive unpacks to ${found#"$work/"}, which is neither a file nor a folder"
   # As below, no git command runs inside the checkout.
   cd "$work"
   root="$work/$name"
@@ -495,6 +559,14 @@ verify() {
   cmp -s "$root/BUILD.txt" "$work/BUILD.txt" \
     || fail "$archive's BUILD.txt is not the one the pins make for $built_repository at commit $built_commit"
   echo "BUILD.txt: the pins', packed by $built_repository at commit $built_commit"
+  # What was checked, packed again as the fetch packs it, must be the file
+  # itself, so nothing in it (bytes after the tar's end, a second xz stream,
+  # an entry the unpacking overwrote) went unread.
+  mkdir "$work/repacked"
+  pack_archive "$work" "$mtime" "$work/repacked/$archive"
+  cmp -s "$file" "$work/repacked/$archive" \
+    || fail "$archive is not what its checked files pack to, so it holds bytes the checks did not read"
+  echo "$archive: its checked files, packed again, are its bytes"
   echo "verified $file against the pins, offline: $(grep -vc '/$' <<< "$listing") files"
 }
 
@@ -722,11 +794,7 @@ if [ -n "${GITHUB_REPOSITORY:-}" ]; then
 fi
 write_build_txt "$root/BUILD.txt" "$repository" "$commit"
 
-rm -f "$outdir/$archive"
-# Sorted names, fixed owners and modes, every time the FFmpeg commit's, and
-# one xz thread: xz's block layout depends on its thread count.
-tar --create --file - --format=gnu --sort=name --owner=0 --group=0 --numeric-owner \
-  --mode='u+rw,go-w,a+rX' --mtime="@$when" -C "$work" "$name" \
-  | xz -9 -T1 -c > "$outdir/$archive"
+# Every time the FFmpeg commit's.
+pack_archive "$work" "$when" "$outdir/$archive"
 check_listing "$outdir/$archive"
 echo "wrote $outdir/$archive: $(wc -c < "$outdir/$archive" | tr -d ' ') bytes, $(grep -vc '/$' <<< "$listing") files"

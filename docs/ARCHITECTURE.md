@@ -2548,10 +2548,12 @@ and packed reproducibly. The job
 refuses a `package-lock.json` for another Electron, so every Electron bump
 moves that block. It caches the archive, keyed on the Electron version and
 the three files the archive carries copies of (the pins, the script and
-`vendor.yml`), and trusts no hit: `--verify` unpacks it and holds every
-tree and blob id, the copies and `BUILD.txt` to the pins and the checkout
-with no network, and a hit that fails is fetched again; a fetched archive
-passes `--verify` too before it is cached (issue 585). Each packaging job refuses, before `npm ci`, to go on
+`vendor.yml`), and trusts no hit: `--verify`, with no network, refuses
+any entry but a file or a folder, unpacks it, holds every tree and blob
+id, the copies and `BUILD.txt` to the pins and the checkout, and packs
+what it checked again, which must be the cached file's own bytes; a hit
+that fails is fetched again, and a fetched archive passes `--verify` too
+before it is cached (issue 585). Each packaging job refuses, before `npm ci`, to go on
 without the artefact, so no installer is made in a run whose Electron
 library's source did not verify, and `release.mjs` refuses one for another
 Electron than the pins name.
