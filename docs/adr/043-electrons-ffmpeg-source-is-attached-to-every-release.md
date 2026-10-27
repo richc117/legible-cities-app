@@ -148,6 +148,29 @@ to control compilation", not a lawyer's.
   (names sorted, owner and group 0, modes normalised, every time the FFmpeg
   commit's) and one xz thread, and uploads it as `electron-ffmpeg-source`.
 
+(Amended 2026-10-26, issue 585: the job now caches the archive, keyed on
+the Electron version, the versions of the tar and xz that pack it, and the
+three files it carries copies of, the pins, the script and `vendor.yml`,
+because the fetch from the mirror stalled on every attempt in three of
+eight runs that day. A miss runs every check above, then the offline
+`--verify` below, and only then saves. A hit runs `--verify` alone, with no
+network: the `package-lock.json` check; the archive's entries (files and
+folders only, each once, at the modes the packing gives, every pinned part,
+nothing else, no git metadata, no empty folder); the tree id each
+directory's files make, FFmpeg's reported version and each Electron file's
+blob id, against the pins; the copies, byte for byte against the checkout;
+`BUILD.txt`, against what the pins make for the full commit it names and,
+in a workflow, this repository; and the archive packed again, which must be
+the cached file's own bytes. What a hit no longer asks the network is
+whether Electron's and Chromium's tags still name their pinned commits,
+whether the DEPS still name the next pin and nasm's repository, and
+whether the pinned commits still record each directory's tree and nasm's
+revision. The run that saved the entry asked all of it under the same
+pins, and every miss asks it again; the archive's bytes are fixed by
+object ids either way, so a hit ships the same source, and a tag moved
+upstream since is noticed at the next miss rather than at once. A hit that
+fails `--verify` is fetched as before.)
+
 **No installer without its source.** Electron's library is not built here,
 so no vendor job needs this one as the ffmpeg jobs need `ffmpeg-source`.
 Instead each packaging job in `build.yml`, before `npm ci`, downloads the
@@ -192,7 +215,14 @@ where it once failed nothing. Since 2026-09-29 (issue 183) the job
 depends on googlesource's git protocol (the tags, FFmpeg and nasm) and on
 GitHub's `chromium/chromium` mirror, and no longer on gitiles, whose outage
 on 2026-09-28 is what moved it; a stalled git transfer is abandoned after a
-minute and tried again.
+minute and tried again. (Amended 2026-10-26, issue 585: with the archive
+cached, googlesource and the mirror can hold back only a run that misses,
+one whose pins, script, `vendor.yml` or packing tools changed, whose entry
+was evicted after 7 days unread or was never saved under the run's scope,
+or whose hit failed `--verify`. A hit needs neither. A miss depends on
+them exactly as before, and a tag's run misses unless `main` saved the
+entry recently, which is why the release procedure re-runs this job first
+and warms the cache on `main` before tagging.)
 
 **The reading of the licence is this project's**, not a lawyer's: that
 section 4 applies to the library copy the installers carry, whatever
