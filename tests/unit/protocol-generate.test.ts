@@ -435,6 +435,19 @@ describe('what the description names is written as data, or refused', () => {
     expect.fail('the description was not refused')
   }
 
+  it('writes a method or notification name as a string, whatever it holds, and runs nothing', async () => {
+    const hostile = "a': null } globalThis.ran = 1; interface X { 'b"
+    const ok = { type: 'object', properties: {} }
+    for (const schema of [
+      { ...base, methods: { [hostile]: { params: ok, result: ok } } },
+      { ...base, notifications: { [hostile]: ok } },
+    ]) {
+      const { ran } = await run(schema)
+      expect(ran, 'the name ran as code').toBeUndefined()
+      expect(emit(schema as never, 'v0.0.0')).toContain(`  ${JSON.stringify(hostile)}: `)
+    }
+  })
+
   it('refuses a definition name that is not an identifier, referenced or not', async () => {
     await refusedBeforeRunning(
       { ...base, $defs: { 'A = 1; globalThis.ran = 1; type B': { type: 'string' } } },

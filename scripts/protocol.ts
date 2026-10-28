@@ -519,7 +519,7 @@ export function emit(description: Description, tag: string): string {
   out.push('/** Every request the engine answers, with its parameters and its result. */')
   out.push('export interface Methods {')
   for (const [name, method] of Object.entries(description.methods)) {
-    out.push(`  '${name}': {`)
+    out.push(`  ${literal(name)}: {`)
     out.push(`    params: ${typeOf(method.params, `methods.${name}.params`, defs, '    ')}`)
     out.push(`    result: ${typeOf(method.result, `methods.${name}.result`, defs, '    ')}`)
     out.push('  }')
@@ -528,7 +528,7 @@ export function emit(description: Description, tag: string): string {
   out.push('/** Every notification the engine sends, with its parameters. */')
   out.push('export interface Notifications {')
   for (const [name, node] of Object.entries(description.notifications)) {
-    out.push(`  '${name}': ${typeOf(node, `notifications.${name}`, defs, '  ')}`)
+    out.push(`  ${literal(name)}: ${typeOf(node, `notifications.${name}`, defs, '  ')}`)
   }
   out.push('}', '')
   out.push('export type Method = keyof Methods')
