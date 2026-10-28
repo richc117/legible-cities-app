@@ -494,22 +494,29 @@ describe('what the description names is written as data, or refused', () => {
 
 // The page's directives come first in the policy and the app's own after
 // them (`PROJECT_CSP`), and a policy keeps the first of two directives of one
-// name: so the engine may not name one of the app's, or it would cancel it.
+// name: so the engine may name only the four a self-contained page needs, an
+// allow list, and nothing that would cancel, widen or reroute the app's.
 describe("the page's directives cannot override the app's", () => {
   const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
   const asking = (...requires: string[]) => ({ ...base, page: { ...PAGE, requires } }) as never
 
-  it('refuses each directive the app writes itself, and sandbox', () => {
+  it('refuses every directive but the four, naming it', () => {
     for (const directive of [
       "default-src 'self'",
       'frame-ancestors *',
       "base-uri 'self'",
       "form-action 'self'",
       'sandbox allow-same-origin',
+      'report-uri /csp',
+      'report-to csp',
+      "script-src-elem 'unsafe-inline'",
+      "worker-src 'self'",
     ]) {
       const name = directive.split(' ')[0]
       expect(() => emit(asking("script-src 'unsafe-inline'", directive), 'v0.0.0'), name).toThrow(
-        new RegExp(`page\\.requires\\[1\\]: ${name} is the app's own directive`),
+        new RegExp(
+          `page\\.requires\\[1\\]: ${name} is not a directive the page may ask for; only script-src, style-src, img-src, font-src are`,
+        ),
       )
     }
   })

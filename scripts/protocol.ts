@@ -349,17 +349,16 @@ const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
 const DIRECTIVE = /^[a-z][a-z-]* [^;,\r\n]+$/
 
 /**
- * The directives the app writes itself around the page's (`PROJECT_CSP` in
- * `src/main/protocol.ts`), and `sandbox`, which is the frame's to set: none
- * of them is the engine's to ask for.
+ * The only directives the page may ask a host for: what one self-contained
+ * file needs to run, style itself, and draw its icons and its face. Every
+ * other is refused, an allow list rather than a deny list, because the
+ * page's directives come before the app's own in `PROJECT_CSP`
+ * (`src/main/protocol.ts`) and a policy keeps the first of two of one name:
+ * a `frame-ancestors *` from the engine would cancel the app's, and a
+ * `report-uri`, a `report-to` or a `script-src-elem` would each widen or
+ * reroute the policy in a way no list of the app's could foresee.
  */
-const APP_DIRECTIVES = new Set([
-  'default-src',
-  'frame-ancestors',
-  'base-uri',
-  'form-action',
-  'sandbox',
-])
+const PAGE_DIRECTIVES = new Set(['script-src', 'style-src', 'img-src', 'font-src'])
 
 function onlyKeys(value: object, known: Set<string>, path: string): void {
   for (const key of Object.keys(value)) {
@@ -470,16 +469,13 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
     if (typeof directive !== 'string' || !DIRECTIVE.test(directive))
       throw new Error(`page.requires[${i}]: not one whole Content-Security-Policy directive`)
     const name = directive.slice(0, directive.indexOf(' '))
-    // A policy keeps the first of two directives of one name, and the page's
-    // come before the app's own, so one of these from the engine would
-    // cancel the app's: `frame-ancestors *` would let anything frame the page.
-    if (APP_DIRECTIVES.has(name))
-      throw new Error(
-        `page.requires[${i}]: ${name} is the app's own directive for the page, and the engine's would cancel it`,
-      )
     if (name === 'connect-src')
       throw new Error(
         `page.requires[${i}]: connect-src, from a page the description says fetches nothing`,
+      )
+    if (!PAGE_DIRECTIVES.has(name))
+      throw new Error(
+        `page.requires[${i}]: ${name} is not a directive the page may ask for; only ${[...PAGE_DIRECTIVES].join(', ')} are`,
       )
     if (named.has(name))
       throw new Error(
