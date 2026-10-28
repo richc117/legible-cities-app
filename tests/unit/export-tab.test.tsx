@@ -263,6 +263,35 @@ describe('cell 06’s composition', () => {
     ).toBe('')
   })
 
+  it('keeps what is typed into a dropped choice’s fields after they were emptied', async () => {
+    // Issue 433, part c: the drafts are emptied once, in the render that
+    // first sees the choice dropped, and not on every render while it is.
+    // Mutation (`export-tab.mutations.json`): emptied again whenever the
+    // choice is dropped and a field holds something - the tag typed goes,
+    // and leaving the field writes nothing.
+    const { onChoice } = await draw({
+      project: {
+        ...PROJECT,
+        export: { preset: 'instagram-reel', storyboard: 'gone' as never, options: { tag: 'old' } },
+      },
+    })
+    expect(document.querySelector('.export-tab > .notice'), 'the choice was dropped').not.toBeNull()
+    const tag = (): HTMLInputElement => byName('textbox', 'Filename tag') as HTMLInputElement
+    expect(tag().value).toBe('')
+    act(() => tag().focus())
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(tag(), 'new')
+      tag().dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    await answered()
+    // The field's own value is what was typed whatever the draft is; the
+    // draft is what the kit's host is told, and what leaving the field writes.
+    expect(tag().closest('fig-input-text')?.getAttribute('value')).toBe('new')
+    act(() => tag().blur())
+    await answered()
+    expect(onChoice.mock.calls.map(([choice]) => choice.options.tag)).toEqual(['new'])
+  })
+
   it('holds Export while the engine refuses the choice, and says why under the choosers', async () => {
     vi.useFakeTimers()
     const { preview } = await draw({
