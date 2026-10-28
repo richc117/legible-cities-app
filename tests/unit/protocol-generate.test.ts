@@ -401,6 +401,45 @@ describe('a string from the description stays a string', () => {
   })
 })
 
+// The page's directives come first in the policy and the app's own after
+// them (`PROJECT_CSP`), and a policy keeps the first of two directives of one
+// name: so the engine may not name one of the app's, or it would cancel it.
+describe("the page's directives cannot override the app's", () => {
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+  const asking = (...requires: string[]) => ({ ...base, page: { ...PAGE, requires } }) as never
+
+  it('refuses each directive the app writes itself, and sandbox', () => {
+    for (const directive of [
+      "default-src 'self'",
+      'frame-ancestors *',
+      "base-uri 'self'",
+      "form-action 'self'",
+      'sandbox allow-same-origin',
+    ]) {
+      const name = directive.split(' ')[0]
+      expect(() => emit(asking("script-src 'unsafe-inline'", directive), 'v0.0.0'), name).toThrow(
+        new RegExp(`page\\.requires\\[1\\]: ${name} is the app's own directive`),
+      )
+    }
+  })
+
+  it('refuses connect-src from a page that says it fetches nothing, in its own words', () => {
+    expect(() => emit(asking("connect-src 'self'"), 'v0.0.0')).toThrow(
+      /page\.requires\[0\]: connect-src, from a page the description says fetches nothing/,
+    )
+  })
+
+  it('refuses a directive named twice, since only the first would count', () => {
+    expect(() => emit(asking('img-src data:', 'img-src *'), 'v0.0.0')).toThrow(
+      /page\.requires\[1\]: img-src a second time/,
+    )
+  })
+
+  it("takes the pinned engine's four", () => {
+    expect(() => emit(asking(...PAGE_REQUIRES), 'v0.0.0')).not.toThrow()
+  })
+})
+
 describe('the checkout is read from the environment or the local file', () => {
   const root = '/repo'
   const where = (env: NodeJS.ProcessEnv, file: string | null): string | null =>

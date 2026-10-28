@@ -333,6 +333,19 @@ const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
  */
 const DIRECTIVE = /^[a-z][a-z-]* [^;,\r\n]+$/
 
+/**
+ * The directives the app writes itself around the page's (`PROJECT_CSP` in
+ * `src/main/protocol.ts`), and `sandbox`, which is the frame's to set: none
+ * of them is the engine's to ask for.
+ */
+const APP_DIRECTIVES = new Set([
+  'default-src',
+  'frame-ancestors',
+  'base-uri',
+  'form-action',
+  'sandbox',
+])
+
 function onlyKeys(value: object, known: Set<string>, path: string): void {
   for (const key of Object.keys(value)) {
     if (!known.has(key)) throw new Error(`${path}: this script does not know the key "${key}"`)
@@ -423,18 +436,6 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
   for (const name of names) out.push(`  ${name}: ${literal(page.seam[name].since)},`)
   out.push('}', '')
 
-  if (!Array.isArray(page.requires) || page.requires.length === 0)
-    throw new Error('page.requires: the description names no directive a host must allow')
-  for (const [i, directive] of page.requires.entries()) {
-    if (typeof directive !== 'string' || !DIRECTIVE.test(directive))
-      throw new Error(`page.requires[${i}]: not one whole Content-Security-Policy directive`)
-  }
-  out.push(
-    '/** What a frame hosting the page must allow, as whole Content-Security-Policy directives. */',
-  )
-  out.push(`export const PAGE_REQUIRES = [${page.requires.map(literal).join(', ')}] as const`)
-  out.push('')
-
   // The app serves the page with no `connect-src`, so `default-src 'none'`
   // refuses every fetch it could make. A page that fetched would be broken
   // under that policy silently; the policy has to be rethought first.
@@ -443,6 +444,37 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
       'page.fetches: the page now fetches, and the policy the app serves it with has no connect-src; decide what it may reach before generating',
     )
   if (page.fetches !== false) throw new Error('page.fetches: neither true nor false')
+
+  if (!Array.isArray(page.requires) || page.requires.length === 0)
+    throw new Error('page.requires: the description names no directive a host must allow')
+  const named = new Set<string>()
+  for (const [i, directive] of page.requires.entries()) {
+    if (typeof directive !== 'string' || !DIRECTIVE.test(directive))
+      throw new Error(`page.requires[${i}]: not one whole Content-Security-Policy directive`)
+    const name = directive.slice(0, directive.indexOf(' '))
+    // A policy keeps the first of two directives of one name, and the page's
+    // come before the app's own, so one of these from the engine would
+    // cancel the app's: `frame-ancestors *` would let anything frame the page.
+    if (APP_DIRECTIVES.has(name))
+      throw new Error(
+        `page.requires[${i}]: ${name} is the app's own directive for the page, and the engine's would cancel it`,
+      )
+    if (name === 'connect-src')
+      throw new Error(
+        `page.requires[${i}]: connect-src, from a page the description says fetches nothing`,
+      )
+    if (named.has(name))
+      throw new Error(
+        `page.requires[${i}]: ${name} a second time, and a policy keeps only the first`,
+      )
+    named.add(name)
+  }
+  out.push(
+    '/** What a frame hosting the page must allow, as whole Content-Security-Policy directives. */',
+  )
+  out.push(`export const PAGE_REQUIRES = [${page.requires.map(literal).join(', ')}] as const`)
+  out.push('')
+
   out.push('/** The page fetches nothing, which is why its policy has no `connect-src`. */')
   out.push('export const PAGE_FETCHES = false as const')
   out.push('')
