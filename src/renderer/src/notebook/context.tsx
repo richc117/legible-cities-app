@@ -84,7 +84,6 @@ type ActionsSlice = Pick<
   | 'deleteProject'
   | 'pageSeams'
   | 'skipPastMap'
-  | 'onBack'
   | 'headingRef'
 >
 type MapSlice = Pick<ProjectState, 'drawn'>
@@ -123,7 +122,7 @@ export function ProjectProviders({
   const { exportSnapshot } = state
   const exported = useMemo(() => ({ exportSnapshot }), [exportSnapshot])
   const { inspect, readStage, setInputs, setDate, setTheme, setTuning, setExport } = state
-  const { setName, deleteProject, pageSeams, skipPastMap, onBack, headingRef } = state
+  const { setName, deleteProject, pageSeams, skipPastMap, headingRef } = state
   const actions = useMemo(
     () => ({
       inspect,
@@ -137,7 +136,6 @@ export function ProjectProviders({
       deleteProject,
       pageSeams,
       skipPastMap,
-      onBack,
       headingRef,
     }),
     [
@@ -152,7 +150,6 @@ export function ProjectProviders({
       deleteProject,
       pageSeams,
       skipPastMap,
-      onBack,
       headingRef,
     ],
   )

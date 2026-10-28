@@ -6,5 +6,21 @@
     "test": "tests/unit/remove-confirm.test.tsx",
     "title": "goes back by the way back the screen above handed in last",
     "why": "The way back not kept current: a delete calls the onBack the screen was first handed, not the one handed in last."
+  },
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "    [layOut, run],\n  )\n",
+    "replace": "    [layOut, run, state, onBack],\n  )\n",
+    "test": "tests/unit/remove-confirm.test.tsx",
+    "title": "is deleted once, and the way back handed in last says so",
+    "why": "The record and the way back put back in the unkept sample's dependencies: the screen subscribes to its run again on every render of App and every record read."
+  },
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "  const onRunMoved = useEffectEvent((snapshot: RunSnapshot): void => {\n    const record = state.status === 'ready' ? state.project : null\n    if (\n      unkept.current ||\n      record === null ||\n      record.layout !== null ||\n      snapshot.state !== 'cancelled' ||\n      snapshot.feedMissing !== true\n    )\n      return\n    unkept.current = true\n    void window.api.projects.delete(id).then(\n      () => {\n        forgetProjectJobs(id)\n        forgetTheme(id)\n        if (mounted.current) onBack(sampleNotKept(record.name))\n      },\n      () => {\n        // Not deleted: the project stays, naming a feed not on disk, which\n        // its screen already says (A5.6-03's closed-mid-download case).\n        unkept.current = false\n      },\n    )\n  })\n  useEffect(\n    () => (layOut ? run.subscribe((snapshot) => onRunMoved(snapshot)) : undefined),\n    [layOut, run],\n  )\n",
+    "replace": "  const onRunMoved = useEffectEvent((snapshot: RunSnapshot, back: typeof onBack): void => {\n    const record = state.status === 'ready' ? state.project : null\n    if (\n      unkept.current ||\n      record === null ||\n      record.layout !== null ||\n      snapshot.state !== 'cancelled' ||\n      snapshot.feedMissing !== true\n    )\n      return\n    unkept.current = true\n    void window.api.projects.delete(id).then(\n      () => {\n        forgetProjectJobs(id)\n        forgetTheme(id)\n        if (mounted.current) back(sampleNotKept(record.name))\n      },\n      () => {\n        // Not deleted: the project stays, naming a feed not on disk, which\n        // its screen already says (A5.6-03's closed-mid-download case).\n        unkept.current = false\n      },\n    )\n  })\n  useEffect(\n    () => {\n      const back = onBack\n      return layOut ? run.subscribe((snapshot) => onRunMoved(snapshot, back)) : undefined\n    },\n    [layOut, run],\n  )\n",
+    "test": "tests/unit/remove-confirm.test.tsx",
+    "title": "is deleted once, and the way back handed in last says so",
+    "why": "The listener reading the onBack it was subscribed with, not the latest: the unkept sample's sentence goes to the way back the screen was first handed."
   }
 ]

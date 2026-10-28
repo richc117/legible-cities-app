@@ -10,16 +10,26 @@
 // component that renders nothing, through React's own client, over a
 // stand-in for the one element `createRoot` asks for.
 //
-// Each test was watched failing with the re-read removed.
+// The re-read's tests were each watched failing with it removed; the
+// others name their mutations, which `remove-confirm.mutations.json` runs.
+//
+// And the same harness holds the screen's other two uses of the way back:
+// a delete confirmed goes back by the `onBack` handed in last, and a sample
+// cancelled while its feed downloaded is deleted and said so by it.
 
 import { act, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
-import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
+import {
+  sampleNotKept,
+  useProjectState,
+  type ProjectState,
+} from '../../src/renderer/src/notebook/useProjectState'
 import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../src/shared/activity'
 import type { EngineState } from '../../src/shared/engine'
 import type { ProjectRecord } from '../../src/shared/project/types'
+import { snap, StandInRun } from '../support/stand-in-run'
 
 const runs = vi.hoisted(() => ({
   layout: null as unknown,
@@ -75,10 +85,21 @@ let mounted = false
 let shown: ProjectState
 let deleted: ReturnType<typeof vi.fn>
 let left: Mock<(notice?: string) => void>
+/** The record the store answers. */
+let stored: ProjectRecord
 
-/** The hook, handed the way back the screen above hands it on this render. */
-function Harness({ onBack }: { onBack: (notice?: string) => void }): JSX.Element | null {
-  shown = useProjectState('p1', onBack)
+/**
+ * The hook, handed the way back the screen above hands it on this render,
+ * and whether the project was just made from a sample city.
+ */
+function Harness({
+  onBack,
+  layOut = false,
+}: {
+  onBack: (notice?: string) => void
+  layOut?: boolean
+}): JSX.Element | null {
+  shown = useProjectState('p1', onBack, layOut)
   return null
 }
 
@@ -95,7 +116,7 @@ function container(): Element {
     HTMLIFrameElement: class {},
     api: {
       projects: {
-        get: vi.fn(async () => ({ ...RECORD, readOnly: false })),
+        get: vi.fn(async () => ({ ...stored, readOnly: false })),
         markOpened: vi.fn(async () => RECORD),
         delete: deleted,
       },
@@ -116,9 +137,10 @@ function container(): Element {
   } as unknown as Element
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   deleted = vi.fn(async () => ({ removed: ['project', 'output'], failed: [] }))
   left = vi.fn()
+  stored = RECORD
   runs.exporter.snapshot = { state: 'idle' }
   const client: RunClient = {
     request: () =>
@@ -141,10 +163,14 @@ beforeEach(async () => {
   })
   root = createRoot(container())
   mounted = true
-  await act(async () => root.render(<Harness onBack={left} />))
+})
+
+/** The screen opened, its record read. */
+async function opened(layOut = false): Promise<void> {
+  await act(async () => root.render(<Harness onBack={left} layOut={layOut} />))
   await act(tick)
   expect(shown.project?.id, 'the record has been read').toBe('p1')
-})
+}
 
 afterEach(() => {
   if (mounted) act(() => root.unmount())
@@ -153,6 +179,7 @@ afterEach(() => {
 })
 
 describe('confirming a deletion', () => {
+  beforeEach(() => opened())
   it('goes ahead when neither run is going', async () => {
     await act(async () => shown.deleteProject())
     expect(deleted).toHaveBeenCalledWith('p1')
@@ -182,5 +209,47 @@ describe('confirming a deletion', () => {
     expect(shown.run.snapshot.state).toBe('running')
     await expect(confirm()).rejects.toThrow(DELETE_WHILE_DRAWING)
     expect(deleted).not.toHaveBeenCalled()
+  })
+})
+
+// A sample city opened from its card and cancelled while its feed
+// downloaded is not kept (issue 178). The screen hears the run through one
+// subscription for its life: the listener reads the record and the way
+// back as they are when the run moves (an effect event, issue 433), so a
+// render of the screen above, which hands in a new `onBack` each time, and
+// a record read again renew nothing.
+describe('a sample cancelled while its feed downloaded', () => {
+  /** The stand-in run, counting its subscriptions, and starting nothing when the screen starts it. */
+  class CountedRun extends StandInRun {
+    subscribed = 0
+    readonly start = vi.fn()
+    subscribe(listener: Parameters<StandInRun['subscribe']>[0]): () => void {
+      this.subscribed += 1
+      return super.subscribe(listener)
+    }
+  }
+
+  it('is deleted once, and the way back handed in last says so', async () => {
+    // Mutations: `state` and `onBack` put back in the effect's dependencies
+    // - each render of the screen above subscribes again; the listener
+    // reading the `onBack` it was subscribed with - the first one is
+    // called.
+    const run = new CountedRun()
+    runs.layout = run
+    stored = { ...RECORD, layout: null, made: null } as ProjectRecord
+    await opened(true)
+    expect(run.start, 'the layout started as the screen opened').toHaveBeenCalledTimes(1)
+    const subscribed = run.subscribed
+    for (let render = 0; render < 3; render++)
+      await act(async () => root.render(<Harness onBack={vi.fn()} layOut />))
+    expect(run.subscribed, 'three renders of the screen above').toBe(subscribed)
+    const leftLast = vi.fn()
+    await act(async () => root.render(<Harness onBack={leftLast} layOut />))
+    await act(async () => run.move({ ...snap('cancelled'), feedMissing: true }))
+    await act(tick)
+    expect(deleted).toHaveBeenCalledTimes(1)
+    expect(deleted).toHaveBeenCalledWith('p1')
+    expect(leftLast).toHaveBeenCalledWith(sampleNotKept('Los Angeles'))
+    expect(left).not.toHaveBeenCalled()
   })
 })
