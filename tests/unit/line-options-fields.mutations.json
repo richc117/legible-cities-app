@@ -14,5 +14,21 @@
     "test": "tests/unit/line-options-fields.test.tsx",
     "title": "follows a name that moves, the refusal going with it",
     "why": "The field no longer following the name: after Reset line or a stopped redraw it keeps the old text, and the 40-character refusal stays beside it."
+  },
+  {
+    "file": "src/renderer/src/LineOptionsDisclosure.tsx",
+    "find": "  const [refusedShown, setRefusedShown] = useState<string | null>(null)\n",
+    "replace": "  const [refusedHeld, setRefusedShown] = useState<string | null>(null)\n  const refusedShown = lastShown ? refusedHeld : null\n",
+    "test": "tests/unit/line-options-fields.test.tsx",
+    "title": "goes once another line is drawn, and does not come back when this is the last again",
+    "why": "The refusal worked out from lastShown instead of reset: the sentence about hiding every line comes back beside the switch with nobody pressing when this line is the last one drawn again."
+  },
+  {
+    "file": "src/renderer/src/LineOptionsDisclosure.tsx",
+    "find": "  if (!lastShown && refusedShown !== null) setRefusedShown(null)\n",
+    "replace": "",
+    "test": "tests/unit/line-options-fields.test.tsx",
+    "title": "goes once another line is drawn, and does not come back when this is the last again",
+    "why": "The reset removed: the sentence about hiding every line stays beside the switch after another line is drawn."
   }
 ]
