@@ -401,14 +401,16 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
 
   // A reveal that ends leaves nothing of itself: not its drawings on
   // screen, not a press or a sentence, and not its drawings in the cache,
-  // since the build they were taken from is in the store now or gone.
+  // since the build they were taken from is in the store now or gone. What
+  // it drew, pressed and said is not cleared here: each is kept with its
+  // run's job id and read only while that run is live (`revealing`,
+  // `shown`, `earlyStage` below), and a job id is never given to a second
+  // attempt (`nextJobId`), so the next run's pane starts with none of it.
+  // This is the cache's part only.
   useEffect(() => {
     if (revealRun !== null) return
     const ended = asked.current
     asked.current = null
-    setRevealed(null)
-    setPressed(null)
-    setEarly(null)
     if (ended !== null) forgetStagesOf(runSet(ended.run))
   }, [revealRun])
   // The same when the view goes while a run is revealing: its drawings

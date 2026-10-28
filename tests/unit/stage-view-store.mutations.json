@@ -14,5 +14,21 @@
     "test": "tests/unit/stage-view-store.test.tsx",
     "title": "stays while a toggle is read, busy, and is gone while a reveal hands back",
     "why": "The loading derived without what the answer was asked for: a toggle between stages reads as drawn while the next stage is still on its way."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "live && revealed !== null && revealed.run === reveal.run ? revealed : null",
+    "replace": "live && revealed !== null ? revealed : null",
+    "test": "tests/unit/stage-view-store.test.tsx",
+    "title": "leaves nothing it drew or pressed to the next run’s pane",
+    "why": "The reveal's drawings read without asking whose run they are of: the next run's pane draws the last run's stage, which the end of a reveal no longer clears."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "pressed !== null && pressed.run === reveal.run ? pressed : null",
+    "replace": "pressed",
+    "test": "tests/unit/stage-view-store.test.tsx",
+    "title": "leaves nothing it drew or pressed to the next run’s pane",
+    "why": "The press read without asking whose run it was made in: the next run's pane shows the stage pressed in the last one instead of its own latest."
   }
 ]

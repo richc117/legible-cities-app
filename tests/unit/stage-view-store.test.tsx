@@ -15,8 +15,9 @@
 
 import { act } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { freshStages, type RunSnapshot } from '../../src/renderer/src/engine/layoutRun'
 import type { RenderStageResult, StageName } from '../../src/shared/protocol'
-import { answered, BASE, cleanup, press, renderCell } from '../support/render'
+import { answered, BASE, byName, cleanup, press, renderCell } from '../support/render'
 import { pending } from '../support/project-state'
 import { snap, StandInRun } from '../support/stand-in-run'
 
@@ -104,5 +105,62 @@ describe('the stored stage’s drawing', () => {
     await answered()
     expect(pictured(), 'nothing while the reveal hands back').toBeNull()
     expect(status()).toBe('Drawing the stage…')
+  })
+})
+
+describe('a reveal that ends', () => {
+  /** A layout run of the layout `b…b` going, with `done` reported. */
+  const going = (done: StageName[]): RunSnapshot => ({
+    ...snap('running'),
+    layout: 'b'.repeat(64),
+    stages: freshStages().map((s) => ({
+      ...s,
+      state: done.includes(s.id as StageName) ? ('done' as const) : ('pending' as const),
+    })),
+  })
+
+  /** Whether the stage button named `name` is drawn pressed. */
+  const isPressed = (name: string): string | null =>
+    byName('button', name).getAttribute('aria-pressed')
+
+  it('leaves nothing it drew or pressed to the next run’s pane', async () => {
+    // Mutations: the reveal's drawings read without asking whose run they
+    // are of (the next run's pane draws the last run's stage), and the
+    // press read the same way (the next run's pane shows the stage pressed
+    // in the last one, not its own latest).
+    const run = new JobRun()
+    const reads = heldReads()
+    const answer = (made: string): void =>
+      act(() => {
+        for (const ask of reads.asks.filter((a) => a.made === made)) ask.answer()
+      })
+    renderCell('data', { inspect: () => pending(), readStage: reads.readStage }, { run })
+    await answered()
+
+    run.id = 'job-A'
+    act(() => run.move(going(['gtfs2graph', 'topo'])))
+    await answered()
+    answer('run job-A')
+    await answered()
+    expect(pictured(), 'the run’s latest stage').toContain('run job-A topo')
+    press('gtfs2graph')
+    expect(pictured(), 'the stage pressed').toContain('run job-A gtfs2graph')
+    expect(isPressed('gtfs2graph')).toBe('true')
+
+    // A ends, its record read back; then the next run, B, starts.
+    act(() => run.move({ ...snap('done'), layout: 'b'.repeat(64) }))
+    await answered()
+    run.id = 'job-B'
+    act(() => run.move(going([])))
+    await answered()
+    expect(pictured(), 'nothing of A’s drawings').toBeNull()
+    expect(isPressed('gtfs2graph'), 'nor A’s press').toBe('false')
+
+    act(() => run.move(going(['gtfs2graph', 'topo'])))
+    await answered()
+    answer('run job-B')
+    await answered()
+    expect(pictured(), 'B’s own latest stage').toContain('run job-B topo')
+    expect(isPressed('gtfs2graph'), 'A’s press is not B’s').toBe('false')
   })
 })
