@@ -296,9 +296,10 @@ describe('JsonRpcClient', () => {
         frame({ jsonrpc: '2.0', id: 1, result: { ok: true } }),
       ]),
     )
-    await expect(result).resolves.toEqual({ ok: true })
+    await tick()
     expect(protocolErrors).toEqual([])
     expect(heard).toEqual(['job/log', 'job/progress'])
+    await expect(result).resolves.toEqual({ ok: true })
     expect(log).toHaveLength(1)
     expect(log[0]).toMatch(
       /^error in the app: the handler of job\/log threw: RangeError: handler broke on https:\/\/h\.example\.org\/f\.zip\?token=/,
