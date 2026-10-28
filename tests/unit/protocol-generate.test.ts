@@ -123,6 +123,52 @@ describe('the emitter refuses what it does not understand', () => {
       /"sausage"/,
     )
   })
+
+  // A plain lookup of the type would find what every object inherits, and
+  // write a function's text or `[object Object]` into the module, which then
+  // fails to build with a syntax error rather than this script's sentence.
+  it('refuses a type that only an object inherits, in its own words', () => {
+    for (const type of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      expect(() => emit({ ...base, $defs: { A: { type } } } as never, 'v0.0.0'), type).toThrow(
+        `$defs.A: this script does not know the type "${type}"`,
+      )
+    }
+  })
+
+  // The module declares these itself. An object definition of one of the
+  // interfaces' names would merge members into it silently, and a type
+  // named as one of the values would sit beside it as quietly.
+  it('refuses a definition named as something the module declares on its own account', () => {
+    const declared = [
+      'Methods',
+      'Notifications',
+      'Method',
+      'NotificationName',
+      'PageSeam',
+      'PROTOCOL',
+      'PAGE_SEAM_NAMES',
+      'PAGE_SEAM_SINCE',
+      'PAGE_REQUIRES',
+      'PAGE_FETCHES',
+    ]
+    // The list is every name the module declares beyond the definitions,
+    // so a name the generator learns to write fails here until it is added.
+    const emitted = [...emit(base as never, 'v0.0.0').matchAll(/^export \w+ (\w+)/gm)].map(
+      (match) => match[1],
+    )
+    expect(emitted.sort()).toEqual([...declared].sort())
+    for (const name of declared) {
+      for (const node of [
+        { type: 'object', properties: { extra: { type: 'string' } } },
+        { type: 'string' },
+      ]) {
+        const schema = { ...base, $defs: { [name]: node } }
+        expect(() => emit(schema as never, 'v0.0.0'), `${name} as ${node.type}`).toThrow(
+          `$defs.${name}: a definition name the module already declares on its own account`,
+        )
+      }
+    }
+  })
 })
 
 // An open object is a map, and the node under `additionalProperties` says

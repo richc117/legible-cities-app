@@ -532,21 +532,30 @@ export const SEAM_SCRIPTS = {
   setDrawn,
   seek: seekTo,
   advance: advanceBy,
+  beat: applyBeat,
 } as const
+
+/**
+ * A method of the seam as the beat's script names it, through its local `P`:
+ * the name typed by `PageSeam`, as `seamCall`'s is, so a method the engine
+ * renames is a build error here too (issue 614). The arguments are the beat's
+ * own fields, read inside the page, so only the name is the app's to type.
+ */
+const onP = (name: keyof PageSeam): string => `P.${name}`
 
 /** Everything a beat names is applied at its start; what it leaves out carries over. */
 function applyBeat(beat: Beat): string {
   return `(function (b) {
     var P = window.__present;
-    if (b.at != null) P.seek(b.at);
-    if (b.labels != null) P.setLabels(b.labels);
-    if (b.speed != null) P.setSpeed(b.speed);
+    if (b.at != null) ${onP('seek')}(b.at);
+    if (b.labels != null) ${onP('setLabels')}(b.labels);
+    if (b.speed != null) ${onP('setSpeed')}(b.speed);
     if (b.view) {
       var geo = b.view === "geographic";
-      P.setGeo(geo, b.tween);
-      P.setView(geo ? "map" : (b.view === "time" ? "string" : b.view), b.tween);
+      ${onP('setGeo')}(geo, b.tween);
+      ${onP('setView')}(geo ? "map" : (b.view === "time" ? "string" : b.view), b.tween);
     }
-    P.setPlaying(!b.sweep && b.speed !== 0);
+    ${onP('setPlaying')}(!b.sweep && b.speed !== 0);
     return true;
   })(${JSON.stringify(beat)})`
 }

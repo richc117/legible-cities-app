@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/main/capture.ts",
+    "find": "      ${onP('setGeo')}(geo, b.tween);\n",
+    "replace": "      ${onP('setView')}(geo, b.tween);\n",
+    "test": "tests/unit/capture-seam.test.ts",
+    "title": "applies a beat with the script it sent before the names were typed, byte for byte",
+    "why": "One method of the seam swapped for another it also has: it still type-checks, so only the literal from main can say the page would be sent a different script."
+  },
+  {
+    "file": "src/main/capture.ts",
+    "find": "const onP = (name: keyof PageSeam): string => `P.${name}`\n",
+    "replace": "const onP = (name: keyof PageSeam): string => `window.__present.${name}`\n",
+    "test": "tests/unit/capture-seam.test.ts",
+    "title": "applies a beat with the script it sent before the names were typed, byte for byte",
+    "why": "The names written through the global rather than the local P: the page would behave the same, but the script sent would no longer be byte for byte what it was."
+  },
+  {
+    "file": "src/main/capture.ts",
+    "find": "  })(${JSON.stringify(beat)})`\n",
+    "replace": "  })(${JSON.stringify({ ...beat, secs: undefined })})`\n",
+    "test": "tests/unit/capture-seam.test.ts",
+    "title": "applies a beat with the script it sent before the names were typed, byte for byte",
+    "why": "The beat written without one of its fields: the rows hold the argument as well as the function."
+  }
+]
