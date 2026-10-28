@@ -15,6 +15,12 @@ import {
 } from '../../src/shared/engine'
 import { parseEnvFile } from '../../src/main/config'
 import { emit, emitFormatted, engineCheckout, fingerprint } from '../../scripts/protocol'
+import {
+  PAGE_FETCHES,
+  PAGE_REQUIRES,
+  PAGE_SEAM_NAMES,
+  PAGE_SEAM_SINCE,
+} from '../../src/shared/protocol'
 
 const repo = resolve(__dirname, '../..')
 const schemaText = readFileSync(resolve(repo, 'vendor/protocol.schema.json'), 'utf8')
@@ -57,8 +63,25 @@ describe('the generated protocol module', () => {
   })
 })
 
+/**
+ * The least `page` a description may carry: one method of no arguments, and
+ * the policy. The emitter refuses a description without one, so every
+ * description written here carries it.
+ */
+const PAGE = {
+  seam: {
+    state: {
+      since: '0.1.0',
+      params: { type: 'array', maxItems: 0, items: { type: 'null' } },
+      result: { type: 'null' },
+    },
+  },
+  requires: ["script-src 'unsafe-inline'"],
+  fetches: false,
+}
+
 describe('the emitter refuses what it does not understand', () => {
-  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {}, page: PAGE }
 
   it('names an unknown keyword and where it is', () => {
     const schema = {
@@ -98,7 +121,7 @@ describe('the emitter refuses what it does not understand', () => {
 // form and type everything else `Record<string, unknown>`, silently, which
 // is how the engine's colour map arrived in the app untyped (E06).
 describe('an object that carries extras keeps their type', () => {
-  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {}, page: PAGE }
   const hex = { type: 'string', pattern: '^#[0-9a-f]{6}$' }
 
   it('types a map by the node its values follow', () => {
@@ -154,6 +177,163 @@ describe('an object that carries extras keeps their type', () => {
       $defs: { Colors: { type: 'object', additionalProperties: { $ref: '#/$defs/Absent' } } },
     }
     expect(() => emit(schema as never, 'v0.0.0')).toThrow(/Absent/)
+  })
+})
+
+// The animation page's seam and host policy, from the description's `page`
+// (engine v0.21.0, app issue 607): what the app used to keep as copies of its
+// own - the seam's names, the version each arrived at, the four directives -
+// is generated, so a method the engine renames or reshapes is a build error
+// rather than a page that answers "this map cannot do that" at run time.
+describe("the page's seam, from the description", () => {
+  it('names every method, in the description’s order, with the version it arrived at', () => {
+    const seam = description.page.seam as Record<string, { since: string }>
+    expect([...PAGE_SEAM_NAMES]).toEqual(Object.keys(seam))
+    expect(PAGE_SEAM_NAMES.length).toBe(20)
+    expect({ ...PAGE_SEAM_SINCE }).toEqual(
+      Object.fromEntries(Object.entries(seam).map(([name, method]) => [name, method.since])),
+    )
+    for (const name of PAGE_SEAM_NAMES) {
+      expect(committed, name).toMatch(new RegExp(`^ {2}${name}: \\{$`, 'm'))
+    }
+  })
+
+  it('carries the host policy and says the page fetches nothing', () => {
+    expect([...PAGE_REQUIRES]).toEqual(description.page.requires)
+    expect(PAGE_FETCHES).toBe(false)
+  })
+
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+  const withSeam = (seam: Record<string, unknown>, rest: Record<string, unknown> = {}) =>
+    ({ ...base, page: { ...PAGE, seam, ...rest } }) as never
+  const one = (params: unknown, result: unknown = { type: 'null' }, since = '0.1.0') =>
+    withSeam({ go: { since, params, result } })
+
+  it('types the arguments as a tuple, those past minItems optional', () => {
+    const out = emit(
+      one({
+        type: 'array',
+        prefixItems: [
+          { type: 'boolean' },
+          { oneOf: [{ type: 'number' }, { type: 'null' }] },
+          { type: 'string' },
+        ],
+        minItems: 1,
+        maxItems: 3,
+      }),
+      'v0.0.0',
+    )
+    expect(out).toContain('params: [boolean, (number | null)?, string?]')
+  })
+
+  it('types a method of no arguments as an empty tuple, and an answer by its reference', () => {
+    const schema = {
+      ...base,
+      $defs: { Box: { type: 'object', properties: { a: { type: 'number' } } } },
+      page: {
+        ...PAGE,
+        seam: {
+          box: {
+            since: '0.1.0',
+            params: { type: 'array', maxItems: 0, items: { type: 'null' } },
+            result: { $ref: '#/$defs/Box' },
+          },
+        },
+      },
+    }
+    const out = emit(schema as never, 'v0.0.0')
+    expect(out).toContain('box: {\n    params: []\n    result: Box\n  }')
+    expect(out).toContain("export const PAGE_SEAM_NAMES = ['box'] as const")
+    expect(out).toContain("box: '0.1.0',")
+  })
+
+  it('refuses a since that is not three numbers', () => {
+    const params = { type: 'array', maxItems: 0, items: { type: 'null' } }
+    for (const since of ['0.11', 'v0.11.0', '0.11.0rc1', '01.2.3', '']) {
+      expect(() => emit(one(params, { type: 'null' }, since), 'v0.0.0'), since).toThrow(
+        /page\.seam\.go\.since: .* is not a version of three numbers/,
+      )
+    }
+  })
+
+  it('refuses a keyword it does not know inside the arguments and the answer', () => {
+    expect(() =>
+      emit(one({ type: 'array', maxItems: 0, items: { type: 'null' }, allOf: [] }), 'v0.0.0'),
+    ).toThrow(/page\.seam\.go\.params: .*"allOf"/)
+    expect(() =>
+      emit(one({ type: 'array', prefixItems: [{ not: {} }], minItems: 1, maxItems: 1 }), 'v0.0.0'),
+    ).toThrow(/page\.seam\.go\.params\.prefixItems\[0\]: .*"not"/)
+    expect(() =>
+      emit(one({ type: 'array', maxItems: 0, items: { type: 'null' } }, { anyOf: [] }), 'v0.0.0'),
+    ).toThrow(/page\.seam\.go\.result: .*"anyOf"/)
+    expect(() =>
+      emit(
+        one({ type: 'array', maxItems: 0, items: { type: 'null' } }, { $ref: '#/$defs/Absent' }),
+        'v0.0.0',
+      ),
+    ).toThrow(/Absent/)
+  })
+
+  it('refuses arguments it cannot count', () => {
+    // maxItems short of, or past, the arguments listed; minItems past maxItems;
+    // no maxItems at all; not an array.
+    const bool = { type: 'boolean' }
+    for (const params of [
+      { type: 'array', prefixItems: [bool, bool], minItems: 1, maxItems: 1 },
+      { type: 'array', prefixItems: [bool], minItems: 1, maxItems: 2 },
+      { type: 'array', prefixItems: [bool], minItems: 2, maxItems: 1 },
+      { type: 'array', prefixItems: [bool], minItems: 1 },
+      { type: 'array', items: bool },
+      { type: 'object' },
+    ]) {
+      expect(() => emit(one(params), 'v0.0.0'), JSON.stringify(params)).toThrow(
+        /page\.seam\.go\.params/,
+      )
+    }
+  })
+
+  it('refuses a key it does not know on the page or on a method, and a name that is no identifier', () => {
+    const params = { type: 'array', maxItems: 0, items: { type: 'null' } }
+    const result = { type: 'null' }
+    expect(() =>
+      emit(withSeam({ go: { since: '0.1.0', params, result, until: '0.2.0' } }), 'v0.0.0'),
+    ).toThrow(/page\.seam\.go: .*"until"/)
+    expect(() => emit(withSeam(PAGE.seam, { worker: 'present.js' }), 'v0.0.0')).toThrow(
+      /page: .*"worker"/,
+    )
+    expect(() =>
+      emit(withSeam({ 'go(); evil': { since: '0.1.0', params, result } }), 'v0.0.0'),
+    ).toThrow(/not an identifier/)
+  })
+
+  it('refuses a description with no page, or a page with no seam', () => {
+    expect(() => emit(base as never, 'v0.0.0')).toThrow(/needs engine v0\.21\.0/)
+    expect(() => emit(withSeam({}), 'v0.0.0')).toThrow(/page\.seam: .*no seam/)
+  })
+
+  it('refuses a directive that is not one whole directive', () => {
+    for (const directive of [
+      "script-src 'unsafe-inline'; connect-src *",
+      'img-src data:, https:',
+      'font-src data:\r\nX-Header: 1',
+      'font-src',
+      7,
+    ]) {
+      expect(
+        () => emit(withSeam(PAGE.seam, { requires: [directive] }), 'v0.0.0'),
+        String(directive),
+      ).toThrow(/page\.requires\[0\]/)
+    }
+    expect(() => emit(withSeam(PAGE.seam, { requires: [] }), 'v0.0.0')).toThrow(/page\.requires/)
+  })
+
+  // The app serves the page with no `connect-src`: a page that fetched would
+  // be refused every fetch under that policy and break with nothing said.
+  it('refuses a page that fetches, saying why', () => {
+    expect(() => emit(withSeam(PAGE.seam, { fetches: true }), 'v0.0.0')).toThrow(
+      /page\.fetches: the page now fetches, and the policy .* has no connect-src/,
+    )
+    expect(() => emit(withSeam(PAGE.seam, { fetches: 'no' }), 'v0.0.0')).toThrow(/page\.fetches/)
   })
 })
 

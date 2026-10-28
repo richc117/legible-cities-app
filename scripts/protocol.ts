@@ -13,6 +13,13 @@
 // A twentieth stops the build naming the keyword and its path, so an engine
 // that outgrows this script cannot receive a plausible wrong type.
 //
+// Since engine v0.21.0 the description also says the animation page's seam
+// (`page`): the methods of its `window.__present`, each with its positional
+// arguments, its answer and the version it arrived at, and the policy a frame
+// hosting the page must allow. They become `PageSeam`, `PAGE_SEAM_NAMES`,
+// `PAGE_SEAM_SINCE`, `PAGE_REQUIRES` and `PAGE_FETCHES`, so the app keeps no
+// copy of its own of any of them; the same refusals apply inside them.
+//
 // Contract: specs/006-typed-engine-client/contracts/generation.md.
 
 import { spawnSync } from 'node:child_process'
@@ -119,11 +126,32 @@ interface Node {
   maxLength?: number
 }
 
+/** One method of the page's `window.__present`, as the description gives it. */
+interface SeamMethod {
+  since: string
+  description?: string
+  params: Node
+  result: Node
+}
+
+/**
+ * The animation page `map.build` writes, as a host drives it (engine
+ * v0.21.0): its seam, the policy a frame hosting it must allow, and whether
+ * it fetches anything.
+ */
+interface Page {
+  description?: string
+  seam: Record<string, SeamMethod>
+  requires: string[]
+  fetches: boolean
+}
+
 interface Description {
   protocol: number
   $defs: Record<string, Node>
   methods: Record<string, { params: Node; result: Node }>
   notifications: Record<string, Node>
+  page: Page
 }
 
 // Everything the emitter understands. A key outside this set means the
@@ -273,6 +301,142 @@ function comment(text: string, indent: string): string[] {
   return [`${indent}/**`, ...lines.map((l) => `${indent} * ${l}`), `${indent} */`]
 }
 
+// ------------------------------------------------------------ the page
+
+// The keys a part of `page` may carry. Anything else is a construct this
+// script has not been taught, refused as an unknown keyword is: the seam is
+// written into the page's script by name and the policy into a header, so
+// neither is a place to guess.
+const PAGE_KEYS = new Set(['description', 'seam', 'requires', 'fetches'])
+const SEAM_KEYS = new Set(['since', 'description', 'params', 'result'])
+
+/** A method name the app writes into a script as `window.__present.<name>(…)`. */
+const SEAM_NAME = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+/** A version in the pins' form: three numbers. */
+const VERSION = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/
+
+/**
+ * One whole directive, as a header carries it: a name and its sources, and
+ * nothing that would end the directive or the header early.
+ */
+const DIRECTIVE = /^[a-z][a-z-]* [^;,\r\n]+$/
+
+function onlyKeys(value: object, known: Set<string>, path: string): void {
+  for (const key of Object.keys(value)) {
+    if (!known.has(key)) throw new Error(`${path}: this script does not know the key "${key}"`)
+  }
+}
+
+/**
+ * A seam method's positional arguments as a tuple. The description says them
+ * as an array with `prefixItems`, `minItems` for the ones a call must give
+ * and `maxItems` for all of them, so an argument past `minItems` is optional;
+ * a method with none is an array capped at no items. Anything else is
+ * refused: a list of arguments the script cannot count is no signature.
+ */
+function paramsOf(node: Node, path: string, defs: Set<string>): string {
+  for (const key of Object.keys(node)) {
+    if (!KNOWN.has(key)) throw new Error(`${path}: this script does not know the keyword "${key}"`)
+  }
+  if (node.type !== 'array') throw new Error(`${path}: the arguments are not an array`)
+  const items = node.prefixItems ?? []
+  const max = node.maxItems
+  const min = node.minItems ?? 0
+  if (max === undefined || max !== items.length)
+    throw new Error(
+      `${path}: maxItems must name every argument prefixItems lists (${items.length})`,
+    )
+  if (!Number.isInteger(min) || min < 0 || min > max)
+    throw new Error(`${path}: minItems must be a whole number no greater than maxItems`)
+  if (items.length === 0) {
+    // `items` is what lets the description say "none" without a new
+    // keyword; it is read for its keywords and says nothing more.
+    if (node.items !== undefined) typeOf(node.items, `${path}.items`, defs, '    ')
+    return '[]'
+  }
+  const parts = items.map((item, i) => {
+    const type = typeOf(item, `${path}.prefixItems[${i}]`, defs, '    ')
+    if (i < min) return type
+    return /[ |]/.test(type) ? `(${type})?` : `${type}?`
+  })
+  return `[${parts.join(', ')}]`
+}
+
+/**
+ * The page's seam and its host policy: `PageSeam`, one `{ params, result }`
+ * per method; the names in the description's order; the version each
+ * arrived at; the directives a frame hosting the page must allow; and that
+ * the page fetches nothing.
+ */
+function emitPage(page: Page | undefined, defs: Set<string>): string[] {
+  if (page === undefined || page === null || typeof page !== 'object')
+    throw new Error(
+      'page: the description says nothing of the page it writes; this script needs engine v0.21.0 or later',
+    )
+  onlyKeys(page, PAGE_KEYS, 'page')
+  if (typeof page.seam !== 'object' || page.seam === null)
+    throw new Error('page.seam: the description names no seam')
+  const names = Object.keys(page.seam)
+  if (names.length === 0) throw new Error('page.seam: the description names no seam')
+  const out: string[] = []
+  if (page.description !== undefined) out.push(...comment(page.description, ''))
+  out.push('export interface PageSeam {')
+  for (const name of names) {
+    const path = `page.seam.${name}`
+    if (!SEAM_NAME.test(name)) throw new Error(`${path}: a method name that is not an identifier`)
+    const method = page.seam[name]
+    if (typeof method !== 'object' || method === null)
+      throw new Error(`${path}: a method that is not described`)
+    onlyKeys(method, SEAM_KEYS, path)
+    if (typeof method.since !== 'string' || !VERSION.test(method.since))
+      throw new Error(
+        `${path}.since: "${String(method.since)}" is not a version of three numbers, as the pins write one`,
+      )
+    if (method.description !== undefined) out.push(...comment(method.description, '  '))
+    out.push(`  ${name}: {`)
+    out.push(`    params: ${paramsOf(method.params, `${path}.params`, defs)}`)
+    out.push(`    result: ${typeOf(method.result, `${path}.result`, defs, '    ')}`)
+    out.push('  }')
+  }
+  out.push('}', '')
+
+  out.push("/** Every method of the page's seam, in the description's order. */")
+  out.push(`export const PAGE_SEAM_NAMES = [${names.map(literal).join(', ')}] as const`)
+  out.push('')
+  out.push(
+    '/** The first engine version whose page has each method: a page lacking one is older than it. */',
+  )
+  out.push('export const PAGE_SEAM_SINCE: { readonly [K in keyof PageSeam]: string } = {')
+  for (const name of names) out.push(`  ${name}: ${literal(page.seam[name].since)},`)
+  out.push('}', '')
+
+  if (!Array.isArray(page.requires) || page.requires.length === 0)
+    throw new Error('page.requires: the description names no directive a host must allow')
+  for (const [i, directive] of page.requires.entries()) {
+    if (typeof directive !== 'string' || !DIRECTIVE.test(directive))
+      throw new Error(`page.requires[${i}]: not one whole Content-Security-Policy directive`)
+  }
+  out.push(
+    '/** What a frame hosting the page must allow, as whole Content-Security-Policy directives. */',
+  )
+  out.push(`export const PAGE_REQUIRES = [${page.requires.map(literal).join(', ')}] as const`)
+  out.push('')
+
+  // The app serves the page with no `connect-src`, so `default-src 'none'`
+  // refuses every fetch it could make. A page that fetched would be broken
+  // under that policy silently; the policy has to be rethought first.
+  if (page.fetches === true)
+    throw new Error(
+      'page.fetches: the page now fetches, and the policy the app serves it with has no connect-src; decide what it may reach before generating',
+    )
+  if (page.fetches !== false) throw new Error('page.fetches: neither true nor false')
+  out.push('/** The page fetches nothing, which is why its policy has no `connect-src`. */')
+  out.push('export const PAGE_FETCHES = false as const')
+  out.push('')
+  return out
+}
+
 /** The whole module, from the description. Deterministic: no date, no path. */
 export function emit(description: Description, tag: string): string {
   const defs = new Set(Object.keys(description.$defs))
@@ -320,6 +484,7 @@ export function emit(description: Description, tag: string): string {
   out.push('/** The protocol version this app was generated against. */')
   out.push(`export const PROTOCOL = ${description.protocol} as const`)
   out.push('')
+  out.push(...emitPage(description.page, defs))
   return out.join('\n')
 }
 
@@ -374,8 +539,9 @@ async function main(): Promise<void> {
 
   const methods = Object.keys(description.methods).length
   const notifications = Object.keys(description.notifications).length
+  const seam = Object.keys(description.page.seam).length
   console.log(
-    `Wrote vendor/protocol.schema.json (${methods} methods, ${notifications} notifications),\n` +
+    `Wrote vendor/protocol.schema.json (${methods} methods, ${notifications} notifications, ${seam} page methods),\n` +
       `its fingerprint into vendor/pins.json, and src/shared/protocol.ts from ${pins.engine.tag}.`,
   )
 }
