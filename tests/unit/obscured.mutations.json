@@ -14,5 +14,13 @@
     "test": "tests/unit/obscured.test.ts",
     "title": "is named when it is wholly outside the window, covered by nothing",
     "why": "The window check dropped from coveredStops: a control that is not on the screen would pass as clear."
+  },
+  {
+    "file": "src/renderer/src/styles/scale.css",
+    "find": "--header-clearance: calc(var(--header-height) + var(--space-4-4));",
+    "replace": "--header-clearance: 56px;",
+    "test": "tests/unit/obscured.test.ts",
+    "title": "starts the token from the header’s height",
+    "why": "The clearance given a literal: it would no longer follow the header's height, and a control scrolled to would sit under the header the day the header changes."
   }
 ]

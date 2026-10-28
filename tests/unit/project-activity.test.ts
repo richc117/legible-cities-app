@@ -33,6 +33,7 @@ import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES } from '../../src/shared/engine'
 import type { ExportChoice } from '../../src/shared/export'
 import { DEFAULT_STYLE } from '../../src/shared/project/types'
+import { until } from '../support/until'
 
 const REEL: ExportChoice = { preset: 'instagram-reel', options: {} }
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r))
@@ -728,12 +729,20 @@ describe('the bridge marks before it asks (issue 505)', () => {
     const store = new ProjectStore(home, () => {}, {}, activity)
     let open!: () => void
     const opened = new Promise<void>((r) => (open = r))
+    let looking = false
     const b = bridge(activity, {
-      records: { recordGone: (id) => opened.then(() => store.recordGone(id)) },
+      records: {
+        recordGone: (id) => {
+          looking = true
+          return opened.then(() => store.recordGone(id))
+        },
+      },
     })
     const project = await store.create({ name: 'Racing', feed: 'la-metro-rail' })
     const asked = b.request('t1', 'map.build', { out: project.id })
-    await tick()
+    // The window is open once the bridge is asking the lookup, whatever it
+    // awaited on the way there: a fact, not a turn of the loop.
+    await until('the bridge to ask the record lookup', () => looking)
     return { activity, store, b, project, asked, open }
   }
   it('an export begun while the lookup thinks is refused', async () => {

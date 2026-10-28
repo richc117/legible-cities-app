@@ -237,9 +237,14 @@ function started() {
 const lineOf = (html: string): string | null =>
   /<p class="progress-message" aria-live="off">([^<]*)<\/p>/.exec(html)?.[1] ?? null
 
-/** The sentence a screen reader is told of the progress: the polite status that is out of sight. */
+/**
+ * The sentence a screen reader is told of the progress: the polite status that
+ * is out of sight. Found by its role and read whatever else the tag carries, so
+ * a class added or the attributes reordered do not turn every reading into
+ * null; a status that is gone does, and the tests below require a reading.
+ */
 const spokenOf = (html: string): string | null =>
-  /<p class="visually-hidden" role="status" aria-live="polite">([^<]*)<\/p>/.exec(html)?.[1] ?? null
+  /<p\b[^>]*\brole="status"[^>]*>([^<]*)<\/p>/.exec(html)?.[1] ?? null
 
 describe('the export run, for a screen reader while it captures', () => {
   const FRAMES = 108
@@ -284,7 +289,15 @@ describe('the export run, for a screen reader while it captures', () => {
   it('tells a screen reader no more than the stages plus ten times over those frames', () => {
     // Mutation: `announcement` returning the message as it was sent - the
     // hidden status then changes with every frame, 108 times.
+    // Mutation: the hidden status removed - every reading is null, no change
+    // is counted, and the ceiling below would hold with nothing announced at
+    // all, so the readings are required first.
     const { before, spoken } = capture()
+    expect(spokenOf(before), 'a status before the first frame').not.toBeNull()
+    expect(
+      spoken.every((s) => s !== null),
+      'a status after every frame',
+    ).toBe(true)
     const stages = freshStages().length
     expect(changes(spokenOf(before), spoken)).toBeLessThanOrEqual(stages + 10)
   })
