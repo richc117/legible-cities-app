@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/useSnapshot.ts",
+    "find": "  const read = (): S => source.snapshot\n",
+    "replace": "  const read = (): S => ({ ...source.snapshot }) as S\n",
+    "test": "tests/unit/use-snapshot.test.tsx",
+    "title": "draws the run as it stands, then each move it makes",
+    "why": "The snapshot read as a fresh copy each time: no two reads are the same, and React renders the cell for ever."
+  },
+  {
+    "file": "src/renderer/src/useSnapshot.ts",
+    "find": "source.subscribe(() => listener())",
+    "replace": "source.subscribe(() => undefined)",
+    "test": "tests/unit/use-snapshot.test.tsx",
+    "title": "draws the run as it stands, then each move it makes",
+    "why": "The run's news not passed on to React: every cell stays at the snapshot it was first drawn with."
+  }
+]
