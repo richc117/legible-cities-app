@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/shared/feeds.ts",
+    "find": "/^https?:\\/\\/\\S+$/i",
+    "replace": "/^https?:\\/\\/\\S+$/",
+    "test": "tests/unit/feed-url.test.ts",
+    "title": "is judged alike for",
+    "why": "The scheme read in one case only: the sheet would refuse HTTPS://… again, which main has always taken."
+  },
+  {
+    "file": "src/shared/feeds.ts",
+    "find": "/^https?:\\/\\/\\S+$/i",
+    "replace": "/^https?:\\/\\/.+$/i",
+    "test": "tests/unit/feed-url.test.ts",
+    "title": "is judged alike for",
+    "why": "Whitespace let through: main would accept an address with a space in its path, which the sheet refuses, and the engine would be asked for an address URL had quietly encoded."
+  }
+]

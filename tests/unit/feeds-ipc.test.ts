@@ -5,6 +5,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import {
+  FEED_REFUSALS,
   PickedPaths,
   isLocalHost,
   refuseUrl,
@@ -109,7 +110,12 @@ describe('the registry guard', () => {
       expect(await guard('feeds.add', { source }), source).toMatch(/public host/)
     }
     expect(await guard('feeds.add', { source: 'https://172.32.0.1/gtfs.zip' })).toBeNull()
-    expect(await guard('feeds.add', { source: 'https://agency.example/a b.zip' })).toBeNull()
+    expect(await guard('feeds.add', { source: 'https://agency.example/gtfs.zip' })).toBeNull()
+    // A space in the path is no feed's address, in main as in the sheet
+    // (issue 598, tests/unit/feed-url.test.ts): `URL` would encode it.
+    expect(await guard('feeds.add', { source: 'https://agency.example/a b.zip' })).toBe(
+      FEED_REFUSALS.httpOnly,
+    )
     expect(refuseUrl('https://')).toMatch(/URL with its scheme/)
     expect(isLocalHost('agency.example')).toBe(false)
     expect(isLocalHost('8.8.8.8')).toBe(false)

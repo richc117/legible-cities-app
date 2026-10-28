@@ -10,6 +10,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { basename } from 'node:path'
 import { CHANNELS, type PickedZip } from '../shared/api'
+import { isFeedUrl } from '../shared/feeds'
 import { guardedHandle } from './ipc-shape'
 import { PickedPaths } from './picked'
 
@@ -41,8 +42,9 @@ export type Guard = (
   params: Record<string, unknown> | undefined,
 ) => Promise<string | null>
 
-// Anything with a web scheme is judged as an address, whatever follows.
-const URL_PATTERN = /^https?:\/\//i
+// Sorts a source, and is not the test of an address (that is `isFeedUrl`, in
+// `refuseUrl`): anything with a web scheme is judged as an address, whatever follows.
+const hasWebScheme = (source: string): boolean => /^https?:\/\//i.test(source)
 
 const IPV4_DOTTED = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/
 const HEX_GROUP = /^[0-9a-f]{1,4}$/
@@ -145,7 +147,12 @@ export const FEED_REFUSALS = {
   noKey: 'Choose the feed to remove again; the request to remove it named no feed.',
 } as const
 
-/** What is wrong with a feed address, or null. */
+/**
+ * What is wrong with a feed address, or null. An address that parses and is
+ * still no feed's address (`isFeedUrl`: a space in its path, which `URL`
+ * would quietly encode) is refused in the sheet's own words; one that does
+ * not parse keeps the sentence that says so.
+ */
 export function refuseUrl(source: string): string | null {
   let url: URL
   try {
@@ -154,6 +161,7 @@ export function refuseUrl(source: string): string | null {
     return FEED_REFUSALS.notUrl
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return FEED_REFUSALS.httpOnly
+  if (!isFeedUrl(source)) return FEED_REFUSALS.httpOnly
   if (isLocalHost(url.hostname)) return FEED_REFUSALS.localHost
   return null
 }
@@ -178,7 +186,7 @@ export function registryGuard(picked: PickedPaths, inUse: FeedsInUse): Guard {
     if (method === 'feeds.add') {
       const source = params?.source
       if (typeof source !== 'string' || source === '') return FEED_REFUSALS.noSource
-      if (URL_PATTERN.test(source)) return refuseUrl(source)
+      if (hasWebScheme(source)) return refuseUrl(source)
       if (!picked.take(source)) return FEED_REFUSALS.notPicked
       return null
     }

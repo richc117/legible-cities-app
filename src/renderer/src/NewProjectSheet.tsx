@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 're
 import type { CreateProjectInput, PickedZip } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
 import { messageOf } from '../../shared/errors'
+import { isFeedUrl } from '../../shared/feeds'
 import { validateFeedKey, validateName } from '../../shared/project/validate'
 import { DEFAULT_FEED, uniqueName } from './record'
 import type { FeedRecord } from '../../shared/protocol'
@@ -62,8 +63,6 @@ export function startingFeed(feeds: FeedRecord[], wanted: string | undefined): s
   return feeds.length > 0 ? feeds[0].key : DEFAULT_FEED
 }
 
-const URL_PATTERN = /^https?:\/\/\S+$/
-
 /**
  * The sheet's own refusals, each a sentence that leads with what to do
  * (DESIGN.md section 11, issue 548). `httpOnly` is the main process's
@@ -82,7 +81,7 @@ export const SHEET_REFUSALS = {
 export function validateFeedUrl(url: string): string | null {
   const trimmed = url.trim()
   if (trimmed === '') return SHEET_REFUSALS.noAddress
-  if (!URL_PATTERN.test(trimmed)) return SHEET_REFUSALS.httpOnly
+  if (!isFeedUrl(trimmed)) return SHEET_REFUSALS.httpOnly
   return null
 }
 
