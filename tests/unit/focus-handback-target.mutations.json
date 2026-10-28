@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/focusHandback.ts",
+    "find": "  const targetNow = useEffectEvent(() => target())\n",
+    "replace": "  const targetNow = useRef(target).current\n",
+    "test": "tests/unit/focus-handback-target.test.tsx",
+    "title": "lands on the control the render that replaced the controls names",
+    "why": "The first render's target kept: focus is handed to the control that render named, which may be one the run has since replaced."
+  }
+]

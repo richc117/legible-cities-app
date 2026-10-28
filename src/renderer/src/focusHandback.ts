@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useEffectEvent, useRef, type RefObject } from 'react'
 
 // Focus that has nowhere to be (A6-07). A control a person pressed can go
 // with the press: a run's "Lay out" gives way to its Cancel, a finished
@@ -75,7 +75,8 @@ export function shouldHandBack(
  * on prose and scrolled away to read is not pulled back when a run ends. A removed element fires nothing on its way out, which is why
  * the element is remembered rather than its leaving waited for. Focus is
  * handed over without scrolling: the control that took the place of the
- * one that went is where that one was.
+ * one that went is where that one was. `target` is read as the render that
+ * replaced the controls has it, as an effect event (issue 433).
  */
 export function useFocusHandback(
   root: RefObject<HTMLElement | null>,
@@ -83,10 +84,7 @@ export function useFocusHandback(
   change: unknown,
 ): void {
   const held = useRef<Element | null>(null)
-  const targetRef = useRef(target)
-  useEffect(() => {
-    targetRef.current = target
-  })
+  const targetNow = useEffectEvent(() => target())
 
   useEffect(() => {
     const hold = (element: EventTarget | null): void => {
@@ -113,6 +111,6 @@ export function useFocusHandback(
   useEffect(() => {
     if (!shouldHandBack(held.current, document.activeElement, document.body)) return
     held.current = null
-    targetRef.current()?.focus({ preventScroll: true })
+    targetNow()?.focus({ preventScroll: true })
   }, [change])
 }
