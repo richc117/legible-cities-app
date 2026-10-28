@@ -111,4 +111,20 @@ describe('a rebuild that stopped puts the record’s day back', () => {
     type('2026-10-07')
     expect(dayField().value, 'a day typed after the stop').toBe('2026-10-07')
   })
+
+  it('puts the record’s day back when a rebuild is refused after another run failed', async () => {
+    // The run stays failed and only `rebuilt` moves: a layout run failed,
+    // then a rebuild was refused at once. Mutation: the edge taken on the
+    // state alone, which never sees this one.
+    const run = new DayRun()
+    renderCell('frame', { project: project() }, { run, api: viewer })
+    await answered()
+    act(() => run.move(snap('failed')))
+
+    type('2026-10-05')
+    expect(dayField().value, 'a layout run’s failure puts nothing back').toBe('2026-10-05')
+
+    act(() => run.move({ ...snap('failed'), rebuilt: true }))
+    expect(dayField().value, 'the record’s day, as the rebuild is refused').toBe('2026-09-12')
+  })
 })

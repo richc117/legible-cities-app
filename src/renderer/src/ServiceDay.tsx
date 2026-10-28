@@ -205,10 +205,13 @@ export default function ServiceDay({
   // record's day, which the choice already is. On the run's edge into the
   // stop, in the render that sees it, and not for as long as it stays
   // stopped: a day typed after the stop is the person's (a day chosen
-  // elsewhere meanwhile is the follow's, above).
-  const [stateWas, setStateWas] = useState(state)
-  if (stateWas !== state) {
-    setStateWas(state)
+  // elsewhere meanwhile is the follow's, above). The edge is of the state
+  // and of `rebuilt` both, as the effect this replaced was: a rebuild
+  // refused at once after another run failed stays failed, and only
+  // `rebuilt` moves.
+  const [stopWas, setStopWas] = useState({ state, rebuilt })
+  if (stopWas.state !== state || stopWas.rebuilt !== rebuilt) {
+    setStopWas({ state, rebuilt })
     if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')
   }
 
