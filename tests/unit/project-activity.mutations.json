@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "    const release = named === null ? () => {} : activity.beginRequest(named)\n    let refused: string | null\n    try {\n      // Not for a project that has no record (issue 505): a run whose\n      // project was deleted under it would make `out/<id>` again. A lookup\n      // the disk did not answer in time is a refusal; nothing has been sent.\n      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)\n",
+    "replace": "    let release = () => {}\n    let refused: string | null\n    try {\n      // Not for a project that has no record (issue 505): a run whose\n      // project was deleted under it would make `out/<id>` again. A lookup\n      // the disk did not answer in time is a refusal; nothing has been sent.\n      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)\n      release = named === null ? () => {} : activity.beginRequest(named)\n",
+    "test": "tests/unit/project-activity.test.ts",
+    "title": "an export begun while the lookup thinks is refused",
+    "why": "beginRequest moved after the record lookup: an export begun while the lookup is still thinking meets no mark and starts."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "    const release = named === null ? () => {} : activity.beginRequest(named)\n    let refused: string | null\n    try {\n      // Not for a project that has no record (issue 505): a run whose\n      // project was deleted under it would make `out/<id>` again. A lookup\n      // the disk did not answer in time is a refusal; nothing has been sent.\n      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)\n",
+    "replace": "    let release = () => {}\n    let refused: string | null\n    try {\n      // Not for a project that has no record (issue 505): a run whose\n      // project was deleted under it would make `out/<id>` again. A lookup\n      // the disk did not answer in time is a refusal; nothing has been sent.\n      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)\n      release = named === null ? () => {} : activity.beginRequest(named)\n",
+    "test": "tests/unit/project-activity.test.ts",
+    "title": "a deletion begun while the lookup thinks is refused, and the record stays",
+    "why": "beginRequest moved after the record lookup: a deletion begun while the lookup is still thinking meets no mark and removes the record."
+  }
+]
