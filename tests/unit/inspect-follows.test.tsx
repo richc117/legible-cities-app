@@ -8,10 +8,12 @@
 // test names the mutation it was watched failing under, and each is an
 // entry in `inspect-follows.mutations.json`.
 
+import { act } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { EngineState } from '../../src/shared/engine'
+import type { ProjectInputs, ProjectRecord } from '../../src/shared/project/types'
 import type { Inspection } from '../../src/shared/protocol'
-import { answered, cleanup, READY, renderCell } from '../support/render'
+import { answered, BASE, byName, cleanup, READY, renderCell } from '../support/render'
 import { pending } from '../support/project-state'
 import { StandInRun } from '../support/stand-in-run'
 
@@ -63,6 +65,22 @@ const read = (): Promise<Inspection> => Promise.resolve(FEED)
 /** The rows of the routes table, as drawn. */
 const routeRows = (): Element[] => [...document.querySelectorAll('table.routes tbody tr')]
 
+/** The select named `name`: the platform's own, inside the kit's dropdown. */
+const select = (name: string): HTMLSelectElement => byName('combobox', name) as HTMLSelectElement
+
+/** A choice made on the select named `name`, as a person makes it. */
+function choose(name: string, value: string): void {
+  const element = select(name)
+  act(() => {
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(element, value)
+    element.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+}
+
+/** What the kit's dropdown named `name` holds as its value. */
+const shown = (name: string): string | null =>
+  select(name).closest('fig-dropdown')?.getAttribute('value') ?? null
+
 describe('the inspection while the engine is away', () => {
   it('shows no row of the old inspection once the engine restarts, nor when it is back and asking again', async () => {
     // Mutation: the guarded reset removed. The engine's restart leaves the
@@ -78,5 +96,54 @@ describe('the inspection while the engine is away', () => {
     view.rerender({ engine: READY, inspect: () => pending() })
     await answered()
     expect(routeRows(), 'nothing of it while the feed is read again').toHaveLength(0)
+  })
+})
+
+describe('the mode and the operator follow the record', () => {
+  /** What `setInputs` was sent, and an answer the test never gives: the write is held. */
+  function held(): {
+    sent: Partial<ProjectInputs>[]
+    setInputs: (i: Partial<ProjectInputs>) => Promise<void>
+  } {
+    const sent: Partial<ProjectInputs>[] = []
+    return {
+      sent,
+      setInputs: (inputs) => {
+        sent.push(inputs)
+        return pending()
+      },
+    }
+  }
+
+  it('keeps a mode chosen while its write is on its way, and moves when the record is read again', async () => {
+    // Mutations: the mirror applied on every render (the chosen mode snaps
+    // back to the record's before its write answers), and the mirror
+    // removed (a record read again does not move the select).
+    const store = held()
+    const project: ProjectRecord & { readOnly: boolean } = { ...BASE, readOnly: false }
+    const view = renderCell(
+      'data',
+      { project, inspect: read, setInputs: store.setInputs },
+      { run: new JobRun() },
+    )
+    await answered()
+    expect(shown('Mode')).toBe('all')
+
+    choose('Mode', 'rail')
+    await answered()
+    expect(store.sent).toEqual([{ mode: 'rail', agency: null }])
+    expect(shown('Mode'), 'the choice shown while its write is held').toBe('rail')
+
+    // Something else draws the screen while the write is held: the record
+    // has not moved, and the choice stays.
+    view.rerender({ settling: true })
+    await answered()
+    expect(shown('Mode'), 'still the choice after a render of the screen').toBe('rail')
+
+    // The record read again, by Run all or a reopening, holds another mode.
+    view.rerender({ project: { ...project, mode: 'subway', agency: 'M' } })
+    await answered()
+    expect(shown('Mode'), 'the record’s mode').toBe('subway')
+    expect(shown('Operator'), 'the record’s operator').toBe('M')
   })
 })

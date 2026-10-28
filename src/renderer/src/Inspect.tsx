@@ -221,10 +221,16 @@ export default function Inspect({
   }, [ready, project.feed, inspect])
 
   // The record is what the controls show; a write comes back through it.
-  useEffect(() => {
+  // The two follow the record when its mode or operator moves, and only
+  // then, in the render that sees the move: a choice still on its way is
+  // shown until its write answers, and is not put back by a render of the
+  // screen meanwhile (issue 407).
+  const [mirrored, setMirrored] = useState({ mode: project.mode, agency: project.agency })
+  if (mirrored.mode !== project.mode || mirrored.agency !== project.agency) {
+    setMirrored({ mode: project.mode, agency: project.agency })
     setMode(project.mode)
     setAgency(project.agency)
-  }, [project.mode, project.agency])
+  }
 
   const inspection = state.status === 'ready' ? state.inspection : null
   const options = useMemo(
