@@ -23,7 +23,7 @@
 // at the scroll; `flushSync` dropped from `goToCell` - the step's cell is
 // still closed at the scroll.
 
-import { type JSX } from 'react'
+import { act, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import Notebook from '../../src/renderer/src/notebook/Notebook'
@@ -147,6 +147,31 @@ describe('the map’s empty state', () => {
     await answered()
     expect(toggleOf('02').getAttribute('aria-expanded'), 'closed by hand').toBe('false')
     press('Lay it out in cell 02.')
+    expect(scrolls).toEqual([{ expanded: 'true', focused: true }])
+  })
+})
+
+describe('the rail’s step', () => {
+  it('opens a closed cell before it lands on it', async () => {
+    // A laid-out project opens with cell 06 closed (`startOpen`).
+    await column()
+    watched = '06'
+    expect(toggleOf('06').getAttribute('aria-expanded'), 'closed as it opens').toBe('false')
+    const step = [...document.querySelectorAll<HTMLElement>('.rail-step')].find(
+      (button) => button.querySelector('.rail-number')?.textContent === '06',
+    )
+    if (step === undefined) throw new Error('the rail has no step 06')
+    act(() => step.click())
+    expect(scrolls).toEqual([{ expanded: 'true', focused: true }])
+  })
+})
+
+describe('the Outputs’ empty state', () => {
+  it('opens cell 06 before it lands on it, as its step does', async () => {
+    await column()
+    watched = '06'
+    expect(toggleOf('06').getAttribute('aria-expanded'), 'closed as it opens').toBe('false')
+    press('Export one in cell 06.')
     expect(scrolls).toEqual([{ expanded: 'true', focused: true }])
   })
 })

@@ -6,5 +6,21 @@
     "test": "tests/unit/notebook-landing.test.tsx",
     "title": "opens cell 02 before it lands on it",
     "why": "The open not committed before the landing: the scroll is measured against cell 02 closed, and lands short."
+  },
+  {
+    "file": "src/renderer/src/notebook/Rail.tsx",
+    "find": "  if (!isOpen) flushSync(() => onOpen(cell))\n",
+    "replace": "  if (!isOpen) onOpen(cell)\n",
+    "test": "tests/unit/notebook-landing.test.tsx",
+    "title": "opens a closed cell before it lands on it",
+    "why": "The open not committed before the landing: a step's press scrolls against its cell closed, and lands short."
+  },
+  {
+    "file": "src/renderer/src/notebook/Rail.tsx",
+    "find": "  if (!isOpen) flushSync(() => onOpen(cell))\n",
+    "replace": "  if (!isOpen) onOpen(cell)\n",
+    "test": "tests/unit/notebook-landing.test.tsx",
+    "title": "opens cell 06 before it lands on it, as its step does",
+    "why": "The same, from the Outputs' empty state: \"Export one in cell 06.\" lands on cell 06 while it is closed."
   }
 ]

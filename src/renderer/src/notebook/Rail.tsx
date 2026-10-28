@@ -1,4 +1,5 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useState, type JSX } from 'react'
+import { memo, useCallback, useEffect, useState, type JSX } from 'react'
+import { flushSync } from 'react-dom'
 import Icon from '../icons/Icon'
 import { CELL_LIST, type Cell, type CellId, type CellStatus } from '../runGraph'
 import { cellNumber, stateIcon, stateWord } from './Cell'
@@ -83,9 +84,14 @@ export function landOnCell(id: CellId): void {
 }
 
 /**
- * Take a person to a cell: open it if it is closed, and have it landed on
- * once it is laid out. The stepper's press and the Outputs' empty state
- * (which sends a person to cell 06) are the same gesture and share this.
+ * Take a person to a cell: open it if it is closed, and land on it once it
+ * is laid out. The stepper's press and the Outputs' empty state (which
+ * sends a person to cell 06) are the same gesture and share this.
+ *
+ * The open is committed before the landing, inside the press: an open cell
+ * is its own room to scroll into, and a cell measured while it is still
+ * closed would be scrolled against a box that is about to grow (issue 433;
+ * it was a state for a layout effect to land on).
  */
 export function goToCell(
   cell: CellId,
@@ -93,7 +99,7 @@ export function goToCell(
   onOpen: (cell: CellId) => void,
   land: (cell: CellId) => void,
 ): void {
-  if (!isOpen) onOpen(cell)
+  if (!isOpen) flushSync(() => onOpen(cell))
   land(cell)
 }
 
@@ -118,13 +124,17 @@ const OutputsSlot = memo(Outputs)
 
 export default function Rail({ states, open, onOpen }: Props): JSX.Element {
   const [current, setCurrent] = useState<CellId | null>(null)
-  // The step a press is waiting on. Its scroll is measured after the open
-  // has been laid out and never before: an open cell is its own room to
-  // scroll into, and a cell measured while it is still closed would be
-  // scrolled against a box that is about to grow.
-  const [pending, setPending] = useState<CellId | null>(null)
 
   const follow = useCallback((): void => setCurrent(currentStepOf(boxes(), clearTo())), [])
+  // A press's landing, once `goToCell` has opened the cell, with the
+  // current step measured again after it.
+  const land = useCallback(
+    (cell: CellId): void => {
+      landOnCell(cell)
+      follow()
+    },
+    [follow],
+  )
 
   // The current step follows the scroll, and the window's size, and nothing
   // else. Once a frame at most: a scroll event fires far more often than a
@@ -148,22 +158,12 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
     }
   }, [follow])
 
-  // A layout effect, so it runs once the open has reached the DOM and
-  // before the frame is painted. The press sets two pieces of state in one
-  // React pass, so there is nothing to flush by hand.
-  useLayoutEffect(() => {
-    if (pending === null) return
-    setPending(null)
-    landOnCell(pending)
-    follow()
-  }, [pending, follow])
-
   const { project } = useProjectRecord()
   // The Outputs' empty state sends a person to cell 06, as its step does.
   const openExport = open.export
   const onExport = useCallback(
-    (): void => goToCell('export', openExport, onOpen, setPending),
-    [openExport, onOpen],
+    (): void => goToCell('export', openExport, onOpen, land),
+    [openExport, onOpen, land],
   )
 
   return (
@@ -189,7 +189,7 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
                   // them are hidden from the eye and not from the tree.
                   aria-label={stepName(cell, state)}
                   aria-current={current === cell.id ? 'step' : undefined}
-                  onClick={() => goToCell(cell.id, open[cell.id], onOpen, setPending)}
+                  onClick={() => goToCell(cell.id, open[cell.id], onOpen, land)}
                 >
                   <span className="rail-number">{cellNumber(cell.number)}</span>
                   <span className="rail-name">{cell.name}</span>
