@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/Inspect.tsx",
+    "find": "  if (!ready && state.status !== 'waiting') setState(WAITING)\n",
+    "replace": "",
+    "test": "tests/unit/inspect-follows.test.tsx",
+    "title": "shows no row of the old inspection once the engine restarts",
+    "why": "The guarded reset removed: after the engine restarts, the routes read from the engine before stay on screen until the feed is read again."
+  }
+]

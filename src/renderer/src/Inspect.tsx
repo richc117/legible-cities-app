@@ -132,6 +132,8 @@ type State =
   | { status: 'ready'; inspection: Inspection }
   | { status: 'failed'; message: string }
 
+const WAITING: State = { status: 'waiting' }
+
 export default function Inspect({
   project,
   engine,
@@ -142,7 +144,7 @@ export default function Inspect({
   handback,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const [state, setState] = useState<State>({ status: 'waiting' })
+  const [state, setState] = useState<State>(WAITING)
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({
     key: 'label',
     descending: false,
@@ -187,11 +189,16 @@ export default function Inspect({
     if (hand) handback.current?.focus()
   }, [disabled, handback])
 
+  // The engine gone, the inspection goes with it, in the render that sees it
+  // go: an engine that comes back, perhaps as another build, must not show
+  // the old routes before the feed has been read again. A reset and not a
+  // derivation (`ready ? state : WAITING`), which would bring the old
+  // inspection back on the engine's return, before the new answer; the
+  // guard is what keeps it from setting state on every render.
+  if (!ready && state.status !== 'waiting') setState(WAITING)
+
   useEffect(() => {
-    if (!ready) {
-      setState({ status: 'waiting' })
-      return
-    }
+    if (!ready) return
     let left = false
     inspect(project.feed).then(
       (inspection) => {
