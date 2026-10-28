@@ -36,6 +36,17 @@ export interface Cell {
   name: string
 }
 
+/**
+ * `01` to `06`, as the rail and every screenshot write it. Here and not in
+ * `notebook/Cell.tsx`, which brings the kit with it: the pure modules that
+ * word a cell (`runAll.ts`, `projectProgress.ts`) cannot import that file,
+ * and three copies of the figure are three places to drift (issue 598).
+ */
+export const cellNumber = (number: number): string => String(number).padStart(2, '0')
+
+/** The cell's own name, for the group its controls sit in, the rail and every sentence about it. */
+export const cellLabel = (number: number, name: string): string => `${cellNumber(number)} ${name}`
+
 export const CELL_LIST: readonly Cell[] = [
   { id: 'data', number: 1, name: 'Data' },
   { id: 'process', number: 2, name: 'Process' },

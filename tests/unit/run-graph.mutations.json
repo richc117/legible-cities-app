@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/runGraph.ts",
+    "find": "String(number).padStart(2, '0')",
+    "replace": "String(number)",
+    "test": "tests/unit/run-graph.test.ts",
+    "title": "writes the number as two figures",
+    "why": "The figure written without its leading zero: the rail, the cell rows and the header's sentences would read 1 Data where the screens, the gate documents and the tests say 01 Data."
+  },
+  {
+    "file": "src/renderer/src/runGraph.ts",
+    "find": "`${cellNumber(number)} ${name}`",
+    "replace": "`${cellNumber(number)}. ${name}`",
+    "test": "tests/unit/run-graph.test.ts",
+    "title": "joins the number and the name with one space",
+    "why": "The label joined otherwise: every cell group's name, the rail and the header's sentences would change wording together, and the one test per sentence would be the only place to notice."
+  }
+]

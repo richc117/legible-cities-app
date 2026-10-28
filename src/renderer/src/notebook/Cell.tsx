@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, type CSSProperties, type JSX, type ReactNode } from 'react'
 import Icon, { type IconName } from '../icons/Icon'
 import Disclosure from '../kit/Disclosure'
-import type { CellState } from '../runGraph'
+import { cellLabel, cellNumber, type CellState } from '../runGraph'
 
 // One cell of the notebook (ADR-045, docs/DESIGN.md 8.2, "The cell").
 //
@@ -42,11 +42,9 @@ export const stateWord = (state: CellState): string => STATES[state].word
  */
 export const stateIcon = (state: CellState): IconName => STATES[state].icon
 
-/** `01` to `06`, as the rail and every screenshot write it. */
-export const cellNumber = (number: number): string => String(number).padStart(2, '0')
-
-/** The cell's own name, for the group its controls sit in and for the rail. */
-export const cellLabel = (number: number, name: string): string => `${cellNumber(number)} ${name}`
+// `cellNumber` and `cellLabel` live in `../runGraph`, which the pure modules
+// can import without the kit; the rail and the tests still find them here.
+export { cellLabel, cellNumber }
 
 export interface CellProps {
   number: number

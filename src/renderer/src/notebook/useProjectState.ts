@@ -15,6 +15,7 @@ import {
   forgetProjectJobs,
   layoutRunFor,
   nameProject,
+  today,
 } from '../engine/runs'
 import { stageFor } from '../engine/stages'
 import { isOlderPage } from '../../../shared/viewer'
@@ -577,11 +578,6 @@ export function useProjectState(
     },
     [id],
   )
-  const today = (): string => {
-    const now = new Date()
-    const pad = (n: number): string => String(n).padStart(2, '0')
-    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-  }
   // A sample's feed not yet on disk downloads inside its layout run, and
   // cell 01's inspection waits for that download rather than racing it: the
   // bytes are then the run's to report, and a cancel of the run stops the

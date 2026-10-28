@@ -3,9 +3,9 @@
 // sees runs made after a listener subscribed, cancels through a run's own
 // `cancel()`, and forgets a deleted project's jobs. Stub runs, no window.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ExportRun, type ExportBridge } from '../../src/renderer/src/engine/exportRun'
-import { JobRegistry, type JobSource } from '../../src/renderer/src/engine/runs'
+import { JobRegistry, today, type JobSource } from '../../src/renderer/src/engine/runs'
 import { ERROR_CODES } from '../../src/shared/engine'
 import type { ExportProgress, ExportResult } from '../../src/shared/export'
 import type { ProjectRecord } from '../../src/shared/project/types'
@@ -388,5 +388,25 @@ describe('a reset of the engine data', () => {
     reads[0]([{ id: 'pa', name: 'Alpha' }])
     await late
     expect(registry.hasName('pa'), 'a list from before the reset is not applied').toBe(false)
+  })
+})
+
+describe('today, the anchor a layout run asks the engine for its day with', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('is the local calendar day as YYYY-MM-DD, two figures for the month and the day', () => {
+    // Built from local parts, so the answer is the computer's own day in
+    // whatever zone the suite runs in: late in the evening, where the UTC
+    // date is the next one in any zone west of Greenwich, and early in the
+    // morning, where it is the previous one in any zone east of it.
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 0, 5, 23, 30, 0))
+    expect(today()).toBe('2026-01-05')
+    vi.setSystemTime(new Date(2026, 8, 9, 0, 30, 0))
+    expect(today()).toBe('2026-09-09')
+    vi.setSystemTime(new Date(2026, 11, 31, 12, 0, 0))
+    expect(today()).toBe('2026-12-31')
   })
 })

@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/engine/runs.ts",
+    "find": "${pad(now.getMonth() + 1)}-${pad(now.getDate())}",
+    "replace": "${pad(now.getMonth() + 1)}-${pad(now.getUTCDate())}",
+    "test": "tests/unit/runs.test.ts",
+    "title": "is the local calendar day",
+    "why": "The day taken in UTC: a person in the evening west of Greenwich, or the early morning east of it, would be anchored to a neighbouring date (red only where the suite's zone is not UTC)."
+  },
+  {
+    "file": "src/renderer/src/engine/runs.ts",
+    "find": "${pad(now.getMonth() + 1)}",
+    "replace": "${now.getMonth() + 1}",
+    "test": "tests/unit/runs.test.ts",
+    "title": "is the local calendar day",
+    "why": "The month without its leading zero: the engine would be asked for 2026-1-05, a date it does not read."
+  }
+]
