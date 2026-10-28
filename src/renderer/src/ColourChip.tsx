@@ -220,8 +220,10 @@ export function useColourPanel({
  * it off would take the focus with it, and refusing its changes would lose
  * a colour moved by an arrow key without a word; `commit` holds the change
  * instead and builds once the way is clear.
+ *
+ * Exported for its test only; the cell reaches it through `useColourPanel`.
  */
-function ColourPicker({
+export function ColourPicker({
   colour,
   onPick,
   onPickEnd,
@@ -240,11 +242,16 @@ function ColourPicker({
   const messageId = useId()
 
   // The picker and the field show one colour: a drag moves the value, and
-  // the field follows it.
-  useEffect(() => {
+  // the field follows it. Adjusted in the render that sees the colour move,
+  // against the colour last followed, so what a person types with nothing
+  // moving is kept. Not a `key` on the picker: remounting it at every step
+  // of a drag would take focus off its slider after one arrow key.
+  const [shownFor, setShownFor] = useState(colour)
+  if (colour !== shownFor) {
+    setShownFor(colour)
     setText(colour)
     setMessage(null)
-  }, [colour])
+  }
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()

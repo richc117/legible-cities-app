@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/ColourChip.tsx",
+    "find": "  const [shownFor, setShownFor] = useState(colour)\n  if (colour !== shownFor) {\n    setShownFor(colour)\n    setText(colour)\n    setMessage(null)\n  }\n",
+    "replace": "  useEffect(() => {\n    setText(colour)\n    setMessage(null)\n  })\n",
+    "test": "tests/unit/colour-picker.test.tsx",
+    "title": "keeps what is typed while the colour does not move",
+    "why": "The field put back to the colour after every render: every keystroke in Hex value reverts to the swatch's colour."
+  },
+  {
+    "file": "src/renderer/src/ColourChip.tsx",
+    "find": "    setShownFor(colour)\n    setText(colour)\n    setMessage(null)\n",
+    "replace": "    setShownFor(colour)\n",
+    "test": "tests/unit/colour-picker.test.tsx",
+    "title": "follows a colour that moves, the refusal going with it",
+    "why": "The field no longer following the colour: after a drag or a reset it shows the old hex, and the six-digit refusal stays under it."
+  }
+]
