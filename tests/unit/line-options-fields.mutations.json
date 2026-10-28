@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/LineOptionsDisclosure.tsx",
+    "find": "  const [nameShown, setNameShown] = useState(choice.name)\n  if (choice.name !== nameShown) {\n    setNameShown(choice.name)\n    setText(choice.name ?? '')\n    setRefusedName(null)\n  }\n",
+    "replace": "  useEffect(() => {\n    setText(choice.name ?? '')\n    setRefusedName(null)\n  })\n",
+    "test": "tests/unit/line-options-fields.test.tsx",
+    "title": "keeps what is typed while the name does not move",
+    "why": "The field put back to the line's name after every render: nothing can be typed into Name, each keystroke reverting to the name the line holds."
+  },
+  {
+    "file": "src/renderer/src/LineOptionsDisclosure.tsx",
+    "find": "    setNameShown(choice.name)\n    setText(choice.name ?? '')\n    setRefusedName(null)\n",
+    "replace": "    setNameShown(choice.name)\n",
+    "test": "tests/unit/line-options-fields.test.tsx",
+    "title": "follows a name that moves, the refusal going with it",
+    "why": "The field no longer following the name: after Reset line or a stopped redraw it keeps the old text, and the 40-character refusal stays beside it."
+  }
+]

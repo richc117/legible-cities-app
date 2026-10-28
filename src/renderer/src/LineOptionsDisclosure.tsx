@@ -203,11 +203,14 @@ export default function LineOptions({
 
   // The field follows the line's name when it moves under it: a reset, a
   // stopped redraw put back, a record read again. A refusal goes with what
-  // it refused.
-  useEffect(() => {
+  // it refused. Adjusted in the render that sees the name move, against the
+  // name last followed, so what a person types in between is kept.
+  const [nameShown, setNameShown] = useState(choice.name)
+  if (choice.name !== nameShown) {
+    setNameShown(choice.name)
     setText(choice.name ?? '')
     setRefusedName(null)
-  }, [choice.name])
+  }
 
   const commitName = (): void => {
     const read = readName(label, text)
