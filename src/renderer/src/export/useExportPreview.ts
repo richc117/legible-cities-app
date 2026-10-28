@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { ExportChoice, ExportPreview } from '../../../shared/export'
 import { drawnDate } from '../../../shared/project/helpers'
 import type { ProjectRecord } from '../../../shared/project/types'
@@ -128,19 +128,18 @@ export function useExportPreview({
     !exporting
   // Planned again whenever what the address depends on changes: `key`
   // carries the choice, the theme, the day and the layout, and `made` a
-  // layout laid out again under the same id. Read through a ref, so the
-  // effect's dependencies are exactly those.
-  const choiceRef = useRef(asked)
-  useEffect(() => {
-    choiceRef.current = asked
-  })
+  // layout laid out again under the same id. The choice is read as it is
+  // now, through an effect event, so the effect's dependencies are exactly
+  // those. The linter cannot see that `key` and `made` belong there; the
+  // planning tests are what hold them.
+  const plan = useEffectEvent(() => planner.schedule(asked))
   const made = project.made
   useEffect(() => {
     if (!canPlan) {
       planner.cancel()
       return
     }
-    planner.schedule(choiceRef.current)
+    plan()
   }, [canPlan, key, made, planner])
 
   return { refused, refusal, notes }
