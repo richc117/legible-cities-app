@@ -120,6 +120,50 @@ describe("the capture's calls of the seam", () => {
     for (const [what, after, before] of rows) expect(after, what).toBe(before)
   })
 
+  // The beat's script calls six methods inside one function the page runs,
+  // by names now typed from `PageSeam` (issue 614). Each expected string is
+  // `applyBeat`'s template on `main` (9986d5a), copied by hand, with the
+  // beat's JSON after it: never made by the code it checks.
+  it('applies a beat with the script it sent before the names were typed, byte for byte', () => {
+    const rows: [string, string, string][] = [
+      [
+        'a beat that sets the view, the clock and the speed',
+        SEAM_SCRIPTS.beat({ secs: 1, view: 'geographic', at: 28_800, speed: 60, tween: 0 }),
+        `(function (b) {
+    var P = window.__present;
+    if (b.at != null) P.seek(b.at);
+    if (b.labels != null) P.setLabels(b.labels);
+    if (b.speed != null) P.setSpeed(b.speed);
+    if (b.view) {
+      var geo = b.view === "geographic";
+      P.setGeo(geo, b.tween);
+      P.setView(geo ? "map" : (b.view === "time" ? "string" : b.view), b.tween);
+    }
+    P.setPlaying(!b.sweep && b.speed !== 0);
+    return true;
+  })({"secs":1,"view":"geographic","at":28800,"speed":60,"tween":0})`,
+      ],
+      [
+        'a sweep that turns the labels off',
+        SEAM_SCRIPTS.beat({ secs: 0.5, labels: false, sweep: true, hours: 1 }),
+        `(function (b) {
+    var P = window.__present;
+    if (b.at != null) P.seek(b.at);
+    if (b.labels != null) P.setLabels(b.labels);
+    if (b.speed != null) P.setSpeed(b.speed);
+    if (b.view) {
+      var geo = b.view === "geographic";
+      P.setGeo(geo, b.tween);
+      P.setView(geo ? "map" : (b.view === "time" ? "string" : b.view), b.tween);
+    }
+    P.setPlaying(!b.sweep && b.speed !== 0);
+    return true;
+  })({"secs":0.5,"labels":false,"sweep":true,"hours":1})`,
+      ],
+    ]
+    for (const [what, after, before] of rows) expect(after, what).toBe(before)
+  })
+
   it('writes a call as the page’s script names it, each argument as JSON or as a number', () => {
     expect(seamCall('hasGeo')).toBe('window.__present.hasGeo()')
     expect(seamCall('setFrame', 0.5625, 0.5, 0)).toBe('window.__present.setFrame(0.5625, 0.5, 0)')

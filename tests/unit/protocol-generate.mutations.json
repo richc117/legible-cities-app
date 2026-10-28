@@ -22,5 +22,109 @@
     "test": "tests/unit/protocol-generate.test.ts",
     "title": "changes the fingerprint and no other byte of the file",
     "why": "The pattern taking in the whitespace after the value: the writer would drop the newline and the indent of the line after the fingerprint."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "    if (GENERATED_NAMES.has(name))\n",
+    "replace": "    if (false && GENERATED_NAMES.has(name))\n",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "The check gone: an object definition named PageSeam or Methods would merge its members into the generated interface, and the seam or the protocol would be misdescribed with nothing said."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'Methods',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "Methods left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'Notifications',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "Notifications left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'Method',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "Method left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'NotificationName',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "NotificationName left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'PageSeam',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "PageSeam left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'PROTOCOL',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "PROTOCOL left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'PAGE_SEAM_NAMES',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "PAGE_SEAM_NAMES left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'PAGE_SEAM_SINCE',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "PAGE_SEAM_SINCE left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'PAGE_REQUIRES',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "PAGE_REQUIRES left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  'PAGE_FETCHES',\n",
+    "replace": "",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "PAGE_FETCHES left out of the names the module declares itself: a definition of that name would be emitted beside the generated one."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  out.push('export type NotificationName = keyof Notifications')\n",
+    "replace": "  out.push('export type NotificationName = keyof Notifications')\n  out.push('export type Request = Method')\n",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a definition named as something the module declares on its own account",
+    "why": "A name the generator learns to declare without being added to the refused ones: the list in the test is every name the module declares, so it must go red."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  if (!Object.hasOwn(PRIMITIVES, node.type))\n",
+    "replace": "  if (PRIMITIVES[node.type] === undefined)\n",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a type that only an object inherits, in its own words",
+    "why": "The plain lookup back: a type of constructor or __proto__ finds what every object inherits, and the module fails to build on a syntax error instead of this script naming the type."
   }
 ]

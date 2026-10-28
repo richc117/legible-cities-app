@@ -195,6 +195,27 @@ const PRIMITIVES: Record<string, string> = {
 /** A name the module writes as an identifier: a definition's, a seam method's. */
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
 
+/**
+ * The names the module declares on its own account, which no definition may
+ * take. A second interface of one name merges into the first silently, so an
+ * object definition named `PageSeam` or `Methods` would add members to the
+ * seam or the protocol and nothing would say so; a type named as one of the
+ * values sits beside the value just as quietly; and any other clash is a
+ * duplicate the build reports far from its cause.
+ */
+const GENERATED_NAMES = new Set([
+  'Methods',
+  'Notifications',
+  'Method',
+  'NotificationName',
+  'PageSeam',
+  'PROTOCOL',
+  'PAGE_SEAM_NAMES',
+  'PAGE_SEAM_SINCE',
+  'PAGE_REQUIRES',
+  'PAGE_FETCHES',
+])
+
 /** A definition's name from a `#/$defs/Name` reference. */
 function refName(ref: string, path: string): string {
   const match = /^#\/\$defs\/([A-Za-z0-9_]+)$/.exec(ref)
@@ -267,10 +288,11 @@ function typeOf(node: Node, path: string, defs: Set<string>, indent: string): st
       return `Record<string, ${typeOf(extra, `${path}.additionalProperties`, defs, indent)}>`
     }
   }
-  const primitive = PRIMITIVES[node.type]
-  if (primitive === undefined)
+  // An own key only: `constructor`, `toString` or `__proto__` would otherwise
+  // find a function or `Object.prototype` and write it into the module.
+  if (!Object.hasOwn(PRIMITIVES, node.type))
     throw new Error(`${path}: this script does not know the type "${node.type}"`)
-  return primitive
+  return PRIMITIVES[node.type]
 }
 
 /** The node typing an open object's values, or null if there is none. */
@@ -520,6 +542,8 @@ export function emit(description: Description, tag: string): string {
     // name that is not one would be code rather than a name.
     if (!IDENTIFIER.test(name))
       throw new Error(`${path}: a definition name that is not an identifier`)
+    if (GENERATED_NAMES.has(name))
+      throw new Error(`${path}: a definition name the module already declares on its own account`)
     if (node.description !== undefined)
       out.push(...comment(node.description, '', `${path}.description`))
     const isInterface =
