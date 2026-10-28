@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState, type RefObject } from 'react'
 import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../../shared/activity'
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
@@ -176,8 +176,6 @@ export interface ProjectState {
   headingRef: RefObject<HTMLHeadingElement | null>
   /** Past the map to cell 03's heading (issue 106, ADR-046). */
   skipPastMap: () => void
-  /** Back to the Library; one function for the screen's life, whatever the screen above it hands in. */
-  onBack: (notice?: string) => void
 }
 
 /**
@@ -273,14 +271,15 @@ export function useProjectState(
       previous = snapshot.state
     })
   }, [id, run])
-  // The screen above hands in a new `onBack` whenever it renders; the one
-  // the contexts carry calls whichever it handed in last, so it is one
-  // function for the screen's life and renders no cell when that one moves.
+  // The screen above hands in a new `onBack` whenever it renders; a delete
+  // confirmed calls whichever it handed in last. A ref and not an effect
+  // event, because the delete is a press's callback (issue 433), and not a
+  // dependency of it, because the delete is one function for the screen's
+  // life and a new one would render every reader of the screen's actions.
   const backTo = useRef(onBack)
   useEffect(() => {
     backTo.current = onBack
   }, [onBack])
-  const back = useCallback((notice?: string): void => backTo.current(notice), [])
 
   // Past the map to what comes after it (issue 106): cell 03's heading,
   // since ADR-046 put the map between cells 02 and 03. The heading and not
@@ -397,6 +396,7 @@ export function useProjectState(
     if (now.kind === 'redraw') {
       // Out of the control a run is about to disable, before it does.
       keepFocusInCell(document.activeElement)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the job this effect just started, known only from its start
       setRedrawAsked(
         redrawPageOnOpen(run, project, engine, { older: opened.older, running, drawnHere: drawn }),
       )
@@ -412,34 +412,40 @@ export function useProjectState(
   // cell 02 ready to run, as a cancelled layout always has. Which of the two
   // it was is the registry's answer as the run ended (`feedMissing`), not
   // how far the bytes had come.
+  //
+  // The run's listener reads the record and the way back as they are when
+  // the run moves, through an effect event, so the screen subscribes once
+  // and not again on every record read and every render of the screen
+  // above, which hands in a new `onBack` each time (issue 433).
   const unkept = useRef(false)
-  useEffect(() => {
-    if (!layOut) return
-    return run.subscribe((snapshot) => {
-      const record = state.status === 'ready' ? state.project : null
-      if (
-        unkept.current ||
-        record === null ||
-        record.layout !== null ||
-        snapshot.state !== 'cancelled' ||
-        snapshot.feedMissing !== true
-      )
-        return
-      unkept.current = true
-      void window.api.projects.delete(id).then(
-        () => {
-          forgetProjectJobs(id)
-          forgetTheme(id)
-          if (mounted.current) onBack(sampleNotKept(record.name))
-        },
-        () => {
-          // Not deleted: the project stays, naming a feed not on disk, which
-          // its screen already says (A5.6-03's closed-mid-download case).
-          unkept.current = false
-        },
-      )
-    })
-  }, [layOut, run, id, state, onBack])
+  const onRunMoved = useEffectEvent((snapshot: RunSnapshot): void => {
+    const record = state.status === 'ready' ? state.project : null
+    if (
+      unkept.current ||
+      record === null ||
+      record.layout !== null ||
+      snapshot.state !== 'cancelled' ||
+      snapshot.feedMissing !== true
+    )
+      return
+    unkept.current = true
+    void window.api.projects.delete(id).then(
+      () => {
+        forgetProjectJobs(id)
+        forgetTheme(id)
+        if (mounted.current) onBack(sampleNotKept(record.name))
+      },
+      () => {
+        // Not deleted: the project stays, naming a feed not on disk, which
+        // its screen already says (A5.6-03's closed-mid-download case).
+        unkept.current = false
+      },
+    )
+  })
+  useEffect(
+    () => (layOut ? run.subscribe((snapshot) => onRunMoved(snapshot)) : undefined),
+    [layOut, run],
+  )
 
   // The name the footer's rename form checked, written at once. A rejection
   // is the form's to show, as it is shown in the form.
@@ -671,6 +677,5 @@ export function useProjectState(
     deleteProject,
     headingRef,
     skipPastMap,
-    onBack: back,
   }
 }

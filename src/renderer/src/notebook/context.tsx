@@ -47,7 +47,7 @@ export type { ProjectState } from './useProjectState'
 //   frequent change on the screen. Cell 06's strip, the header, the
 //   notebook's run graph and the outputs.
 // - The actions: the writers, the two engine reads, the map's seam report,
-//   the skip link, the way back and the heading's ref - stable for the
+//   the skip link and the heading's ref - stable for the
 //   screen's life (`useProjectState` makes each once per project).
 // - The map: `drawn`, how many runs have drawn the page on this screen,
 //   which the map's frame carries on its address and cell 03's transport
@@ -84,7 +84,6 @@ type ActionsSlice = Pick<
   | 'deleteProject'
   | 'pageSeams'
   | 'skipPastMap'
-  | 'onBack'
   | 'headingRef'
 >
 type MapSlice = Pick<ProjectState, 'drawn'>
@@ -123,7 +122,7 @@ export function ProjectProviders({
   const { exportSnapshot } = state
   const exported = useMemo(() => ({ exportSnapshot }), [exportSnapshot])
   const { inspect, readStage, setInputs, setDate, setTheme, setTuning, setExport } = state
-  const { setName, deleteProject, pageSeams, skipPastMap, onBack, headingRef } = state
+  const { setName, deleteProject, pageSeams, skipPastMap, headingRef } = state
   const actions = useMemo(
     () => ({
       inspect,
@@ -137,7 +136,6 @@ export function ProjectProviders({
       deleteProject,
       pageSeams,
       skipPastMap,
-      onBack,
       headingRef,
     }),
     [
@@ -152,7 +150,6 @@ export function ProjectProviders({
       deleteProject,
       pageSeams,
       skipPastMap,
-      onBack,
       headingRef,
     ],
   )

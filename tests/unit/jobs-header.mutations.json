@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/App.tsx",
+    "find": "useSyncExternalStore(subscribeToJobs, runningCount)",
+    "replace": "useSyncExternalStore(() => () => undefined, runningCount)",
+    "test": "tests/unit/jobs-header.test.tsx",
+    "title": "says how many jobs are running as a run starts and ends",
+    "why": "The header's count subscribed to nothing: the Jobs toggle stays \"Jobs, none running\" while a layout runs."
+  },
+  {
+    "file": "src/renderer/src/Inspector.tsx",
+    "find": "    return subscribeToJobs(() => setList(jobs()))\n",
+    "replace": "    return () => undefined\n",
+    "test": "tests/unit/jobs-header.test.tsx",
+    "title": "lists a job that starts after it opened",
+    "why": "The inspector's subscription taken away: a job that starts while it is open is never listed."
+  }
+]

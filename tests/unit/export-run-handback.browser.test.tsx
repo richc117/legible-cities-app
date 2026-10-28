@@ -14,8 +14,8 @@
 //
 // Mutation, watched failing: the `focus()` call taken out of
 // `useFocusHandback` in `focusHandback.ts`
-// (`targetRef.current()?.focus({ preventScroll: true })` made
-// `targetRef.current()`) - the test fails on where focus went: the body.
+// (`targetNow()?.focus({ preventScroll: true })` made `targetNow()`) -
+// the test fails on where focus went: the body.
 
 import { act } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'

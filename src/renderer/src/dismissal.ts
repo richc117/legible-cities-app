@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useEffectEvent, type RefObject } from 'react'
 
 // A tooltip a person sent away with Escape stays away until the pointer and
 // the focus have both left what it belongs to (WCAG 1.4.13). The first
@@ -87,7 +87,9 @@ export function watchDismissals(
 /**
  * Watch for as long as `showing` says a mark stands, and not otherwise, so
  * that a page with nothing dismissed pays for no listener on every pointer
- * move. `apply` may change on every render.
+ * move. `apply` may change on every render: the listeners call the one the
+ * last render handed in, as an effect event, and are not added again for
+ * it (issue 433).
  */
 export function useDismissalWatch(
   attribute: string,
@@ -95,12 +97,9 @@ export function useDismissalWatch(
   hovered: RefObject<string | null>,
   apply: (hoveredKey: string | null, focusedKey: string | null) => void,
 ): void {
-  const latest = useRef(apply)
-  useEffect(() => {
-    latest.current = apply
-  })
+  const onMark = useEffectEvent(apply)
   useEffect(() => {
     if (!showing) return undefined
-    return watchDismissals(attribute, hovered, (over, focused) => latest.current(over, focused))
+    return watchDismissals(attribute, hovered, (over, focused) => onMark(over, focused))
   }, [attribute, showing, hovered])
 }

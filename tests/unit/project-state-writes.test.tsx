@@ -837,7 +837,6 @@ describe('the screen’s callbacks and its record keep their identity across ren
     deleteProject: state.deleteProject,
     pageSeams: state.pageSeams,
     skipPastMap: state.skipPastMap,
-    onBack: state.onBack,
     headingRef: state.headingRef,
     run: state.run,
     exporter: state.exporter,

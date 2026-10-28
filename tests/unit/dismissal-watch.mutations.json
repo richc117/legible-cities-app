@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/dismissal.ts",
+    "find": "(over, focused) => onMark(over, focused))",
+    "replace": "apply)",
+    "test": "tests/unit/dismissal-watch.test.tsx",
+    "title": "applies the rule through the apply the last render handed in",
+    "why": "The listeners handed the apply of the render that added them: the rule is applied to the marks as they stood then, and a mark Escape set later is never ended."
+  }
+]

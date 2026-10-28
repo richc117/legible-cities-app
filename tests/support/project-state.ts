@@ -120,6 +120,5 @@ export function defaultProjectState(run: StandInRun = new StandInRun()): Project
     deleteProject: async () => undefined,
     headingRef: createRef(),
     skipPastMap: nothing,
-    onBack: nothing,
   }
 }
