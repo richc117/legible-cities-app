@@ -8,10 +8,11 @@
 //
 // The description is a static file in the engine, printed with a two-space
 // indent, so its bytes are already canonical and nothing here reformats
-// them. The emitter knows nineteen JSON Schema keywords: ten it acts on and
-// nine that constrain values rather than shapes, which it reads and ignores.
-// A twentieth stops the build naming the keyword and its path, so an engine
-// that outgrows this script cannot receive a plausible wrong type.
+// them. The emitter knows a closed set of JSON Schema keywords (`KNOWN`):
+// those it acts on and those that constrain values rather than shapes, which
+// it reads and ignores. Any other stops the build naming the keyword and its
+// path, so an engine that outgrows this script cannot receive a plausible
+// wrong type.
 //
 // Since engine v0.21.0 the description also says the animation page's seam
 // (`page`): the methods of its `window.__present`, each with its positional
