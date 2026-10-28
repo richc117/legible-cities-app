@@ -1,0 +1,34 @@
+[
+  {
+    "file": "src/renderer/src/export/ExportDestination.tsx",
+    "find": "  if (recorded !== taken) {\n",
+    "replace": "  if (recorded !== held.folder) {\n",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "shows the folder a press answered after the engine has gone and come back",
+    "why": "useDestination comparing the record with the folder shown rather than with the one last taken (issue 433, part c): the folder a press answered is put back to the record not yet read again, on the next render."
+  },
+  {
+    "file": "src/renderer/src/export/ExportForm.tsx",
+    "find": "    if (dropped !== null) {\n      setAtDraft('')\n      setTagDraft('')\n      setCaptionDraft('')\n      setAltDraft('')\n    }\n",
+    "replace": "",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "empties the typed fields when the engine’s tables drop the saved choice",
+    "why": "useExportDrafts never emptying the drafts when the choice is dropped (issue 433, part c): the saved words stay in the fields of a choice that fell back."
+  },
+  {
+    "file": "src/renderer/src/export/ExportForm.tsx",
+    "find": "  if (dropped !== seenDropped) {\n",
+    "replace": "  if (dropped !== seenDropped || (dropped !== null && tagDraft !== '')) {\n",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "keeps what is typed into a dropped choice’s fields after they were emptied",
+    "why": "useExportDrafts emptying the drafts on every render while the choice is dropped, not once (issue 433, part c): nothing typed into a dropped choice is kept."
+  },
+  {
+    "file": "src/renderer/src/export/useExportTables.ts",
+    "find": "  if (!ready && tables.status !== 'waiting') setTables({ status: 'waiting' })\n",
+    "replace": "",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "asks for the presets again, saying so, when the engine has gone and come back",
+    "why": "useExportTables keeping the last engine's tables while it is away (issue 433, part c): the old tables' form is drawn when it is back, before the presets are asked again."
+  }
+]

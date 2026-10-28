@@ -16,10 +16,14 @@ export type Tables =
 
 export function useExportTables(ready: boolean): Tables {
   const [tables, setTables] = useState<Tables>({ status: 'waiting' })
+  // The engine gone takes its tables with it in the render that sees it go,
+  // so a form drawn when it is back waits for the new engine's answer; the
+  // guard is what stops this setting the state on every render.
+  if (!ready && tables.status !== 'waiting') setTables({ status: 'waiting' })
   useEffect(() => {
     if (!ready) {
+      // The module's cache, which outlives this cell: not React's state.
       forgetExportTables()
-      setTables({ status: 'waiting' })
       return
     }
     let left = false

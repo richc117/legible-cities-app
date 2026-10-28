@@ -179,9 +179,6 @@ export default function NewProjectSheet({
   const [picking, setPicking] = useState(false)
   const [messages, setMessages] = useState<Messages>({})
   const [busy, setBusy] = useState(false)
-  // The feed this sheet added, once it is in: Create then makes the
-  // project on it.
-  const [added, setAdded] = useState<FeedRecord | null>(null)
   // Which add this opening started, counted, or 0 for none. The add run is
   // the front door's one run and outlives the sheet: an add left going by
   // an earlier opening (a second Escape closes the dialog; the engine's
@@ -192,6 +189,12 @@ export default function NewProjectSheet({
   // from failed to failed.
   const [attempt, setAttempt] = useState(0)
   const snapshot = useSnapshot(run)
+  // The feed this opening's add brought in, once it is in: Create then
+  // makes the project on it. Derived, never held: whatever lets it go - a
+  // new opening, a reset, an edit of the source or the address - resets
+  // the run or the attempt with it, and an add another opening left going
+  // has attempt 0 here, so it never claims this opening's Create.
+  const added = attempt > 0 && snapshot.state === 'done' ? snapshot.feed : null
   const running = snapshot.state === 'running'
   // Ours: this opening started the add that is going.
   const adding = running && attempt > 0
@@ -238,7 +241,6 @@ export default function NewProjectSheet({
       setUrl('')
       setFile(null)
       setMessages({})
-      setAdded(null)
       setBusy(false)
       setAttempt(0)
       if (run.snapshot.state !== 'running') run.reset()
@@ -330,14 +332,19 @@ export default function NewProjectSheet({
   // filled before pressing Create. Refused or stopped: the file is spent
   // (the main process forgets a path once it has let it through), and the
   // engine's sentence is said under the field it concerns.
+  //
+  // An effect, and not the run's own listener: this answers an external
+  // run's end, and the focus needs the commit in which the run is no longer
+  // going, which is the one that enables the name field again (a field
+  // still disabled cannot take focus). The feed added is derived above.
   useEffect(() => {
     // An add this opening did not start, or a sheet already shut, is not
     // this form's business: the front door lists again on its own.
     if (attempt === 0 || !dialogRef.current?.open) return
     if (snapshot.state === 'done' && snapshot.feed !== null) {
       const feedAdded = snapshot.feed
-      setAdded(feedAdded)
       // The file is spent by the add, as by a refusal.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an external run's end; focus to Name needs the commit that enables it
       setFile(null)
       onAdded()
       setName((current) => filledName(current, edited.current, uniqueName(feedAdded.name, taken)))
@@ -365,7 +372,6 @@ export default function NewProjectSheet({
     setFile(null)
     setMessages({})
     setBusy(false)
-    setAdded(null)
     setAttempt(0)
     run.reset()
   }
@@ -373,12 +379,12 @@ export default function NewProjectSheet({
   // The engine's last refusal goes with the next edit, as a typed message
   // does, so an old sentence does not sit under a new choice.
   //
-  // A finished add goes too, whatever its outcome: once the source or the
-  // address has changed, "The feed is in." is about a feed no longer in
-  // view, and leaving it would offer the same add again.
+  // A finished add goes too, whatever its outcome, and the feed it added
+  // with it (derived from the run): once the source or the address has
+  // changed, "The feed is in." is about a feed no longer in view, and
+  // leaving it would offer the same add again.
   const changed = (): void => {
     setMessages({})
-    setAdded(null)
     if (run.snapshot.state !== 'running') run.reset()
   }
 

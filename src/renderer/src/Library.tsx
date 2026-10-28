@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type JSX } from 'react'
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
 import {
   ERROR_CODES,
@@ -25,6 +25,19 @@ import { useEngineState } from './useEngineState'
 import { useInterfacePalette } from './useInterfacePalette'
 
 type LibraryState = { status: 'loading' } | { status: 'ready'; projects: ProjectSummary[] }
+
+/**
+ * The listed projects' runs' states, as one string - `id:state`, joined -
+ * so it is a snapshot React can compare: the same states are the same
+ * string, however many progress ticks come between them.
+ */
+const statesKey = (projectIds: string): string =>
+  projectIds === ''
+    ? ''
+    : projectIds
+        .split(',')
+        .map((id) => `${id}:${peekLayoutRun(id)?.snapshot.state ?? 'none'}`)
+        .join(',')
 
 interface Props {
   /** A sentence carried over from the project view, such as what a delete could not remove. */
@@ -441,17 +454,22 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   // redraws them, and a run that stops has written its record, so the list
   // is read again. Keyed on the states alone, because a run tells its
   // listeners about every progress tick and the list must not be read on
-  // each of those.
+  // each of those: the key is a string, so a tick that moves no state is
+  // the same snapshot and draws nothing. Subscribed afresh whenever the
+  // list changes, because `subscribeToRuns` hears only the runs that exist
+  // when it is called.
   const projectIds =
     library.status === 'ready' ? library.projects.map((project) => project.id).join(',') : ''
-  const [runStates, setRunStates] = useState('')
-  useEffect(() => {
-    const ids = projectIds === '' ? [] : projectIds.split(',')
-    const key = (): string =>
-      ids.map((id) => `${id}:${peekLayoutRun(id)?.snapshot.state ?? 'none'}`).join(',')
-    setRunStates(key())
-    return subscribeToRuns(() => setRunStates(key()))
-  }, [projectIds])
+  const subscribe = useCallback(
+    (listener: () => void): (() => void) => subscribeToRuns(listener),
+    // Not read inside: a new list is what makes a new subscription, above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectIds],
+  )
+  // The same read for a static render (a unit test): the runs are this
+  // module's, there as here.
+  const states = (): string => statesKey(projectIds)
+  const runStates = useSyncExternalStore(subscribe, states, states)
   const firstStates = useRef(true)
   useEffect(() => {
     // Not on the first key, which is the list just read.

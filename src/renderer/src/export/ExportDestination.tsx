@@ -35,14 +35,18 @@ export interface Destination {
  * calls that change it answer the written record themselves, and the
  * screen around this panel is not re-read for a folder: nothing else on it
  * shows one. A record read again for any other reason - a run finishing,
- * the project opened afresh - brings the folder with it, and the effect
- * below takes it (A5.5-19).
+ * the project opened afresh - brings the folder with it, and the render
+ * that first sees it takes it (A5.5-19). The record's folder is compared
+ * with the one last taken from it, never with the one shown, so a press's
+ * answer stays until the record itself moves.
  */
 export function useDestination(recorded: string | null): Destination {
   const [held, set] = useState<Omit<Destination, 'set'>>({ folder: recorded, problem: null })
-  useEffect(() => {
+  const [taken, setTaken] = useState(recorded)
+  if (recorded !== taken) {
+    setTaken(recorded)
     set((now) => ({ ...now, folder: recorded }))
-  }, [recorded])
+  }
   return { ...held, set }
 }
 

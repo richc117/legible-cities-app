@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/export/useExportPreview.ts",
+    "find": "  const plan = useEffectEvent(() => planner.schedule(asked))\n",
+    "replace": "  const first = useRef(asked).current\n  const plan = useEffectEvent(() => planner.schedule(first))\n",
+    "test": "tests/unit/export-preview-planning.test.tsx",
+    "title": "asks once the choice has settled, and once for two quick changes",
+    "why": "The planning effect reading the choice it was first drawn with rather than the one now (issue 433, part c): a changed choice is planned as the old one."
+  },
+  {
+    "file": "src/renderer/src/export/useExportPreview.ts",
+    "find": "  }, [canPlan, key, made, planner])\n",
+    "replace": "  }, [canPlan, made, planner])\n",
+    "test": "tests/unit/export-preview-planning.test.tsx",
+    "title": "asks once the choice has settled, and once for two quick changes",
+    "why": "`key` dropped from the planning effect's dependencies, which the linter cannot see since the choice is read through an effect event (issue 433, part c): a changed choice is never planned."
+  },
+  {
+    "file": "src/renderer/src/export/useExportPreview.ts",
+    "find": "  }, [canPlan, key, made, planner])\n",
+    "replace": "  }, [canPlan, key, planner])\n",
+    "test": "tests/unit/export-preview-planning.test.tsx",
+    "title": "plans again for the layout laid out again under the same id",
+    "why": "`made` dropped from the planning effect's dependencies (issue 433, part c): a layout laid out again under the same id is never planned."
+  }
+]

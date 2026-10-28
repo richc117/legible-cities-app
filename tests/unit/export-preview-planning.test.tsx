@@ -138,6 +138,25 @@ describe('cell 06’s preview, planned', () => {
     expect(drawn.preview.mock.calls).toEqual([[BASE.id, HIGH]])
   })
 
+  it('plans again for the layout laid out again under the same id', async () => {
+    // Issue 433, part c: the choice is read through an effect event, so the
+    // effect's dependencies are what the comment names and nothing checks
+    // them but this and the row above. Mutation
+    // (`export-preview-planning.mutations.json`): `made` dropped from them -
+    // the layout laid out again is never planned.
+    const project = { ...BASE, readOnly: false }
+    const drawn = draw({ project })
+    await settle()
+    drawn.asked[0].resolve(ok('app://local/p?first'))
+    await answered()
+    drawn.redraw({ project: { ...project, made: '2026-10-27T09:00:00+00:00' } })
+    await settle()
+    expect(drawn.preview.mock.calls).toEqual([
+      [BASE.id, REEL],
+      [BASE.id, REEL],
+    ])
+  })
+
   it('hands the address to the frame at the preset’s own size, with its safe zones', async () => {
     const drawn = draw()
     await settle()

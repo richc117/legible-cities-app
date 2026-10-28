@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/Library.tsx",
+    "find": "    (listener: () => void): (() => void) => subscribeToRuns(listener),\n",
+    "replace": "    (listener: () => void): (() => void) => () => void listener,\n",
+    "test": "tests/unit/front-door-runs.test.tsx",
+    "title": "read the list again when a run stops, heard from a run made after the screen",
+    "why": "The cards' subscription to the runs a no-op (issue 433, part c): a card stays at laying out after its run ends, and the list is never read again."
+  },
+  {
+    "file": "src/renderer/src/Library.tsx",
+    "find": "    [projectIds],\n  )\n",
+    "replace": "    [],\n  )\n",
+    "test": "tests/unit/front-door-runs.test.tsx",
+    "title": "read the list again when a run stops, heard from a run made after the screen",
+    "why": "The cards' subscription made once rather than for each list (issue 433, part c): `subscribeToRuns` hears only the runs that existed then, so a run made since is never heard."
+  }
+]

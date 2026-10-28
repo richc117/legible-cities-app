@@ -169,13 +169,18 @@ function reported(value: string | null, absent: string): string {
 export default function Settings({ settings, onChanged, engine }: Props): JSX.Element {
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [size, setSize] = useState<FolderSize | null>(null)
-  const [info, setInfo] = useState<EngineInfo | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [confirming, setConfirming] = useState(false)
   const [copied, setCopied] = useState<string | null>(null)
   const copying = useRef(false)
   const ready = engine?.state === 'ready'
+  // The engine's versions, its own answer (the effect below asks). An
+  // engine that goes takes them in the render that sees it go: one that
+  // restarts may be another build, so they are not shown again until it
+  // has answered. Reset rather than derived from `ready` for that reason.
+  const [info, setInfo] = useState<EngineInfo | null>(null)
+  if (!ready && info !== null) setInfo(null)
   // "Use the default" goes once the folder is the default again, taking
   // focus with it; the row's "Choose folder" is where it goes (A6-07).
   const choosers = useRef<Record<'engine' | 'export', HTMLElement | null>>({
@@ -228,25 +233,32 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
     headingRef.current?.focus()
   }, [])
 
+  // The folder's size as the main process measures it; null, said as
+  // "Measuring…", until it answers or where it cannot.
+  const readSize = useCallback(
+    (): Promise<void> =>
+      window.api.settings.engineSize().then(
+        (measured) => setSize(measured),
+        () => setSize(null),
+      ),
+    [],
+  )
+  // Measured again after a reset, the old figure taken away first. At
+  // mount the size is null already, so the first measure only asks.
   const measure = useCallback((): Promise<void> => {
     setSize(null)
-    return window.api.settings.engineSize().then(
-      (measured) => setSize(measured),
-      () => setSize(null),
-    )
-  }, [])
+    return readSize()
+  }, [readSize])
 
   useEffect(() => {
-    void measure()
-  }, [measure])
+    void readSize()
+  }, [readSize])
 
   // The versions are the engine's own answer, read once it is ready and
-  // again if it restarts into a different build.
+  // again if it restarts into a different build; while it is away the
+  // render above has already let the old ones go.
   useEffect(() => {
-    if (!ready) {
-      setInfo(null)
-      return
-    }
+    if (!ready) return
     let left = false
     engineClient()
       .request('engine.info')

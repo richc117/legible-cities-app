@@ -1,11 +1,4 @@
-import {
-  useEffect,
-  useState,
-  type FormEvent,
-  type JSX,
-  type ReactNode,
-  type RefObject,
-} from 'react'
+import { useState, type FormEvent, type JSX, type ReactNode, type RefObject } from 'react'
 import { VIEWS, type View } from '../../../shared/capture'
 import {
   isClockCorner,
@@ -97,14 +90,19 @@ export function useExportDrafts(choice: ExportChoice, dropped: string | null): E
   const [tagProblem, setTagProblem] = useState<string | null>(null)
   const [captionDraft, setCaptionDraft] = useState(choice.options.caption ?? '')
   const [altDraft, setAltDraft] = useState(choice.alt ?? '')
-  useEffect(() => {
-    // A saved choice that fell back takes its fields with it.
-    if (dropped === null) return
-    setAtDraft('')
-    setTagDraft('')
-    setCaptionDraft('')
-    setAltDraft('')
-  }, [dropped])
+  // A saved choice that fell back takes its fields with it, once, in the
+  // render that first sees it dropped; what is typed into them after that
+  // stays. Null at first, so a choice already dropped at mount is emptied.
+  const [seenDropped, setSeenDropped] = useState<string | null>(null)
+  if (dropped !== seenDropped) {
+    setSeenDropped(dropped)
+    if (dropped !== null) {
+      setAtDraft('')
+      setTagDraft('')
+      setCaptionDraft('')
+      setAltDraft('')
+    }
+  }
   return {
     at: { draft: atDraft, setDraft: setAtDraft, problem: atProblem, setProblem: setAtProblem },
     tag: { draft: tagDraft, setDraft: setTagDraft, problem: tagProblem, setProblem: setTagProblem },
