@@ -40,6 +40,7 @@ import { runAllPlan } from '../../src/renderer/src/runAll'
 import { useDayChoice } from '../../src/renderer/src/ServiceDay'
 import { usePutBack } from '../../src/renderer/src/usePutBack'
 import { ERROR_CODES, type EngineState } from '../../src/shared/engine'
+import { PAGE_SEAM_NAMES } from '../../src/shared/protocol'
 import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 
@@ -931,5 +932,45 @@ describe('a rename answered after a tuning reset that landed before it', () => {
     expect(shown.project !== null && 'tuning' in shown.project, 'the tuning stays removed').toBe(
       false,
     )
+  })
+})
+
+// Issue 596: what the screen decided to do about the page it opened on is
+// said (`onOpen`, drawn as `data-on-open` on the map's section), so an
+// end-to-end test has a fact to wait on after a decision against a redraw,
+// which writes nothing else. Nothing before the decision; `never` for a
+// page the pinned engine drew; `redraw` for one an older engine drew.
+describe('the decision about the page the screen opened on', () => {
+  // A record whose map was drawn by the running engine, from its own layout
+  // and day: the only thing that can make its page older is the page's seam.
+  const DRAWN = { ...(drawnOf(RECORD) as object), engine: READY.version }
+
+  beforeEach(() => {
+    stored = { ...RECORD, drawn: DRAWN } as unknown as ProjectRecord
+    // A redraw hands focus back before it asks, and reads the document for it.
+    vi.stubGlobal(
+      'document',
+      (globalThis as unknown as { window: { document: unknown } }).window.document,
+    )
+  })
+
+  it('is nothing until the page has said what it has', async () => {
+    // Mutation: `onOpen` initialised to `'never'` - it would say so at once.
+    await opened()
+    expect(shown.onOpen).toBeNull()
+  })
+
+  it('is `never` for a page that has every seam the pinned engine’s has', async () => {
+    // Mutation: the decision never exposed (`setOnOpen` taken out).
+    await opened()
+    act(() => shown.pageSeams([...PAGE_SEAM_NAMES]))
+    expect(shown.onOpen).toBe('never')
+  })
+
+  it('is `redraw` for a page that lacks one', async () => {
+    // Mutation: `setOnOpen(now.kind)` made `setOnOpen('never')`.
+    await opened()
+    act(() => shown.pageSeams(PAGE_SEAM_NAMES.slice(1)))
+    expect(shown.onOpen).toBe('redraw')
   })
 })

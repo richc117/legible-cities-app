@@ -308,6 +308,7 @@ describe('the import graph under src/', () => {
         'useProjectActions',
         'useProjectExport',
         'useProjectMap',
+        'useProjectOnOpen',
         'useProjectOpening',
         'useProjectRecord',
         'useProjectReload',

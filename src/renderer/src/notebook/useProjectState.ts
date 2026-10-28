@@ -121,6 +121,15 @@ export interface ProjectState {
    */
   redrawAsked: string | null
   /**
+   * What the screen decided to do about the page it opened on, once it has
+   * decided and not before: `redraw` where it asked for the page to be drawn
+   * again, `never` where it settled on leaving it. It changes nothing; it is
+   * said on the map's section as `data-on-open` so that an end-to-end test
+   * has a fact to wait on after the decision, where a decision against a
+   * redraw writes nothing else a test can see (issue 596).
+   */
+  onOpen: 'redraw' | 'never' | null
+  /**
    * The seam the first page the screen loaded answered, or null until it
    * has, or where it did not say: what cell 03 says still holds of a page
    * whose redraw failed is built from what it lacks (issue 517).
@@ -378,6 +387,7 @@ export function useProjectState(
   }, [])
   const redrawSettled = useRef(false)
   const [redrawAsked, setRedrawAsked] = useState<string | null>(null)
+  const [onOpen, setOnOpen] = useState<'redraw' | 'never' | null>(null)
   useEffect(() => {
     if (redrawSettled.current || opened === null || project === null) return
     // The engine's own version, which the record's `drawn.engine` is judged
@@ -393,10 +403,11 @@ export function useProjectState(
     })
     if (now.kind === 'wait') return
     redrawSettled.current = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the decision, and below it the job a redraw just started: known only as they are made
+    setOnOpen(now.kind)
     if (now.kind === 'redraw') {
       // Out of the control a run is about to disable, before it does.
       keepFocusInCell(document.activeElement)
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- the job this effect just started, known only from its start
       setRedrawAsked(
         redrawPageOnOpen(run, project, engine, { older: opened.older, running, drawnHere: drawn }),
       )
@@ -664,6 +675,7 @@ export function useProjectState(
     themeReloads,
     pageSeams,
     redrawAsked,
+    onOpen,
     openedSeams: opened?.seams ?? null,
     registry,
     inspect,

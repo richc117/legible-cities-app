@@ -399,6 +399,18 @@ describe('the project screen, counted', () => {
     expect(count, 'the seams heard').toEqual(only({ process: 1, frame: 1 }))
   })
 
+  it('renders the map alone for the decision it settled on for the page it opened', async () => {
+    // `onOpen` is said on the map's section and read by nothing else (issue
+    // 596). Mutation: it in the opening's slice - cells 02 and 03 render
+    // for it too.
+    const screen = renderScreen()
+    await answered()
+    await still()
+    const count = counted()
+    screen.rerender({ onOpen: 'never' })
+    expect(count, 'the decision').toEqual(only({ preview: 1 }))
+  })
+
   it('renders every part that shows the record for a write’s answer, by design', async () => {
     // Every cell, the header, the footer, the map and the outputs show the
     // record, so an answer to a write renders them all: the record is what

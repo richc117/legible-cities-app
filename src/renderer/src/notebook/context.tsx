@@ -55,6 +55,10 @@ export type { ProjectState } from './useProjectState'
 // - The reload: `themeReloads`, the map's address and nothing else's.
 // - The opening: `redrawAsked` and `openedSeams`, what cells 02 and 03 say
 //   of the page the screen opened on (issue 517).
+// - The decision: `onOpen`, what the screen settled on for that page, which
+//   the map's section says as an attribute and nothing else reads (issue
+//   596). Its own slice and not the opening's: the map would otherwise
+//   render for `redrawAsked` and `openedSeams`, which it does not read.
 //
 // The providers are composed in one place, `ProjectProviders`, which both
 // `ProjectView.tsx` and the unit tests' harness draw, so what a test renders
@@ -89,6 +93,7 @@ type ActionsSlice = Pick<
 type MapSlice = Pick<ProjectState, 'drawn'>
 type ReloadSlice = Pick<ProjectState, 'themeReloads'>
 type OpeningSlice = Pick<ProjectState, 'redrawAsked' | 'openedSeams'>
+type OnOpenSlice = Pick<ProjectState, 'onOpen'>
 
 const RecordContext = createContext<RecordSlice | null>(null)
 const RunsContext = createContext<RunsSlice | null>(null)
@@ -97,6 +102,7 @@ const ActionsContext = createContext<ActionsSlice | null>(null)
 const MapContext = createContext<MapSlice | null>(null)
 const ReloadContext = createContext<ReloadSlice | null>(null)
 const OpeningContext = createContext<OpeningSlice | null>(null)
+const OnOpenContext = createContext<OnOpenSlice | null>(null)
 
 /**
  * The project screen's state, provided to everything under it as its
@@ -153,10 +159,11 @@ export function ProjectProviders({
       headingRef,
     ],
   )
-  const { drawn, themeReloads, redrawAsked, openedSeams } = state
+  const { drawn, themeReloads, redrawAsked, openedSeams, onOpen } = state
   const map = useMemo(() => ({ drawn }), [drawn])
   const reload = useMemo(() => ({ themeReloads }), [themeReloads])
   const opening = useMemo(() => ({ redrawAsked, openedSeams }), [redrawAsked, openedSeams])
+  const decided = useMemo(() => ({ onOpen }), [onOpen])
   return (
     <RecordContext.Provider value={record}>
       <RunsContext.Provider value={runs}>
@@ -164,7 +171,9 @@ export function ProjectProviders({
           <ActionsContext.Provider value={actions}>
             <MapContext.Provider value={map}>
               <ReloadContext.Provider value={reload}>
-                <OpeningContext.Provider value={opening}>{children}</OpeningContext.Provider>
+                <OpeningContext.Provider value={opening}>
+                  <OnOpenContext.Provider value={decided}>{children}</OnOpenContext.Provider>
+                </OpeningContext.Provider>
               </ReloadContext.Provider>
             </MapContext.Provider>
           </ActionsContext.Provider>
@@ -201,3 +210,6 @@ export const useProjectReload = (): ReloadSlice => useSlice(ReloadContext, 'useP
 
 /** What the screen's opening asked of the page it opened on, and what that page has. */
 export const useProjectOpening = (): OpeningSlice => useSlice(OpeningContext, 'useProjectOpening')
+
+/** What the screen settled on for the page it opened on, once it has. */
+export const useProjectOnOpen = (): OnOpenSlice => useSlice(OnOpenContext, 'useProjectOnOpen')
