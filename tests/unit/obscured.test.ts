@@ -136,10 +136,14 @@ describe('the page scrolls clear of the header (issue 536)', () => {
     expect(padding?.value).toBe('var(--header-clearance)')
   })
 
-  it('makes the token the header and a little room', () => {
+  it('starts the token from the header’s height', () => {
+    // Mutation: `--header-clearance` given a literal in scale.css. The rule is
+    // that the clearance starts from the header's own height, so it follows
+    // the header when the header changes; how much room is added is a design
+    // choice this does not mirror.
     const token = rulesOf('scale.css')
       .flatMap((rule) => rule.declarations)
       .find((d) => d.property === '--header-clearance')
-    expect(token?.value).toBe('calc(var(--header-height) + var(--space-4-4))')
+    expect(token?.value).toMatch(/^calc\(var\(--header-height\)/)
   })
 })

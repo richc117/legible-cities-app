@@ -43,6 +43,7 @@ import { ERROR_CODES, withoutPaths, type EngineState } from '../../src/shared/en
 import { composeJobLog, runFailureSentence, screenPaths, type Job } from '../../src/shared/jobs'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import { defaultProjectState } from '../support/project-state'
+import { until } from '../support/until'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
 const WINDOWS = ['C:', 'Users', 'someone', 'AppData', 'engine-home', 'feeds', 'la-metro.zip'].join(
@@ -65,8 +66,6 @@ const leaks = (html: string, path: string): boolean =>
   html.includes('someone') || html.includes(path) || html.includes('engine-home')
 
 const READY: EngineState = { state: 'ready', version: '0.19.0', protocol: 1 }
-
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0))
 
 const record: ProjectRecord = {
   version: 1,
@@ -119,8 +118,7 @@ async function failedLayout(
     ...(onDisk === undefined ? {} : { onDisk }),
   })
   run.start(record, READY)
-  await tick()
-  await tick()
+  await until('the layout run to fail', () => run.snapshot.state === 'failed')
   return run
 }
 
@@ -196,7 +194,7 @@ function failedExport(reason: unknown): ExportRun {
 describe.each(PATHS)('a failed export with %s in the engine hint', (_name, path) => {
   it("shows cell 06's run no path", async () => {
     const run = failedExport(io(path))
-    await tick()
+    await until('the export to fail', () => run.snapshot.state === 'failed')
     expect(run.snapshot.state).toBe('failed')
     const html = renderToStaticMarkup(
       <ExportRunPanel
@@ -223,7 +221,7 @@ describe.each(PATHS)('a failed feed add with %s in the failure', (_name, path) =
         }) as never,
     })
     run.start({ url: 'https://agency.example/gtfs.zip' }, READY)
-    await tick()
+    await until('the feed add to fail', () => run.snapshot.state === 'failed')
     return run
   }
 
@@ -307,7 +305,7 @@ describe("the app's own refusals", () => {
     expectKept(layout.job())
 
     const exported = failedExport(refused(NAMED))
-    await tick()
+    await until('the export to fail', () => exported.snapshot.state === 'failed')
     expectKept(exported.job())
 
     const add = new FeedAdd({
@@ -320,7 +318,7 @@ describe("the app's own refusals", () => {
         }) as never,
     })
     add.start({ url: 'https://agency.example/gtfs.zip' }, READY)
-    await tick()
+    await until('the feed add to fail', () => add.snapshot.state === 'failed')
     expectKept(add.job())
   })
 

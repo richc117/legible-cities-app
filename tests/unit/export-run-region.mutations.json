@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/ExportRun.tsx",
+    "find": "          <p className=\"visually-hidden\" role=\"status\" aria-live=\"polite\">\n            {error ?? announced ?? 'Starting the export.'}\n          </p>\n",
+    "replace": "",
+    "test": "tests/unit/export-run-region.test.tsx",
+    "title": "tells a screen reader no more than the stages plus ten times over those frames",
+    "why": "The hidden status removed: every reading was null, no change was counted, and the ceiling held with nothing announced at all."
+  }
+]
