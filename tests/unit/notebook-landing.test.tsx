@@ -139,7 +139,7 @@ describe('the map’s empty state', () => {
     await column({ project: { ...BASE, layout: null, made: null, readOnly: false } })
     watched = '02'
     press('Lay it out in cell 02.')
-    expect(scrolls, 'it has not landed while the cell is open').toEqual([
+    expect(scrolls, 'it lands with the cell already open').toEqual([
       { expanded: 'true', focused: true },
     ])
     scrolls = []
