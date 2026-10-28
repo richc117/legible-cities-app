@@ -1,0 +1,74 @@
+[
+  {
+    "file": "src/renderer/src/Inspect.tsx",
+    "find": "import { inspectionFailure } from './engine/inspections'\n",
+    "replace": "import { withoutPaths } from '../../shared/engine'\n\nconst inspectionFailure = (error: unknown): string => {\n  const reason = error as { data?: { hint?: string }; message?: string }\n  return withoutPaths(reason.data?.hint ?? reason.message ?? 'The feed could not be read.')\n}\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows the app’s own refusal whole, with the slash in the project’s name",
+    "why": "Cell 01’s inspection back on its own block: the app’s refusal quoting a slashed project name is cut at the slash."
+  },
+  {
+    "file": "src/renderer/src/LineColours.tsx",
+    "find": "import { inspectionFailure } from './engine/inspections'\n",
+    "replace": "import { withoutPaths } from '../../shared/engine'\n\nconst inspectionFailure = (error: unknown): string => {\n  const reason = error as { data?: { hint?: string }; message?: string }\n  return withoutPaths(reason.data?.hint ?? reason.message ?? 'The feed could not be read.')\n}\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows the app’s own refusal whole, with the slash in the project’s name",
+    "why": "The colours’ list back on its own block: the app’s refusal quoting a slashed project name is cut at the slash."
+  },
+  {
+    "file": "src/renderer/src/LineOrder.tsx",
+    "find": "import { inspectionFailure } from './engine/inspections'\n",
+    "replace": "import { withoutPaths } from '../../shared/engine'\n\nconst inspectionFailure = (error: unknown): string => {\n  const reason = error as { data?: { hint?: string }; message?: string }\n  return withoutPaths(reason.data?.hint ?? reason.message ?? 'The feed could not be read.')\n}\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows the app’s own refusal whole, with the slash in the project’s name",
+    "why": "The order’s list back on its own block: the app’s refusal quoting a slashed project name is cut at the slash."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "import { runFailureSentence } from '../../shared/jobs'\n",
+    "replace": "import { withoutPaths } from '../../shared/engine'\n\nconst runFailureSentence = (error: unknown, fallback: string): string => {\n  const reason = error as { data?: { hint?: string }; message?: string }\n  return withoutPaths(reason.data?.hint ?? reason.message ?? fallback)\n}\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows the app’s own refusal whole, with the slash in the project’s name",
+    "why": "The stage drawing’s old refusalOf put back: the app’s refusal quoting a slashed project name is cut at the slash."
+  },
+  {
+    "file": "src/renderer/src/engine/inspections.ts",
+    "find": "runFailureSentence(error, 'The feed could not be read.')",
+    "replace": "runFailureSentence(error, 'The feed could not be opened.')",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "says the panel’s own sentence where the failure is neither an error nor an engine shape",
+    "why": "The inspection fallback reworded: the three panels would say a sentence no one chose."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "const STAGE_FAILED = 'The stage could not be drawn.'",
+    "replace": "const STAGE_FAILED = 'The stage could not be shown.'",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "says the panel’s own sentence where the failure is neither an error nor an engine shape",
+    "why": "The stage fallback reworded."
+  },
+  {
+    "file": "src/renderer/src/engine/inspections.ts",
+    "find": "  return runFailureSentence(error, 'The feed could not be read.')\n",
+    "replace": "  void runFailureSentence\n  return (error as { data: { hint: string } }).data.hint\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows an engine hint carrying",
+    "why": "The inspection’s sentence taken from the engine’s hint unscreened: cells 01 and 05 would show the folders of a path."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "import { runFailureSentence } from '../../shared/jobs'\n",
+    "replace": "const runFailureSentence = (error: unknown, _fallback: string): string =>\n  (error as { data: { hint: string } }).data.hint\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows an engine hint carrying",
+    "why": "The stage drawing’s sentence taken from the engine’s hint unscreened: the cell would show the folders of a path."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "            refused: runFailureSentence(error, STAGE_FAILED),\n",
+    "replace": "            refused: (\n              (error as { data?: { hint?: string }; message?: string }).data?.hint ??\n              (error as { message?: string }).message ??\n              STAGE_FAILED\n            ).replace(/\\/.*$/, 'a file'),\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows the app’s own refusal whole, with the slash in the project’s name",
+    "why": "The reveal path’s refusal alone back on a hand-written screen of paths: the app’s refusal quoting a slashed project name is cut at the slash while a run reveals, and only there."
+  }
+]

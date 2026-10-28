@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
-import { withoutPaths } from '../../shared/engine'
+import { runFailureSentence } from '../../shared/jobs'
 import type { RenderStageResult, StageName } from '../../shared/protocol'
 import { drawnDate } from '../../shared/project/helpers'
 import { type ProjectRecord } from '../../shared/project/types'
@@ -116,11 +116,8 @@ interface Revealed {
 
 const NONE: readonly StageName[] = []
 
-/** A refusal's sentence, as the view has always shown one: the engine's hint, never a path. */
-const refusalOf = (error: unknown): string => {
-  const reason = error as { data?: { hint?: string }; message?: string }
-  return withoutPaths(reason.data?.hint ?? reason.message ?? 'The stage could not be drawn.')
-}
+/** What a refusal says when the engine gave no sentence of its own. */
+const STAGE_FAILED = 'The stage could not be drawn.'
 
 /** A toggle's contents: the cell row's chevron, decorative, then the words that name it. */
 const toggleSummary = (text: string): JSX.Element => (
@@ -334,7 +331,11 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
       },
       (error: unknown) => {
         if (left) return
-        setState({ status: 'failed', key: asking, message: refusalOf(error) })
+        setState({
+          status: 'failed',
+          key: asking,
+          message: runFailureSentence(error, STAGE_FAILED),
+        })
       },
     )
     return () => {
@@ -392,7 +393,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
           setRevealed((was) => ({
             run: book.run,
             drawings: was?.run === book.run ? was.drawings : {},
-            refused: refusalOf(error),
+            refused: runFailureSentence(error, STAGE_FAILED),
           }))
         },
       )

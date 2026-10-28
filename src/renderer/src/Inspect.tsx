@@ -8,10 +8,10 @@ import {
   type RefObject,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
-import { withoutPaths } from '../../shared/engine'
 import type { Inspection, Route, RouteType } from '../../shared/protocol'
 import type { ProjectInputs, ProjectRecord } from '../../shared/project/types'
 import { validateAgency, validateMode } from '../../shared/project/validate'
+import { inspectionFailure } from './engine/inspections'
 import { EVERY_OPERATOR } from './record'
 import Button from './kit/Button'
 import Select from './kit/Select'
@@ -206,13 +206,7 @@ export default function Inspect({
       },
       (error: unknown) => {
         if (left) return
-        const reason = error as { data?: { hint?: string }; message?: string }
-        setState({
-          status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The feed could not be read.',
-          ),
-        })
+        setState({ status: 'failed', message: inspectionFailure(error) })
       },
     )
     return () => {

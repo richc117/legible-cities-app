@@ -8,9 +8,9 @@ import {
   type RefObject,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
-import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
 import { type Palette, type ProjectRecord } from '../../shared/project/types'
+import { inspectionFailure } from './engine/inspections'
 import { paletteOf } from './record'
 import {
   feedWords,
@@ -193,13 +193,7 @@ export default function LineColours({
       },
       (error: unknown) => {
         if (left) return
-        const reason = error as { data?: { hint?: string }; message?: string }
-        setState({
-          status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The feed could not be read.',
-          ),
-        })
+        setState({ status: 'failed', message: inspectionFailure(error) })
       },
     )
     return () => {

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // A failed run's reason is a sentence for a screen, and a path is not one
 // (issue 519; constitution V). The jobs inspector screened the engine's hint
 // and cell 03 screened its own copy, but cell 02's status line, cell 06's
@@ -22,13 +23,15 @@
 // The paths are assembled rather than written out: bin/preflight refuses a
 // path literal in a committed file.
 
+import { act } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import DownloadLine from '../../src/renderer/src/DownloadLine'
 import ExportRunPanel from '../../src/renderer/src/ExportRun'
 import { ExportRun, type ExportBridge } from '../../src/renderer/src/engine/exportRun'
 import { FeedAdd, sentenceFor as addSentence } from '../../src/renderer/src/engine/feedAdd'
 import {
+  freshStages,
   LayoutRun,
   sentenceFor as layoutSentence,
   type RunClient,
@@ -42,7 +45,9 @@ import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import { ERROR_CODES, withoutPaths, type EngineState } from '../../src/shared/engine'
 import { composeJobLog, runFailureSentence, screenPaths, type Job } from '../../src/shared/jobs'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
-import { defaultProjectState } from '../support/project-state'
+import { defaultProjectState, pending } from '../support/project-state'
+import { answered, cleanup, renderCell } from '../support/render'
+import { snap, StandInRun } from '../support/stand-in-run'
 import { until } from '../support/until'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
@@ -366,5 +371,118 @@ describe('screening a sentence twice', () => {
 
   it('takes the fallback when the failure is neither an error nor an engine shape', () => {
     expect(runFailureSentence('?', 'The run did not finish.')).toBe('The run did not finish.')
+  })
+})
+
+// Issue 593: the four panels that read the engine without a run (cell 01's
+// inspection and its stage drawing, cell 05's colours and its order) say a
+// failure in the same rule as the runs, `runFailureSentence`, and not in a
+// screen of their own that rewrote the app's refusals. Each is drawn, the
+// kit real, over an engine that refuses the one question it asks, and the
+// sentence it shows is read from the document. Each row was watched failing
+// under its panel's old block put back (`failed-run-reason.mutations.json`).
+
+describe('the panels that read the engine without a run', () => {
+  afterEach(cleanup)
+
+  const NAMED = inUseSentence(['Lines /North'])
+  /** Cell 01 asks its run for the job it reveals; this one has none. */
+  class IdleRun extends StandInRun {
+    job(): null {
+      return null
+    }
+  }
+  /** A layout run with a job and its first stage reported, which makes cell 01 reveal it. */
+  class RevealingRun extends StandInRun {
+    job(): { id: string } {
+      return { id: 'job-A' }
+    }
+  }
+  const refuse = (reason: unknown) => (): Promise<never> => Promise.reject(reason)
+
+  /** What a panel shows of a refusal: the text of the element that says it, or null. */
+  const PANELS: readonly {
+    name: string
+    fallback: string
+    shown: (reason: unknown) => Promise<string | null>
+  }[] = [
+    {
+      name: 'cell 01’s inspection',
+      fallback: 'The feed could not be read.',
+      shown: async (reason) => {
+        renderCell('data', { inspect: refuse(reason) }, { run: new IdleRun() })
+        await answered()
+        return document.querySelector('.inspect p.message.error[role="alert"]')?.textContent ?? null
+      },
+    },
+    {
+      name: 'cell 01’s stage drawing',
+      fallback: 'The stage could not be drawn.',
+      shown: async (reason) => {
+        renderCell(
+          'data',
+          { inspect: () => pending(), readStage: refuse(reason) },
+          { run: new IdleRun() },
+        )
+        await answered()
+        return document.querySelector('.stage-view p.message.error')?.textContent ?? null
+      },
+    },
+    {
+      name: 'cell 01’s stage drawing while a run reveals',
+      fallback: 'The stage could not be drawn.',
+      shown: async (reason) => {
+        // Refused with no `data.building`, so not a "not yet" but a refusal to say.
+        const run = new RevealingRun()
+        renderCell('data', { inspect: () => pending(), readStage: refuse(reason) }, { run })
+        await answered()
+        act(() =>
+          run.move({
+            ...snap('running'),
+            layout: 'b'.repeat(64),
+            stages: freshStages().map((s, i) => ({
+              ...s,
+              state: i === 0 ? ('done' as const) : ('pending' as const),
+            })),
+          }),
+        )
+        await answered()
+        return document.querySelector('.stage-view p.message.error')?.textContent ?? null
+      },
+    },
+    {
+      name: 'cell 05’s colours',
+      fallback: 'The feed could not be read.',
+      shown: async (reason) => {
+        renderCell('lines', { inspect: refuse(reason) })
+        await answered()
+        return document.querySelector('.line-colours p.message.error')?.textContent ?? null
+      },
+    },
+    {
+      name: 'cell 05’s order',
+      fallback: 'The feed could not be read.',
+      shown: async (reason) => {
+        renderCell('lines', { inspect: refuse(reason) })
+        await answered()
+        return document.querySelector('.line-order p.message.error')?.textContent ?? null
+      },
+    },
+  ]
+
+  describe.each(PANELS)('$name', ({ shown, fallback }) => {
+    it('shows the app’s own refusal whole, with the slash in the project’s name', async () => {
+      expect(withoutPaths(NAMED)).not.toBe(NAMED)
+      expect(await shown(refused(NAMED))).toBe(NAMED)
+    })
+
+    it.each(PATHS)('shows an engine hint carrying %s with the path taken out', async (_n, path) => {
+      const sentence = await shown(io(path))
+      expect(sentence).toBe('Permission denied: a file')
+    })
+
+    it('says the panel’s own sentence where the failure is neither an error nor an engine shape', async () => {
+      expect(await shown('?')).toBe(fallback)
+    })
   })
 })
