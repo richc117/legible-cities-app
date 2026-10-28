@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "      try {\n        listener({ method, params })\n      } catch (error) {\n        this.log(\n          `error in the app: a notification listener threw on ${method}: ${describeThrown(error)}; the engine keeps running`,\n        )\n      }\n",
+    "replace": "      listener({ method, params })\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "issue 587",
+    "why": "The listener called bare, as before issue 587: what it throws reaches the client, which logs it under another line, and every listener after it misses the notification."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "          `error in the app: a notification listener threw on ${method}: ${describeThrown(error)}; the engine keeps running`,\n        )\n      }\n",
+    "replace": "          `error in the app: a notification listener threw on ${method}: ${describeThrown(error)}; the engine keeps running`,\n        )\n        return\n      }\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "issue 587",
+    "why": "The first listener to throw ends the delivery: the engine stays up, but the listeners after it never hear the notification."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      return `${printable(error.name, 80)}: ${redactUrls(printable(String(error.message), 200))}`\n",
+    "replace": "      return `${printable(error.name, 80)}: ${printable(String(error.message), 200)}`\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "issue 587",
+    "why": "The listener's message logged unredacted: a key in an address it quotes reaches the supervisor's log line whole."
+  }
+]

@@ -7,11 +7,49 @@
 
 import type { Readable, Writable } from 'node:stream'
 import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
+import { redactUrls } from './redact'
 
+/**
+ * What the framing and the parsing refuse, and nothing else: an exception a
+ * handler of the client's throws is the app's, not the engine's (issue 587).
+ */
 export class ProtocolError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'ProtocolError'
+  }
+}
+
+/** Printable ASCII only, cut to a length. */
+function printable(text: string, max: number): string {
+  return text
+    .replace(/[^ -~]/g, '')
+    .slice(0, max)
+    .trim()
+}
+
+/**
+ * Something the app's own code threw, as a log line: the rule of
+ * `process-handlers.ts`'s uncaught exception. Its name and, for a system
+ * error, its code and nothing of the message, which names a path; any other
+ * error's message cut to 200 characters; never the stack. Its web
+ * addresses are redacted here, at the source, as a reason's are in
+ * `Sidecar.setState`: a message can quote an address a feed was given, key
+ * and all, and the line must not wait on the sink to take it out. Never
+ * throws.
+ */
+export function describeThrown(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (typeof code === 'string') return `${printable(error.name, 80)} (${printable(code, 40)})`
+      return `${printable(error.name, 80)}: ${redactUrls(printable(String(error.message), 200))}`
+    }
+    return typeof error === 'string'
+      ? redactUrls(printable(error, 200))
+      : 'a value that is not an error'
+  } catch {
+    return 'an error that could not be read'
   }
 }
 
@@ -272,7 +310,17 @@ export class JsonRpcClient {
         this.handlers.log(`refused a request from the engine: ${message.method}`)
         return
       }
-      this.handlers.onNotification(message.method, message.params)
+      // The handler is the app's own code. What it throws is the app's error,
+      // logged as one; let through, the frame reader would take it for the
+      // engine's and the supervisor would restart a sound engine (issue 587).
+      // The next frame in the chunk is still read.
+      try {
+        this.handlers.onNotification(message.method, message.params)
+      } catch (error) {
+        this.handlers.log(
+          `error in the app: the handler of ${printable(message.method, 80)} threw: ${describeThrown(error)}`,
+        )
+      }
       return
     }
     const id = message.id

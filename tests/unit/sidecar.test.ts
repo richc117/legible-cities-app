@@ -467,6 +467,38 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(seen.filter((n) => n.method === 'job/log')).toHaveLength(4)
   })
 
+  // Issue 587: a listener is the app's own code, and what it throws is the
+  // app's error. It used to escape into the frame reader, which called it a
+  // protocol error: the engine was restarted, the request in flight ended, and
+  // the reason said the engine had written something that is not a message.
+  // The thrown message carries a key in an address, which the line must not.
+  it("logs a listener's exception as the app's own error, and the engine keeps running (issue 587)", async () => {
+    const h = harness()
+    h.sidecar.start()
+    await h.until(ready)
+    h.sidecar.onNotification(() => {
+      throw new TypeError('listener broke on https://feeds.example.org/g.zip?api_key=planted587')
+    })
+    const seen: string[] = []
+    h.sidecar.onNotification((n) => seen.push(n.method))
+    const { result } = h.sidecar.request('graph.build', { key: 'la-metro-rail' })
+    const value = (await result) as { stages: Record<string, unknown> }
+    expect(Object.keys(value.stages)).toEqual(['gtfs2graph', 'topo', 'loom', 'octi'])
+    expect(h.sidecar.state).toEqual({ state: 'ready', version: '0.2.0', protocol: 1 })
+    expect(h.states.map((s) => s.state)).toEqual(['starting', 'ready'])
+    expect(h.states.some((s) => 'reason' in s && s.reason.includes('not a message'))).toBe(false)
+    expect(h.log.some((l) => l.startsWith('protocol error'))).toBe(false)
+    // Every listener after the one that threw still had every notification.
+    expect(seen.filter((m) => m === 'job/progress')).toHaveLength(4)
+    const lines = h.log.filter((l) => l.startsWith('error in the app: a notification listener'))
+    expect(lines).toHaveLength(seen.length)
+    expect(lines[0]).toMatch(
+      /^error in the app: a notification listener threw on job\/\w+: TypeError: listener broke on https:\/\/feeds\.example\.org\/g\.zip\?api_key=/,
+    )
+    expect(lines[0]).toContain('the engine keeps running')
+    expect(h.log.join('\n')).not.toContain('planted587')
+  })
+
   it('cancels a request and ends it with the engine cancelled error', async () => {
     const h = harness({ progress_delay_ms: 100 })
     h.sidecar.start()

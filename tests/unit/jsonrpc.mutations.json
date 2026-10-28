@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      try {\n        this.handlers.onNotification(message.method, message.params)\n      } catch (error) {\n        this.handlers.log(\n          `error in the app: the handler of ${printable(message.method, 80)} threw: ${describeThrown(error)}`,\n        )\n      }\n",
+    "replace": "      this.handlers.onNotification(message.method, message.params)\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)",
+    "why": "The handler called bare, as before issue 587: its exception reaches the frame reader, is reported as a protocol error, and the reading stops at the throw."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      return `${printable(error.name, 80)}: ${redactUrls(printable(String(error.message), 200))}`\n",
+    "replace": "      return `${printable(error.name, 80)}: ${printable(String(error.message), 200)}`\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)",
+    "why": "The handler's message logged unredacted: a key in an address it quotes reaches the log line whole."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      if (typeof code === 'string') return `${printable(error.name, 80)} (${printable(code, 40)})`\n",
+    "replace": "",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "describes what the app threw by its name and message, a system error by its code, never the stack",
+    "why": "A system error described by its message, which names a path, rather than by its code."
+  }
+]
