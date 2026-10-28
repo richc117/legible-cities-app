@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/NewProjectSheet.tsx",
+    "find": "  const added = attempt > 0 && snapshot.state === 'done' ? snapshot.feed : null\n",
+    "replace": "  const added = snapshot.state === 'done' ? snapshot.feed : null\n",
+    "test": "tests/unit/new-project-sheet-add.test.tsx",
+    "title": "does not take Create from an add another opening left going",
+    "why": "The feed added derived without `attempt > 0` (issue 433, part c): an add left going by an earlier opening claims this opening's Create when it ends."
+  },
+  {
+    "file": "src/renderer/src/NewProjectSheet.tsx",
+    "find": "      setName((current) => filledName(current, edited.current, uniqueName(feedAdded.name, taken)))\n      nameRef.current?.focus()\n",
+    "replace": "      setName((current) => filledName(current, edited.current, uniqueName(feedAdded.name, taken)))\n",
+    "test": "tests/unit/new-project-sheet-add.test.tsx",
+    "title": "ends with Create, the feed’s name and focus on Name",
+    "why": "The add's end not handing focus to Name (issue 433, part c, the part of the effect kept): focus falls to the body after \"The feed is in.\"."
+  }
+]
