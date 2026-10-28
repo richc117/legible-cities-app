@@ -2395,6 +2395,17 @@ test('cancelling a sample’s layout keeps the project and its feed, ready to la
     // At once: the notebook is up while the layout is still going.
     await expect(page.getByRole('heading', { level: 1, name: 'LA Metro Rail' })).toBeVisible()
     await expect(cellHeading(page, 'process')).toHaveAccessibleName(/ running/)
+    // The cell reads running before the run has sent its graph.build, and a
+    // press in that gap cancels a run that sent none (issue 577, which was
+    // closed by counting "at most once", not by closing the gap). So the
+    // press waits for the request the card's press is meant to have made: the
+    // count is then one, exactly, and the reopen is held to it.
+    await expect
+      .poll(() => received(engineHome, 'graph.build').length, {
+        message: 'the card’s run asked the engine for its layout',
+        timeout: 20_000,
+      })
+      .toBe(1)
     await cell(page, 'process').getByRole('button', { name: 'Cancel', exact: true }).click()
     await expect(cellHeading(page, 'process')).not.toHaveAccessibleName(/ running/, {
       timeout: 20_000,
@@ -2402,10 +2413,7 @@ test('cancelling a sample’s layout keeps the project and its feed, ready to la
     expect(readRecord(engineHome)).toMatchObject({ feed: 'la-metro-rail', layout: null })
     await expect(cell(page, 'process').getByRole('button', { name: 'Lay out' })).toBeVisible()
     expect(received(engineHome, 'map.build'), 'nothing was drawn').toHaveLength(0)
-    // Whether the cancelled run had sent its graph.build is a race with the
-    // press (issue 577), so what is counted is what the reopen adds.
-    const builds = received(engineHome, 'graph.build').length
-    expect(builds, 'the card laid out at most once').toBeLessThanOrEqual(1)
+    expect(received(engineHome, 'graph.build'), 'the card laid out once').toHaveLength(1)
     // Opened again the ordinary way, it starts nothing: laying out on
     // arrival is the card's, once, and not a property of a project with no
     // layout.
@@ -2413,7 +2421,7 @@ test('cancelling a sample’s layout keeps the project and its feed, ready to la
     await openProject(page, 'LA Metro Rail')
     await expect(cell(page, 'process').getByRole('button', { name: 'Lay out' })).toBeVisible()
     await expect(cellHeading(page, 'process')).not.toHaveAccessibleName(/ running/)
-    expect(received(engineHome, 'graph.build'), 'no second layout').toHaveLength(builds)
+    expect(received(engineHome, 'graph.build'), 'no second layout').toHaveLength(1)
   })
 })
 

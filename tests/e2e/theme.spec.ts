@@ -47,6 +47,7 @@ import { isTheme } from '../../src/shared/project/validate'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
+  cellGroup,
   cellHandback,
   cellHeading,
   closeCell,
@@ -56,6 +57,7 @@ import {
   openProject,
   withoutOpened,
 } from '../support/project'
+import { stillHolds } from '../support/holds'
 import { everySeamBut } from '../support/standInPage'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -190,6 +192,7 @@ const pageSource = (current: boolean, lacking: readonly string[] = []): string =
     'window.__document = String(Math.random()).slice(2);',
     'window.__bootTheme = boot;',
     'window.__seen = [];',
+    'window.__seamsRead = 0;',
     'function fmt(s) {',
     '  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);',
     '  return String(h % 24).padStart(2, "0") + ":" + String(m).padStart(2, "0")',
@@ -220,6 +223,15 @@ const pageSource = (current: boolean, lacking: readonly string[] = []): string =
     '  },',
     '};',
     ...(current ? [everySeamBut(lacking)] : []),
+    // How many times the seam was listed. The app lists it once for each
+    // document it has loaded and given back (`SEAMS_SCRIPT`, a `for...in`),
+    // and that is the last thing it does before it decides whether to redraw
+    // the page it opened on, so a count above zero is the nearest fact this
+    // page can give to that decision. Nothing else lists it: a call to a
+    // method looks it up by name.
+    'window.__present = new Proxy(window.__present, {',
+    '  ownKeys: function (target) { window.__seamsRead += 1; return Reflect.ownKeys(target) },',
+    '});',
     '</script></body>',
   ].join('\n')
 
@@ -319,6 +331,8 @@ interface Facts {
   attribute: string | null
   /** Every call it was asked, in order. */
   seen: [string, unknown][]
+  /** How many times the app listed its seam: once the page has been given back, and before the app decides what to do about it. */
+  seamsRead: number
 }
 
 async function factsOf(app: ElectronApplication): Promise<Facts | null> {
@@ -332,7 +346,7 @@ async function factsOf(app: ElectronApplication): Promise<Facts | null> {
       const read = frame.executeJavaScript(
         `({ document: window.__document || null, boot: window.__bootTheme || null,
             attribute: document.documentElement.getAttribute('data-theme'),
-            seen: window.__seen || [] })`,
+            seen: window.__seen || [], seamsRead: window.__seamsRead || 0 })`,
       ) as Promise<unknown>
       // A frame being replaced can take the read and never answer it: not yet.
       const late = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000))
@@ -342,6 +356,21 @@ async function factsOf(app: ElectronApplication): Promise<Facts | null> {
     }
   })) as Facts | null
 }
+
+/**
+ * Wait, to a deadline, until the app has listed the seam of the document the
+ * map's frame is on: its last act on a document it has loaded and given back,
+ * and the step before it decides whether to redraw the page (`Viewer.tsx`,
+ * `redrawOnOpen`). The nearest fact before that decision there is to poll;
+ * there is none after it (issue 596).
+ */
+const expectSeamsRead = (app: ElectronApplication): Promise<void> =>
+  expect
+    .poll(async () => (await factsOf(app))?.seamsRead ?? 0, {
+      message: 'the app listed the seam of the page on the map’s frame',
+      timeout: 20_000,
+    })
+    .toBeGreaterThan(0)
 
 /**
  * Put the current page in place of whatever the stand-in engine writes over
@@ -636,19 +665,34 @@ test('a chosen theme restyles the page in place, is stored, and asks the engine 
       .poll(() => themeOf(page), { message: 'state().theme answers the new theme' })
       .toBe('sepia')
 
-    // A reload, were one coming, is a state read, a navigation and a load
-    // away from the press; the pause is longer than that, so the absences
-    // below are the page's and not the clock's.
-    await page.waitForTimeout(1500)
-
-    expect(await frame(page).getAttribute('src'), 'the frame’s address did not change').toBe(
-      address,
+    // The page took the call, in the document it was in: that is the fact
+    // the decision rests on (a page that lacked the method would have been
+    // loaded again instead). A reload, were one coming as well, is a state
+    // read, a navigation and a load away from it, so the absences are held
+    // from here and checked as they stand, not once at the end.
+    await expect
+      .poll(async () => (await factsOf(app))?.seen ?? null, {
+        message: 'the page was told the theme, in place',
+        timeout: 20_000,
+      })
+      .toContainEqual(['setTheme', 'sepia'])
+    await stillHolds(
+      async () => {
+        expect(await frame(page).getAttribute('src'), 'the frame’s address did not change').toBe(
+          address,
+        )
+        expect(
+          await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
+          'no load fired on the frame',
+        ).toBe(0)
+        expect(navigated, 'the frame was not navigated').toEqual([])
+        // A read the frame did not answer in time says nothing either way.
+        const now = await factsOf(app)
+        if (now !== null)
+          expect(now.document, 'the page is the same document').toBe(before?.document)
+      },
+      { window: 1500 },
     )
-    expect(
-      await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
-      'no load fired on the frame',
-    ).toBe(0)
-    expect(navigated, 'the frame was not navigated').toEqual([])
     const after = await factsOf(app)
     expect(after?.document, 'the page is the same document').toBe(before?.document)
     expect(after?.attribute, 'and it is wearing sepia').toBe('sepia')
@@ -759,14 +803,26 @@ test('a page with no setTheme is loaded again at the new theme, once, while the 
         })
         .toBe('sepia')
 
-      // Once is once: a second navigation would be a state read and a load
-      // away; the pause is longer than that.
-      await page.waitForTimeout(1500)
-      expect(
-        await page.evaluate(() => (window as unknown as { __loads?: number }).__loads),
-        'the frame loaded once',
-      ).toBe(1)
-      expect(navigated, 'and was navigated once').toHaveLength(1)
+      // The page that arrived has been given back the hour it was at: the
+      // last of what a load does, and a fact about the first navigation.
+      // Once is once: a second would be a state read and a load further on,
+      // so it is held from here.
+      await expect
+        .poll(async () => (await factsOf(app))?.seen ?? null, {
+          message: 'the page that arrived was given back the hour it was at',
+          timeout: 20_000,
+        })
+        .toContainEqual(['seek', LATER])
+      const loads = (): Promise<number | undefined> =>
+        page.evaluate(() => (window as unknown as { __loads?: number }).__loads)
+      await expect.poll(loads, { message: 'the frame loaded' }).toBe(1)
+      await stillHolds(
+        async () => {
+          expect(await loads(), 'the frame loaded once').toBe(1)
+          expect(navigated, 'and was navigated once').toHaveLength(1)
+        },
+        { window: 1500 },
+      )
       const after = await factsOf(app)
       expect(after?.document, 'to a new document').not.toBe(before?.document)
       expect(after?.attribute, 'which is wearing sepia').toBe('sepia')
@@ -826,11 +882,19 @@ test('a page an older engine drew is redrawn once as its project opens, and then
       stop()
     }
 
-    // Once: nothing redraws it again, and nothing was laid out.
-    await page.waitForTimeout(1500)
-    expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
-    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
-    expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+    // Once: nothing redraws it again, and nothing was laid out. The page the
+    // redraw wrote has been listed (the app's last act on a document it has
+    // loaded), and a second redraw would be another `map.build` on the
+    // stand-in's log; the count is held from here.
+    await expectSeamsRead(app)
+    await stillHolds(
+      () => {
+        expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+        expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+        expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+      },
+      { window: 1500 },
+    )
 
     // A theme now is taken in place, as on any page the pinned engine drew.
     await openCell(page, 'style')
@@ -845,11 +909,17 @@ test('a page an older engine drew is redrawn once as its project opens, and then
       })
       .toContainEqual(['setTheme', 'sepia'])
     await expect.poll(() => themeOf(page), { message: 'and says so' }).toBe('sepia')
-    await page.waitForTimeout(1500)
-    const address = await frame(page).getAttribute('src')
-    expect(address, 'the frame was not loaded again for it').not.toContain('reload=')
-    expect(address, 'and is on the address the redraw sent it to').toContain('theme=warm-dark')
-    expect(received(h, 'map.build'), 'and nothing was drawn for it').toHaveLength(asked + 1)
+    // The page took the call, so the decision was not to load it again; held
+    // from here, a load for it would be a state read and a navigation away.
+    await stillHolds(
+      async () => {
+        const address = await frame(page).getAttribute('src')
+        expect(address, 'the frame was not loaded again for it').not.toContain('reload=')
+        expect(address, 'and is on the address the redraw sent it to').toContain('theme=warm-dark')
+        expect(received(h, 'map.build'), 'and nothing was drawn for it').toHaveLength(asked + 1)
+      },
+      { window: 1500 },
+    )
   })
 })
 
@@ -871,13 +941,20 @@ test('a page the pinned engine drew is not redrawn as its project opens', async 
         timeout: 20_000,
       })
       .toContainEqual(['setTheme', 'warm-dark'])
-    // Longer than a redraw takes to be asked for: the seam is asked after the
-    // restore, and the stand-in answers a map.build in well under this.
-    await page.waitForTimeout(2000)
-    expect(received(h, 'map.build'), 'nothing was redrawn').toHaveLength(asked)
-    await expect(frame(page), 'and the frame is on the page as it stood').toHaveAttribute(
-      'src',
-      /redraw=0/,
+    // The app lists the page's seam after the restore and decides on that.
+    // That decision writes nothing a test can see (issue 596), so the
+    // absence of a redraw is held from the listing, over a window longer than
+    // the stand-in takes to answer a map.build.
+    await expectSeamsRead(app)
+    await stillHolds(
+      async () => {
+        expect(received(h, 'map.build'), 'nothing was redrawn').toHaveLength(asked)
+        await expect(frame(page), 'and the frame is on the page as it stood').toHaveAttribute(
+          'src',
+          /redraw=0/,
+        )
+      },
+      { window: 2000 },
     )
   })
 })
@@ -984,11 +1061,19 @@ for (const [names, engine] of [
         stop()
       }
 
-      // Once: nothing redraws it again, and nothing was laid out.
-      await page.waitForTimeout(1500)
-      expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
-      expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
-      expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+      // Once: nothing redraws it again, and nothing was laid out. The record
+      // already names the running engine (polled above, and it is written
+      // after the redraw), the page has been listed, and the count is held
+      // from there.
+      await expectSeamsRead(app)
+      await stillHolds(
+        () => {
+          expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+          expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+          expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+        },
+        { window: 1500 },
+      )
 
       // And opened again, the record now names the running engine: not again.
       await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -999,9 +1084,18 @@ for (const [names, engine] of [
           timeout: 20_000,
         })
         .toContainEqual(['setTheme', 'warm-dark'])
-      await page.waitForTimeout(2000)
-      expect(received(h, 'map.build'), 'nothing was redrawn on the second opening').toHaveLength(
-        asked + 1,
+      // The decision for this opening writes nothing a test can see (issue
+      // 596): held from the page's listing, over the window the redraw of the
+      // first opening was awaited in.
+      await expectSeamsRead(app)
+      await stillHolds(
+        () => {
+          expect(
+            received(h, 'map.build'),
+            'nothing was redrawn on the second opening',
+          ).toHaveLength(asked + 1)
+        },
+        { window: 2000 },
       )
     })
   })
@@ -1027,13 +1121,19 @@ test('a page with every seam is not redrawn as its project opens where its recor
           timeout: 20_000,
         })
         .toContainEqual(['setTheme', 'warm-dark'])
-      // Longer than a redraw takes to be asked for: the seam is asked after
-      // the restore, and the stand-in answers a map.build in well under this.
-      await page.waitForTimeout(2000)
-      expect(received(h, 'map.build'), `nothing was redrawn for ${engine}`).toHaveLength(asked)
-      await expect(frame(page), 'and the frame is on the page as it stood').toHaveAttribute(
-        'src',
-        /redraw=0/,
+      // The app lists the page's seam after the restore and decides on that;
+      // nothing the decision writes is visible to a test (issue 596), so the
+      // absence is held from the listing.
+      await expectSeamsRead(app)
+      await stillHolds(
+        async () => {
+          expect(received(h, 'map.build'), `nothing was redrawn for ${engine}`).toHaveLength(asked)
+          await expect(frame(page), 'and the frame is on the page as it stood').toHaveAttribute(
+            'src',
+            /redraw=0/,
+          )
+        },
+        { window: 2000 },
       )
       expect(drawnBy(h), 'and the record still names it').toBe(engine)
       await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -1109,10 +1209,10 @@ async function openedAndRefused(
       timeout: 20_000,
     })
     .toBe(drawn + 1)
-  await expect(
-    page.locator('.cell[data-cell="03"]'),
-    'the run is cell 03’s, failed',
-  ).toHaveAttribute('data-state', 'error', { timeout: 20_000 })
+  await expect(cellHeading(page, 'frame'), 'the run is cell 03’s, failed').toHaveAccessibleName(
+    /^03 Frame and service day failed/,
+    { timeout: 20_000 },
+  )
   return opened
 }
 
@@ -1124,27 +1224,22 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
 
   await withApp(h, async (page, app) => {
     const before = await openedAndRefused(page, h, drawn)
-    const frameCell = page.locator('.cell[data-cell="03"]')
-    await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
-      /^03 Frame and service day failed/,
-    )
-
     // Its error, first in the cell: what was tried and the engine's reason,
     // then what still holds of this page, which has no setTheme and no
     // setTrip.
     await openCell(page, 'frame')
-    const body = frameCell.locator('.cell-body')
-    const error = body.locator('p.message.error', { hasText: OPENING_REDRAW_FAILED })
+    const body = cellGroup(page, 'frame')
+    const error = body.getByText(OPENING_REDRAW_FAILED)
     await expect(error, 'cell 03 says the redraw on open failed, and why').toHaveText(
       `${OPENING_REDRAW_FAILED} ${reason}`,
     )
-    await expect(body.locator('p.prose', { hasText: ON_SCREEN_AS_IT_WAS })).toHaveText(
+    await expect(body.getByText(ON_SCREEN_AS_IT_WAS)).toHaveText(
       openingFallback({ theme: true, trip: true }),
     )
     expect(
-      await body.evaluate((element) => element.firstElementChild?.textContent ?? null),
+      await error.evaluate((element) => element.parentElement?.firstElementChild === element),
       'and it is the first thing the cell says',
-    ).toContain(OPENING_REDRAW_FAILED)
+    ).toBe(true)
     // Cell 02's run panel points at cell 03, not at a day nobody chose.
     await expect(page.getByText(OPENING_REDRAW_STOPPED, { exact: true })).toHaveCount(1)
     await expect(page.getByText(/The map was not drawn for that day/)).toHaveCount(0)
@@ -1166,7 +1261,7 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
     const job = inspector.getByRole('listitem', { name: /Rebuild for / })
     await expect(job, 'the redraw is the one job').toHaveCount(1)
     await expect(job).toHaveAttribute('data-state', 'failed')
-    await expect(job.locator('.message.error')).toContainText('has no stored layout')
+    await expect(job, 'with the engine’s reason').toContainText('has no stored layout')
     await toggle.click()
     await expect(inspector).toHaveCount(0)
 
@@ -1186,9 +1281,10 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
     const trip = page.getByRole('region', { name: TRIP, exact: true })
     await chooseStation(trip, START, 'alp')
     await chooseStation(trip, END, 'bra')
-    await expect(trip.locator('.trip-instead'), 'a trip has the old page’s sentence').toHaveText(
-      OLD_PAGE,
-    )
+    await expect(
+      trip.getByText(OLD_PAGE, { exact: true }),
+      'a trip has the old page’s sentence',
+    ).toBeVisible()
     expect(readRecord(h), 'nothing was written to the record').toEqual(before)
 
     // A theme goes by the address: the page cannot be told one.
@@ -1224,14 +1320,12 @@ test('a page lacking only the opening’s seams is told nothing of a theme or a 
   await withApp(h, async (page, app) => {
     await openedAndRefused(page, h, drawn)
     await openCell(page, 'frame')
-    const body = page.locator('.cell[data-cell="03"] .cell-body')
-    await expect(body.locator('p.message.error', { hasText: OPENING_REDRAW_FAILED })).toHaveText(
+    const body = cellGroup(page, 'frame')
+    await expect(body.getByText(OPENING_REDRAW_FAILED)).toHaveText(
       `${OPENING_REDRAW_FAILED} ${noLayoutReason(first.layout)}`,
     )
     // The page has setTheme and setTrip: only that the map stays as it was.
-    await expect(body.locator('p.prose', { hasText: ON_SCREEN_AS_IT_WAS })).toHaveText(
-      ON_SCREEN_AS_IT_WAS,
-    )
+    await expect(body.getByText(ON_SCREEN_AS_IT_WAS)).toHaveText(ON_SCREEN_AS_IT_WAS)
     await expect(body).not.toContainText(THEME_BY_RELOAD)
     await expect(body).not.toContainText(NO_TRIP_ON_IT)
 
@@ -1277,13 +1371,11 @@ test('a page older only by its record’s engine, whose redraw on open fails, is
   await withApp(h, async (page, app) => {
     await openedAndRefused(page, h, drawn)
     await openCell(page, 'frame')
-    const body = page.locator('.cell[data-cell="03"] .cell-body')
-    await expect(body.locator('p.message.error', { hasText: OPENING_REDRAW_FAILED })).toHaveText(
+    const body = cellGroup(page, 'frame')
+    await expect(body.getByText(OPENING_REDRAW_FAILED)).toHaveText(
       `${OPENING_REDRAW_FAILED} ${noLayoutReason(first.layout)}`,
     )
-    await expect(body.locator('p.prose', { hasText: ON_SCREEN_AS_IT_WAS })).toHaveText(
-      ON_SCREEN_AS_IT_WAS,
-    )
+    await expect(body.getByText(ON_SCREEN_AS_IT_WAS)).toHaveText(ON_SCREEN_AS_IT_WAS)
     await expect(body).not.toContainText(THEME_BY_RELOAD)
     await expect(body).not.toContainText(NO_TRIP_ON_IT)
     expect(drawnBy(h), 'nothing was drawn, so the record still names the older engine').toBe(

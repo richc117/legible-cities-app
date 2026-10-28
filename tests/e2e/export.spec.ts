@@ -156,8 +156,8 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
     for (const stage of ['plan', 'capture', 'encode']) {
       await expect(run.getByText(stage, { exact: true })).toBeVisible()
     }
-    await expect(page.getByText(/^Exported /)).toBeVisible({ timeout: 45_000 })
-    await expect(page.getByText(/^Exported /)).toHaveText(`Exported ${REEL}.`)
+    await expect(run.getByText(/^Exported /)).toBeVisible({ timeout: 45_000 })
+    await expect(run.getByText(/^Exported /)).toHaveText(`Exported ${REEL}.`)
 
     const file = deliverable(h)
     expect(existsSync(file), 'the file is under the export folder').toBe(true)
@@ -208,7 +208,9 @@ test('Outputs dates a re-exported file by the new export, with no reload', async
   await withApp(h, async (page) => {
     await laidOutProject(page, h)
     await exportButton(page).click()
-    await expect(page.getByText(/^Exported /)).toHaveText(`Exported ${REEL}.`, {
+    await expect(
+      page.getByRole('region', { name: 'Export run', exact: true }).getByText(/^Exported /),
+    ).toHaveText(`Exported ${REEL}.`, {
       timeout: 45_000,
     })
     const sidecar = `${deliverable(h)}.json`
