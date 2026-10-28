@@ -40,7 +40,7 @@ function section(onOpen: 'redraw' | 'never' | null): Element {
 
 describe('the map’s section and the decision about the page it opened on', () => {
   it('has no attribute before the decision', () => {
-    // Mutation: `data-on-open` written as `onOpen ?? 'never'`.
+    // Mutation: `data-on-open` written as `openDecision ?? 'never'`.
     expect(section(null).hasAttribute('data-on-open')).toBe(false)
   })
 

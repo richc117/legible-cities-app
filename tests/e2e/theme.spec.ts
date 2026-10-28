@@ -870,13 +870,21 @@ test('a page an older engine drew is redrawn once as its project opens, and then
       stop()
     }
 
-    // Once: the screen decided to redraw, and that decision is made once for
-    // a screen (`redrawSettled`). The redraw is done: its page is in the
-    // frame, has been given back its theme, and the count is read now.
+    // Once. `data-on-open` says the screen asked for the redraw; it is written
+    // in the effect that asks, so it shows no more than that. The redraw's
+    // `map.build` has landed (polled above), and a second would be another
+    // after it: the screen settles once (`project-state-writes.test.tsx` holds
+    // that it does not ask again, even for a redraw that failed), and the count
+    // is held over a window here as a check on the whole.
     await decidedOnOpen(page, 'redraw')
-    expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
-    expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
-    expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+    await stillHolds(
+      () => {
+        expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+        expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+        expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+      },
+      { window: 1500 },
+    )
 
     // A theme now is taken in place, as on any page the pinned engine drew.
     await openCell(page, 'style')
@@ -1036,12 +1044,21 @@ for (const [names, engine] of [
         stop()
       }
 
-      // Once: the screen decided to redraw, once for a screen, and the redraw
-      // is done (the record names the running engine, which its write does).
+      // Once. `data-on-open` says the screen asked for the redraw, and no
+      // more: it is written in the effect that asks. The redraw has landed (its
+      // `map.build` and its write naming the running engine, polled above), and
+      // a second would be another after it; the count is held over a window,
+      // and `project-state-writes.test.tsx` holds that the screen does not ask
+      // again.
       await decidedOnOpen(page, 'redraw')
-      expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
-      expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
-      expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+      await stillHolds(
+        () => {
+          expect(received(h, 'map.build'), 'the page was redrawn once').toHaveLength(asked + 1)
+          expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(1)
+          expect(readRecord(h).date, 'and the day is the one it was').toBe(day)
+        },
+        { window: 1500 },
+      )
 
       // And opened again, the record now names the running engine: not again.
       await page.getByRole('button', { name: 'Back to Library' }).click()

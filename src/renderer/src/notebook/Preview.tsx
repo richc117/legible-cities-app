@@ -94,7 +94,7 @@ export default function Preview({
           redraw={drawn}
           reloads={themeReloads}
           onSeams={pageSeams}
-          onOpen={onOpen}
+          openDecision={onOpen}
         />
       )}
     </div>

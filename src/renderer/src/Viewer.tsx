@@ -117,7 +117,7 @@ export default function Viewer({
   redraw = 0,
   reloads = 0,
   onSeams,
-  onOpen = null,
+  openDecision = null,
 }: {
   project: ProjectRecord
   /**
@@ -147,7 +147,7 @@ export default function Viewer({
    * said as `data-on-open` on the section, and drawn as nothing (issue 596).
    * It is for a test to wait on; no style, text or ARIA reads it.
    */
-  onOpen?: 'redraw' | 'never' | null
+  openDecision?: 'redraw' | 'never' | null
 }): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -290,7 +290,7 @@ export default function Viewer({
   }
 
   return (
-    <section className="viewer" aria-label="Map" data-on-open={onOpen ?? undefined}>
+    <section className="viewer" aria-label="Map" data-on-open={openDecision ?? undefined}>
       <div className="viewer-shape">
         <iframe
           className="viewer-frame"

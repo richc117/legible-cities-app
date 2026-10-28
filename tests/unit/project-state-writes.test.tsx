@@ -973,4 +973,79 @@ describe('the decision about the page the screen opened on', () => {
     act(() => shown.pageSeams(PAGE_SEAM_NAMES.slice(1)))
     expect(shown.onOpen).toBe('redraw')
   })
+
+  it('stays nothing while the decision waits, though the page has said it is older', async () => {
+    // A layout going holds the page, so `redrawOnOpen` answers wait. Mutation:
+    // `setOnOpen` moved above `if (now.kind === 'wait') return` - the signal
+    // would be given before the decision, and an end-to-end test waiting on
+    // it would read the count too soon.
+    await opened()
+    press()
+    expect(shown.runSnapshot.state).toBe('running')
+    act(() => shown.pageSeams(PAGE_SEAM_NAMES.slice(1)))
+    await act(tick)
+    expect(shown.onOpen).toBeNull()
+    expect(
+      sent.filter((s) => s.method === 'map.build'),
+      'and nothing was redrawn',
+    ).toEqual([])
+  })
+
+  it('does not ask again for a redraw that failed, though what asked for it still holds', async () => {
+    // The run ends with nothing drawn, so the conditions that asked for the
+    // redraw - an older page, the record's own layout and day, the engine
+    // ready, nothing busy - hold again as soon as the run is over, and only
+    // the screen having decided keeps it from asking once more, and so for
+    // ever. Mutation: `redrawSettled.current = true` taken out.
+    const { run, asked } = answeringRun()
+    runs.layout = run
+    await opened()
+    act(() => shown.pageSeams(PAGE_SEAM_NAMES.slice(1)))
+    await act(async () => {
+      await tick()
+      await tick()
+    })
+    expect(
+      asked.map((a) => a.method),
+      'the redraw was asked',
+    ).toEqual(['map.build'])
+    await act(async () => {
+      asked[0].reject(new Error('no stored layout'))
+      await tick()
+      await tick()
+    })
+    expect(shown.runSnapshot.state, 'it failed').toBe('failed')
+    expect(shown.drawn, 'nothing was drawn').toBe(0)
+    await act(async () => {
+      await tick()
+      await tick()
+    })
+    expect(
+      asked.map((a) => a.method),
+      'and it was not asked again',
+    ).toEqual(['map.build'])
+    expect(shown.onOpen).toBe('redraw')
+  })
+
+  it('does not ask again once the redraw has drawn', async () => {
+    const { run, asked } = answeringRun()
+    runs.layout = run
+    await opened()
+    act(() => shown.pageSeams(PAGE_SEAM_NAMES.slice(1)))
+    await act(async () => {
+      await tick()
+      await tick()
+    })
+    await act(async () => {
+      asked[0].resolve({ files: {} })
+      await tick()
+      await tick()
+      await tick()
+    })
+    expect(shown.drawn, 'the redraw drew').toBe(1)
+    expect(
+      asked.map((a) => a.method),
+      'and only it was asked',
+    ).toEqual(['map.build'])
+  })
 })
