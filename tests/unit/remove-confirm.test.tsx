@@ -76,8 +76,9 @@ let shown: ProjectState
 let deleted: ReturnType<typeof vi.fn>
 let left: ReturnType<typeof vi.fn>
 
-function Harness(): JSX.Element | null {
-  shown = useProjectState('p1', left as never)
+/** The hook, handed the way back the screen above hands it on this render. */
+function Harness({ onBack }: { onBack: (notice?: string) => void }): JSX.Element | null {
+  shown = useProjectState('p1', onBack)
   return null
 }
 
@@ -140,7 +141,7 @@ beforeEach(async () => {
   })
   root = createRoot(container())
   mounted = true
-  await act(async () => root.render(<Harness />))
+  await act(async () => root.render(<Harness onBack={left} />))
   await act(tick)
   expect(shown.project?.id, 'the record has been read').toBe('p1')
 })
@@ -156,6 +157,17 @@ describe('confirming a deletion', () => {
     await act(async () => shown.deleteProject())
     expect(deleted).toHaveBeenCalledWith('p1')
     expect(left).toHaveBeenCalled()
+  })
+  it('goes back by the way back the screen above handed in last', async () => {
+    // `App` hands in a new arrow on every render, and the one the screen
+    // holds is one function for its life, which calls whichever came
+    // last. Mutation: the effect that keeps it current removed - the first
+    // one is called.
+    const leftLater = vi.fn()
+    await act(async () => root.render(<Harness onBack={leftLater} />))
+    await act(async () => shown.deleteProject())
+    expect(leftLater).toHaveBeenCalledWith(undefined)
+    expect(left).not.toHaveBeenCalled()
   })
   it('is refused when the export began after the dialog was drawn', async () => {
     // The function the dialog holds, made at a render when nothing ran.

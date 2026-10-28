@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "  useEffect(() => {\n    backTo.current = onBack\n  }, [onBack])\n",
+    "replace": "",
+    "test": "tests/unit/remove-confirm.test.tsx",
+    "title": "goes back by the way back the screen above handed in last",
+    "why": "The way back not kept current: a delete calls the onBack the screen was first handed, not the one handed in last."
+  }
+]
