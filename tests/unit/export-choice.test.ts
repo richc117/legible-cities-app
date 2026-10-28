@@ -265,7 +265,7 @@ describe('the lines to keep, beside the lines cell 05 hides', () => {
     expect(source).toContain('const asked = useMemo(() => plannedChoice(choice, project.lines),')
     expect(source).toMatch(/useExportPreview\(\{\s+project,\s+asked,/)
     expect(planning).toContain('const key = keyOf(asked, project)')
-    expect(planning).toContain('choiceRef.current = asked')
+    expect(planning).toContain('useEffectEvent(() => planner.schedule(asked))')
     expect(source).toMatch(
       /<ExportRunView\s+run=\{run\}\s+project=\{project\}\s+engine=\{engine\}\s+choice=\{asked\}/,
     )
