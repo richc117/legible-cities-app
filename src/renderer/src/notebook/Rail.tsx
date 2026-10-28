@@ -148,6 +148,7 @@ export default function Rail({ states, open, onOpen }: Props): JSX.Element {
         follow()
       })
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the boxes' first measure, as the scroll listener's
     follow()
     window.addEventListener('scroll', later, { passive: true })
     window.addEventListener('resize', later)
