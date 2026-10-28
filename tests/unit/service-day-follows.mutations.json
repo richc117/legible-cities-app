@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "  if (followed !== followKey) {\n",
+    "replace": "  if (followed !== followKey || value !== (project.date ?? '')) {\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "moves to a day chosen elsewhere and drops its sentence, and keeps a day being typed",
+    "why": "The control put back to the record's day on every render where the two differ: a day cannot be typed, and the platform's calendar closes under the hand."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "    setFollowed(followKey)\n    setValue(project.date ?? '')\n    setMessage(null)\n",
+    "replace": "    setFollowed(followKey)\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "moves to a day chosen elsewhere and drops its sentence, and keeps a day being typed",
+    "why": "The follow removed: a day chosen elsewhere, or a reopened project's, is not shown, and the outside-the-window sentence stays."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "  const followKey = JSON.stringify([project.id, project.date, windowKey])\n",
+    "replace": "  const followKey = JSON.stringify(project)\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "moves to a day chosen elsewhere and drops its sentence, and keeps a day being typed",
+    "why": "The follow keyed on the record object: a rename, or any write's answer, puts back the day a person is typing."
+  }
+]
