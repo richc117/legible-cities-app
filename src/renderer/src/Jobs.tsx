@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from 'react'
 import { composeJobLog, describeJobState, jobSubject, type Job } from '../../shared/jobs'
+import { messageOf } from '../../shared/errors'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import ProgressLine from './ProgressLine'
@@ -33,9 +34,6 @@ export const LOG_COPIED =
   'The log is on the clipboard, with the keys in web addresses taken out and your home folder written as ~.'
 export const logNotCopied = (why: string): string => `The log could not be copied: ${why}.`
 
-const sentenceOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
-
 /**
  * "Copy log", as a function that can be called without rendering: the page
  * composes the job's text and the main process redacts it and writes the
@@ -46,7 +44,7 @@ export async function copyLog(job: Job, copy: (text: string) => Promise<void>): 
     await copy(composeJobLog(job))
     return LOG_COPIED
   } catch (error) {
-    return logNotCopied(sentenceOf(error))
+    return logNotCopied(messageOf(error))
   }
 }
 

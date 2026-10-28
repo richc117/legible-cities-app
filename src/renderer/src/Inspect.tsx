@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
+import { messageOf } from '../../shared/errors'
 import type { Inspection, Route, RouteType } from '../../shared/protocol'
 import type { ProjectInputs, ProjectRecord } from '../../shared/project/types'
 import { validateAgency, validateMode } from '../../shared/project/validate'
@@ -249,7 +250,7 @@ export default function Inspect({
     try {
       await onInputs(inputs)
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      setMessage(messageOf(error))
     }
   }
   const store = (inputs: ProjectInputs): Promise<void> =>

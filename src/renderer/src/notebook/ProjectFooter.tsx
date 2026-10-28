@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent, type JSX, type RefObject } from 'react'
+import { messageOf } from '../../../shared/errors'
 import { validateName } from '../../../shared/project/validate'
 import ConfirmDialog from '../ConfirmDialog'
 import Icon from '../icons/Icon'
@@ -80,7 +81,7 @@ function useRename(
       await setName(trimmed)
       close()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error))
+      setMessage(messageOf(error))
       inputRef.current?.focus()
     } finally {
       setSaving(false)

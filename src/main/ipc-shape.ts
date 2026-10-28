@@ -51,6 +51,8 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import type { Accepted } from '../shared/api'
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engine'
+import { messageOf } from '../shared/errors'
+import { SEP } from '../shared/patterns'
 import { log } from './log'
 import { pathScrubber } from './paths-in-text'
 import { redactUrls } from './redact'
@@ -90,9 +92,6 @@ export const UNCHECKED =
 
 /** A token the preload minted; a UUID passes. */
 export const TOKEN = /^[A-Za-z0-9-]{1,64}$/
-
-export const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** A handler as `ipcMain.handle` calls it: the event, then the page's arguments. */
 export type GuardedHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
@@ -146,7 +145,7 @@ export function badCall(what: string, roots: PathRoots): Accepted {
 /** Any error as the engine's wire shape, redacted for the page. */
 export function toShape(error: unknown, cleaning: Cleaning): EngineErrorShape {
   if (error instanceof EngineError) return redactShape(error.toJSON(), cleaning)
-  const message = error instanceof Error ? error.message : String(error)
+  const message = messageOf(error)
   return redactShape({ code: -32603, message }, cleaning)
 }
 
@@ -206,7 +205,7 @@ function warnOnce(error: unknown): void {
 }
 
 /** A separator, plain or percent-encoded, as a known folder's pattern accepts one. */
-const SEPARATOR = /[\\/]|%2[Ff]|%5[Cc]/
+const SEPARATOR = new RegExp(SEP)
 
 /** The index of the last whitespace character in a text, or -1. */
 function lastSpace(text: string): number {

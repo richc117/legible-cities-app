@@ -52,6 +52,7 @@ import { keepBounds, MINIMUM_WINDOW_SIZE, placeWindow } from './window-bounds'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
 import { engineWorkRefusal, Sidecar } from './sidecar'
+import { messageOf } from '../shared/errors'
 
 export const PRODUCT_NAME = 'Legible Cities'
 
@@ -93,10 +94,7 @@ if (movedUserData !== undefined && movedUserData !== '' && isAbsolute(movedUserD
     app.setPath('userData', movedUserData)
     userDataMoved = true
   } catch (error) {
-    log.error(
-      'config',
-      `LEGIBLE_USER_DATA could not be used: ${error instanceof Error ? error.message : String(error)}`,
-    )
+    log.error('config', `LEGIBLE_USER_DATA could not be used: ${messageOf(error)}`)
   }
 }
 // The logs, moved for a test run, on the same terms as the user-data folder:
@@ -121,10 +119,7 @@ if (logsTarget !== null) {
     app.setAppLogsPath(logsTarget.path)
     logsMoved = logsTarget.key
   } catch (error) {
-    log.error(
-      'config',
-      `the logs could not follow ${logsTarget.key}: ${error instanceof Error ? error.message : String(error)}`,
-    )
+    log.error('config', `the logs could not follow ${logsTarget.key}: ${messageOf(error)}`)
   }
 }
 

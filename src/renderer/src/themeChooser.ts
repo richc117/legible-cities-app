@@ -1,4 +1,5 @@
 import type { Theme } from '../../shared/project/types'
+import { messageOf } from '../../shared/errors'
 
 // What the theme switch does with a choice, with no React in it (A7-13,
 // issue 285): which theme the record will hold once the writes asked for
@@ -85,7 +86,7 @@ export function createThemeChooser({ initial, write, asked, failed }: Options): 
       } catch (error) {
         // What the record holds is what the writes before this one left,
         // which the screen's own record says (`sync`).
-        failed(error instanceof Error ? error.message : String(error))
+        failed(messageOf(error))
       } finally {
         // The last answer is the latest choice's: the record is the cards'
         // word again - what was written, or what it was if the write failed.

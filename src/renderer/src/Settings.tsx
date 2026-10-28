@@ -10,6 +10,7 @@ import {
   type SettingsView,
 } from '../../shared/settings'
 import { DIAGNOSTICS_REPORTS } from '../../shared/api'
+import { messageOf } from '../../shared/errors'
 import type { EngineState } from '../../shared/engine'
 import {
   describeOutcome,
@@ -53,9 +54,6 @@ interface Props {
   onChanged: (next: SettingsView) => void
   engine: EngineState | null
 }
-
-const sentenceOf = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
 
 /** Where a folder came from, in the screen's words. */
 const SOURCE_WORDS: Record<FolderView['source'], string> = {
@@ -104,7 +102,7 @@ export async function copyDiagnostics(bridge: {
     await bridge.copy(reports)
     return DIAGNOSTICS_COPIED
   } catch (error) {
-    return diagnosticsNotCopied(sentenceOf(error))
+    return diagnosticsNotCopied(messageOf(error))
   }
 }
 
@@ -150,7 +148,7 @@ export function licenceButtons(
           return
         }
         say(null)
-        open().catch((error: unknown) => say(sentenceOf(error)))
+        open().catch((error: unknown) => say(messageOf(error)))
       },
     }
   }
@@ -281,7 +279,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
       (next) => onChanged(next),
       (error: unknown) => {
         handBack.current = null
-        setMessage(sentenceOf(error))
+        setMessage(messageOf(error))
       },
     )
   }
@@ -405,7 +403,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
             onClick={() => {
               setMessage(null)
               window.api.settings.openLogsFolder().catch((error: unknown) => {
-                setMessage(sentenceOf(error))
+                setMessage(messageOf(error))
               })
             }}
           >

@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { CHANNELS, type Accepted, type Api, type Settled } from '../shared/api'
 import { type EngineErrorShape } from '../shared/engine'
-import { unwrapIpcError } from '../shared/errors'
+import { messageOf, unwrapIpcError } from '../shared/errors'
 
 // A rejection's message is the contract's sentence, without Electron's
 // remote-method wrapper around it.
@@ -14,7 +14,7 @@ async function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
   try {
     return (await ipcRenderer.invoke(channel, ...args)) as T
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = messageOf(error)
     throw new Error(unwrapIpcError(message), { cause: error })
   }
 }
@@ -56,7 +56,7 @@ function startJob<T>(
       },
       (error: unknown) => {
         off()
-        const message = error instanceof Error ? error.message : String(error)
+        const message = messageOf(error)
         const shape: EngineErrorShape = { code: -32603, message: unwrapIpcError(message) }
         reject(shape)
       },

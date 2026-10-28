@@ -49,12 +49,13 @@ import {
   type CaptureResult,
 } from './capture'
 import { inTime, LAPSED } from './deadline'
-import { isObject, toShape, URLS_ONLY } from './ipc-shape'
+import { toShape, URLS_ONLY } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
 import type { ProjectActivity } from './projectActivity'
 import { contains, FOLDERS_TIMEOUT_MS, oneAtATime, type FolderResolver } from './settings'
 import type { Notification } from './sidecar'
+import { isObject, messageOf } from '../shared/errors'
 
 /** What the export needs from the supervisor; a test hands in a fake. */
 export interface ExportEngine {
@@ -240,7 +241,7 @@ export function normalise(reason: unknown): EngineError {
     if (reason.cancelled) return cancelled()
     return engineError(ERROR_CODES.exportFailed, withoutPaths(reason.message), 'export')
   }
-  const message = reason instanceof Error ? reason.message : String(reason)
+  const message = messageOf(reason)
   return engineError(ERROR_CODES.exportFailed, withoutPaths(message), 'io')
 }
 

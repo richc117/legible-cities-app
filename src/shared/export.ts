@@ -16,6 +16,7 @@ import {
   type StoryboardBeats,
 } from './opening'
 import { COLORS_MAX, validateLineLabel } from './project/validate'
+import { isObject } from './errors'
 import type {
   ClockCorner,
   ExportOptions,
@@ -152,9 +153,6 @@ export const CLOCK_PATTERN = /^[0-9]{1,2}:[0-9]{2}(:[0-9]{2})?$/
 /** The engine's `Token`: a short filename suffix. */
 export const TAG_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
 
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
-
 /** A start time, or why it is not one; a sentence a person reads beside the field. */
 export function validateClock(value: unknown): string | null {
   if (typeof value !== 'string' || !CLOCK_PATTERN.test(value))
@@ -250,7 +248,7 @@ export function validateAlt(value: unknown): string | null {
  * checks above for its sentences.
  */
 export function validateChoiceOptions(options: unknown): string | null {
-  if (!isPlainObject(options)) return 'the options must be an object'
+  if (!isObject(options)) return 'the options must be an object'
   for (const key of Object.keys(options))
     if (!(CHOICE_OPTION_KEYS as readonly string[]).includes(key))
       return `${key} is not an option the export tab sets`
@@ -304,7 +302,7 @@ function storedAltProblem(alt: unknown): string | null {
 
 /** A whole choice, or the first reason it is not one. */
 export function validateExportChoice(choice: unknown): string | null {
-  if (!isPlainObject(choice)) return 'the export choice must be an object'
+  if (!isObject(choice)) return 'the export choice must be an object'
   for (const key of Object.keys(choice))
     if (!(EXPORT_CHOICE_FIELDS as readonly string[]).includes(key))
       return `${key} is not part of an export choice`
@@ -605,10 +603,9 @@ export type ExportSettled =
 export function readStoredChoice(value: unknown): ExportChoice {
   let candidate = value
   let opening: OpeningChoice = {}
-  if (isPlainObject(value)) {
+  if (isObject(value)) {
     const without = knownOf(value, EXPORT_CHOICE_FIELDS)
-    if (isPlainObject(without.options))
-      without.options = knownOf(without.options, CHOICE_OPTION_KEYS)
+    if (isObject(without.options)) without.options = knownOf(without.options, CHOICE_OPTION_KEYS)
     if (without.alt !== undefined && validateAlt(without.alt) !== null) delete without.alt
     opening = readOpeningFields(without)
     for (const key of OPENING_KEYS) delete without[key]

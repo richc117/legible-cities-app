@@ -31,6 +31,7 @@ import type { Stage } from '../ProgressLine'
 import type { RunAllPlan } from '../runAll'
 import { styleParams } from '../styleRules'
 import { askedWith, tuningParams } from '../tuningRules'
+import { isObject } from '../../../shared/errors'
 
 // One layout run for one project, with no React in it: the rule is that
 // logic lives in something callable without rendering, and the tests are
@@ -202,8 +203,6 @@ export interface RunReport {
   issues: number
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 const isFigure = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 const isLabels = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((s) => typeof s === 'string')

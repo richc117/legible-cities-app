@@ -15,7 +15,7 @@ import {
   TUNING_FIELDS,
 } from '../../shared/project/types'
 import type { Station } from '../../shared/trip'
-import { isObject } from './validate'
+import { isObject } from '../../shared/errors'
 
 /**
  * The blocks that record a fact rather than a choice: what a draw drew

@@ -1,0 +1,50 @@
+[
+  {
+    "file": "src/shared/errors.ts",
+    "find": "const STOPPED = /[.!?…][”’\")]*$/",
+    "replace": "const STOPPED = /[.!?]$/",
+    "test": "tests/unit/errors.test.ts",
+    "title": "ends ",
+    "why": "Cell 03's old rule for the one function: a reason ending in an ellipsis or a stop inside closing quotes would get a second stop again."
+  },
+  {
+    "file": "src/renderer/src/tripWords.ts",
+    "find": "  return fullStopped(capitalised(said))\n",
+    "replace": "  const first = capitalised(said)\n  return /[.!?]$/.test(first) ? first : `${first}.`\n",
+    "test": "tests/unit/errors.test.ts",
+    "title": "is what cell 03 and the Library say for",
+    "why": "The trip's reason going back to its own copy of the rule: a reason ending in quotes after a stop would get a second stop in cell 03 and not in the Library."
+  },
+  {
+    "file": "src/renderer/src/notebook/olderPage.ts",
+    "find": "  return fullStopped(said)\n",
+    "replace": "  return /[.!?]$/.test(said) ? said : `${said}.`\n",
+    "test": "tests/unit/errors.test.ts",
+    "title": "is what cell 03 and the Library say for",
+    "why": "The engine's hint going back to its own copy of the rule: cell 03 would say \"wait…”.\" where the Library says \"wait…”\"."
+  },
+  {
+    "file": "src/shared/errors.ts",
+    "find": "text.charAt(0).toUpperCase() + text.slice(1)",
+    "replace": "text",
+    "test": "tests/unit/errors.test.ts",
+    "title": "makes ",
+    "why": "No first capital: a look would be called \"beck\" and a line's options \"bold, dashed\"."
+  },
+  {
+    "file": "src/shared/errors.ts",
+    "find": "  error instanceof Error ? error.message : String(error)\n",
+    "replace": "  String(error)\n",
+    "test": "tests/unit/errors.test.ts",
+    "title": "says an error's message, without its name",
+    "why": "An error said by its string form: every refusal on screen would begin \"Error: \"."
+  },
+  {
+    "file": "src/shared/errors.ts",
+    "find": "typeof value === 'object' && value !== null && !Array.isArray(value)",
+    "replace": "typeof value === 'object' && value !== null",
+    "test": "tests/unit/errors.test.ts",
+    "title": "is not null, an array, or anything that is not an object",
+    "why": "An array taken for an object: a page or a record that sends a list where fields belong would be read field by field."
+  }
+]

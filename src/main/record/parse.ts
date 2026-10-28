@@ -42,13 +42,13 @@ import {
   validateServiceDate,
 } from '../../shared/project/validate'
 import { isStorableFolder } from '../../shared/settings'
+import { isObject } from '../../shared/errors'
 import { readStations } from '../../shared/trip'
 import { Carried } from './carried'
 import {
   ID_PATTERN,
   isCasingWidth,
   isLineWidth,
-  isObject,
   validateMade,
   validatePalette,
   validateServiceWindow,

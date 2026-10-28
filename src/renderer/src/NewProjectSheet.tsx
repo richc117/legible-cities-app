@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { CreateProjectInput, PickedZip } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
+import { messageOf } from '../../shared/errors'
 import { validateFeedKey, validateName } from '../../shared/project/validate'
 import { DEFAULT_FEED, uniqueName } from './record'
 import type { FeedRecord } from '../../shared/protocol'
@@ -318,7 +319,7 @@ export default function NewProjectSheet({
       // Escape may have closed the sheet while the request was in flight;
       // the message would only surface, stale, on the next opening.
       if (!dialogRef.current?.open) return
-      const message = error instanceof Error ? error.message : String(error)
+      const message = messageOf(error)
       // Not busy before focus moves: a disabled field cannot take it.
       setBusy(false)
       fail(fieldFor(message), message)

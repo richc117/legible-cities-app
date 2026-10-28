@@ -1,6 +1,7 @@
 import type { MapBuildParams } from '../../shared/protocol'
 import { linesSent, settledLine } from '../../shared/project/helpers'
 import { lineNameSentence } from '../../shared/project/sentences'
+import { capitalised } from '../../shared/errors'
 import {
   DEFAULT_CASING_COLOR,
   DEFAULT_LINE,
@@ -155,7 +156,7 @@ export function optionsSummary(label: string, choice: LineChoice | undefined): s
   if (held.name !== undefined) words.push('renamed')
   if (words.length === 0) return 'Default'
   const said = words.join(', ')
-  return said.charAt(0).toUpperCase() + said.slice(1)
+  return capitalised(said)
 }
 
 /** What a committed name is: the name to keep, none, or the engine's refusal. */

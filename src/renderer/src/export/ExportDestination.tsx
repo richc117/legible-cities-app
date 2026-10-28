@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX, type SetStateAction } from 'react'
+import { messageOf } from '../../../shared/errors'
 import type { ProjectRecord } from '../../../shared/project/types'
 import { focusLost } from '../focusHandback'
 import Icon from '../icons/Icon'
@@ -101,7 +102,7 @@ export default function ExportDestination({
       handBackToChooser.current = handBack && record.destination === null
       set({ folder: record.destination, problem: null })
     } catch (error) {
-      const problem = error instanceof Error ? error.message : String(error)
+      const problem = messageOf(error)
       set((now) => ({ ...now, problem }))
     } finally {
       changing.current = false

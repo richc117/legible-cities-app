@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
+import { messageOf } from '../../shared/errors'
 import Button from './kit/Button'
 
 interface Props {
@@ -154,7 +155,7 @@ export default function ConfirmDialog({
     try {
       await onConfirm()
     } catch (error) {
-      const said = error instanceof Error ? error.message : String(error)
+      const said = messageOf(error)
       if (!mounted.current) return
       if (generation.current === mine && dialogRef.current?.open === true) setMessage(said)
       else onLateError?.(said)

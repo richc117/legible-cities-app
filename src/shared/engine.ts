@@ -7,6 +7,7 @@ import type {
   JobLog as EngineJobLog,
   JobProgress as EngineJobProgress,
 } from './protocol'
+import { SEP } from './patterns'
 
 export interface EnginePin {
   repo: string
@@ -103,12 +104,9 @@ export const ERROR_CODES = {
 // full stop, end the path.
 const PATH_CHAR = String.raw`(?:[^\s'",;:)]|[',;:)](?=[^\s'",;:).]))`
 
-/**
- * One separator: either slash, or either one percent-encoded as a file URL
- * writes it. A known folder's pattern accepts all four
- * (`src/main/paths-in-text.ts`), so all four end a word here.
- */
-const SEP = String.raw`(?:[\\/]|%2[Ff]|%5[Cc])`
+// One separator is `SEP` (`./patterns`): either slash, or either one
+// percent-encoded as a file URL writes it. A known folder's pattern accepts
+// all four (`src/main/paths-in-text.ts`), so all four end a word here.
 
 /** Where a path starts: a separator, or a drive and a separator, its colon plain or percent-encoded. */
 const PATH_START = String.raw`(?:[A-Za-z](?::|%3[Aa]))?${SEP}`

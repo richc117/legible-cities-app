@@ -5,6 +5,7 @@ import { drawnDate, serviceDayRefusal } from '../../../shared/project/helpers'
 import { type ProjectRecord } from '../../../shared/project/types'
 import { isEngineVersion } from '../../../shared/project/validate'
 import { engineBefore } from '../record'
+import { fullStopped } from '../../../shared/errors'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import type { RunAllPlan } from '../runAll'
 import { cellOfRun, type RunFacts } from '../runGraph'
@@ -337,7 +338,7 @@ export const rebuildFailed = (day: string | null): string =>
 export function engineReason(reason: string | null): string {
   const said = (reason ?? '').trim()
   if (said === '') return ''
-  return /[.!?]$/.test(said) ? said : `${said}.`
+  return fullStopped(said)
 }
 
 /** The words cell 03 draws for a failure: the error, and what still holds where there is that to say. */

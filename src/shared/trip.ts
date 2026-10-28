@@ -13,6 +13,8 @@
 // and a trip that is not whole is refused with a sentence and never half
 // drawn.
 
+import { isObject } from './errors'
+
 /** One station of the map, as `map.build` lists it: what `setTrip` takes, and the name the map writes. */
 export interface Station {
   /** The node id in the stored layout. */
@@ -58,9 +60,6 @@ export const TRIP_LEGS_MAX = 100
 
 /** The most stops one leg may ride. */
 export const TRIP_STOPS_MAX = 100_000
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
 
 /**
  * Text the feed wrote - a station's name, a line's label - which is drawn as
