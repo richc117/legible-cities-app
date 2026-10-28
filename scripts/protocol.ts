@@ -487,6 +487,10 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
 
 /** The whole module, from the description. Deterministic: no date, no path. */
 export function emit(description: Description, tag: string): string {
+  // Written into the header's comment and as `PROTOCOL`'s value, so anything
+  // but a whole number would be text in the one and code in the other.
+  if (!Number.isInteger(description.protocol))
+    throw new Error('protocol: the protocol version is not a whole number')
   const defs = new Set(Object.keys(description.$defs))
   const out: string[] = [
     "// Generated from the engine's own description of its protocol.",

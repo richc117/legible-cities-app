@@ -448,6 +448,19 @@ describe('what the description names is written as data, or refused', () => {
     }
   })
 
+  it('refuses a protocol version that is not a whole number', async () => {
+    // A line break ends the header's comment; the rest is the module's code.
+    await refusedBeforeRunning(
+      { ...base, protocol: '1.\nglobalThis.ran = 1\n//' },
+      /protocol: the protocol version is not a whole number/,
+    )
+    for (const protocol of ['1', 1.5, null, Number.NaN]) {
+      expect(() => emit({ ...base, protocol } as never, 'v0.0.0'), String(protocol)).toThrow(
+        /not a whole number/,
+      )
+    }
+  })
+
   it('refuses a definition name that is not an identifier, referenced or not', async () => {
     await refusedBeforeRunning(
       { ...base, $defs: { 'A = 1; globalThis.ran = 1; type B': { type: 'string' } } },
