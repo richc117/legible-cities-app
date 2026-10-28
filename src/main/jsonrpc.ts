@@ -7,11 +7,74 @@
 
 import type { Readable, Writable } from 'node:stream'
 import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
+import { redactUrls } from './redact'
 
+/**
+ * What the framing and the parsing refuse. An exception the notification
+ * handler throws is the app's, not the engine's, and is logged as such
+ * (issue 587); the reader's catch still makes a ProtocolError of anything
+ * else thrown while a message is handed on (a throwing `log` or
+ * `onDroppedResponse`, which neither does today).
+ */
 export class ProtocolError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'ProtocolError'
+  }
+}
+
+/**
+ * Printable ASCII only: anything outside it dropped, a tab, a newline and a
+ * no-break space with the rest.
+ */
+function clean(text: string): string {
+  return text.replace(/[^ -~]/g, '')
+}
+
+/** Cut to a length, the ends trimmed. */
+function cut(text: string, max: number): string {
+  return text.slice(0, max).trim()
+}
+
+/** Printable ASCII only, cut to a length. */
+export function printable(text: string, max: number): string {
+  return cut(clean(text), max)
+}
+
+/**
+ * Text the app's code threw, as the log may hold it: made printable, then
+ * redacted, then cut, so that the redaction reads exactly the text that is
+ * written. Printable first, because `redactUrls` reads one
+ * whitespace-separated run at a time: a tab or a newline dropped after it
+ * would join two runs into an address it never saw. Dropped before it, the
+ * joined address is what it reads. Cut last, because a cut through an
+ * address can leave its user information without the `@` the redaction
+ * finds it by.
+ */
+export function shown(text: string, max: number): string {
+  return cut(redactUrls(clean(text)), max)
+}
+
+/**
+ * Something the app's own code threw, as a log line: the rule of
+ * `process-handlers.ts`'s uncaught exception. Its name and, for a system
+ * error, its code and nothing of the message, which names a path; any other
+ * error's message cut to 200 characters; never the stack. Its web
+ * addresses are redacted here, at the source, as a reason's are in
+ * `Sidecar.setState`: a message can quote an address a feed was given, key
+ * and all, and the line must not wait on the sink to take it out
+ * (`shown` has the order). Never throws.
+ */
+export function describeThrown(error: unknown): string {
+  try {
+    if (error instanceof Error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (typeof code === 'string') return `${shown(error.name, 80)} (${shown(code, 40)})`
+      return `${shown(error.name, 80)}: ${shown(String(error.message), 200)}`
+    }
+    return typeof error === 'string' ? shown(error, 200) : 'a value that is not an error'
+  } catch {
+    return 'an error that could not be read'
   }
 }
 
@@ -272,7 +335,17 @@ export class JsonRpcClient {
         this.handlers.log(`refused a request from the engine: ${message.method}`)
         return
       }
-      this.handlers.onNotification(message.method, message.params)
+      // The handler is the app's own code. What it throws is the app's error,
+      // logged as one; let through, the frame reader would take it for the
+      // engine's and the supervisor would restart a sound engine (issue 587).
+      // The next frame in the chunk is still read.
+      try {
+        this.handlers.onNotification(message.method, message.params)
+      } catch (error) {
+        this.handlers.log(
+          `error in the app: the handler of ${shown(message.method, 80)} threw: ${describeThrown(error)}`,
+        )
+      }
       return
     }
     const id = message.id

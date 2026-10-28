@@ -1,0 +1,66 @@
+[
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      try {\n        this.handlers.onNotification(message.method, message.params)\n      } catch (error) {\n        this.handlers.log(\n          `error in the app: the handler of ${shown(message.method, 80)} threw: ${describeThrown(error)}`,\n        )\n      }\n",
+    "replace": "      this.handlers.onNotification(message.method, message.params)\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)",
+    "why": "The handler called bare, as before issue 587: its exception reaches the frame reader, is reported as a protocol error, and the reading stops at the throw."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "  return cut(redactUrls(clean(text)), max)\n",
+    "replace": "  return cut(clean(text), max)\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)",
+    "why": "What the app threw logged unredacted: a key in an address it quotes reaches the log line whole."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      if (typeof code === 'string') return `${shown(error.name, 80)} (${shown(code, 40)})`\n",
+    "replace": "",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "describes what the app threw by its name and message, a system error by its code, never the stack",
+    "why": "A system error described by its message, which names a path, rather than by its code."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "  return cut(redactUrls(clean(text)), max)\n",
+    "replace": "  return redactUrls(cut(clean(text), max))\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "redacts what the app threw before it cuts it, an error and a string alike",
+    "why": "Cut before it is redacted: an address across the cut keeps its user information without the `@`, and the password's start is logged."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "    return typeof error === 'string' ? shown(error, 200) : 'a value that is not an error'\n",
+    "replace": "    return typeof error === 'string' ? printable(error, 200) : 'a value that is not an error'\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "redacts what the app threw before it cuts it, an error and a string alike",
+    "why": "A thrown string not redacted at all: a key in an address it quotes is logged whole."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "  return cut(redactUrls(clean(text)), max)\n",
+    "replace": "  return cut(redactUrls(text), max)\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "makes what the app threw printable before it redacts it, so no secret is joined after",
+    "why": "The clean step dropped: a tab between an address and its query keeps the runs apart, the query alone is no address the redaction knows, and the key is logged."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "  return cut(redactUrls(clean(text)), max)\n",
+    "replace": "  return cut(clean(redactUrls(text)), max)\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "makes what the app threw printable before it redacts it, so no secret is joined after",
+    "why": "Redacted before it is made printable: the tab or newline dropped afterwards joins two runs into an address the redaction never read."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "  return text.replace(/[^ -~]/g, '')\n",
+    "replace": "  return text.replace(/\\s/g, ' ').replace(/[^ -~]/g, '')\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "makes what the app threw printable before it redacts it, so no secret is joined after",
+    "why": "Each whitespace character made a space rather than dropped: the runs stay apart, and neither half (`?api_key=…`, `https://user:hunter2`) is an address the redaction knows."
+  }
+]

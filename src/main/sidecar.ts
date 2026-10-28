@@ -16,7 +16,7 @@ import {
   type EngineState,
 } from '../shared/engine'
 import { redactUrls } from './redact'
-import { JsonRpcClient, ProtocolError } from './jsonrpc'
+import { describeThrown, JsonRpcClient, ProtocolError, shown } from './jsonrpc'
 
 export { describeState }
 
@@ -620,7 +620,19 @@ export class Sidecar {
       this.log(`dropped ${method} for an unknown request id ${id}`)
       return
     }
-    for (const listener of this.notificationListeners) listener({ method, params })
+    // Each listener is the app's own code: what one throws is logged as the
+    // app's error, and the next listener still hears the notification. Let
+    // through, it reached the frame reader as a protocol error, and a sound
+    // engine was restarted with a reason that blamed it (issue 587).
+    for (const listener of this.notificationListeners) {
+      try {
+        listener({ method, params })
+      } catch (error) {
+        this.log(
+          `error in the app: a notification listener threw on ${shown(method, 80)}: ${describeThrown(error)}; the engine keeps running`,
+        )
+      }
+    }
   }
 
   // -- failure and restart --

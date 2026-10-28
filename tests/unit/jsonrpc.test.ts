@@ -2,7 +2,13 @@
 
 import { PassThrough } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { FrameReader, JsonRpcClient, ProtocolError, writeFrame } from '../../src/main/jsonrpc'
+import {
+  describeThrown,
+  FrameReader,
+  JsonRpcClient,
+  ProtocolError,
+  writeFrame,
+} from '../../src/main/jsonrpc'
 import { EngineError } from '../../src/shared/engine'
 
 const frame = (message: unknown, eol = '\r\n'): Buffer => {
@@ -264,6 +270,97 @@ describe('JsonRpcClient', () => {
     await tick()
     expect(notifications.map((n) => n.method)).toEqual(['job/log', 'job/progress'])
     expect(log.some((l) => l.includes('unknown request id 99'))).toBe(true)
+  })
+  // Issue 587: the handler is the app's code, so what it throws is no
+  // protocol error. The two notifications and the answer arrive in one chunk,
+  // and the reading goes on past the throw to both of the others.
+  it("logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)", async () => {
+    const fromEngine = new PassThrough()
+    const heard: string[] = []
+    const log: string[] = []
+    const protocolErrors: ProtocolError[] = []
+    const c = new JsonRpcClient(new PassThrough(), fromEngine, {
+      onNotification: (method) => {
+        heard.push(method)
+        if (method === 'job/log')
+          throw new RangeError('handler broke on https://h.example.org/f.zip?token=planted587')
+      },
+      onProtocolError: (e) => protocolErrors.push(e),
+      log: (m) => log.push(m),
+    })
+    const { result } = c.request('graph.build', { key: 'x' })
+    fromEngine.write(
+      Buffer.concat([
+        frame({ jsonrpc: '2.0', method: 'job/log', params: { id: 1, line: 'a' } }),
+        frame({ jsonrpc: '2.0', method: 'job/progress', params: { id: 1, stage: 'topo' } }),
+        frame({ jsonrpc: '2.0', id: 1, result: { ok: true } }),
+      ]),
+    )
+    await tick()
+    expect(protocolErrors).toEqual([])
+    expect(heard).toEqual(['job/log', 'job/progress'])
+    await expect(result).resolves.toEqual({ ok: true })
+    expect(log).toHaveLength(1)
+    expect(log[0]).toMatch(
+      /^error in the app: the handler of job\/log threw: RangeError: handler broke on https:\/\/h\.example\.org\/f\.zip\?token=/,
+    )
+    expect(log[0]).not.toContain('planted587')
+  })
+  it('describes what the app threw by its name and message, a system error by its code, never the stack', () => {
+    const system = Object.assign(new Error('ENOENT: no such file, open data/feeds/x.zip'), {
+      code: 'ENOENT',
+    })
+    expect(describeThrown(system)).toBe('Error (ENOENT)')
+    expect(describeThrown(new TypeError('x is not a function'))).toBe(
+      'TypeError: x is not a function',
+    )
+    expect(describeThrown(new Error('y'.repeat(300)))).toBe(`Error: ${'y'.repeat(200)}`)
+    expect(describeThrown('a string')).toBe('a string')
+    expect(describeThrown(42)).toBe('a value that is not an error')
+    const unreadable = new Error('z')
+    Object.defineProperty(unreadable, 'name', {
+      get() {
+        throw new Error('no')
+      },
+    })
+    expect(describeThrown(unreadable)).toBe('an error that could not be read')
+  })
+  // The address straddles the cut at 200 characters: cut first, it would end
+  // `https://user:hunter`, with no `@` left for the redaction to find the
+  // user information by, and the password's start would be logged.
+  it('redacts what the app threw before it cuts it, an error and a string alike', () => {
+    const straddling = `${'a'.repeat(180)} https://user:hunter2@feeds.example.org/f.zip`
+    for (const line of [describeThrown(new Error(straddling)), describeThrown(straddling)]) {
+      expect(line).not.toContain('hunter')
+      expect(line).toContain(`${'a'.repeat(180)} https://<redacted>@`)
+    }
+    expect(describeThrown('fetch https://feeds.example.org/f.zip?api_key=planted587')).toBe(
+      'fetch https://feeds.example.org/f.zip?api_key=<redacted>',
+    )
+  })
+  // `redactUrls` reads one whitespace-separated run at a time. A tab, a
+  // newline or a no-break space dropped after it joins two runs into an
+  // address it never read; dropped before it, the joined address is what it
+  // reads. A space put in its place would keep the runs apart, and neither
+  // half alone (`?api_key=…`, `https://user:hunter2`) is an address the
+  // redaction knows.
+  it('makes what the app threw printable before it redacts it, so no secret is joined after', () => {
+    const inputs = [
+      'https://h.example.org/f.zip\t?api_key=planted',
+      'https://user:hunter2\n@h.example.org/f.zip',
+      // a no-break space, written as an escape so no editor turns it into a plain one
+      'https://user:hunter2\u00a0@h.example.org/f.zip',
+    ]
+    for (const input of inputs) {
+      for (const line of [describeThrown(new Error(input)), describeThrown(input)]) {
+        expect(line).not.toContain('planted')
+        expect(line).not.toContain('hunter')
+        expect(line).toContain('<redacted>')
+      }
+    }
+    const named = new Error('x')
+    named.name = 'Error\thttps://h.example.org/f.zip\t?token=planted'
+    expect(describeThrown(named)).not.toContain('planted')
   })
   it('reports the id of a late answer to a request settled from outside (issue 107)', async () => {
     const { c, dropped, reply } = client()
