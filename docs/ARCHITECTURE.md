@@ -2344,17 +2344,23 @@ answer, get the backstop alone (`notesOf` in `src/main/export.ts`); the
 progress message, the log lines cell 02 draws and the engine state's reason
 are redacted for URLs only; an error thrown from any other handler (the
 projects', Settings', a destination's) does not pass this door and relies
-on its own sentence carrying no path; and the renderer still runs
-`withoutPaths` itself where it did before. That includes the three runs
-(issue 519): a layout run, an export and a feed add make their failure's
-sentence through `runFailureSentence` (`src/shared/jobs.ts`), which runs it
-over the engine's hint or message, or a thrown error's message, once, where
-the sentence is made, except the app's own refusals (the code `badCall`,
-which `refusal` in `src/main/ipc-shape.ts` gives them), which are left as the
-door made them for the reason above: they can quote a project's name. The
-snapshot's `error` is then already fit for a
-screen, and cell 01's download line, cell 02's status line, cell 06's run
-and the New project sheet show it as it is. The engine's `detail` is kept
+on its own sentence carrying no path; and the renderer
+still runs `withoutPaths` itself where it did before, except for a failure
+a person reads from a run or a panel (issues 519 and 593). The three runs, a
+layout run, an export and a feed add, make their failure's sentence through
+`runFailureSentence` (`src/shared/jobs.ts`), which runs it over the engine's
+hint or message, or a thrown error's message, once, where the sentence is
+made, except the app's own refusals (the code `badCall`, which `refusal` in
+`src/main/ipc-shape.ts` gives them), which are left as the door made them
+for the reason above: they can quote a project's name. The snapshot's
+`error` is then already fit for a screen, and cell 01's download line, cell
+02's status line, cell 06's run and the New project sheet show it as it is.
+The four panels that read the engine without a run say a refusal by the
+same rule (issue 593): cell 01's inspection and its stage drawing, and cell
+05's colours and order, each through `runFailureSentence` with its own
+fallback (the three inspections through `inspectionFailure` in
+`src/renderer/src/engine/inspections.ts`), so an app refusal quoting a
+slashed project name is shown whole there too. The engine's `detail` is kept
 as sent beside it for the copied log, which main redacts on its own.
 
 Lines logged before the app is ready are held in memory, two thousand at

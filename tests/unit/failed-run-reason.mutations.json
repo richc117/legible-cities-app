@@ -62,5 +62,13 @@
     "test": "tests/unit/failed-run-reason.test.tsx",
     "title": "shows an engine hint carrying",
     "why": "The stage drawing’s sentence taken from the engine’s hint unscreened: the cell would show the folders of a path."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "            refused: runFailureSentence(error, STAGE_FAILED),\n",
+    "replace": "            refused: (\n              (error as { data?: { hint?: string }; message?: string }).data?.hint ??\n              (error as { message?: string }).message ??\n              STAGE_FAILED\n            ).replace(/\\/.*$/, 'a file'),\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows the app’s own refusal whole, with the slash in the project’s name",
+    "why": "The reveal path’s refusal alone back on a hand-written screen of paths: the app’s refusal quoting a slashed project name is cut at the slash while a run reveals, and only there."
   }
 ]

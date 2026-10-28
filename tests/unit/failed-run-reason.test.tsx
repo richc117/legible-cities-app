@@ -23,6 +23,7 @@
 // The paths are assembled rather than written out: bin/preflight refuses a
 // path literal in a committed file.
 
+import { act } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import DownloadLine from '../../src/renderer/src/DownloadLine'
@@ -30,6 +31,7 @@ import ExportRunPanel from '../../src/renderer/src/ExportRun'
 import { ExportRun, type ExportBridge } from '../../src/renderer/src/engine/exportRun'
 import { FeedAdd, sentenceFor as addSentence } from '../../src/renderer/src/engine/feedAdd'
 import {
+  freshStages,
   LayoutRun,
   sentenceFor as layoutSentence,
   type RunClient,
@@ -45,7 +47,7 @@ import { composeJobLog, runFailureSentence, screenPaths, type Job } from '../../
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
 import { defaultProjectState, pending } from '../support/project-state'
 import { answered, cleanup, renderCell } from '../support/render'
-import { StandInRun } from '../support/stand-in-run'
+import { snap, StandInRun } from '../support/stand-in-run'
 import { until } from '../support/until'
 
 const POSIX = ['', 'Users', 'someone', 'Library', 'engine-home', 'feeds', 'la-metro.zip'].join('/')
@@ -390,6 +392,12 @@ describe('the panels that read the engine without a run', () => {
       return null
     }
   }
+  /** A layout run with a job and its first stage reported, which makes cell 01 reveal it. */
+  class RevealingRun extends StandInRun {
+    job(): { id: string } {
+      return { id: 'job-A' }
+    }
+  }
   const refuse = (reason: unknown) => (): Promise<never> => Promise.reject(reason)
 
   /** What a panel shows of a refusal: the text of the element that says it, or null. */
@@ -415,6 +423,28 @@ describe('the panels that read the engine without a run', () => {
           'data',
           { inspect: () => pending(), readStage: refuse(reason) },
           { run: new IdleRun() },
+        )
+        await answered()
+        return document.querySelector('.stage-view p.message.error')?.textContent ?? null
+      },
+    },
+    {
+      name: 'cell 01’s stage drawing while a run reveals',
+      fallback: 'The stage could not be drawn.',
+      shown: async (reason) => {
+        // Refused with no `data.building`, so not a "not yet" but a refusal to say.
+        const run = new RevealingRun()
+        renderCell('data', { inspect: () => pending(), readStage: refuse(reason) }, { run })
+        await answered()
+        act(() =>
+          run.move({
+            ...snap('running'),
+            layout: 'b'.repeat(64),
+            stages: freshStages().map((s, i) => ({
+              ...s,
+              state: i === 0 ? ('done' as const) : ('pending' as const),
+            })),
+          }),
         )
         await answered()
         return document.querySelector('.stage-view p.message.error')?.textContent ?? null
