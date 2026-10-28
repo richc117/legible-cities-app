@@ -13,6 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { EngineState } from '../../src/shared/engine'
+import type { StylePresets } from '../../src/shared/protocol'
 import { forgetLooks, LOOK_SENTENCE, looksFor, LOOKS_WAITING } from '../../src/renderer/src/looks'
 import { answered, byName, cleanup, renderCell } from '../support/render'
 
@@ -20,8 +21,23 @@ const V1: EngineState = { state: 'ready', version: '0.19.0', protocol: 1 }
 const V2: EngineState = { state: 'ready', version: '0.20.0', protocol: 1 }
 
 /** The engine's answer to `style.presets`: one look, Beck. */
-const PRESETS = {
-  presets: [{ name: 'beck' as const, style: { line_width: 6, station_shape: 'tick' as const } }],
+const PRESETS: StylePresets = {
+  presets: [
+    {
+      name: 'beck',
+      style: {
+        line_width: 6,
+        line_gap: 1.33,
+        station_radius: 3.6,
+        interchange_radius: 7.5,
+        station_stroke: 3,
+        label_size: 11,
+        label_offset: 10,
+        padding: 24,
+        station_shape: 'tick',
+      },
+    },
+  ],
 }
 
 beforeEach(forgetLooks)
