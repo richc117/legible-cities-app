@@ -414,8 +414,9 @@ export function registerProjectHandlers(
     writes = true,
   ): void => {
     const writer = COMPLETIONS[channel]
-    // Only the interface's own top frame reaches the store: a project page
-    // in an iframe shares the origin but must not have the bridge.
+    // Only the interface's own top frame reaches the store (the guard's
+    // rule); a project page is kept off the bridge by its frame's opaque
+    // origin, not by this check (ADR-028).
     guarded(channel, async (_event, ...args: unknown[]) => {
       // A completion refused, here or by the store, is a map drawn and not
       // kept: said in the log, with the writer and the sentence, then
