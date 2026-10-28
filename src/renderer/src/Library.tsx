@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type JS
 import type { CreateProjectInput, ProjectSummary } from '../../shared/api'
 import {
   ERROR_CODES,
+  isDown,
   isEngineErrorShape,
   QUITTING_REASON,
   type EngineState,
@@ -240,13 +241,18 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  * that says it is, would be the screen contradicting itself for a beat.
  */
 export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
-  if (engine?.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
-  // The app's own quit stops the engine too, and is no failure to report.
-  if (engine?.state === 'stopped' && engine.reason !== QUITTING_REASON)
-    return `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`
-  // Ended at the handshake and never restarted: it has no reason of its own,
-  // the dialog says which versions, and the status line the sentence.
-  if (engine?.state === 'mismatched') return SAMPLES_ENGINE_DOWN
+  if (engine !== null && isDown(engine)) {
+    // The app's own quit stops the engine too, and is no failure to report.
+    if (engine.state === 'stopped') {
+      return engine.reason === QUITTING_REASON
+        ? SAMPLES_AWAY
+        : `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+    }
+    if (engine.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+    // Ended at the handshake and never restarted: it has no reason of its own,
+    // the dialog says which versions, and the status line the sentence.
+    return SAMPLES_ENGINE_DOWN
+  }
   if (engine?.state !== 'ready') return SAMPLES_AWAY
   if (read === 'failed') return SAMPLES_UNREAD
   if (read === 'listed') return SAMPLES_NONE
