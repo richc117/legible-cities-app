@@ -20,8 +20,8 @@
     "find": "live && revealed !== null && revealed.run === reveal.run ? revealed : null",
     "replace": "live && revealed !== null ? revealed : null",
     "test": "tests/unit/stage-view-store.test.tsx",
-    "title": "leaves nothing it drew or pressed to the next run’s pane",
-    "why": "The reveal's drawings read without asking whose run they are of: the next run's pane draws the last run's stage, which the end of a reveal no longer clears."
+    "title": "shows nothing of a run that the next one follows with no render between",
+    "why": "The reveal's drawings read without asking whose run they are of: where one run's end and the next one's start are drawn in one render, the next run's pane draws the last run's stage."
   },
   {
     "file": "src/renderer/src/StageView.tsx",

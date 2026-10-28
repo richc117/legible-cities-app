@@ -124,10 +124,9 @@ describe('a reveal that ends', () => {
     byName('button', name).getAttribute('aria-pressed')
 
   it('leaves nothing it drew or pressed to the next run’s pane', async () => {
-    // Mutations: the reveal's drawings read without asking whose run they
-    // are of (the next run's pane draws the last run's stage), and the
-    // press read the same way (the next run's pane shows the stage pressed
-    // in the last one, not its own latest).
+    // Mutation: the press read without asking whose run it was made in
+    // (the next run's pane shows the stage pressed in the last one, not its
+    // own latest).
     const run = new JobRun()
     const reads = heldReads()
     const answer = (made: string): void =>
@@ -162,5 +161,37 @@ describe('a reveal that ends', () => {
     await answered()
     expect(pictured(), 'B’s own latest stage').toContain('run job-B topo')
     expect(isPressed('gtfs2graph'), 'A’s press is not B’s').toBe('false')
+  })
+
+  it('shows nothing of a run that the next one follows with no render between', async () => {
+    // A's end and B's start are drawn in one render, so nothing sees no run
+    // revealing and the drawings are not let go: B's pane is kept from A's
+    // by the job id alone. Mutation: the reveal's drawings read without
+    // asking whose run they are of (B's pane draws A's latest stage).
+    //
+    // That the drawings are let go once no run reveals cannot be seen in
+    // the document: nothing reads them then. With that reset removed every
+    // assertion in this file holds, so it has no mutation entry.
+    const run = new JobRun()
+    const reads = heldReads()
+    renderCell('data', { inspect: () => pending(), readStage: reads.readStage }, { run })
+    await answered()
+
+    run.id = 'job-A'
+    act(() => run.move(going(['gtfs2graph', 'topo'])))
+    await answered()
+    act(() => {
+      for (const ask of reads.asks.filter((a) => a.made === 'run job-A')) ask.answer()
+    })
+    await answered()
+    expect(pictured(), 'A’s latest stage').toContain('run job-A topo')
+
+    act(() => {
+      run.move({ ...snap('done'), layout: 'b'.repeat(64) })
+      run.id = 'job-B'
+      run.move(going([]))
+    })
+    await answered()
+    expect(pictured(), 'nothing of A’s drawings in B’s pane').toBeNull()
   })
 })
