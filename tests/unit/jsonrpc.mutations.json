@@ -1,7 +1,7 @@
 [
   {
     "file": "src/main/jsonrpc.ts",
-    "find": "      try {\n        this.handlers.onNotification(message.method, message.params)\n      } catch (error) {\n        this.handlers.log(\n          `error in the app: the handler of ${printable(message.method, 80)} threw: ${describeThrown(error)}`,\n        )\n      }\n",
+    "find": "      try {\n        this.handlers.onNotification(message.method, message.params)\n      } catch (error) {\n        this.handlers.log(\n          `error in the app: the handler of ${shown(message.method, 80)} threw: ${describeThrown(error)}`,\n        )\n      }\n",
     "replace": "      this.handlers.onNotification(message.method, message.params)\n",
     "test": "tests/unit/jsonrpc.test.ts",
     "title": "logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)",

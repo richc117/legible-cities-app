@@ -348,7 +348,8 @@ describe('JsonRpcClient', () => {
     const inputs = [
       'https://h.example.org/f.zip\t?api_key=planted',
       'https://user:hunter2\n@h.example.org/f.zip',
-      'https://user:hunter2 @h.example.org/f.zip',
+      // a no-break space, written as an escape so no editor turns it into a plain one
+      'https://user:hunter2\u00a0@h.example.org/f.zip',
     ]
     for (const input of inputs) {
       for (const line of [describeThrown(new Error(input)), describeThrown(input)]) {

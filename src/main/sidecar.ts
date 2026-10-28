@@ -16,7 +16,7 @@ import {
   type EngineState,
 } from '../shared/engine'
 import { redactUrls } from './redact'
-import { describeThrown, JsonRpcClient, printable, ProtocolError } from './jsonrpc'
+import { describeThrown, JsonRpcClient, ProtocolError, shown } from './jsonrpc'
 
 export { describeState }
 
@@ -629,7 +629,7 @@ export class Sidecar {
         listener({ method, params })
       } catch (error) {
         this.log(
-          `error in the app: a notification listener threw on ${printable(method, 80)}: ${describeThrown(error)}; the engine keeps running`,
+          `error in the app: a notification listener threw on ${shown(method, 80)}: ${describeThrown(error)}; the engine keeps running`,
         )
       }
     }

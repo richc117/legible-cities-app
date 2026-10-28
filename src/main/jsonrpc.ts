@@ -51,7 +51,7 @@ export function printable(text: string, max: number): string {
  * address can leave its user information without the `@` the redaction
  * finds it by.
  */
-function shown(text: string, max: number): string {
+export function shown(text: string, max: number): string {
   return cut(redactUrls(clean(text)), max)
 }
 
@@ -343,7 +343,7 @@ export class JsonRpcClient {
         this.handlers.onNotification(message.method, message.params)
       } catch (error) {
         this.handlers.log(
-          `error in the app: the handler of ${printable(message.method, 80)} threw: ${describeThrown(error)}`,
+          `error in the app: the handler of ${shown(message.method, 80)} threw: ${describeThrown(error)}`,
         )
       }
       return
