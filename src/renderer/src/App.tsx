@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type JSX } from 'react'
 import { needsTelling } from '../../shared/first-run'
 import { endSentence } from '../../shared/jobs'
 import type { SettingsView } from '../../shared/settings'
@@ -79,32 +79,29 @@ export default function App(): JSX.Element {
 
   const [inspectorOpen, setInspectorOpen] = useState(false)
   const toggleRef = useRef<HTMLElement>(null)
-  // Only what the header needs lives here as state: the running count. The
-  // announcement is written to its element (below). The list itself is the inspector's own state,
+  // Only what the header needs is read here: the running count, from the
+  // registry as an outside store (issue 433). The announcement is written to
+  // its element (below). The list itself is the inspector's own state,
   // mounted only while it is open, so a run's progress re-renders the
-  // inspector and never the screen beside it. Setting the same count again
-  // is a render React skips.
-  const [running, setRunning] = useState(() => runningCount())
+  // inspector and never the screen beside it. The count is a number, so a
+  // change that leaves it where it was is a render React skips.
+  const running = useSyncExternalStore(subscribeToJobs, runningCount)
   // Cleared and then set a frame later, so the same sentence twice - a
   // second "Layout run, finished.", a retry after a failure - is said twice.
   // The region is written to directly, never rendered from state, so the
   // clear is in the DOM before the wait starts (issue 330).
   const { region: announcementRegion, announce } = useAnnouncer()
-  useEffect(() => {
-    const offChanges = subscribeToJobs(() => setRunning(runningCount()))
-    const offEnds = onJobEnded((job) => {
-      if (unnamedProjects([job]).length === 0) return announce(endSentence(job))
-      // A project not named yet: read the names, then say it with the name.
-      void readProjectNames().then(() =>
-        announce(endSentence(jobs().find((j) => j.id === job.id) ?? job)),
-      )
-    })
-    setRunning(runningCount())
-    return () => {
-      offChanges()
-      offEnds()
-    }
-  }, [announce])
+  useEffect(
+    () =>
+      onJobEnded((job) => {
+        if (unnamedProjects([job]).length === 0) return announce(endSentence(job))
+        // A project not named yet: read the names, then say it with the name.
+        void readProjectNames().then(() =>
+          announce(endSentence(jobs().find((j) => j.id === job.id) ?? job)),
+        )
+      }),
+    [announce],
+  )
 
   // Below 900px the inspector covers the main region; what it covers is
   // made inert, so Shift+Tab cannot reach controls a person cannot see. The

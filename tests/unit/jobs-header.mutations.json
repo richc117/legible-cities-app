@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/App.tsx",
+    "find": "useSyncExternalStore(subscribeToJobs, runningCount)",
+    "replace": "useSyncExternalStore(() => () => undefined, runningCount)",
+    "test": "tests/unit/jobs-header.test.tsx",
+    "title": "says how many jobs are running as a run starts and ends",
+    "why": "The header's count subscribed to nothing: the Jobs toggle stays \"Jobs, none running\" while a layout runs."
+  }
+]
