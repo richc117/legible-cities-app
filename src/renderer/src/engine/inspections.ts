@@ -1,3 +1,4 @@
+import { runFailureSentence } from '../../../shared/jobs'
 import type { FeedRecord, Inspection, Methods } from '../../../shared/protocol'
 
 // One inspection per feed and day per session. Reading a feed is a long
@@ -34,6 +35,16 @@ export function feedRecordFor(client: ListClient, key: string): Promise<FeedReco
 /** The registry may have changed: a feed added or removed. */
 export function forgetFeedList(): void {
   listed = null
+}
+
+/**
+ * The sentence a panel shows when the engine's reading of a feed is refused:
+ * the one rule for a failure a person reads (`runFailureSentence`, issue
+ * 519), with the panels' own fallback. Cell 01's reading and cell 05's two
+ * lists ask the same question and say the same thing.
+ */
+export function inspectionFailure(error: unknown): string {
+  return runFailureSentence(error, 'The feed could not be read.')
 }
 
 const cache = new Map<string, Promise<Inspection>>()

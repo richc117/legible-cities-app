@@ -11,10 +11,10 @@ import {
   type RefObject,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
-import { withoutPaths } from '../../shared/engine'
 import type { Inspection } from '../../shared/protocol'
 import { type LineOrder as Order, type ProjectRecord } from '../../shared/project/types'
 import { validateLineOrder } from '../../shared/project/validate'
+import { inspectionFailure } from './engine/inspections'
 import { orderOf, paletteOf } from './record'
 import { linesOf, REDRAW_DELAY, shownColour, type Line } from './colours'
 import { keepDismissed, keyOf, useDismissalWatch } from './dismissal'
@@ -210,13 +210,7 @@ export default function LineOrder({
       },
       (error: unknown) => {
         if (left) return
-        const reason = error as { data?: { hint?: string }; message?: string }
-        setState({
-          status: 'failed',
-          message: withoutPaths(
-            reason.data?.hint ?? reason.message ?? 'The feed could not be read.',
-          ),
-        })
+        setState({ status: 'failed', message: inspectionFailure(error) })
       },
     )
     return () => {
