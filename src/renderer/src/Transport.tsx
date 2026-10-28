@@ -131,9 +131,10 @@ export default function Transport({
   const why = transportRefusal({ laying, exporting })
   // The reason goes, so does the sentence. A refusal left standing after
   // the run that caused it has ended reads as a control that is broken.
-  useEffect(() => {
-    if (why === null) setRefused(null)
-  }, [why])
+  // Reset in the render that sees the reason go, and not derived (`why ===
+  // null ? null : refused`), which would bring an old sentence back at the
+  // next hold with nobody pressing; the guard keeps it to that render.
+  if (why === null && refused !== null) setRefused(null)
 
   // Where the page is, while anyone is looking **and** nobody else holds
   // the page: `pollsNow` carries why the second half is not merely the

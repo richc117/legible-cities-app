@@ -95,10 +95,17 @@ interface Props {
   ) => Promise<RenderStageResult>
 }
 
+/**
+ * The store's answer for the pane, and what it was asked for (`asking`, in
+ * the view): a drawing or a refusal stays until the next answer, so a
+ * toggle between stages is a change of picture rather than a blank.
+ */
 type State =
   | { status: 'waiting' }
-  | { status: 'ready'; drawing: RenderStageResult }
-  | { status: 'failed'; message: string }
+  | { status: 'ready'; key: string; drawing: RenderStageResult }
+  | { status: 'failed'; key: string; message: string }
+
+const WAITING: State = { status: 'waiting' }
 
 /** What a run's reveal has drawn, and the sentence of a refusal that was not "not yet". */
 interface Revealed {
@@ -227,8 +234,7 @@ export function ViewControls({ onPress }: ControlsProps): JSX.Element {
 export default function StageView({ project, engine, read, reveal = null }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const [stage, setStage] = useState<StageName>('gtfs2graph')
-  const [state, setState] = useState<State>({ status: 'waiting' })
-  const [loading, setLoading] = useState(false)
+  const [state, setState] = useState<State>(WAITING)
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 })
   // Whether "The network in words" is open, and which lines' station lists
   // are: the component's own, so a toggle between stages keeps them (the
@@ -296,24 +302,27 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
   // engine answers an untimed description.
   const day = drawnDate(project)
 
+  // While a run reveals the layout the pane is the run's: the stored
+  // drawing goes, and the store is read again when the reveal ends, under
+  // the record the run wrote, so not while that is being read back. It goes
+  // in the render that sees the pane stop being the store's, so a reveal's
+  // hand-back never shows the stored set for a commit (issue 382); the
+  // guard keeps this to that render.
+  const stored = !live && !handing && ready && layout !== null
+  if (!stored && state.status !== 'waiting') setState(WAITING)
+  // What the store is asked for now. The last drawing stays on screen while
+  // the next arrives, so a toggle is a change of picture rather than a blank
+  // between two, and the pane is loading until the answer for this is in.
+  const asking = JSON.stringify([project.feed, layout, project.made, stage, day])
+  const loading = handing || (stored && (state.status === 'waiting' || state.key !== asking))
+
   useEffect(() => {
-    // While a run reveals the layout the pane is the run's: the stored
-    // drawing goes, and the store is read again when the reveal ends, under
-    // the record the run wrote, so not while that is being read back.
-    if (live || handing || !ready || layout === null) {
-      setState({ status: 'waiting' })
-      setLoading(handing)
-      return
-    }
+    if (!stored || layout === null) return
     let left = false
-    // The last drawing stays on screen while the next arrives, so a toggle
-    // is a change of picture rather than a blank between two.
-    setLoading(true)
     read(project.feed, layout, project.made, stage, DRAW_WIDTH, day).then(
       (drawing) => {
         if (left) return
-        setLoading(false)
-        setState({ status: 'ready', drawing })
+        setState({ status: 'ready', key: asking, drawing })
         const set = `${layout}/${project.made ?? ''}`
         if (fittedTo.current !== set) {
           fittedTo.current = set
@@ -325,14 +334,13 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
       },
       (error: unknown) => {
         if (left) return
-        setLoading(false)
-        setState({ status: 'failed', message: refusalOf(error) })
+        setState({ status: 'failed', key: asking, message: refusalOf(error) })
       },
     )
     return () => {
       left = true
     }
-  }, [live, handing, ready, project.feed, layout, project.made, stage, day, read])
+  }, [stored, asking, project.feed, layout, project.made, stage, day, read])
 
   // The reveal's requests: each stage as the run reports it, and each
   // refused as not yet once the stage it waits on is reported. No day is
@@ -393,14 +401,21 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
 
   // A reveal that ends leaves nothing of itself: not its drawings on
   // screen, not a press or a sentence, and not its drawings in the cache,
-  // since the build they were taken from is in the store now or gone.
+  // since the build they were taken from is in the store now or gone. What
+  // it pressed and said is kept with its run's job id and read only while
+  // that run is live (`shown`, `earlyStage` below), and a job id is never
+  // given to a second attempt (`nextJobId`), so the next run's pane starts
+  // with none of it. Its drawings are read the same way (`revealing`), but
+  // they are whole SVGs with their descriptions, so they are also let go in
+  // the render that sees no run revealing: held to the next reveal, they
+  // would outlive the cache that `forgetStagesOf` empties. On a level, not
+  // an edge, so an answer that lands after the reveal has ended is let go
+  // in its turn. The effect is the cache's part.
+  if (revealRun === null && revealed !== null) setRevealed(null)
   useEffect(() => {
     if (revealRun !== null) return
     const ended = asked.current
     asked.current = null
-    setRevealed(null)
-    setPressed(null)
-    setEarly(null)
     if (ended !== null) forgetStagesOf(runSet(ended.run))
   }, [revealRun])
   // The same when the view goes while a run is revealing: its drawings

@@ -13,7 +13,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "lint": "eslint . --max-warnings 22 && prettier --check \"src/**\" \"tests/**\" \"scripts/**/*.ts\" \"*.{ts,mts,js,mjs,json}\"",
+    "lint": "eslint . --max-warnings 14 && prettier --check \"src/**\" \"tests/**\" \"scripts/**/*.ts\" \"*.{ts,mts,js,mjs,json}\"",
     "format": "prettier --write \"src/**\" \"tests/**\" \"scripts/**/*.ts\" \"*.{ts,mts,js,mjs,json}\"",
     "typecheck": "tsc --noEmit -p tsconfig.node.json --composite false && tsc --noEmit -p tsconfig.web.json --composite false && tsc --noEmit -p tsconfig.tests.json --composite false",
     "test": "vitest run",

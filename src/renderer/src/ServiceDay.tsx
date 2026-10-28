@@ -185,22 +185,35 @@ export default function ServiceDay({
 
   // The control follows the stored day, which is now the chosen one: a
   // choice lands on the record before the map is drawn for it, so this
-  // effect confirms the control rather than correcting it. It still matters
-  // for the project changing under the component and for a choice this
-  // screen did not make. Keyed on the window's days, not the record object,
-  // which a rename replaces without changing either.
+  // confirms the control rather than correcting it. It still matters for
+  // the project changing under the component and for a choice this screen
+  // did not make. Keyed on the window's days, not the record object, which
+  // a rename replaces without changing either; adjusted in the render that
+  // sees the key move, and only then, so a day being typed is never put
+  // back by a render of the screen.
   const service = project.service
   const windowKey = service === null ? '' : `${service.start}/${service.end}/${service.busiest}`
-  useEffect(() => {
+  const followKey = JSON.stringify([project.id, project.date, windowKey])
+  const [followed, setFollowed] = useState(followKey)
+  if (followed !== followKey) {
+    setFollowed(followKey)
     setValue(project.date ?? '')
     setMessage(null)
-  }, [project.id, project.date, windowKey])
+  }
   // A rebuild that stopped drew nothing, so the day stays chosen and
   // undrawn, and the control keeps showing it: what this puts back is the
-  // record's day, which the choice already is.
-  useEffect(() => {
+  // record's day, which the choice already is. On the run's edge into the
+  // stop, in the render that sees it, and not for as long as it stays
+  // stopped: a day typed after the stop is the person's (a day chosen
+  // elsewhere meanwhile is the follow's, above). The edge is of the state
+  // and of `rebuilt` both, as the effect this replaced was: a rebuild
+  // refused at once after another run failed stays failed, and only
+  // `rebuilt` moves.
+  const [stopWas, setStopWas] = useState({ state, rebuilt })
+  if (stopWas.state !== state || stopWas.rebuilt !== rebuilt) {
+    setStopWas({ state, rebuilt })
     if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')
-  }, [state, rebuilt, project.date])
+  }
 
   // The write waits: a date control reports every whole value on the way to
   // the one a person means (`useDayChoice`).

@@ -226,10 +226,13 @@ export default function Trip({
 
   // The hold goes, and so does what it was refused with: a sentence left
   // standing after the run that caused it reads as a control that is broken.
-  useEffect(() => {
-    if (held === null)
-      setRefusals((current) => current.filter((refusal) => !HOLDS.includes(refusal.sentence)))
-  }, [held])
+  // In the render that sees the hold go, and guarded on a hold's sentence
+  // being there, not on the list's length: the filter makes a new list, so
+  // an unguarded call would set state on every render. A refusal of
+  // another kind, such as the same station twice, stays.
+  const holdSaid = (refusal: Refusal): boolean => HOLDS.includes(refusal.sentence)
+  if (held === null && refusals.some(holdSaid))
+    setRefusals((current) => current.filter((refusal) => !holdSaid(refusal)))
 
   const refusalAt = (place: Place): string | null =>
     refusals.find((refusal) => refusal.place === place)?.sentence ?? null

@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/Inspect.tsx",
+    "find": "  if (!ready && state.status !== 'waiting') setState(WAITING)\n",
+    "replace": "",
+    "test": "tests/unit/inspect-follows.test.tsx",
+    "title": "shows no row of the old inspection once the engine restarts",
+    "why": "The guarded reset removed: after the engine restarts, the routes read from the engine before stay on screen until the feed is read again."
+  },
+  {
+    "file": "src/renderer/src/Inspect.tsx",
+    "find": "  if (mirrored.mode !== project.mode || mirrored.agency !== project.agency) {\n",
+    "replace": "  if (mode !== project.mode || agency !== project.agency) {\n",
+    "test": "tests/unit/inspect-follows.test.tsx",
+    "title": "keeps a mode chosen while its write is on its way, and moves when the record is read again",
+    "why": "The mirror applied on every render where the controls differ from the record: a mode chosen snaps back to the record's before its write answers, and an operator chosen meanwhile goes with the old mode (issue 407)."
+  },
+  {
+    "file": "src/renderer/src/Inspect.tsx",
+    "find": "    setMode(project.mode)\n    setAgency(project.agency)\n  }\n",
+    "replace": "  }\n",
+    "test": "tests/unit/inspect-follows.test.tsx",
+    "title": "keeps a mode chosen while its write is on its way, and moves when the record is read again",
+    "why": "The mirror removed: a record read again, by Run all or a reopening, does not move the mode and operator selects."
+  }
+]

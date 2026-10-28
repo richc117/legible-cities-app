@@ -1,0 +1,50 @@
+[
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "  if (followed !== followKey) {\n",
+    "replace": "  if (followed !== followKey || value !== (project.date ?? '')) {\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "moves to a day chosen elsewhere and drops its sentence, and keeps a day being typed",
+    "why": "The control put back to the record's day on every render where the two differ: a day cannot be typed, and the platform's calendar closes under the hand."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "    setFollowed(followKey)\n    setValue(project.date ?? '')\n    setMessage(null)\n",
+    "replace": "    setFollowed(followKey)\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "moves to a day chosen elsewhere and drops its sentence, and keeps a day being typed",
+    "why": "The follow removed: a day chosen elsewhere, or a reopened project's, is not shown, and the outside-the-window sentence stays."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "  const followKey = JSON.stringify([project.id, project.date, windowKey])\n",
+    "replace": "  const followKey = JSON.stringify(project)\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "moves to a day chosen elsewhere and drops its sentence, and keeps a day being typed",
+    "why": "The follow keyed on the record object: a rename, or any write's answer, puts back the day a person is typing."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "  if (stopWas.state !== state || stopWas.rebuilt !== rebuilt) {\n    setStopWas({ state, rebuilt })\n    if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')\n  }\n",
+    "replace": "  if (stopWas.state !== state || stopWas.rebuilt !== rebuilt) setStopWas({ state, rebuilt })\n  if (rebuilt && (state === 'cancelled' || state === 'failed') && value !== (project.date ?? ''))\n    setValue(project.date ?? '')\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "puts the record’s day in the control as the rebuild stops, and keeps a day typed after",
+    "why": "A level, not an edge: for as long as the stopped rebuild stands, each render puts the record's day back, and after a failed \"Draw for this day\" a new day cannot be typed."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "    if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')\n",
+    "replace": "",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "puts the record’s day in the control as the rebuild stops, and keeps a day typed after",
+    "why": "The put-back removed: after a stopped rebuild the control shows a day the record does not hold."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "  if (stopWas.state !== state || stopWas.rebuilt !== rebuilt) {\n",
+    "replace": "  if (stopWas.state !== state) {\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "puts the record’s day back when a rebuild is refused after another run failed",
+    "why": "The edge taken on the state alone: a rebuild refused at once after a failed layout run stays failed, so the control keeps a day the record does not hold."
+  }
+]

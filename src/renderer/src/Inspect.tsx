@@ -132,6 +132,8 @@ type State =
   | { status: 'ready'; inspection: Inspection }
   | { status: 'failed'; message: string }
 
+const WAITING: State = { status: 'waiting' }
+
 export default function Inspect({
   project,
   engine,
@@ -142,7 +144,7 @@ export default function Inspect({
   handback,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
-  const [state, setState] = useState<State>({ status: 'waiting' })
+  const [state, setState] = useState<State>(WAITING)
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean }>({
     key: 'label',
     descending: false,
@@ -187,11 +189,16 @@ export default function Inspect({
     if (hand) handback.current?.focus()
   }, [disabled, handback])
 
+  // The engine gone, the inspection goes with it, in the render that sees it
+  // go: an engine that comes back, perhaps as another build, must not show
+  // the old routes before the feed has been read again. A reset and not a
+  // derivation (`ready ? state : WAITING`), which would bring the old
+  // inspection back on the engine's return, before the new answer; the
+  // guard is what keeps it from setting state on every render.
+  if (!ready && state.status !== 'waiting') setState(WAITING)
+
   useEffect(() => {
-    if (!ready) {
-      setState({ status: 'waiting' })
-      return
-    }
+    if (!ready) return
     let left = false
     inspect(project.feed).then(
       (inspection) => {
@@ -214,10 +221,16 @@ export default function Inspect({
   }, [ready, project.feed, inspect])
 
   // The record is what the controls show; a write comes back through it.
-  useEffect(() => {
+  // The two follow the record when its mode or operator moves, and only
+  // then, in the render that sees the move: a choice still on its way is
+  // shown until its write answers, and is not put back by a render of the
+  // screen meanwhile (issue 407).
+  const [mirrored, setMirrored] = useState({ mode: project.mode, agency: project.agency })
+  if (mirrored.mode !== project.mode || mirrored.agency !== project.agency) {
+    setMirrored({ mode: project.mode, agency: project.agency })
     setMode(project.mode)
     setAgency(project.agency)
-  }, [project.mode, project.agency])
+  }
 
   const inspection = state.status === 'ready' ? state.inspection : null
   const options = useMemo(
