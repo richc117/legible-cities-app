@@ -299,11 +299,11 @@ describe('decide', () => {
     }
   })
 
-  it('agrees with the committed package.json: the first release is 0.1.0', async () => {
+  it("agrees with the committed package.json: the candidates are 1.0.0's", async () => {
     const { decide } = await load()
-    expect(PKG.version).toBe('0.1.0')
+    expect(PKG.version).toBe('1.0.0')
     expect(
-      decide({ tag: 'v0.1.0-rc.1', packageVersion: PKG.version, onMain: true, tagNow: HERE }).ok,
+      decide({ tag: 'v1.0.0-rc.1', packageVersion: PKG.version, onMain: true, tagNow: HERE }).ok,
     ).toBe(true)
   })
 
@@ -568,7 +568,7 @@ function fakeTar(calls: string[][]) {
 }
 
 describe('assemble', () => {
-  const base = (downloaded: string, out: string, tag = 'v0.1.0-rc.1'): AssembleInput => ({
+  const base = (downloaded: string, out: string, tag = `v${PKG.version}-rc.1`): AssembleInput => ({
     downloaded,
     out,
     tag,
