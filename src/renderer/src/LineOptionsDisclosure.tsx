@@ -203,11 +203,14 @@ export default function LineOptions({
 
   // The field follows the line's name when it moves under it: a reset, a
   // stopped redraw put back, a record read again. A refusal goes with what
-  // it refused.
-  useEffect(() => {
+  // it refused. Adjusted in the render that sees the name move, against the
+  // name last followed, so what a person types in between is kept.
+  const [nameShown, setNameShown] = useState(choice.name)
+  if (choice.name !== nameShown) {
+    setNameShown(choice.name)
     setText(choice.name ?? '')
     setRefusedName(null)
-  }, [choice.name])
+  }
 
   const commitName = (): void => {
     const read = readName(label, text)
@@ -222,10 +225,12 @@ export default function LineOptions({
 
   const shown = choice.hidden !== true
   // The refusal goes once another line is drawn again: this switch would
-  // work now, and a sentence saying it would not is wrong beside it.
-  useEffect(() => {
-    if (!lastShown) setRefusedShown(null)
-  }, [lastShown])
+  // work now, and a sentence saying it would not is wrong beside it. Reset
+  // in the render that sees it, and not worked out from `lastShown` each
+  // time, which would bring the sentence back with nobody pressing when this
+  // line is the last one drawn again. The test of the refusal is what stops
+  // it setting state on every render.
+  if (!lastShown && refusedShown !== null) setRefusedShown(null)
   const toggleShown = (on: boolean): void => {
     // The last line drawn stays drawn: the engine refuses a map with none.
     if (!on && lastShown) {
