@@ -192,6 +192,9 @@ const PRIMITIVES: Record<string, string> = {
   object: 'Record<string, unknown>',
 }
 
+/** A name the module writes as an identifier: a definition's, a seam method's. */
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
 /** A definition's name from a `#/$defs/Name` reference. */
 function refName(ref: string, path: string): string {
   const match = /^#\/\$defs\/([A-Za-z0-9_]+)$/.exec(ref)
@@ -497,6 +500,10 @@ export function emit(description: Description, tag: string): string {
 
   for (const [name, node] of Object.entries(description.$defs)) {
     const path = `$defs.${name}`
+    // The name is written as the type's identifier, referenced or not, so a
+    // name that is not one would be code rather than a name.
+    if (!IDENTIFIER.test(name))
+      throw new Error(`${path}: a definition name that is not an identifier`)
     if (node.description !== undefined)
       out.push(...comment(node.description, '', `${path}.description`))
     const isInterface =

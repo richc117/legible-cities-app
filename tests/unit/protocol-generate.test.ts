@@ -401,6 +401,54 @@ describe('a string from the description stays a string', () => {
   })
 })
 
+// Every name the description gives, every number and every value is written
+// into the module, so each is checked before it is: a name that is not an
+// identifier, a protocol that is not a number, a constant that is not a
+// scalar would each be code rather than data (review of issue 607).
+describe('what the description names is written as data, or refused', () => {
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {}, page: PAGE }
+
+  /** The emitted module, formatted as committed, run with its types stripped. */
+  async function run(schema: unknown): Promise<{ exports: Record<string, unknown>; ran: unknown }> {
+    const text = await emitFormatted(schema as never, 'v0.0.0', repo)
+    const js = ts.transpileModule(text, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText
+    const sandbox = { exports: {} as Record<string, unknown>, ran: undefined as unknown }
+    runInNewContext(js, sandbox)
+    return { exports: sandbox.exports, ran: sandbox.ran }
+  }
+
+  /**
+   * Refused before anything is written; and where it was not, whatever the
+   * module then does is reported: it ran the description's text as code.
+   */
+  async function refusedBeforeRunning(schema: unknown, message: RegExp): Promise<void> {
+    let outcome: { ran: unknown }
+    try {
+      outcome = await run(schema)
+    } catch (error) {
+      expect(String(error)).toMatch(message)
+      return
+    }
+    expect(outcome.ran, 'the description ran as code').toBeUndefined()
+    expect.fail('the description was not refused')
+  }
+
+  it('refuses a definition name that is not an identifier, referenced or not', async () => {
+    await refusedBeforeRunning(
+      { ...base, $defs: { 'A = 1; globalThis.ran = 1; type B': { type: 'string' } } },
+      /\$defs\.A = 1.*: a definition name that is not an identifier/,
+    )
+    for (const name of ['two words', '1st', '']) {
+      const schema = { ...base, $defs: { [name]: { type: 'string' } } }
+      expect(() => emit(schema as never, 'v0.0.0'), name).toThrow(
+        /a definition name that is not an identifier/,
+      )
+    }
+  })
+})
+
 // The page's directives come first in the policy and the app's own after
 // them (`PROJECT_CSP`), and a policy keeps the first of two directives of one
 // name: so the engine may not name one of the app's, or it would cancel it.
