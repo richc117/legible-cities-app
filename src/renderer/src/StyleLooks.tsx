@@ -109,37 +109,36 @@ export function LookSelect({
   const known = engine !== null
   const version = engine?.state === 'ready' ? engine.version : null
   // Started from the last list an engine answered (`looksKnown`), so a
-  // project opened again shows its look from the first frame.
-  const [looks, setLooks] = useState<Looks>(() => looksKnown(known, version))
-  // And started again from it in the render that sees the engine's state
-  // become known or its version move, so an engine restarted at another
-  // version never offers the last one's looks. The comparison is what stops
-  // it: `looksKnown` makes a new object each call, and setting it on every
-  // render would never end.
+  // project opened again shows its look from the first frame, and held with
+  // the engine it is for: whether its state is known, and its version.
   const engineKey = `${known}|${version}`
-  const [looksAt, setLooksAt] = useState(engineKey)
-  if (looksAt !== engineKey) {
-    setLooksAt(engineKey)
-    setLooks(looksKnown(known, version))
-  }
+  const [held, setHeld] = useState<{ at: string; looks: Looks }>(() => ({
+    at: engineKey,
+    looks: looksKnown(known, version),
+  }))
+  // Started again in the render that sees the engine's state become known or
+  // its version move, so an engine restarted at another version never offers
+  // the last one's looks. The comparison is what stops it: `looksKnown` makes
+  // a new object each call, and setting it on every render would never end.
+  if (held.at !== engineKey) setHeld({ at: engineKey, looks: looksKnown(known, version) })
+  const looks = held.looks
 
   // The engine's looks, once while an engine of this version answers
-  // (`looksFor`): a project opened again reads the answer already given.
+  // (`looksFor`): a project opened again reads the answer already given. An
+  // answer is taken only while the looks held are still for the engine it
+  // was asked of, which does not wait on this effect's cleanup: an engine
+  // that dies with the request out has it refused at once, and that refusal
+  // can land after the render that saw the engine go and before the cleanup.
   useEffect(() => {
     if (version === null) return
-    let left = false
+    const asked = engineKey
+    const answered = (next: Looks): void =>
+      setHeld((now) => (now.at === asked ? { at: asked, looks: next } : now))
     looksFor(engineClient(), version).then(
-      (answer) => {
-        if (!left) setLooks({ status: 'ready', looks: answer })
-      },
-      () => {
-        if (!left) setLooks({ status: 'failed' })
-      },
+      (answer) => answered({ status: 'ready', looks: answer }),
+      () => answered({ status: 'failed' }),
     )
-    return () => {
-      left = true
-    }
-  }, [version])
+  }, [engineKey, version])
 
   const offered = offeredLooks(looks)
   return (

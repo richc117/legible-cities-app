@@ -1,18 +1,34 @@
 [
   {
     "file": "src/renderer/src/StyleLooks.tsx",
-    "find": "    setLooksAt(engineKey)\n    setLooks(looksKnown(known, version))\n",
-    "replace": "    setLooksAt(engineKey)\n",
+    "find": "  if (held.at !== engineKey) setHeld({ at: engineKey, looks: looksKnown(known, version) })\n",
+    "replace": "",
     "test": "tests/unit/style-looks.test.tsx",
     "title": "offers none of the last engine’s looks while one at another version is asked",
     "why": "The looks not started again when the engine's version moves: an engine restarted at another version offers the last one's looks until it answers."
   },
   {
     "file": "src/renderer/src/StyleLooks.tsx",
-    "find": "  if (looksAt !== engineKey) {\n",
-    "replace": "  if (looksAt !== engineKey || looks !== null) {\n",
+    "find": "  if (held.at !== engineKey) setHeld(",
+    "replace": "  if (held.at !== engineKey || held !== null) setHeld(",
     "test": "tests/unit/style-looks.test.tsx",
     "title": "offers none of the last engine’s looks while one at another version is asked",
     "why": "The reset unguarded: looksKnown makes a new object each call, so the cell sets it on every render and React gives up with too many re-renders."
+  },
+  {
+    "file": "src/renderer/src/StyleLooks.tsx",
+    "find": "setHeld((now) => (now.at === asked ? { at: asked, looks: next } : now))",
+    "replace": "setHeld((now) => ({ at: now.at, looks: next }))",
+    "test": "tests/unit/style-looks.test.tsx",
+    "title": "takes no answer to the engine that went",
+    "why": "An answer taken whatever engine it was asked of: a request refused as its engine dies says the engine did not list its looks for the whole restart, and one answered then offers the old version's looks while the engine is away."
+  },
+  {
+    "file": "src/renderer/src/StyleLooks.tsx",
+    "find": "  const engineKey = `${known}|${version}`\n",
+    "replace": "  const engineKey = `${version}`\n",
+    "test": "tests/unit/style-looks.test.tsx",
+    "title": "starts again from what the engine is once its state is known",
+    "why": "The looks keyed on the version alone: an engine whose state becomes known as starting keeps offering the list shown while it was unknown, the looks of an engine that is not running."
   }
 ]
