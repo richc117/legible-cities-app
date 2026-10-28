@@ -14,9 +14,9 @@ import {
   roleOfAddress,
 } from '../../src/main/viewer'
 import { COLORS_MAX, LABEL_MAX } from '../../src/shared/project/validate'
+import { PAGE_SEAM_NAMES } from '../../src/shared/protocol'
 import {
   MISSING_METHOD,
-  PAGE_SEAMS,
   SEAMS_MAX,
   VIEWER_METHODS,
   VIEWER_SANDBOX,
@@ -607,11 +607,11 @@ describe('asking the page what its seam has', () => {
     expect(called, 'it calls nothing on the page').toBe(false)
   })
 
-  it('tells a page from before engine v0.11.0 from one drawn at the pin', () => {
+  it('tells a page from before setTheme from one drawn at the pin', () => {
     const fns = (names: readonly string[]): Record<string, () => void> =>
       Object.fromEntries(names.map((name) => [name, () => undefined]))
-    const older = run({ __present: fns(PAGE_SEAMS.filter((name) => name !== 'setTheme')) })
-    const current = run({ __present: fns(PAGE_SEAMS) })
+    const older = run({ __present: fns(PAGE_SEAM_NAMES.filter((name) => name !== 'setTheme')) })
+    const current = run({ __present: fns(PAGE_SEAM_NAMES) })
     expect(isOlderPage(readSeams(older))).toBe(true)
     expect(isOlderPage(readSeams(current))).toBe(false)
   })

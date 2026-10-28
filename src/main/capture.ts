@@ -69,6 +69,7 @@ import {
   type Png,
 } from './capture-strip'
 import { isValidProjectId } from './paths'
+import type { PageSeam } from '../shared/protocol'
 
 /**
  * The capture window's session. No `persist:` prefix, so it is in memory and
@@ -406,17 +407,64 @@ const STAGE_RECT = rectOf('stage')
 /** The band the page draws its frame counter in (engine v0.20.0). */
 const STRIP_RECT = rectOf('present-strip')
 
+/** A method of the page's seam as its script names it, for a probe that does not call it. */
+const member = (name: keyof PageSeam): string => `window.__present.${name}`
+
+/**
+ * One call of the page's seam, as script: `window.__present.<name>(<args>)`,
+ * the name and the arguments typed by the engine's own description of the
+ * seam (`PageSeam`, generated from the schema's `page`, issue 607), so a
+ * method the engine renames or reshapes is a build error here and never a
+ * script error in a capture. Every capture call of the seam is made through
+ * this, and each makes the script it made before byte for byte
+ * (`tests/unit/capture-seam.test.ts`).
+ *
+ * An argument is written as JSON writes it, and a number as script writes it
+ * (`String`), which is how the capture has always written one: the two agree
+ * for every finite number, and a number that is not finite - one the page's
+ * own answers led to, such as a clock it said was NaN - stays what it was
+ * rather than becoming `null`. The callers coerce first, as they always have
+ * (`Number(...)`, `=== true`), so only a number or a boolean is ever written.
+ * An argument JSON cannot write - a function, a symbol - throws rather than
+ * being sent as nothing, which would move every argument after it.
+ */
+export function seamCall<K extends keyof PageSeam>(
+  name: K,
+  ...args: PageSeam[K]['params']
+): string {
+  const written = (args as readonly unknown[]).map((arg, i) => {
+    if (typeof arg === 'number') return String(arg)
+    if (arg === undefined) return 'undefined'
+    const json = JSON.stringify(arg) as string | undefined
+    if (json === undefined)
+      throw new TypeError(`${name}'s argument ${i + 1} cannot be written into the page's script`)
+    return json
+  })
+  return `${member(name)}(${written.join(', ')})`
+}
+
+/** Whether the page has exposed its seam yet. */
+const PAGE_READY = `!!(window.__present && ${member('state')})`
+
+/** `state()`, which the capture reads after the settle and at a sweep's start. */
+const READ_STATE = seamCall('state')
+
+/** `bounds()`: the span of the service day the page's trips run over. */
+const READ_BOUNDS = seamCall('bounds')
+
+/** The page's own clock stopped, before anything waits (ADR-024). */
+const STOP_CLOCK = `${seamCall('setCapture', true)}; true`
+
 /**
  * Whether the page took the address's `strip`: the attribute the page's boot
  * script sets when it does, and the band's element; and whether it counts
  * its draws at all, which is what tells a page an older engine drew (none of
  * the three) from a page that counts and drew no band for this address.
  */
-const STRIP_TAKEN =
-  '(function () { var counts = false; try { counts = typeof window.__present.state().draws === "number" } catch (e) {} return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip"), counts: counts } })()'
+const STRIP_TAKEN = `(function () { var counts = false; try { counts = typeof ${seamCall('state')}.draws === "number" } catch (e) {} return { strip: document.documentElement.getAttribute("data-strip"), band: !!document.getElementById("present-strip"), counts: counts } })()`
 
 /** How many times the page has drawn, which its band shows modulo 65536. */
-const DRAWS = 'window.__present.state().draws'
+const DRAWS = `${seamCall('state')}.draws`
 
 /**
  * The job's address with the band asked for: `strip=` added to its query, the
@@ -444,24 +492,47 @@ function asDraws(value: unknown): number {
  * every tween before the page answers, as it always did; a promise that never
  * resolves ends in the frame's own timeout, like any other step.
  */
-export const SETTLE_AWAITED =
-  'Promise.resolve(window.__present.settle()).then(function () { return true })'
+export const SETTLE_AWAITED = `Promise.resolve(${seamCall('settle')}).then(function () { return true })`
 
 /** Whether the page has the calls an opening needs: a page drawn by an earlier pin has neither. */
 function hasOpening(card: boolean, drawIn: boolean): string {
   const asked = [
-    ...(card ? ['typeof window.__present.setCard === "function"'] : []),
-    ...(drawIn ? ['typeof window.__present.setDrawn === "function"'] : []),
+    ...(card ? [`typeof ${member('setCard')} === "function"`] : []),
+    ...(drawIn ? [`typeof ${member('setDrawn')} === "function"`] : []),
   ]
   return `!!(window.__present && ${asked.join(' && ')})`
 }
 
 /** The card up or down; only a boolean is ever written into the script. */
-const setCard = (on: boolean): string => `window.__present.setCard(${on === true}); true`
+const setCard = (on: boolean): string => `${seamCall('setCard', on === true)}; true`
 
 /** The network drawn to a fraction; only a number is ever written into the script. */
-const setDrawn = (fraction: number): string =>
-  `window.__present.setDrawn(${Number(fraction)}); true`
+const setDrawn = (fraction: number): string => `${seamCall('setDrawn', Number(fraction))}; true`
+
+/** The clock set to a second of the service day; only a number is ever written. */
+const seekTo = (at: number): string => `${seamCall('seek', Number(at))}; true`
+
+/** The clock stepped by a share of a second; only a number is ever written. */
+const advanceBy = (dt: number): string => `${seamCall('advance', Number(dt))}; true`
+
+/**
+ * Every script the capture calls the seam with, as it sends them, for the
+ * test that holds each to the script it sent before they were typed.
+ */
+export const SEAM_SCRIPTS = {
+  ready: PAGE_READY,
+  stripTaken: STRIP_TAKEN,
+  stopClock: STOP_CLOCK,
+  bounds: READ_BOUNDS,
+  state: READ_STATE,
+  draws: DRAWS,
+  settle: SETTLE_AWAITED,
+  hasOpening,
+  setCard,
+  setDrawn,
+  seek: seekTo,
+  advance: advanceBy,
+} as const
 
 /** Everything a beat names is applied at its start; what it leaves out carries over. */
 function applyBeat(beat: Beat): string {
@@ -566,10 +637,7 @@ export async function runCapture(
     const seam = async () => {
       const started = Date.now()
       for (;;) {
-        const ready = await evaluate(
-          'waiting for the page',
-          '!!(window.__present && window.__present.state)',
-        )
+        const ready = await evaluate('waiting for the page', PAGE_READY)
         if (ready === true) break
         if (Date.now() - started > timeouts.page)
           throw new CaptureError('the page never exposed its presentation seam')
@@ -625,17 +693,17 @@ export async function runCapture(
 
     // Stop the page's own clock before anything waits, stills included: the
     // recorder waits with it running and its stills are not reproducible.
-    await evaluate('stopping the clock', 'window.__present.setCapture(true); true')
+    await evaluate('stopping the clock', STOP_CLOCK)
     await evaluate('waiting for the fonts', FONTS_READY, timeouts.page)
     await step('settling', () => wait(job.settle), timeouts.page + job.settle)
 
-    const boundsRaw = (await evaluate('reading the bounds', 'window.__present.bounds()')) as Record<
+    const boundsRaw = (await evaluate('reading the bounds', READ_BOUNDS)) as Record<
       string,
       unknown
     > | null
     const t0 = typeof boundsRaw?.t0 === 'number' ? boundsRaw.t0 : 0
     const t1 = typeof boundsRaw?.t1 === 'number' ? boundsRaw.t1 : 86_400
-    const first = asState(await evaluate('reading the state', 'window.__present.state()'))
+    const first = asState(await evaluate('reading the state', READ_STATE))
     // A clock outside the service day renders a correct, empty map, and would
     // otherwise capture several hundred frames of nothing.
     if (!first.shown)
@@ -699,7 +767,7 @@ export async function runCapture(
       if (beat.sweep && beat.hours) {
         // A sweep given hours starts wherever the clock already is, so the
         // storyboard never jumps backwards between beats.
-        lo = asState(await evaluate('reading the clock', 'window.__present.state()')).now
+        lo = asState(await evaluate('reading the clock', READ_STATE)).now
         hi = Math.min(lo + Number(beat.hours) * 3600, t1)
       }
       for (let i = 0; i < frames; i++) {
@@ -707,10 +775,7 @@ export async function runCapture(
         if (ended !== null) throw ended
         // Only numbers are ever interpolated into the page's script.
         const at = beat.sweep ? Number(lo + (hi - lo) * (frames > 1 ? i / (frames - 1) : 1)) : null
-        const advance =
-          at !== null
-            ? `window.__present.seek(${at}); true`
-            : `window.__present.advance(${Number(1 / job.fps)}); true`
+        const advance = at !== null ? seekTo(at) : advanceBy(1 / job.fps)
         await evaluate('stepping the clock', advance)
         // The draw-in's fraction is the sweep's step, taken after the clock's,
         // so the beat's last frame is the network whole.

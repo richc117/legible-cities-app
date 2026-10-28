@@ -41,7 +41,7 @@ script and reads the answer as data (`readSeams`) - a list of at most 256
 method names, or no answer at all - before the interface reads it again.
 It is asked of the map's frame only, never the export's, and rejects while
 no map is held. A page lacking any method of the pinned engine's page
-(`PAGE_SEAMS`) is one an older engine drew, and the project screen redraws
+(`PAGE_SEAM_NAMES`, generated from the engine's schema) is one an older engine drew, and the project screen redraws
 it from its stored layout as the project opens.
 
 The methods, which are the page's and not the app's:

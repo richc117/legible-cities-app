@@ -1,5 +1,5 @@
 import type { ViewerBounds } from '../../shared/viewer'
-import type { PageState } from './viewerRestore'
+import type { ClaimedPageState } from './viewerRestore'
 
 // Cell 03's transport, without React: what the app may believe about the
 // page's clock, and what it has to remember for it (A5.5-16).
@@ -302,9 +302,9 @@ export function pollsNow(open: boolean, held: string | null): boolean {
  * difference between a page left at its own defaults and one paused by this
  * and never started again.
  */
-export function withRemembered(state: unknown, remembered: Remembered): PageState {
-  const base: PageState =
-    state !== null && typeof state === 'object' ? { ...(state as PageState) } : {}
+export function withRemembered(state: unknown, remembered: Remembered): ClaimedPageState {
+  const base: ClaimedPageState =
+    state !== null && typeof state === 'object' ? { ...(state as ClaimedPageState) } : {}
   if (remembered.speed !== null) base.speed = remembered.speed
   if (remembered.playing !== null) base.playing = remembered.playing
   return base

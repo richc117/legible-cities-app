@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { net, protocol, type Session } from 'electron'
 import { contentTypeFor, decodeAssetPath, isValidProjectId, resolveInside } from './paths'
+import { PAGE_REQUIRES } from '../shared/protocol'
 
 export interface AppProtocolOptions {
   /** The Vite dev server, e.g. http://localhost:5173; undefined outside development. */
@@ -47,19 +48,21 @@ const DEV_HMR_SOCKET = 'ws://localhost:5173'
  * while the page asks for nothing, and is the thing to remember the day the
  * engine emits a sibling asset.
  *
- * What the page needs, and nothing more: inline script, inline style,
- * `img-src data:` for the toolbar's icon masks, and `font-src data:` for a
- * face the page embeds as a `data:` URL when `label_font` is anything but
- * `system`. Without that last one Chromium refuses the font and the names
- * fall through to the system face, on screen and in an export. The page
- * makes no fetch, so there is no `connect-src`.
+ * What the page needs, and nothing more, is the engine's to say, and its
+ * schema says it (`page.requires`, engine v0.21.0, issue 607), so the four
+ * directives are `PAGE_REQUIRES` as generated from it, never a copy here:
+ * inline script, inline style, `img-src data:` for the toolbar's icon masks,
+ * and `font-src data:` for a face the page embeds as a `data:` URL when
+ * `label_font` is anything but `system`. Without that last one Chromium
+ * refuses the font and the names fall through to the system face, on screen
+ * and in an export. The schema says too that the page makes no fetch
+ * (`page.fetches`), and the generator refuses one that would, so there is no
+ * `connect-src`. Around the four, what is the app's own: nothing by default,
+ * framed by the interface alone, no base rewriting and no form.
  */
-const PROJECT_CSP = [
+export const PROJECT_CSP = [
   "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline'",
-  'img-src data:',
-  'font-src data:',
+  ...PAGE_REQUIRES,
   "frame-ancestors 'self'",
   "base-uri 'none'",
   "form-action 'none'",

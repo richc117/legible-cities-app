@@ -1798,3 +1798,230 @@ export type NotificationName = keyof Notifications
 
 /** The protocol version this app was generated against. */
 export const PROTOCOL = 1 as const
+
+/**
+ * The animation page map.build writes, as a host drives it: the methods of
+ * its window.__present object (`seam`), each as a positional argument list
+ * and an answer, and what a frame that hosts it must allow (`requires`). The
+ * page is one self-contained file: inline script and style, images and fonts
+ * as data: URIs, and it fetches nothing (`fetches`). A method's `since` is
+ * the first engine version whose page has it; a page lacking one is older
+ * than that version. A method that answers nothing answers null here, and
+ * one that answers a promise is said as the value it resolves with.
+ */
+export interface PageSeam {
+  /**
+   * Step the page by dt seconds and draw: the clock moves dt times the speed
+   * while it plays and the network is not drawing in, and the morphs and
+   * fades move by dt.
+   */
+  advance: {
+    params: [number]
+    result: null
+  }
+  /**
+   * Set the clock, in seconds of the service day, held to the span bounds()
+   * answers, and draw.
+   */
+  seek: {
+    params: [number]
+    result: null
+  }
+  /**
+   * Stop the page's own frame loop, so a capture steps the clock by hand, or
+   * start it again. While a capture runs, a trip leaves the map whole, and
+   * reduced motion never shows it the network whole, so a capture's draw-in
+   * is honoured.
+   */
+  setCapture: {
+    params: [boolean]
+    result: null
+  }
+  /**
+   * Play or pause the clock, as the page's Play button does.
+   */
+  setPlaying: {
+    params: [boolean]
+    result: null
+  }
+  /**
+   * Seconds of the service day a second of advance() moves the clock by.
+   */
+  setSpeed: {
+    params: [number]
+    result: null
+  }
+  /**
+   * The layout alone: the map, its rows or the time chart, leaving the
+   * geographic axis where it is.
+   */
+  setView: {
+    params: [PageMode, (number | null)?]
+    result: null
+  }
+  /**
+   * The geographic axis alone, leaving the layout where it is.
+   */
+  setGeo: {
+    params: [boolean, (number | null)?]
+    result: boolean
+  }
+  /**
+   * Both axes at once, by the view's public name, as the page's own buttons
+   * do.
+   */
+  showView: {
+    params: [View, (number | null)?]
+    result: null
+  }
+  /**
+   * Whether the page carries the geographic geometry.
+   */
+  hasGeo: {
+    params: []
+    result: boolean
+  }
+  /**
+   * Show or hide the station names.
+   */
+  setLabels: {
+    params: [boolean]
+    result: null
+  }
+  /**
+   * Show only the lines named, fit the box to them, and answer a trip on
+   * show again without the rest.
+   */
+  setRoutes: {
+    params: [null | string[]]
+    result: null
+  }
+  /**
+   * Pad the box to an aspect and draw.
+   */
+  setFrame: {
+    params: [number, number?, number?]
+    result: null
+  }
+  /**
+   * Change the page's theme in place, without drawing; nothing calls it on
+   * load.
+   */
+  setTheme: {
+    params: ['warm-dark' | 'sepia']
+    result: boolean
+  }
+  /**
+   * Snap every tween to its target and draw, so a still never catches a
+   * transition halfway. Since 0.15.0 (issue 76) it answers a promise;
+   * before, it answered nothing.
+   */
+  settle: {
+    params: []
+    result: null
+  }
+  /**
+   * The span of the service day the page's trips run over.
+   */
+  bounds: {
+    params: []
+    result: PageBounds
+  }
+  /**
+   * Call a function after each draw, in place of the last one given.
+   */
+  onDraw: {
+    params: [Record<string, unknown>]
+    result: null
+  }
+  /**
+   * What the page is showing.
+   */
+  state: {
+    params: []
+    result: PageState
+  }
+  /**
+   * Show a trip between two stations, or the whole network again; answers
+   * what state() then says of it.
+   */
+  setTrip: {
+    params: [null | string, string?]
+    result: PageTrip
+  }
+  /**
+   * The title card over the frame, or none; it cuts in and out. Since 0.20.0
+   * it also draws; before, it changed the frame without drawing.
+   */
+  setCard: {
+    params: [boolean]
+    result: null
+  }
+  /**
+   * The network drawn in to a fraction, held to 0 to 1: 0 is the bare
+   * ground, 1 the map with nothing of the draw-in left on it.
+   */
+  setDrawn: {
+    params: [number]
+    result: null
+  }
+}
+
+/** Every method of the page's seam, in the description's order. */
+export const PAGE_SEAM_NAMES = [
+  'advance',
+  'seek',
+  'setCapture',
+  'setPlaying',
+  'setSpeed',
+  'setView',
+  'setGeo',
+  'showView',
+  'hasGeo',
+  'setLabels',
+  'setRoutes',
+  'setFrame',
+  'setTheme',
+  'settle',
+  'bounds',
+  'onDraw',
+  'state',
+  'setTrip',
+  'setCard',
+  'setDrawn',
+] as const
+
+/** The first engine version whose page has each method: a page lacking one is older than it. */
+export const PAGE_SEAM_SINCE: { readonly [K in keyof PageSeam]: string } = {
+  advance: '0.1.0',
+  seek: '0.1.0',
+  setCapture: '0.1.0',
+  setPlaying: '0.1.0',
+  setSpeed: '0.1.0',
+  setView: '0.1.0',
+  setGeo: '0.1.0',
+  showView: '0.1.0',
+  hasGeo: '0.1.0',
+  setLabels: '0.1.0',
+  setRoutes: '0.1.0',
+  setFrame: '0.1.0',
+  setTheme: '0.11.0',
+  settle: '0.1.0',
+  bounds: '0.1.0',
+  onDraw: '0.1.0',
+  state: '0.1.0',
+  setTrip: '0.13.0',
+  setCard: '0.15.0',
+  setDrawn: '0.15.0',
+}
+
+/** What a frame hosting the page must allow, as whole Content-Security-Policy directives. */
+export const PAGE_REQUIRES = [
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  'img-src data:',
+  'font-src data:',
+] as const
+
+/** The page fetches nothing, which is why its policy has no `connect-src`. */
+export const PAGE_FETCHES = false as const

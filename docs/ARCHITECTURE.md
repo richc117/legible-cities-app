@@ -311,6 +311,23 @@ because running the output through a formatter would make the committed
 file depend on that formatter's version
 (`specs/006-typed-engine-client/research.md`, section 2).
 
+The description also says the animation page `map.build` writes, as a host
+drives it (`page`, engine v0.21.0, issue 607), and the app keeps no copy of
+its own of any of it. `page.seam` is the methods of the page's
+`window.__present`, each with its positional arguments, its answer and the
+version it arrived at, generated as `PageSeam`, `PAGE_SEAM_NAMES` and
+`PAGE_SEAM_SINCE`; the capture's calls of the seam are typed by `PageSeam`
+(`seamCall` in `src/main/capture.ts`), the map's allowlist `VIEWER_METHODS`
+must name methods of it, and a page lacking one of `PAGE_SEAM_NAMES` is
+older than the pin. `page.requires` is the Content-Security-Policy
+directives a frame hosting the page must allow, generated as
+`PAGE_REQUIRES`, which the project pages' policy is composed from
+(`PROJECT_CSP` in `src/main/protocol.ts`), and `page.fetches` says the page
+fetches nothing, which is why that policy has no `connect-src`: the
+generator refuses a page that would fetch, a directive that is not one
+whole directive, and a version that is not three numbers. Nothing reads the
+schema at run time; the constants are generated TypeScript.
+
 Three checks keep the copy honest. Two need no engine and so run on every
 machine that builds the app: the fingerprint must match the committed
 description, and regenerating the module from that description must
@@ -1355,9 +1372,9 @@ page waits for the engine's handshake before it is judged by version. The seam i
 the map's frame loads has been given back its state, the main process lists
 the functions on its `window.__present` by a fixed script that calls none
 of them (`Viewer.seams`, `viewer.seams()` on the bridge), and **a page
-lacking a seam the pinned engine's page has** (`PAGE_SEAMS` in
-`src/shared/viewer.ts`, held to the engine's template by
-`tests/unit/viewer-real.test.ts`), whichever seam it lacks, is older
+lacking a seam the pinned engine's page has** (`PAGE_SEAM_NAMES`,
+generated from the pinned engine's schema and held to the engine's template
+by `tests/unit/viewer-real.test.ts`), whichever seam it lacks, is older
 whatever version its record names. **A `drawn` that names no engine counts
 as older** (decided by the maintainer, 25 Oct 2026): every record drawn
 before issue 494 is one, so every existing project is redrawn once, the

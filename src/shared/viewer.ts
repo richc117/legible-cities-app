@@ -1,27 +1,34 @@
 // The seam the engine's page exposes, as the app is allowed to use it.
 //
-// The list is the app's copy of the page's own `window.__present`, and it is
-// deliberately shorter: the capture methods belong to the export path, and
-// `onDraw` takes a function, which cannot cross into another frame. A gated
-// test against a real generated page asserts the page still has every method
-// named here.
+// The page's own `window.__present` is the engine's to say, and its schema
+// says it (`page.seam`, engine v0.21.0): every method with its arguments, its
+// answer and the version it arrived at, generated into `src/shared/protocol.ts`
+// as `PageSeam`, `PAGE_SEAM_NAMES` and `PAGE_SEAM_SINCE` (issue 607). The list
+// below is not a copy of it but the app's allowlist, deliberately shorter: the
+// capture methods belong to the export path, and `onDraw` takes a function,
+// which cannot cross into another frame. Every name in it must be a method of
+// the seam, or the build fails. A gated test against a real generated page
+// asserts the page still has every method named here.
 //
 // Contract: specs/008-viewer/contracts/viewer.md. Why the frame is sandboxed
 // and driven from the privileged process: ADR-028.
 
-// `setTheme` is the page's own since engine v0.11.0 (its issue 29): it takes
-// `warm-dark` or `sepia`, restyles the page in place and answers false for any
-// other name. A page the engine wrote before that has no such method, and the
-// dispatcher answers "this map cannot do that" for it. Such a page is redrawn
-// from its stored layout when its project opens (issue 465, `PAGE_SEAMS`
-// below), so the answer is met only where that redraw could not run.
+import { PAGE_SEAM_NAMES, type PageSeam } from './protocol'
+
+// `setTheme` is the page's own (engine issue 29; the version it arrived at is
+// `PAGE_SEAM_SINCE.setTheme`): it takes `warm-dark` or `sepia`, restyles the
+// page in place and answers false for any other name. A page the engine wrote
+// before that has no such method, and the dispatcher answers "this map cannot
+// do that" for it. Such a page is redrawn from its stored layout when its
+// project opens (issue 465, `isOlderPage` below), so the answer is met only
+// where that redraw could not run.
 //
-// `setTrip` is the page's own since engine v0.13.0 (its issue 49, app issue
-// 272, ADR-048): `setTrip(from, to)` with two station ids from `map.build`'s
-// `stations` fades everything off the trip the page finds between them, and
-// `setTrip(null)` shows the whole network again. It answers what
-// `state().trip` then says - null, a trip with its legs, or `legs: null` and
-// the page's reason - which the app reads as untrusted data
+// `setTrip` is the page's own (engine issue 49, app issue 272, ADR-048; since
+// `PAGE_SEAM_SINCE.setTrip`): `setTrip(from, to)` with two station ids from
+// `map.build`'s `stations` fades everything off the trip the page finds
+// between them, and `setTrip(null)` shows the whole network again. It answers
+// what `state().trip` then says - null, a trip with its legs, or `legs: null`
+// and the page's reason - which the app reads as untrusted data
 // (`readTrip` in `trip.ts`). Called from cell 03's Trip section and from a
 // reloaded page's restore, through the main process, as every method here is.
 export const VIEWER_METHODS = [
@@ -36,15 +43,15 @@ export const VIEWER_METHODS = [
   'hasGeo',
   'bounds',
   'state',
-] as const
+] as const satisfies readonly (keyof PageSeam)[]
 
 export type ViewerMethod = (typeof VIEWER_METHODS)[number]
 
 /**
  * What the dispatcher in `src/main/viewer.ts` answers when the page has no
  * such method: its own fixed sentence, which reaches the interface as the
- * message of a rejected `viewer.call`. A page the engine wrote before v0.11.0
- * answers it to `setTheme`, and that is how the interface knows to fall back
+ * message of a rejected `viewer.call`. A page the engine wrote before
+ * `setTheme` arrived answers it to `setTheme`, and that is how the interface knows to fall back
  * to loading the theme through the address (`themeWrites.ts`). A test runs
  * the real dispatcher against a page without the method, so the two cannot
  * drift apart.
@@ -54,51 +61,6 @@ export const MISSING_METHOD = 'this map cannot do that'
 export function isViewerMethod(value: unknown): value is ViewerMethod {
   return typeof value === 'string' && (VIEWER_METHODS as readonly string[]).includes(value)
 }
-
-/**
- * Every method the pinned engine's page has on `window.__present`, which is
- * more than the app drives on the map (`VIEWER_METHODS`): the capture's own
- * (`advance`, `setCapture`, `settle`, `setFrame`), the opening's (`setCard`,
- * `setDrawn`, engine v0.15.0) and the two axes beneath `showView`. As of
- * engine v0.21.0, `page/page.html`'s seam object, in its order (unchanged since
- * v0.20.0).
- *
- * It is how a page an older engine drew is told from a current one (issue
- * 465). The page carries no version of the engine that drew it - its HTML
- * has none, and `state()` answers none - and until issue 494 neither did the
- * record, whose `drawn` now names it (`drawn.engine`) for every map drawn
- * since, and a `drawn` that names none is older by that alone. Every
- * seam the engine has added has been a method on this object
- * (`setTheme` at v0.11.0, `setTrip` at v0.13.0, `setCard` and `setDrawn` at
- * v0.15.0), so **a page lacking any of these is older than the pin**,
- * whatever else it has. A gated test holds this list to the engine's own
- * page template at the checkout, method for method in both directions
- * (`tests/unit/viewer-real.test.ts`), so a pin that adds a seam fails there
- * until the seam is named here, and every page drawn before it is then
- * redrawn when it opens.
- */
-export const PAGE_SEAMS = [
-  'advance',
-  'seek',
-  'setCapture',
-  'setPlaying',
-  'setSpeed',
-  'setView',
-  'setGeo',
-  'showView',
-  'hasGeo',
-  'setLabels',
-  'setRoutes',
-  'setFrame',
-  'setTheme',
-  'settle',
-  'bounds',
-  'onDraw',
-  'state',
-  'setTrip',
-  'setCard',
-  'setDrawn',
-] as const
 
 /** The most names a page's answer about its seam may hold before it is no answer. */
 export const SEAMS_MAX = 256
@@ -130,30 +92,39 @@ export function readSeams(value: unknown): string[] | null {
  * is missing from it, false when none is, and null when the page did not say,
  * which is not a reason to do anything. A page with methods beyond the pin's
  * - one a newer engine drew - is not older.
+ *
+ * The pinned page's methods are `PAGE_SEAM_NAMES`, generated from the
+ * pinned engine's schema (`page.seam`), which is more than the app drives on
+ * the map (`VIEWER_METHODS`): the capture's own (`advance`, `setCapture`,
+ * `settle`, `setFrame`), the opening's (`setCard`, `setDrawn`) and the two
+ * axes beneath `showView`.
+ *
+ * It is how a page an older engine drew is told from a current one (issue
+ * 465). The page carries no version of the engine that drew it - its HTML
+ * has none, and `state()` answers none - and until issue 494 neither did the
+ * record, whose `drawn` now names it (`drawn.engine`) for every map drawn
+ * since, and a `drawn` that names none is older by that alone. Every seam
+ * the engine has added has been a method on this object, each arriving at
+ * the version `PAGE_SEAM_SINCE` names, so **a page lacking any of them is
+ * older than the pin**, whatever else it has. A pin that adds a seam moves
+ * the generated names with it, and every page drawn before it is then
+ * redrawn when it opens. A gated test holds the names to the engine's own
+ * page template at the checkout, method for method in both directions
+ * (`tests/unit/viewer-real.test.ts`), which catches an engine whose page and
+ * schema disagree.
  */
 export function isOlderPage(seams: readonly string[] | null): boolean | null {
   if (seams === null) return null
-  return PAGE_SEAMS.some((name) => !seams.includes(name))
+  return PAGE_SEAM_NAMES.some((name) => !seams.includes(name))
 }
 
 /**
- * What the page says it is showing. Data from a page we do not trust.
- *
- * `theme` is `warm-dark` or `sepia` from engine v0.11.0 on, and is a claim
- * like the rest of it: read as unknown and checked with `isTheme` before
- * anything is done with it.
+ * The span of the service day, as `readBounds` answers it once it has checked
+ * what the page's `bounds()` claimed (ADR-028): both finite, `t0` not before
+ * the day's start and `t1` after `t0`. It is the app's own type for a checked
+ * value, not the schema's `PageBounds`, which is only what a page says, so
+ * nothing should be cast to it.
  */
-export interface ViewerState {
-  now: number
-  clock: string
-  viewName: string
-  labels: boolean
-  theme?: string
-  /** What `setTrip` last answered, from engine v0.13.0: null, or a trip or a reason (`readTrip`). */
-  trip?: unknown
-  [key: string]: unknown
-}
-
 export interface ViewerBounds {
   t0: number
   t1: number
