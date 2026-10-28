@@ -228,17 +228,26 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
     headingRef.current?.focus()
   }, [])
 
+  // The folder's size as the main process measures it; null, said as
+  // "Measuring…", until it answers or where it cannot.
+  const readSize = useCallback(
+    (): Promise<void> =>
+      window.api.settings.engineSize().then(
+        (measured) => setSize(measured),
+        () => setSize(null),
+      ),
+    [],
+  )
+  // Measured again after a reset, the old figure taken away first. At
+  // mount the size is null already, so the first measure only asks.
   const measure = useCallback((): Promise<void> => {
     setSize(null)
-    return window.api.settings.engineSize().then(
-      (measured) => setSize(measured),
-      () => setSize(null),
-    )
-  }, [])
+    return readSize()
+  }, [readSize])
 
   useEffect(() => {
-    void measure()
-  }, [measure])
+    void readSize()
+  }, [readSize])
 
   // The versions are the engine's own answer, read once it is ready and
   // again if it restarts into a different build.

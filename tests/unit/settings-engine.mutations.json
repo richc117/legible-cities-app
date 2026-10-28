@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/Settings.tsx",
+    "find": "  const measure = useCallback((): Promise<void> => {\n    setSize(null)\n",
+    "replace": "  const measure = useCallback((): Promise<void> => {\n",
+    "test": "tests/unit/settings-engine.test.tsx",
+    "title": "says it is measuring until the size comes, and again after a reset",
+    "why": "The reset's measure not taking the old figure away first (issue 433, part c): after Reset the size line keeps the old figure rather than saying \"Measuring…\"."
+  }
+]
