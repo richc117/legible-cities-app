@@ -61,6 +61,7 @@ afterAll(() => {
 // Imported after the mocks, which `vi.mock` hoists above every import, and
 // after the stub above.
 const { default: App } = await import('../../src/renderer/src/App')
+const { default: Inspector } = await import('../../src/renderer/src/Inspector')
 
 /** A run as the registry lists one: its latest job, and a way to hear it move. */
 class StubRun implements JobSource {
@@ -126,5 +127,15 @@ describe('the header’s Jobs toggle', () => {
     expect(byName('button', 'Jobs, 1 running'), 'once the run starts').toBeTruthy()
     act(() => run.move({ ...run.current!, state: 'done', ended: Date.UTC(2026, 9, 27, 12, 1) }))
     expect(byName('button', 'Jobs, none running'), 'once it has ended').toBeTruthy()
+  })
+})
+
+describe('the inspector', () => {
+  it('lists a job that starts after it opened', () => {
+    const view = renderPanel(<Inspector onClose={() => undefined} />, { api: API })
+    expect(view.host.textContent).toContain('There are no jobs this session.')
+    act(() => run.move(job({ id: nextJobId(), label: 'Layout run' })))
+    expect(view.host.textContent).not.toContain('There are no jobs this session.')
+    expect(view.host.textContent).toContain('Layout run')
   })
 })

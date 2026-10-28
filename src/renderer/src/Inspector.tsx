@@ -40,6 +40,7 @@ export default function Inspector({ onClose }: Props): JSX.Element {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the list as it stands once subscribed; jobs() is a fresh array, not a snapshot
     setList(jobs())
     return subscribeToJobs(() => setList(jobs()))
   }, [])
