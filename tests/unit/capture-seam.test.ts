@@ -81,6 +81,19 @@ describe("the capture's calls of the seam", () => {
       // A clock the page said was not a number: written as script writes
       // it, as the template literal did, and never as JSON's `null`.
       ['a sweep from a NaN clock', SEAM_SCRIPTS.seek(NaN), 'window.__present.seek(NaN); true'],
+      // Negative zero is written as zero, and an infinite clock as script
+      // writes it, both as the template literal wrote them.
+      ['a sweep at negative zero', SEAM_SCRIPTS.seek(-0), 'window.__present.seek(0); true'],
+      [
+        'a sweep from an infinite clock',
+        SEAM_SCRIPTS.seek(Infinity),
+        'window.__present.seek(Infinity); true',
+      ],
+      [
+        'the network drawn to negative zero',
+        SEAM_SCRIPTS.setDrawn(-0),
+        'window.__present.setDrawn(0); true',
+      ],
       ['a step at 4 fps', SEAM_SCRIPTS.advance(1 / 4), 'window.__present.advance(0.25); true'],
       [
         'a step at 24 fps',
