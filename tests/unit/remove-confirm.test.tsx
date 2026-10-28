@@ -14,7 +14,7 @@
 
 import { act, type JSX } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { LayoutRun, type RunClient } from '../../src/renderer/src/engine/layoutRun'
 import { useProjectState, type ProjectState } from '../../src/renderer/src/notebook/useProjectState'
 import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../src/shared/activity'
@@ -74,7 +74,7 @@ let root: Root
 let mounted = false
 let shown: ProjectState
 let deleted: ReturnType<typeof vi.fn>
-let left: ReturnType<typeof vi.fn>
+let left: Mock<(notice?: string) => void>
 
 /** The hook, handed the way back the screen above hands it on this render. */
 function Harness({ onBack }: { onBack: (notice?: string) => void }): JSX.Element | null {
