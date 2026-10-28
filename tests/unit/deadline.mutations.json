@@ -21,7 +21,7 @@
     "replace": "    return await deadline\n",
     "test": "tests/unit/deadline.test.ts",
     "title": "keeps the deadline it is handed",
-    "why": "The check's answer never raced: everything waited out its whole deadline and lapsed, a check that answered in time included. (Red by the test's own timeout: the answer it awaits never comes under the fake clock.)"
+    "why": "The check's answer never raced: everything waited out its whole deadline and lapsed, a check that answered in time included."
   },
   {
     "file": "src/main/log-file.ts",
@@ -69,7 +69,7 @@
     "replace": "        FOLDERS_TIMEOUT_MS + 1,\n      )\n      if (inTheWay === LAPSED)",
     "test": "tests/unit/settings-ipc.test.ts",
     "title": "gives up on a project’s folder that never answers, names the project",
-    "why": "The engine folder's choice given a deadline other than the folders' one: it has not given up at FOLDERS_TIMEOUT_MS. (Red by the test's own timeout: the refusal it awaits never comes under the fake clock.)"
+    "why": "The engine folder's choice given a deadline other than the folders' one: it has not given up at FOLDERS_TIMEOUT_MS."
   },
   {
     "file": "src/main/export.ts",

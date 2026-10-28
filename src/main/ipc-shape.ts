@@ -99,10 +99,13 @@ export type GuardedHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => 
 
 /**
  * `ipcMain.handle` for the interface's own top frame only, the one guard
- * every bridge puts in front of its handlers (issue 598). A call from
- * anywhere else - a project page in an iframe shares the origin but must
- * not have the bridge - is refused with `forbidden` before the handler is
- * called, so nothing of the call's work is done; and a call that passes
+ * every bridge puts in front of its handlers (issue 598). A call from any
+ * frame or web contents other than the main window's top frame - a second
+ * window, a webview - is refused with `forbidden` before the handler is
+ * called, so nothing of the call's work is done. It cannot tell a
+ * same-origin iframe calling `parent.api` apart, since the bridge's
+ * functions run in the top frame that exposed them; that is why the
+ * viewer's frame is kept to an opaque origin (ADR-028). A call that passes
  * reaches the handler in the same turn, with nothing awaited between, which
  * the record session rests on (`registerProjectHandlers`, spec 037).
  */

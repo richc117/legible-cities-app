@@ -61,14 +61,21 @@ describe('guardedHandle', () => {
     expect(calls).toHaveLength(1)
   })
 
-  it('is the only guard: no bridge under src/main/ writes its own', () => {
+  it('is the only guard and the only door: no bridge under src/main/ writes its own, or registers a handler without it', () => {
     const root = join(__dirname, '..', '..', 'src', 'main')
-    const own = readdirSync(root, { recursive: true, encoding: 'utf8' })
-      .filter((file) => file.endsWith('.ts') && file !== 'ipc-shape.ts')
-      .filter((file) =>
-        /isTopFrame\(event\)|new Error\('forbidden'\)/.test(readFileSync(join(root, file), 'utf8')),
-      )
-    expect(own).toEqual([])
+    const others = readdirSync(root, { recursive: true, encoding: 'utf8' }).filter(
+      (file) => file.endsWith('.ts') && file !== 'ipc-shape.ts',
+    )
+    const own = others.filter((file) =>
+      /isTopFrame\(event\)|new Error\('forbidden'\)/.test(readFileSync(join(root, file), 'utf8')),
+    )
+    expect(own, 'a copy of the guard').toEqual([])
+    // A handler registered straight on `ipcMain` is unguarded whatever it
+    // checks, however it spells it: every one goes through `guardedHandle`.
+    const bare = others.filter((file) =>
+      readFileSync(join(root, file), 'utf8').includes('ipcMain.handle('),
+    )
+    expect(bare, 'a handler registered without the guard').toEqual([])
     // And the pattern still finds the one it is about.
     expect(readFileSync(join(root, 'ipc-shape.ts'), 'utf8')).toMatch(
       /if \(!isTopFrame\(event\)\) throw new Error\('forbidden'\)/,

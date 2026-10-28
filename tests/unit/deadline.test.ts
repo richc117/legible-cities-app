@@ -83,10 +83,16 @@ describe('inTime', () => {
     const check = new Promise<string>((resolve) => {
       late = resolve
     })
-    const waiting = inTime(check, 300)
+    // A flag, not an await: an answer that never came fails here, now, and
+    // not at the test's own timeout.
+    let answered: unknown = 'nothing yet'
+    void inTime(check, 300).then((answer) => {
+      answered = answer
+    })
     await vi.advanceTimersByTimeAsync(299)
     late('in time')
-    expect(await waiting).toBe('in time')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(answered).toBe('in time')
     expect(vi.getTimerCount(), 'and the timer is gone').toBe(0)
   })
 })

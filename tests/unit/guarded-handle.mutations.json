@@ -5,7 +5,7 @@
     "replace": "",
     "test": "tests/unit/guarded-handle.test.ts",
     "title": "refuses a call from anything but the interface",
-    "why": "The guard gone: a project page in an iframe, which shares the origin, reaches every bridge."
+    "why": "The guard gone: any frame or web contents other than the main window's top frame - a second window, a webview - reaches every bridge. (A same-origin iframe it could never tell apart; ADR-028 keeps the viewer to an opaque origin for that.)"
   },
   {
     "file": "src/main/ipc-shape.ts",
@@ -36,8 +36,16 @@
     "find": "  guardedHandle(ipcMain, isTopFrame)(CHANNELS.feedsPickZip, async (): Promise<PickedZip | null> => {\n",
     "replace": "  ipcMain.handle(CHANNELS.feedsPickZip, async (event): Promise<PickedZip | null> => {\n    if (!isTopFrame(event)) throw new Error('forbidden')\n",
     "test": "tests/unit/guarded-handle.test.ts",
-    "title": "is the only guard",
+    "title": "is the only guard and the only door",
     "why": "A bridge back to its own copy of the guard: the next change to the guard is made once and missed there."
+  },
+  {
+    "file": "src/main/jobs-ipc.ts",
+    "find": "  guardedHandle(ipcMain, isTopFrame)(CHANNELS.jobsCopyLog, async (_event, raw) => {\n",
+    "replace": "  ipcMain.handle(CHANNELS.jobsCopyLog, async (_event, raw: unknown) => {\n",
+    "test": "tests/unit/guarded-handle.test.ts",
+    "title": "is the only guard and the only door",
+    "why": "A bridge registered straight on ipcMain with no guard at all: its channel answers any caller, and no copy of the guard is there for a search for copies to find."
   },
   {
     "file": "src/main/engine-ipc.ts",
