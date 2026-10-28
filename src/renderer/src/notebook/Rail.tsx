@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useState, type JSX } from 'react'
 import { flushSync } from 'react-dom'
 import Icon from '../icons/Icon'
 import { CELL_LIST, type Cell, type CellId, type CellStatus } from '../runGraph'
-import { cellNumber, stateIcon, stateWord } from './Cell'
+import { cellLabel, cellNumber, stateIcon, stateWord } from './Cell'
 import { useProjectRecord } from './context'
 import Outputs from './Outputs'
 import { clearance, currentStepOf, scrollTargetFor, type CellBox } from './railScroll'
@@ -47,7 +47,7 @@ export const RAIL_LABEL = 'Steps'
 
 /** A step's accessible name: its number, its name and its state, as one. */
 export const stepName = (cell: Cell, state: CellStatus['state']): string =>
-  `${cellNumber(cell.number)} ${cell.name}, ${stateWord(state)}`
+  `${cellLabel(cell.number, cell.name)}, ${stateWord(state)}`
 
 /** A cell's own section in the notebook, by the number it carries. */
 function cellElement(cell: Cell): HTMLElement | null {

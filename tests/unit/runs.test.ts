@@ -401,7 +401,8 @@ describe('today, the anchor a layout run asks the engine for its day with', () =
   })
 
   it('is the local calendar day as YYYY-MM-DD, two figures for the month and the day', () => {
-    // Node honours a change of TZ at run time, so the zone is pinned to one
+    // Node honours a change of TZ at run time on macOS and Linux (not on
+    // Windows, where this row then detects nothing), so the zone is pinned to one
     // where the local day and the UTC day differ (the mutation job runs in
     // UTC, where they would not). Built from local parts: 23:30 in Los
     // Angeles is already the next day in UTC.
