@@ -198,10 +198,13 @@ function refName(ref: string, path: string): string {
   return match[1]
 }
 
-// Single quotes and no semicolons, to match the repository's style: the
-// generated file is read by people even though it is written by a script.
+// A string from the description is written as JSON writes it, which escapes
+// every character that could end the literal early - a quote, a backslash, a
+// line break - so whatever the engine says reaches the module as data and
+// never as code. The formatter then gives it the repository's single quotes
+// wherever that needs no escape, so the file still reads as written by hand.
 const literal = (value: string | number | boolean): string =>
-  typeof value === 'string' ? `'${value.replace(/'/g, "\\'")}'` : String(value)
+  typeof value === 'string' ? JSON.stringify(value) : String(value)
 
 /** One node as a TypeScript type. `indent` is the current body's indent. */
 function typeOf(node: Node, path: string, defs: Set<string>, indent: string): string {
@@ -267,8 +270,9 @@ function objectBody(node: Node, path: string, defs: Set<string>, indent: string)
   const inner = indent + '  '
   const lines: string[] = []
   for (const [name, child] of Object.entries(node.properties ?? {})) {
-    if (child.description !== undefined) lines.push(...comment(child.description, inner))
-    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : `'${name}'`
+    if (child.description !== undefined)
+      lines.push(...comment(child.description, inner, `${path}.${name}.description`))
+    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : literal(name)
     const optional = required.has(name) ? '' : '?'
     lines.push(`${inner}${key}${optional}: ${typeOf(child, `${path}.${name}`, defs, inner)}`)
   }
@@ -283,8 +287,15 @@ function objectBody(node: Node, path: string, defs: Set<string>, indent: string)
   return `{\n${lines.join('\n')}\n${indent}}`
 }
 
-/** A description as a doc comment, wrapped at 76 columns. */
-function comment(text: string, indent: string): string[] {
+// A description as a doc comment, wrapped at 76 columns. One that would close
+// the comment early is refused rather than escaped: the text after a star and
+// a slash would be the module's code, and a description has no reason to say
+// it.
+function comment(text: string, indent: string, path: string): string[] {
+  if (text.includes('*/'))
+    throw new Error(
+      `${path}: a description that closes a comment ("*/"), which this script refuses`,
+    )
   const words = text.split(/\s+/).filter((w) => w !== '')
   const width = 74 - indent.length
   const lines: string[] = []
@@ -380,7 +391,7 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
   const names = Object.keys(page.seam)
   if (names.length === 0) throw new Error('page.seam: the description names no seam')
   const out: string[] = []
-  if (page.description !== undefined) out.push(...comment(page.description, ''))
+  if (page.description !== undefined) out.push(...comment(page.description, '', 'page.description'))
   out.push('export interface PageSeam {')
   for (const name of names) {
     const path = `page.seam.${name}`
@@ -393,7 +404,8 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
       throw new Error(
         `${path}.since: "${String(method.since)}" is not a version of three numbers, as the pins write one`,
       )
-    if (method.description !== undefined) out.push(...comment(method.description, '  '))
+    if (method.description !== undefined)
+      out.push(...comment(method.description, '  ', `${path}.description`))
     out.push(`  ${name}: {`)
     out.push(`    params: ${paramsOf(method.params, `${path}.params`, defs)}`)
     out.push(`    result: ${typeOf(method.result, `${path}.result`, defs, '    ')}`)
@@ -452,7 +464,8 @@ export function emit(description: Description, tag: string): string {
 
   for (const [name, node] of Object.entries(description.$defs)) {
     const path = `$defs.${name}`
-    if (node.description !== undefined) out.push(...comment(node.description, ''))
+    if (node.description !== undefined)
+      out.push(...comment(node.description, '', `${path}.description`))
     const isInterface =
       node.$ref === undefined &&
       node.type === 'object' &&

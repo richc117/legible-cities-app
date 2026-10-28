@@ -6,6 +6,8 @@
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { runInNewContext } from 'node:vm'
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import {
   APP_ERROR_KINDS,
@@ -243,8 +245,8 @@ describe("the page's seam, from the description", () => {
     }
     const out = emit(schema as never, 'v0.0.0')
     expect(out).toContain('box: {\n    params: []\n    result: Box\n  }')
-    expect(out).toContain("export const PAGE_SEAM_NAMES = ['box'] as const")
-    expect(out).toContain("box: '0.1.0',")
+    expect(out).toContain('export const PAGE_SEAM_NAMES = ["box"] as const')
+    expect(out).toContain('box: "0.1.0",')
   })
 
   it('refuses a since that is not three numbers', () => {
@@ -334,6 +336,68 @@ describe("the page's seam, from the description", () => {
       /page\.fetches: the page now fetches, and the policy .* has no connect-src/,
     )
     expect(() => emit(withSeam(PAGE.seam, { fetches: 'no' }), 'v0.0.0')).toThrow(/page\.fetches/)
+  })
+})
+
+// What the description says reaches the module as data, never as code: the
+// main process imports `PAGE_REQUIRES`, so a string that closed its literal
+// early would run there. Proven on the module as it is written - formatted,
+// then its types stripped and run - not on the text alone.
+describe('a string from the description stays a string', () => {
+  const base = { protocol: 1, $defs: {}, methods: {}, notifications: {} }
+
+  /** The emitted module, formatted as committed, run with its types stripped. */
+  async function load(
+    schema: unknown,
+  ): Promise<{ exports: Record<string, unknown>; ran: unknown }> {
+    const text = await emitFormatted(schema as never, 'v0.0.0', repo)
+    const js = ts.transpileModule(text, {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText
+    const sandbox = { exports: {} as Record<string, unknown>, ran: undefined as unknown }
+    runInNewContext(js, sandbox)
+    return { exports: sandbox.exports, ran: sandbox.ran }
+  }
+
+  it('round-trips a directive holding a backslash and a quote, and runs nothing', async () => {
+    // One whole directive by the rule (no semicolon, comma or line break),
+    // written to end a single-quoted literal and run what follows it.
+    const directive = "img-src \\' + (globalThis.ran = 1)] /*"
+    const { exports, ran } = await load({ ...base, page: { ...PAGE, requires: [directive] } })
+    expect(ran, 'the directive ran as code').toBeUndefined()
+    expect(exports.PAGE_REQUIRES).toEqual([directive])
+  })
+
+  it('refuses a description that would close its doc comment, naming where', () => {
+    const closes = 'ends here */ export const X = 1 /*'
+    const params = { type: 'array', maxItems: 0, items: { type: 'null' } }
+    const result = { type: 'null' }
+    const cases: [unknown, RegExp][] = [
+      [{ ...base, page: { ...PAGE, description: closes } }, /page\.description: .*"\*\/"/],
+      [
+        {
+          ...base,
+          page: { ...PAGE, seam: { go: { since: '0.1.0', description: closes, params, result } } },
+        },
+        /page\.seam\.go\.description: .*"\*\/"/,
+      ],
+      [
+        { ...base, page: PAGE, $defs: { Thing: { type: 'string', description: closes } } },
+        /\$defs\.Thing\.description: .*"\*\/"/,
+      ],
+      [
+        {
+          ...base,
+          page: PAGE,
+          $defs: {
+            Thing: { type: 'object', properties: { a: { type: 'string', description: closes } } },
+          },
+        },
+        /\$defs\.Thing\.a\.description: .*"\*\/"/,
+      ],
+    ]
+    for (const [schema, message] of cases)
+      expect(() => emit(schema as never, 'v0.0.0')).toThrow(message)
   })
 })
 
