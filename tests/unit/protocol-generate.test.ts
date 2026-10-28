@@ -461,6 +461,23 @@ describe('what the description names is written as data, or refused', () => {
     }
   })
 
+  it('refuses a constant or an enumerated value that is not a scalar', async () => {
+    // `String` of a one-item list is its item's text: here, code.
+    await refusedBeforeRunning(
+      { ...base, $defs: { X: { const: ['1; globalThis.ran = 1; type Y = 1'] } } },
+      /\$defs\.X\.const: a value that is not a string, a finite number or a boolean/,
+    )
+    await refusedBeforeRunning(
+      { ...base, $defs: { X: { enum: ['a', ['1; globalThis.ran = 1; type Y = 1']] } } },
+      /\$defs\.X\.enum\[1\]: a value that is not/,
+    )
+    for (const value of [{ a: 1 }, null, []]) {
+      expect(() => emit({ ...base, $defs: { X: { enum: [value] } } } as never, 'v0.0.0')).toThrow(
+        /\$defs\.X\.enum\[0\]: a value that is not/,
+      )
+    }
+  })
+
   it('refuses a definition name that is not an identifier, referenced or not', async () => {
     await refusedBeforeRunning(
       { ...base, $defs: { 'A = 1; globalThis.ran = 1; type B': { type: 'string' } } },

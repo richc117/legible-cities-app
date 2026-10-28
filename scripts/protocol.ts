@@ -207,8 +207,16 @@ function refName(ref: string, path: string): string {
 // line break - so whatever the engine says reaches the module as data and
 // never as code. The formatter then gives it the repository's single quotes
 // wherever that needs no escape, so the file still reads as written by hand.
-const literal = (value: string | number | boolean): string =>
-  typeof value === 'string' ? JSON.stringify(value) : String(value)
+//
+// Only a scalar is a literal: a string, a finite number or a boolean. Anything
+// else - an array or an object in `const` or `enum`, a null - is refused,
+// because `String` would write it as whatever its text happens to be.
+function literal(value: unknown, path: string): string {
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'boolean') return String(value)
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  throw new Error(`${path}: a value that is not a string, a finite number or a boolean`)
+}
 
 /** One node as a TypeScript type. `indent` is the current body's indent. */
 function typeOf(node: Node, path: string, defs: Set<string>, indent: string): string {
@@ -221,8 +229,11 @@ function typeOf(node: Node, path: string, defs: Set<string>, indent: string): st
       throw new Error(`${path}: $ref to ${name}, which the description does not define`)
     return name
   }
-  if (node.const !== undefined) return literal(node.const)
-  if (node.enum !== undefined) return node.enum.map(literal).join(' | ')
+  if (node.const !== undefined) return literal(node.const, `${path}.const`)
+  if (node.enum !== undefined) {
+    if (!Array.isArray(node.enum)) throw new Error(`${path}.enum: not a list of values`)
+    return node.enum.map((value, i) => literal(value, `${path}.enum[${i}]`)).join(' | ')
+  }
   if (node.oneOf !== undefined) {
     return node.oneOf
       .map((branch, i) => typeOf(branch, `${path}.oneOf[${i}]`, defs, indent))
@@ -276,7 +287,7 @@ function objectBody(node: Node, path: string, defs: Set<string>, indent: string)
   for (const [name, child] of Object.entries(node.properties ?? {})) {
     if (child.description !== undefined)
       lines.push(...comment(child.description, inner, `${path}.${name}.description`))
-    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : literal(name)
+    const key = IDENTIFIER.test(name) ? name : literal(name, `${path}.${name}`)
     const optional = required.has(name) ? '' : '?'
     lines.push(`${inner}${key}${optional}: ${typeOf(child, `${path}.${name}`, defs, inner)}`)
   }
@@ -431,13 +442,16 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
   out.push('}', '')
 
   out.push("/** Every method of the page's seam, in the description's order. */")
-  out.push(`export const PAGE_SEAM_NAMES = [${names.map(literal).join(', ')}] as const`)
+  out.push(
+    `export const PAGE_SEAM_NAMES = [${names.map((name) => literal(name, `page.seam.${name}`)).join(', ')}] as const`,
+  )
   out.push('')
   out.push(
     '/** The first engine version whose page has each method: a page lacking one is older than it. */',
   )
   out.push('export const PAGE_SEAM_SINCE: { readonly [K in keyof PageSeam]: string } = {')
-  for (const name of names) out.push(`  ${name}: ${literal(page.seam[name].since)},`)
+  for (const name of names)
+    out.push(`  ${name}: ${literal(page.seam[name].since, `page.seam.${name}.since`)},`)
   out.push('}', '')
 
   // The app serves the page with no `connect-src`, so `default-src 'none'`
@@ -476,7 +490,9 @@ function emitPage(page: Page | undefined, defs: Set<string>): string[] {
   out.push(
     '/** What a frame hosting the page must allow, as whole Content-Security-Policy directives. */',
   )
-  out.push(`export const PAGE_REQUIRES = [${page.requires.map(literal).join(', ')}] as const`)
+  out.push(
+    `export const PAGE_REQUIRES = [${page.requires.map((d, i) => literal(d, `page.requires[${i}]`)).join(', ')}] as const`,
+  )
   out.push('')
 
   out.push('/** The page fetches nothing, which is why its policy has no `connect-src`. */')
@@ -523,7 +539,7 @@ export function emit(description: Description, tag: string): string {
   out.push('/** Every request the engine answers, with its parameters and its result. */')
   out.push('export interface Methods {')
   for (const [name, method] of Object.entries(description.methods)) {
-    out.push(`  ${literal(name)}: {`)
+    out.push(`  ${literal(name, `methods.${name}`)}: {`)
     out.push(`    params: ${typeOf(method.params, `methods.${name}.params`, defs, '    ')}`)
     out.push(`    result: ${typeOf(method.result, `methods.${name}.result`, defs, '    ')}`)
     out.push('  }')
@@ -532,7 +548,9 @@ export function emit(description: Description, tag: string): string {
   out.push('/** Every notification the engine sends, with its parameters. */')
   out.push('export interface Notifications {')
   for (const [name, node] of Object.entries(description.notifications)) {
-    out.push(`  ${literal(name)}: ${typeOf(node, `notifications.${name}`, defs, '  ')}`)
+    out.push(
+      `  ${literal(name, `notifications.${name}`)}: ${typeOf(node, `notifications.${name}`, defs, '  ')}`,
+    )
   }
   out.push('}', '')
   out.push('export type Method = keyof Methods')
