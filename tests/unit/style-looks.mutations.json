@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/StyleLooks.tsx",
+    "find": "    setLooksAt(engineKey)\n    setLooks(looksKnown(known, version))\n",
+    "replace": "    setLooksAt(engineKey)\n",
+    "test": "tests/unit/style-looks.test.tsx",
+    "title": "offers none of the last engine’s looks while one at another version is asked",
+    "why": "The looks not started again when the engine's version moves: an engine restarted at another version offers the last one's looks until it answers."
+  },
+  {
+    "file": "src/renderer/src/StyleLooks.tsx",
+    "find": "  if (looksAt !== engineKey) {\n",
+    "replace": "  if (looksAt !== engineKey || looks !== null) {\n",
+    "test": "tests/unit/style-looks.test.tsx",
+    "title": "offers none of the last engine’s looks while one at another version is asked",
+    "why": "The reset unguarded: looksKnown makes a new object each call, so the cell sets it on every render and React gives up with too many re-renders."
+  }
+]

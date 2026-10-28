@@ -111,11 +111,21 @@ export function LookSelect({
   // Started from the last list an engine answered (`looksKnown`), so a
   // project opened again shows its look from the first frame.
   const [looks, setLooks] = useState<Looks>(() => looksKnown(known, version))
+  // And started again from it in the render that sees the engine's state
+  // become known or its version move, so an engine restarted at another
+  // version never offers the last one's looks. The comparison is what stops
+  // it: `looksKnown` makes a new object each call, and setting it on every
+  // render would never end.
+  const engineKey = `${known}|${version}`
+  const [looksAt, setLooksAt] = useState(engineKey)
+  if (looksAt !== engineKey) {
+    setLooksAt(engineKey)
+    setLooks(looksKnown(known, version))
+  }
 
   // The engine's looks, once while an engine of this version answers
   // (`looksFor`): a project opened again reads the answer already given.
   useEffect(() => {
-    setLooks(looksKnown(known, version))
     if (version === null) return
     let left = false
     looksFor(engineClient(), version).then(
@@ -129,7 +139,7 @@ export function LookSelect({
     return () => {
       left = true
     }
-  }, [known, version])
+  }, [version])
 
   const offered = offeredLooks(looks)
   return (
