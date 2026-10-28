@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/export/ExportDestination.tsx",
+    "find": "  if (recorded !== taken) {\n    setTaken(recorded)\n    set((now) => ({ ...now, folder: recorded }))\n  }\n",
+    "replace": "",
+    "test": "tests/unit/export-destination.test.tsx",
+    "title": "takes a folder the record brings when it is read again",
+    "why": "useDestination never taking the record's folder after its first render (issue 433, part c): a record read again with a new folder would not be shown."
+  }
+]

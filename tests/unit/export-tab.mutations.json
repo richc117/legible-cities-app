@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/export/ExportDestination.tsx",
+    "find": "  if (recorded !== taken) {\n",
+    "replace": "  if (recorded !== held.folder) {\n",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "shows the folder a press answered after the engine has gone and come back",
+    "why": "useDestination comparing the record with the folder shown rather than with the one last taken (issue 433, part c): the folder a press answered is put back to the record not yet read again, on the next render."
+  }
+]
