@@ -46,5 +46,21 @@
     "test": "tests/unit/failed-run-reason.test.tsx",
     "title": "says the panel’s own sentence where the failure is neither an error nor an engine shape",
     "why": "The stage fallback reworded."
+  },
+  {
+    "file": "src/renderer/src/engine/inspections.ts",
+    "find": "  return runFailureSentence(error, 'The feed could not be read.')\n",
+    "replace": "  void runFailureSentence\n  return (error as { data: { hint: string } }).data.hint\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows an engine hint carrying",
+    "why": "The inspection’s sentence taken from the engine’s hint unscreened: cells 01 and 05 would show the folders of a path."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "import { runFailureSentence } from '../../shared/jobs'\n",
+    "replace": "const runFailureSentence = (error: unknown, _fallback: string): string =>\n  (error as { data: { hint: string } }).data.hint\n",
+    "test": "tests/unit/failed-run-reason.test.tsx",
+    "title": "shows an engine hint carrying",
+    "why": "The stage drawing’s sentence taken from the engine’s hint unscreened: the cell would show the folders of a path."
   }
 ]
