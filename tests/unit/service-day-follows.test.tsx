@@ -12,7 +12,7 @@
 import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectRecord } from '../../src/shared/project/types'
-import { answered, BASE, cleanup, renderCell } from '../support/render'
+import { answered, BASE, cleanup, press, renderCell } from '../support/render'
 import { pending } from '../support/project-state'
 import { snap, StandInRun } from '../support/stand-in-run'
 
@@ -88,5 +88,27 @@ describe('the control follows the record’s day', () => {
     expect(dayField().value, 'the day being typed, through a rename and a render').toBe(
       '2026-11-02',
     )
+  })
+})
+
+describe('a rebuild that stopped puts the record’s day back', () => {
+  it('puts the record’s day in the control as the rebuild stops, and keeps a day typed after', async () => {
+    // Mutations: the day put back for as long as the run stays stopped (a
+    // new day cannot be typed after a failed "Draw for this day"), and the
+    // put-back removed (the control shows a day the record does not hold).
+    const run = new DayRun()
+    renderCell('frame', { project: project() }, { run, api: viewer })
+    await answered()
+
+    type('2026-10-05')
+    press('Draw for this day')
+    await answered()
+    expect(run.rebuild, 'the rebuild for the day typed').toHaveBeenCalledTimes(1)
+
+    act(() => run.move({ ...snap('cancelled'), rebuilt: true }))
+    expect(dayField().value, 'the record’s day, as the rebuild stops').toBe('2026-09-12')
+
+    type('2026-10-07')
+    expect(dayField().value, 'a day typed after the stop').toBe('2026-10-07')
   })
 })

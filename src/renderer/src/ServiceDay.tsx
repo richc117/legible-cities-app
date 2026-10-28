@@ -202,10 +202,15 @@ export default function ServiceDay({
   }
   // A rebuild that stopped drew nothing, so the day stays chosen and
   // undrawn, and the control keeps showing it: what this puts back is the
-  // record's day, which the choice already is.
-  useEffect(() => {
+  // record's day, which the choice already is. On the run's edge into the
+  // stop, in the render that sees it, and not for as long as it stays
+  // stopped: a day typed after the stop is the person's (a day chosen
+  // elsewhere meanwhile is the follow's, above).
+  const [stateWas, setStateWas] = useState(state)
+  if (stateWas !== state) {
+    setStateWas(state)
     if (rebuilt && (state === 'cancelled' || state === 'failed')) setValue(project.date ?? '')
-  }, [state, rebuilt, project.date])
+  }
 
   // The write waits: a date control reports every whole value on the way to
   // the one a person means (`useDayChoice`).
