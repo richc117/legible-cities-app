@@ -144,6 +144,6 @@ describe('the page scrolls clear of the header (issue 536)', () => {
     const token = rulesOf('scale.css')
       .flatMap((rule) => rule.declarations)
       .find((d) => d.property === '--header-clearance')
-    expect(token?.value).toMatch(/^calc\(var\(--header-height\)/)
+    expect(token?.value).toMatch(/^calc\(var\(--header-height\) \+ /)
   })
 })
