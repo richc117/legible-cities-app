@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { handleAppRequest } from '../../src/main/protocol'
+import { PROJECT_CSP, handleAppRequest } from '../../src/main/protocol'
 
 let home: string
 let uiRoot: string
@@ -37,7 +37,22 @@ const get = (path: string): Promise<Response> =>
 const policy = async (path: string): Promise<string | null> =>
   (await get(path)).headers.get('content-security-policy')
 
+/**
+ * The header a project page was served with before its four directives came
+ * from the schema's `page.requires` (issue 607), as a literal from the code
+ * on `main` (edbdc7a). Composing it from the schema changes nothing on the
+ * wire: a directive dropped from, added to or reordered in the schema, or
+ * one of the app's own moved, fails here.
+ */
+const SERVED_BEFORE =
+  "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
+
 describe('a generated project page', () => {
+  it('is served with exactly the policy it was served with before the schema said it', async () => {
+    expect(PROJECT_CSP).toBe(SERVED_BEFORE)
+    expect(await policy(`/projects/${ID}/la.html`)).toBe(SERVED_BEFORE)
+  })
+
   it('is served with a policy of its own', async () => {
     const csp = await policy(`/projects/${ID}/la.html`)
     expect(csp, 'a project page with no policy is what this feature closed').not.toBeNull()
