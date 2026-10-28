@@ -325,6 +325,19 @@ describe('JsonRpcClient', () => {
     })
     expect(describeThrown(unreadable)).toBe('an error that could not be read')
   })
+  // The address straddles the cut at 200 characters: cut first, it would end
+  // `https://user:hunter`, with no `@` left for the redaction to find the
+  // user information by, and the password's start would be logged.
+  it('redacts what the app threw before it cuts it, an error and a string alike', () => {
+    const straddling = `${'a'.repeat(180)} https://user:hunter2@feeds.example.org/f.zip`
+    for (const line of [describeThrown(new Error(straddling)), describeThrown(straddling)]) {
+      expect(line).not.toContain('hunter')
+      expect(line).toContain(`${'a'.repeat(180)} https://<redacted>@`)
+    }
+    expect(describeThrown('fetch https://feeds.example.org/f.zip?api_key=planted587')).toBe(
+      'fetch https://feeds.example.org/f.zip?api_key=<redacted>',
+    )
+  })
   it('reports the id of a late answer to a request settled from outside (issue 107)', async () => {
     const { c, dropped, reply } = client()
     const { id, result } = c.request('feeds.remove', { key: 'x' })

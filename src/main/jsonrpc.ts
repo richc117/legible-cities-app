@@ -10,8 +10,11 @@ import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine
 import { redactUrls } from './redact'
 
 /**
- * What the framing and the parsing refuse, and nothing else: an exception a
- * handler of the client's throws is the app's, not the engine's (issue 587).
+ * What the framing and the parsing refuse. An exception the notification
+ * handler throws is the app's, not the engine's, and is logged as such
+ * (issue 587); the reader's catch still makes a ProtocolError of anything
+ * else thrown while a message is handed on (a throwing `log` or
+ * `onDroppedResponse`, which neither does today).
  */
 export class ProtocolError extends Error {
   constructor(message: string) {
@@ -21,7 +24,7 @@ export class ProtocolError extends Error {
 }
 
 /** Printable ASCII only, cut to a length. */
-function printable(text: string, max: number): string {
+export function printable(text: string, max: number): string {
   return text
     .replace(/[^ -~]/g, '')
     .slice(0, max)
@@ -35,18 +38,19 @@ function printable(text: string, max: number): string {
  * error's message cut to 200 characters; never the stack. Its web
  * addresses are redacted here, at the source, as a reason's are in
  * `Sidecar.setState`: a message can quote an address a feed was given, key
- * and all, and the line must not wait on the sink to take it out. Never
- * throws.
+ * and all, and the line must not wait on the sink to take it out. Redacted
+ * first and cut after: a cut through an address can leave its user
+ * information without the `@` the redaction finds it by. Never throws.
  */
 export function describeThrown(error: unknown): string {
   try {
     if (error instanceof Error) {
       const code = (error as NodeJS.ErrnoException).code
       if (typeof code === 'string') return `${printable(error.name, 80)} (${printable(code, 40)})`
-      return `${printable(error.name, 80)}: ${redactUrls(printable(String(error.message), 200))}`
+      return `${printable(error.name, 80)}: ${printable(redactUrls(String(error.message)), 200)}`
     }
     return typeof error === 'string'
-      ? redactUrls(printable(error, 200))
+      ? printable(redactUrls(error), 200)
       : 'a value that is not an error'
   } catch {
     return 'an error that could not be read'

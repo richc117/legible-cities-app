@@ -9,7 +9,7 @@
   },
   {
     "file": "src/main/jsonrpc.ts",
-    "find": "      return `${printable(error.name, 80)}: ${redactUrls(printable(String(error.message), 200))}`\n",
+    "find": "      return `${printable(error.name, 80)}: ${printable(redactUrls(String(error.message)), 200)}`\n",
     "replace": "      return `${printable(error.name, 80)}: ${printable(String(error.message), 200)}`\n",
     "test": "tests/unit/jsonrpc.test.ts",
     "title": "logs a notification handler's exception as the app's, never a protocol error, and reads on (issue 587)",
@@ -22,5 +22,29 @@
     "test": "tests/unit/jsonrpc.test.ts",
     "title": "describes what the app threw by its name and message, a system error by its code, never the stack",
     "why": "A system error described by its message, which names a path, rather than by its code."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      return `${printable(error.name, 80)}: ${printable(redactUrls(String(error.message)), 200)}`\n",
+    "replace": "      return `${printable(error.name, 80)}: ${redactUrls(printable(String(error.message), 200))}`\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "redacts what the app threw before it cuts it, an error and a string alike",
+    "why": "An error's message cut before it is redacted: an address across the cut keeps its user information without the `@`, and the password's start is logged."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      ? printable(redactUrls(error), 200)\n",
+    "replace": "      ? redactUrls(printable(error, 200))\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "redacts what the app threw before it cuts it, an error and a string alike",
+    "why": "A thrown string cut before it is redacted: an address across the cut keeps its user information without the `@`, and the password's start is logged."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "      ? printable(redactUrls(error), 200)\n",
+    "replace": "      ? printable(error, 200)\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "redacts what the app threw before it cuts it, an error and a string alike",
+    "why": "A thrown string not redacted at all: a key in an address it quotes is logged whole."
   }
 ]
