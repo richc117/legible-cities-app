@@ -1,0 +1,18 @@
+[
+  {
+    "file": "tests/support/holds.ts",
+    "find": "    await check()\n    if (Date.now() >= end) return\n",
+    "replace": "    await check()\n    return\n",
+    "test": "tests/unit/still-holds.test.ts",
+    "title": "checks again over the window, and once more at its end",
+    "why": "The check made once and the window never held: the helper is the single read after a sleep the issue was about, with no sleep."
+  },
+  {
+    "file": "tests/support/holds.ts",
+    "find": "    await check()\n    if (Date.now() >= end) return\n",
+    "replace": "    try {\n      await check()\n    } catch {\n      // swallowed\n    }\n    if (Date.now() >= end) return\n",
+    "test": "tests/unit/still-holds.test.ts",
+    "title": "ends at the first check that fails, with its error, long before the window is out",
+    "why": "A failing check swallowed: a redraw seen inside the window would be waited out and the test green."
+  }
+]

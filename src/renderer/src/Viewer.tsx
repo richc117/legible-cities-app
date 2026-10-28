@@ -117,6 +117,7 @@ export default function Viewer({
   redraw = 0,
   reloads = 0,
   onSeams,
+  openDecision = null,
 }: {
   project: ProjectRecord
   /**
@@ -141,6 +142,12 @@ export default function Viewer({
    * (`isOlderPage`, issue 465); nothing here does anything with it.
    */
   onSeams?: (seams: string[] | null) => void
+  /**
+   * What the screen decided to do about the page it opened on, once it has:
+   * said as `data-on-open` on the section, and drawn as nothing (issue 596).
+   * It is for a test to wait on; no style, text or ARIA reads it.
+   */
+  openDecision?: 'redraw' | 'never' | null
 }): JSX.Element {
   const [problem, setProblem] = useState<string | null>(null)
 
@@ -283,7 +290,7 @@ export default function Viewer({
   }
 
   return (
-    <section className="viewer" aria-label="Map">
+    <section className="viewer" aria-label="Map" data-on-open={openDecision ?? undefined}>
       <div className="viewer-shape">
         <iframe
           className="viewer-frame"

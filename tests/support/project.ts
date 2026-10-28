@@ -122,6 +122,16 @@ export const cell = (page: Page, id: CellId): Locator => {
 }
 
 /**
+ * A cell's whole disclosed content - the group its heading's button controls,
+ * named for the cell - whichever of its sections it holds. `cell` answers a
+ * panel inside it where the cell has one, and a text the cell says outside
+ * every panel, as cell 03's failure is, is found here (issue 596). Visible
+ * only while the cell is open.
+ */
+export const cellGroup = (page: Page, id: CellId): Locator =>
+  page.getByRole('group', { name: cellLabel(id), exact: true })
+
+/**
  * How long a press on a cell's heading is given to show in the heading's
  * `aria-expanded` before it is taken for lost. The attribute follows a
  * press that landed within a frame or two; this is generous for a runner

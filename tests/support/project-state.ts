@@ -107,6 +107,7 @@ export function defaultProjectState(run: StandInRun = new StandInRun()): Project
     themeReloads: 0,
     pageSeams: nothing,
     redrawAsked: null,
+    onOpen: null,
     openedSeams: null,
     registry: null,
     inspect: () => inspected,

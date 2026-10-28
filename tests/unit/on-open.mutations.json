@@ -1,0 +1,74 @@
+[
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "    setOnOpen(now.kind)\n",
+    "replace": "",
+    "test": "tests/unit/project-state-writes.test.tsx",
+    "title": "for a page that has every seam the pinned engine",
+    "why": "The decision never exposed: an end-to-end test would wait on an attribute that is never written."
+  },
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "    setOnOpen(now.kind)\n",
+    "replace": "    setOnOpen('never')\n",
+    "test": "tests/unit/project-state-writes.test.tsx",
+    "title": "for a page that lacks one",
+    "why": "A redraw reported as a decision against one: a test waiting for never would read the count before the redraw was asked."
+  },
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "  const [onOpen, setOnOpen] = useState<'redraw' | 'never' | null>(null)\n",
+    "replace": "  const [onOpen, setOnOpen] = useState<'redraw' | 'never' | null>('never')\n",
+    "test": "tests/unit/project-state-writes.test.tsx",
+    "title": "is nothing until the page has said what it has",
+    "why": "The decision said before it is made: a test waiting for it would read the count too soon, which is the sleep over again."
+  },
+  {
+    "file": "src/renderer/src/Viewer.tsx",
+    "find": " data-on-open={openDecision ?? undefined}",
+    "replace": "",
+    "test": "tests/unit/on-open-attribute.test.tsx",
+    "title": "says never where the screen settled on leaving the page",
+    "why": "The section not saying it: the state is right and nothing a test can read shows it."
+  },
+  {
+    "file": "src/renderer/src/Viewer.tsx",
+    "find": "data-on-open={openDecision ?? undefined}",
+    "replace": "data-on-open={openDecision ?? 'never'}",
+    "test": "tests/unit/on-open-attribute.test.tsx",
+    "title": "has no attribute before the decision",
+    "why": "The attribute present before the decision, as never: every wait on it would pass at once."
+  },
+  {
+    "file": "src/renderer/src/notebook/context.tsx",
+    "find": "  const decided = useMemo(() => ({ onOpen }), [onOpen])\n",
+    "replace": "  const decided = useMemo(() => ({ onOpen }), [onOpen, redrawAsked])\n",
+    "test": "tests/unit/cell-renders.test.tsx",
+    "title": "renders cells 02 and 03 alone for what the opening redrew",
+    "why": "The decision's slice following the opening's fields: the map renders for a job id and a seam list it does not read."
+  },
+  {
+    "file": "src/renderer/src/notebook/context.tsx",
+    "find": "[redrawAsked, openedSeams])\n  const decided",
+    "replace": "[redrawAsked, openedSeams, onOpen])\n  const decided",
+    "test": "tests/unit/cell-renders.test.tsx",
+    "title": "renders the map alone for the decision it settled on",
+    "why": "The decision in the opening's slice: cells 02 and 03 render for it, though only the map reads it."
+  },
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "    if (now.kind === 'wait') return\n    redrawSettled.current = true\n    // eslint-disable-next-line react-hooks/set-state-in-effect -- the decision, and below it the job a redraw just started: known only as they are made\n    setOnOpen(now.kind)\n",
+    "replace": "    // eslint-disable-next-line react-hooks/set-state-in-effect -- the decision, and below it the job a redraw just started: known only as they are made\n    setOnOpen(now.kind)\n    if (now.kind === 'wait') return\n    redrawSettled.current = true\n",
+    "test": "tests/unit/project-state-writes.test.tsx",
+    "title": "stays nothing while the decision waits",
+    "why": "The signal given before the decision is made: a test waiting on it would read the count while the screen is still holding off."
+  },
+  {
+    "file": "src/renderer/src/notebook/useProjectState.ts",
+    "find": "    redrawSettled.current = true\n",
+    "replace": "",
+    "test": "tests/unit/project-state-writes.test.tsx",
+    "title": "does not ask again for a redraw that failed",
+    "why": "The screen never settled: a redraw that fails leaves what asked for it true again, and it is asked for again, and again."
+  }
+]
