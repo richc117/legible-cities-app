@@ -1,0 +1,50 @@
+[
+  {
+    "file": "src/shared/engine.ts",
+    "find": "    case 'unavailable':\n    case 'mismatched':\n    case 'stopped':\n      return true\n",
+    "replace": "    case 'unavailable':\n    case 'stopped':\n      return true\n",
+    "test": "tests/unit/engine-down.test.ts",
+    "title": "down is",
+    "why": "A mismatched engine dropped from isDown (issue 595): the Library would promise a wait for an engine that ended at the handshake and never restarts."
+  },
+  {
+    "file": "src/shared/engine.ts",
+    "find": "  return state.state === 'ready' || isDown(state)\n",
+    "replace": "  return isDown(state)\n",
+    "test": "tests/unit/engine-down.test.ts",
+    "title": "settled is",
+    "why": "A ready engine not settled (issue 595): the first-run check of the bundled tools would never run on a start that succeeds."
+  },
+  {
+    "file": "src/shared/engine.ts",
+    "find": "  return state.state === 'ready' || isDown(state)\n",
+    "replace": "  return state.state === 'ready' || state.state === 'unavailable'\n",
+    "test": "tests/unit/engine-down.test.ts",
+    "title": "settled is",
+    "why": "isSettled deciding its own down states (the list it replaced, written a second time): a state counted down in one place and not settled in the other."
+  },
+  {
+    "file": "src/renderer/src/Library.tsx",
+    "find": "        ? SAMPLES_AWAY\n",
+    "replace": "        ? `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`\n",
+    "test": "tests/unit/front-door.test.tsx",
+    "title": "does not report the app’s own quit as a failure",
+    "why": "The app's own quit reported as a failure on the Library as the engine goes down with the window."
+  },
+  {
+    "file": "src/renderer/src/Library.tsx",
+    "find": "    if (engine.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`\n",
+    "replace": "    if (engine.state === 'unavailable') return SAMPLES_ENGINE_DOWN\n",
+    "test": "tests/unit/front-door.test.tsx",
+    "title": "carries the whole reason, first",
+    "why": "The samples region dropping an unavailable engine's reason: the status line cuts a long one short, so a person would read it nowhere in full (issue 547)."
+  },
+  {
+    "file": "src/renderer/src/Library.tsx",
+    "find": "  if (engine !== null && isDown(engine)) {\n",
+    "replace": "  if (engine !== null && engine.state === 'unavailable') {\n",
+    "test": "tests/unit/front-door.test.tsx",
+    "title": "the samples region’s sentence, state by state",
+    "why": "The region deciding for itself which states are down, as it did before issue 595: a stopped or mismatched engine would be promised a wait."
+  }
+]

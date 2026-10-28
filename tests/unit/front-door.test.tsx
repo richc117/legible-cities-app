@@ -17,6 +17,7 @@ import Library, {
   SAMPLES_AWAY,
   SAMPLES_ENGINE_DOWN,
   SAMPLES_NONE,
+  SAMPLES_STOPPED_FIRST,
   SAMPLES_UNREAD,
   projectFacts,
   samplesSentence,
@@ -716,5 +717,55 @@ describe('the cards', () => {
       /@container \(width < ([\d.]+)rem\) \{\s*\.projects-none > \.hint \{([^}]*)\}/.exec(panels)
     expect(Number(query?.[1]), 'two cards and their gap, in rem').toBe(two)
     expect(query?.[2]).toMatch(/grid-column:\s*1 \/ -1/)
+  })
+})
+
+// The one rule for which states are down (issue 595) changed how the region
+// reaches its sentence, not the sentence: each state's is the one the region
+// said before, word for word.
+describe('the samples region’s sentence, state by state (issue 595)', () => {
+  const pin = { repo: 'https://github.com/x/y', tag: 'v1.0.0', version: '1.0.0', protocol: 1 }
+  const rows: ReadonlyArray<
+    [string, EngineState | null, 'unread' | 'listed' | 'failed', string | null]
+  > = [
+    ['not yet heard from', null, 'listed', SAMPLES_AWAY],
+    ['starting', { state: 'starting', attempt: 1 }, 'listed', SAMPLES_AWAY],
+    [
+      'restarting',
+      { state: 'restarting', attempt: 2, reason: 'It exited.' },
+      'listed',
+      SAMPLES_AWAY,
+    ],
+    ['ready, unread', { state: 'ready', version: '1.0.0', protocol: 1 }, 'unread', null],
+    ['ready, failed', { state: 'ready', version: '1.0.0', protocol: 1 }, 'failed', SAMPLES_UNREAD],
+    ['ready, listed', { state: 'ready', version: '1.0.0', protocol: 1 }, 'listed', SAMPLES_NONE],
+    [
+      'unavailable',
+      { state: 'unavailable', reason: 'Reinstall the app.' },
+      'unread',
+      `Reinstall the app. ${SAMPLES_ENGINE_DOWN}`,
+    ],
+    [
+      'mismatched',
+      { state: 'mismatched', expected: pin, found: { version: '0.9.0', protocol: 1 } },
+      'unread',
+      SAMPLES_ENGINE_DOWN,
+    ],
+    [
+      'stopped',
+      { state: 'stopped', reason: 'It exited.' },
+      'unread',
+      `${SAMPLES_STOPPED_FIRST} It exited. ${SAMPLES_ENGINE_DOWN}`,
+    ],
+    [
+      'stopped by the app’s own quit',
+      { state: 'stopped', reason: QUITTING_REASON },
+      'unread',
+      SAMPLES_AWAY,
+    ],
+  ]
+
+  it.each(rows)('%s', (_name, engine, read, sentence) => {
+    expect(samplesSentence(engine, read)).toBe(sentence)
   })
 })

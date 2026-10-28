@@ -9,6 +9,7 @@ import { isAbsolute, join } from 'node:path'
 import { BrowserWindow, app, clipboard, dialog, ipcMain, screen, session, shell } from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
+import { isSettled } from '../shared/engine'
 import type { AppSettings, FolderSource } from '../shared/settings'
 import { abortCaptures, capture, configureCapture } from './capture-window'
 import {
@@ -477,8 +478,6 @@ if (!hasLock) {
       },
     })
     firstRun = check
-    const settledStart = (state: { state: string }): boolean =>
-      ['ready', 'unavailable', 'mismatched', 'stopped'].includes(state.state)
     const runCheck = (): void => {
       void check
         .run()
@@ -486,11 +485,11 @@ if (!hasLock) {
           log.error(FIRST_RUN_TAG, `the check failed to run: ${error.message}`),
         )
     }
-    if (settledStart(engine.state)) {
+    if (isSettled(engine.state)) {
       runCheck()
     } else {
       const off = engine.onState((state) => {
-        if (!settledStart(state)) return
+        if (!isSettled(state)) return
         off()
         runCheck()
       })

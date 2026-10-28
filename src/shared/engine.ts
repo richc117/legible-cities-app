@@ -235,6 +235,36 @@ export function engineError(
   return new EngineError(code, message, { kind, detail: message, hint: hint ?? message })
 }
 
+/**
+ * Whether the engine is not coming back by itself: it could not be started,
+ * ended at the handshake, or stopped for good (after failing too often, or
+ * for the app's own quit, which a caller that reports failures tells apart
+ * by `QUITTING_REASON`). `starting` and `restarting` are on their way and
+ * `ready` is up. The one place that decides it, so that a state added to
+ * the union is added here and nowhere else (issue 595).
+ */
+export function isDown(state: EngineState): boolean {
+  switch (state.state) {
+    case 'unavailable':
+    case 'mismatched':
+    case 'stopped':
+      return true
+    case 'starting':
+    case 'ready':
+    case 'restarting':
+      return false
+  }
+}
+
+/**
+ * Whether the engine's first start has come to an end, one way or the other:
+ * ready, or down. The first-run check waits for it so that its spawns never
+ * compete with the engine's handshake.
+ */
+export function isSettled(state: EngineState): boolean {
+  return state.state === 'ready' || isDown(state)
+}
+
 /** One sentence per state, for the log and for a refused request. */
 export function describeState(state: EngineState): string {
   switch (state.state) {
