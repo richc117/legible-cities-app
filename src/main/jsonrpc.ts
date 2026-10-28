@@ -23,12 +23,36 @@ export class ProtocolError extends Error {
   }
 }
 
+/**
+ * Printable ASCII only: anything outside it dropped, a tab, a newline and a
+ * no-break space with the rest.
+ */
+function clean(text: string): string {
+  return text.replace(/[^ -~]/g, '')
+}
+
+/** Cut to a length, the ends trimmed. */
+function cut(text: string, max: number): string {
+  return text.slice(0, max).trim()
+}
+
 /** Printable ASCII only, cut to a length. */
 export function printable(text: string, max: number): string {
-  return text
-    .replace(/[^ -~]/g, '')
-    .slice(0, max)
-    .trim()
+  return cut(clean(text), max)
+}
+
+/**
+ * Text the app's code threw, as the log may hold it: made printable, then
+ * redacted, then cut, so that the redaction reads exactly the text that is
+ * written. Printable first, because `redactUrls` reads one
+ * whitespace-separated run at a time: a tab or a newline dropped after it
+ * would join two runs into an address it never saw. Dropped before it, the
+ * joined address is what it reads. Cut last, because a cut through an
+ * address can leave its user information without the `@` the redaction
+ * finds it by.
+ */
+function shown(text: string, max: number): string {
+  return cut(redactUrls(clean(text)), max)
 }
 
 /**
@@ -38,20 +62,17 @@ export function printable(text: string, max: number): string {
  * error's message cut to 200 characters; never the stack. Its web
  * addresses are redacted here, at the source, as a reason's are in
  * `Sidecar.setState`: a message can quote an address a feed was given, key
- * and all, and the line must not wait on the sink to take it out. Redacted
- * first and cut after: a cut through an address can leave its user
- * information without the `@` the redaction finds it by. Never throws.
+ * and all, and the line must not wait on the sink to take it out
+ * (`shown` has the order). Never throws.
  */
 export function describeThrown(error: unknown): string {
   try {
     if (error instanceof Error) {
       const code = (error as NodeJS.ErrnoException).code
-      if (typeof code === 'string') return `${printable(error.name, 80)} (${printable(code, 40)})`
-      return `${printable(error.name, 80)}: ${printable(redactUrls(String(error.message)), 200)}`
+      if (typeof code === 'string') return `${shown(error.name, 80)} (${shown(code, 40)})`
+      return `${shown(error.name, 80)}: ${shown(String(error.message), 200)}`
     }
-    return typeof error === 'string'
-      ? printable(redactUrls(error), 200)
-      : 'a value that is not an error'
+    return typeof error === 'string' ? shown(error, 200) : 'a value that is not an error'
   } catch {
     return 'an error that could not be read'
   }

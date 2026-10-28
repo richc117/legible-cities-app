@@ -338,6 +338,29 @@ describe('JsonRpcClient', () => {
       'fetch https://feeds.example.org/f.zip?api_key=<redacted>',
     )
   })
+  // `redactUrls` reads one whitespace-separated run at a time. A tab, a
+  // newline or a no-break space dropped after it joins two runs into an
+  // address it never read; dropped before it, the joined address is what it
+  // reads. A space put in its place would keep the runs apart, and neither
+  // half alone (`?api_key=…`, `https://user:hunter2`) is an address the
+  // redaction knows.
+  it('makes what the app threw printable before it redacts it, so no secret is joined after', () => {
+    const inputs = [
+      'https://h.example.org/f.zip\t?api_key=planted',
+      'https://user:hunter2\n@h.example.org/f.zip',
+      'https://user:hunter2 @h.example.org/f.zip',
+    ]
+    for (const input of inputs) {
+      for (const line of [describeThrown(new Error(input)), describeThrown(input)]) {
+        expect(line).not.toContain('planted')
+        expect(line).not.toContain('hunter')
+        expect(line).toContain('<redacted>')
+      }
+    }
+    const named = new Error('x')
+    named.name = 'Error\thttps://h.example.org/f.zip\t?token=planted'
+    expect(describeThrown(named)).not.toContain('planted')
+  })
   it('reports the id of a late answer to a request settled from outside (issue 107)', async () => {
     const { c, dropped, reply } = client()
     const { id, result } = c.request('feeds.remove', { key: 'x' })
