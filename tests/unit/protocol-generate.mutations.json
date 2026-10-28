@@ -1,0 +1,26 @@
+[
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  return pinsText.replace(line, (_all, before: string, after: string) => before + sha + after)\n",
+    "replace": "  return JSON.stringify(JSON.parse(pinsText.replace(line, (_all, before: string, after: string) => before + sha + after)), null, 2) + '\\n'\n",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "gives back the committed bytes where the fingerprint has not moved",
+    "why": "The writer going back to JSON.stringify: the committed file is in Prettier's form, so every run would reformat lines it did not change and lint would fail."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "  if (found !== 1) {\n",
+    "replace": "  if (found < 1) {\n",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "refuses a file with no fingerprint line, or with two",
+    "why": "Two fingerprint lines accepted and both rewritten: the file would be changed where the writer could not say which line it meant."
+  },
+  {
+    "file": "scripts/protocol.ts",
+    "find": "const line = /(\"schema_sha256\"\\s*:\\s*\")[^\"\\n]*(\")/g",
+    "replace": "const line = /(\"schema_sha256\"\\s*:\\s*\")[^\"\\n]*(\")(,?\\s*)/g",
+    "test": "tests/unit/protocol-generate.test.ts",
+    "title": "changes the fingerprint and no other byte of the file",
+    "why": "The pattern taking in the whitespace after the value: the writer would drop the newline and the indent of the line after the fingerprint."
+  }
+]

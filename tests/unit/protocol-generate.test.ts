@@ -16,7 +16,13 @@ import {
   isErrorKind,
 } from '../../src/shared/engine'
 import { parseEnvFile } from '../../src/main/config'
-import { emit, emitFormatted, engineCheckout, fingerprint } from '../../scripts/protocol'
+import {
+  emit,
+  emitFormatted,
+  engineCheckout,
+  fingerprint,
+  withFingerprint,
+} from '../../scripts/protocol'
 import {
   PAGE_FETCHES,
   PAGE_REQUIRES,
@@ -28,6 +34,7 @@ const repo = resolve(__dirname, '../..')
 const schemaText = readFileSync(resolve(repo, 'vendor/protocol.schema.json'), 'utf8')
 const description = JSON.parse(schemaText)
 const pins = JSON.parse(readFileSync(resolve(repo, 'vendor/pins.json'), 'utf8'))
+const pinsText = readFileSync(resolve(repo, 'vendor/pins.json'), 'utf8')
 const committed = readFileSync(resolve(repo, 'src/shared/protocol.ts'), 'utf8')
 
 describe('the generated protocol module', () => {
@@ -609,5 +616,32 @@ describe('the runtime list of error kinds', () => {
 describe('the fingerprint', () => {
   it('is the SHA-256 of the description as it is committed', () => {
     expect(fingerprint(schemaText)).toBe(pins.engine.schema_sha256)
+  })
+})
+
+describe('the writer of the fingerprint into the pins', () => {
+  it('gives back the committed bytes where the fingerprint has not moved', () => {
+    expect(withFingerprint(pinsText, fingerprint(schemaText))).toBe(pinsText)
+  })
+
+  it('changes the fingerprint and no other byte of the file', () => {
+    const moved = 'f'.repeat(64)
+    const written = withFingerprint(pinsText, moved)
+    expect(written).toBe(pinsText.replace(pins.engine.schema_sha256, moved))
+    expect(written).not.toBe(pinsText)
+    expect(JSON.parse(written).engine.schema_sha256).toBe(moved)
+  })
+
+  it('refuses a file with no fingerprint line, or with two', () => {
+    const sha = fingerprint(schemaText)
+    const none = pinsText.replace(/"schema_sha256"/, '"schema_sha"')
+    const two = pinsText.replace(
+      /(\n(\s*)"schema_sha256": "[0-9a-f]+")/,
+      '$1,\n$2"schema_sha256": "0"',
+    )
+    expect(none).not.toBe(pinsText)
+    expect(two).not.toBe(pinsText)
+    expect(() => withFingerprint(none, sha)).toThrow(/0 "schema_sha256" lines/)
+    expect(() => withFingerprint(two, sha)).toThrow(/2 "schema_sha256" lines/)
   })
 })

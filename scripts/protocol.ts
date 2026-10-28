@@ -579,6 +579,24 @@ export const fingerprint = (text: string): string =>
 
 // --------------------------------------------------------------- writing
 
+/**
+ * The pins' text with the fingerprint's value changed and every other byte
+ * left alone. The file is committed in Prettier's form, which a rewrite with
+ * `JSON.stringify` does not keep, so a run would reformat lines it had no
+ * business touching. Refuses, naming the count, unless exactly one
+ * `"schema_sha256"` line is there to change.
+ */
+export function withFingerprint(pinsText: string, sha: string): string {
+  const line = /("schema_sha256"\s*:\s*")[^"\n]*(")/g
+  const found = pinsText.match(line)?.length ?? 0
+  if (found !== 1) {
+    throw new Error(
+      `vendor/pins.json has ${found} "schema_sha256" lines, not exactly one; nothing was written.`,
+    )
+  }
+  return pinsText.replace(line, (_all, before: string, after: string) => before + sha + after)
+}
+
 async function main(): Promise<void> {
   const repoRoot = resolve(import.meta.dirname, '..')
   const envFile = existsSync(join(repoRoot, '.env.local'))
@@ -595,7 +613,8 @@ async function main(): Promise<void> {
   }
 
   const pinsPath = join(repoRoot, 'vendor', 'pins.json')
-  const pins = JSON.parse(readFileSync(pinsPath, 'utf8')) as {
+  const pinsText = readFileSync(pinsPath, 'utf8')
+  const pins = JSON.parse(pinsText) as {
     engine: { tag: string; version: string; schema_sha256?: string }
   }
 
@@ -603,9 +622,11 @@ async function main(): Promise<void> {
   const description = JSON.parse(schemaText) as Description
   const module = await emitFormatted(description, pins.engine.tag, repoRoot)
 
+  // Before anything is written: a pins file this cannot edit stops the run
+  // with the three files as they were.
+  const newPins = withFingerprint(pinsText, fingerprint(schemaText))
   writeFileSync(join(repoRoot, 'vendor', 'protocol.schema.json'), schemaText)
-  pins.engine.schema_sha256 = fingerprint(schemaText)
-  writeFileSync(pinsPath, JSON.stringify(pins, null, 2) + '\n')
+  writeFileSync(pinsPath, newPins)
   writeFileSync(join(repoRoot, 'src', 'shared', 'protocol.ts'), module)
 
   const methods = Object.keys(description.methods).length
