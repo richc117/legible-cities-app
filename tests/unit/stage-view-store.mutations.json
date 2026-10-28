@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "  if (!stored && state.status !== 'waiting') setState(WAITING)\n",
+    "replace": "  if (!ready && state.status !== 'waiting') setState(WAITING)\n",
+    "test": "tests/unit/stage-view-store.test.tsx",
+    "title": "stays while a toggle is read, busy, and is gone while a reveal hands back",
+    "why": "The reset only when the engine is not ready: the stored set's drawing shows while a reveal hands back, where issue 382 says the pane holds nothing."
+  },
+  {
+    "file": "src/renderer/src/StageView.tsx",
+    "find": "(state.status === 'waiting' || state.key !== asking)",
+    "replace": "state.status === 'waiting'",
+    "test": "tests/unit/stage-view-store.test.tsx",
+    "title": "stays while a toggle is read, busy, and is gone while a reveal hands back",
+    "why": "The loading derived without what the answer was asked for: a toggle between stages reads as drawn while the next stage is still on its way."
+  }
+]
