@@ -25,10 +25,12 @@ export default tseslint.config(
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
-      // A warning until issue 433 triages the 29 places it finds, and held
-      // there by `--max-warnings` in `npm run lint`, so the count can fall
-      // and never grow. Lower that number with every fix.
-      'react-hooks/set-state-in-effect': 'warn',
+      // An error since issue 433 cleared its 29 places: a state that follows
+      // a prop is adjusted in render, a store is read through
+      // useSyncExternalStore, and what follows a press is done in the press.
+      // The few that sync with something outside React say why beside the
+      // line they disable it on.
+      'react-hooks/set-state-in-effect': 'error',
     },
   },
   // CommonJS scripts a bare Electron runs for the tests: the capture
