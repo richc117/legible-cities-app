@@ -392,21 +392,26 @@ describe('a reset of the engine data', () => {
 })
 
 describe('today, the anchor a layout run asks the engine for its day with', () => {
+  const zone = process.env.TZ
+
   afterEach(() => {
     vi.useRealTimers()
+    if (zone === undefined) delete process.env.TZ
+    else process.env.TZ = zone
   })
 
   it('is the local calendar day as YYYY-MM-DD, two figures for the month and the day', () => {
-    // Built from local parts, so the answer is the computer's own day in
-    // whatever zone the suite runs in: late in the evening, where the UTC
-    // date is the next one in any zone west of Greenwich, and early in the
-    // morning, where it is the previous one in any zone east of it.
+    // Node honours a change of TZ at run time, so the zone is pinned to one
+    // where the local day and the UTC day differ (the mutation job runs in
+    // UTC, where they would not). Built from local parts: 23:30 in Los
+    // Angeles is already the next day in UTC.
+    process.env.TZ = 'America/Los_Angeles'
     vi.useFakeTimers()
     vi.setSystemTime(new Date(2026, 0, 5, 23, 30, 0))
     expect(today()).toBe('2026-01-05')
     vi.setSystemTime(new Date(2026, 8, 9, 0, 30, 0))
     expect(today()).toBe('2026-09-09')
-    vi.setSystemTime(new Date(2026, 11, 31, 12, 0, 0))
+    vi.setSystemTime(new Date(2026, 11, 31, 23, 59, 0))
     expect(today()).toBe('2026-12-31')
   })
 })
