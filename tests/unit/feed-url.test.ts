@@ -11,7 +11,7 @@ const HTTP_ONLY = SHEET_REFUSALS.httpOnly
  * one row per input where they disagreed or the change shows: what the New
  * project sheet said (`/^https?:\/\/\S+$/`, which refused a capital scheme),
  * what the main process's gate said (it sorted by `/^https?:\/\//i` and let
- * `URL` judge, which encodes a space in a path), and what each says now,
+ * `URL` judge, which encodes or drops whitespace), and what each says now,
  * null for accepted. The sheet refuses first, so only a caller other than
  * the sheet reaches main's new refusal.
  */
@@ -73,7 +73,7 @@ describe('a feed address, in the sheet and in the main process', () => {
     'changes only what the issue names for "$input"',
     ({ sheetBefore, mainBefore, sheetNow, mainNow }) => {
       // The sheet now takes a capital scheme, as main did; main now refuses
-      // a space, as the sheet did, in the sheet's words. Nothing else moves.
+      // whitespace anywhere, as the sheet did, in the sheet's words. Nothing else moves.
       if (sheetNow !== sheetBefore) expect([sheetBefore, sheetNow]).toEqual([HTTP_ONLY, null])
       if (mainNow !== mainBefore) expect([mainBefore, mainNow]).toEqual([null, HTTP_ONLY])
     },

@@ -149,8 +149,8 @@ export const FEED_REFUSALS = {
 
 /**
  * What is wrong with a feed address, or null. An address that parses and is
- * still no feed's address (`isFeedUrl`: a space in its path, which `URL`
- * would quietly encode) is refused in the sheet's own words; one that does
+ * still no feed's address (`isFeedUrl`: whitespace anywhere in it, which
+ * `URL` would quietly encode or drop) is refused in the sheet's own words; one that does
  * not parse keeps the sentence that says so.
  */
 export function refuseUrl(source: string): string | null {
