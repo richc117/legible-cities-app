@@ -13,7 +13,7 @@
 // Contract: specs/008-viewer/contracts/viewer.md. Why the frame is sandboxed
 // and driven from the privileged process: ADR-028.
 
-import { PAGE_SEAM_NAMES, type PageBounds, type PageSeam, type PageState } from './protocol'
+import { PAGE_SEAM_NAMES, type PageSeam } from './protocol'
 
 // `setTheme` is the page's own (engine issue 29; the version it arrived at is
 // `PAGE_SEAM_SINCE.setTheme`): it takes `warm-dark` or `sepia`, restyles the
@@ -119,21 +119,16 @@ export function isOlderPage(seams: readonly string[] | null): boolean | null {
 }
 
 /**
- * What the page says it is showing: `state()`'s answer, as the engine's
- * schema describes it (`PageState`, generated). It is the shape the page
- * **claims**, from a page we do not trust (ADR-028), never a shape it has
- * been checked to have: a page an older engine drew answers fewer fields,
- * and any page may answer anything. Every reader takes the answer as
- * `unknown` and checks each field before anything is done with it (`isTheme`
- * for the theme, `readTrip` for the trip, `asState` in the capture).
+ * The span of the service day, as `readBounds` answers it once it has checked
+ * what the page's `bounds()` claimed (ADR-028): both finite, `t0` not before
+ * the day's start and `t1` after `t0`. It is the app's own type for a checked
+ * value, not the schema's `PageBounds`, which is only what a page says, so
+ * nothing should be cast to it.
  */
-export type ViewerState = PageState
-
-/**
- * What the page says `bounds()` is: the schema's `PageBounds`, a claim like
- * the rest, read as `unknown` and checked (`readBounds`).
- */
-export type ViewerBounds = PageBounds
+export interface ViewerBounds {
+  t0: number
+  t1: number
+}
 
 /** The exact sandbox the viewer's frame carries, and the whole of it.
  *  `allow-same-origin` beside this would undo ADR-028 in one word. */
