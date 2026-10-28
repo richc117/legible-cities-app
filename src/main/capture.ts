@@ -425,14 +425,21 @@ const member = (name: keyof PageSeam): string => `window.__present.${name}`
  * own answers led to, such as a clock it said was NaN - stays what it was
  * rather than becoming `null`. The callers coerce first, as they always have
  * (`Number(...)`, `=== true`), so only a number or a boolean is ever written.
+ * An argument JSON cannot write - a function, a symbol - throws rather than
+ * being sent as nothing, which would move every argument after it.
  */
 export function seamCall<K extends keyof PageSeam>(
   name: K,
   ...args: PageSeam[K]['params']
 ): string {
-  const written = (args as readonly unknown[]).map((arg) =>
-    typeof arg === 'number' ? String(arg) : arg === undefined ? 'undefined' : JSON.stringify(arg),
-  )
+  const written = (args as readonly unknown[]).map((arg, i) => {
+    if (typeof arg === 'number') return String(arg)
+    if (arg === undefined) return 'undefined'
+    const json = JSON.stringify(arg) as string | undefined
+    if (json === undefined)
+      throw new TypeError(`${name}'s argument ${i + 1} cannot be written into the page's script`)
+    return json
+  })
   return `${member(name)}(${written.join(', ')})`
 }
 

@@ -117,6 +117,14 @@ describe("the capture's calls of the seam", () => {
     expect(seamCall('advance', Infinity)).toBe('window.__present.advance(Infinity)')
   })
 
+  it('refuses an argument JSON cannot write, rather than sending nothing in its place', () => {
+    // `onDraw` takes a function, which no script can carry into the page.
+    expect(() => seamCall('onDraw', (() => undefined) as never)).toThrow(
+      /onDraw's argument 1 cannot be written into the page's script/,
+    )
+    expect(() => seamCall('setTrip', Symbol('a') as never)).toThrow(/setTrip's argument 1/)
+  })
+
   // Held by the typecheck, which runs over the tests: each line is an error
   // the build must report, and `@ts-expect-error` fails the build where it
   // is not. They run, harmlessly, as calls that are never sent anywhere.
