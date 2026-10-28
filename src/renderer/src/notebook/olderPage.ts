@@ -1,4 +1,5 @@
 import type { EngineState } from '../../../shared/engine'
+import type { PageSeam } from '../../../shared/protocol'
 import { screenPaths } from '../../../shared/jobs'
 import { drawnDate, serviceDayRefusal } from '../../../shared/project/helpers'
 import { type ProjectRecord } from '../../../shared/project/types'
@@ -21,8 +22,9 @@ import { cellOfRun, type RunFacts } from '../runGraph'
 //
 // A `drawn` that names no engine counts as older (decided by the maintainer,
 // 25 Oct 2026): every record drawn before issue 494 is one, and among them
-// are the pages engine v0.15.0 to v0.18.x drew, which have every seam and
-// draw what the engine has since changed (engine issue 76's label face). So
+// are pages that have every seam (each arrived by the version
+// `PAGE_SEAM_SINCE` names) and draw what the engine has since changed (engine
+// issue 76's label face). So
 // every such project is redrawn once, the first time it opens after the
 // update, and its redraw's write then names the running engine. A value the
 // record's reader would not take (`isEngineVersion`) is dropped as it is
@@ -217,18 +219,26 @@ export function redrawPageOnOpen(
   return after === before ? null : after
 }
 
-/** Which of the seams a person reaches through cell 03 and cell 04 a page lacks. */
+/**
+ * Which of the seams a person reaches through cell 03 and cell 04 a page
+ * lacks: a page drawn before the version each arrived at
+ * (`PAGE_SEAM_SINCE.setTheme`, `PAGE_SEAM_SINCE.setTrip`).
+ */
 export interface PageLacks {
-  /** No `setTheme` (before engine v0.11.0): a theme reaches it only by loading it again. */
+  /** No `setTheme`: a theme reaches it only by loading it again. */
   theme: boolean
-  /** No `setTrip` (before engine v0.13.0): it cannot show a trip. */
+  /** No `setTrip`: it cannot show a trip. */
   trip: boolean
 }
+
+/** The two by name, which must be the seam's (`PageSeam`) or the build fails. */
+const THEME_SEAM = 'setTheme' satisfies keyof PageSeam
+const TRIP_SEAM = 'setTrip' satisfies keyof PageSeam
 
 /** What a page's seam lacks of the two, from the names it answered; nothing where it did not say. */
 export function pageLacks(seams: readonly string[] | null): PageLacks {
   if (seams === null) return { theme: false, trip: false }
-  return { theme: !seams.includes('setTheme'), trip: !seams.includes('setTrip') }
+  return { theme: !seams.includes(THEME_SEAM), trip: !seams.includes(TRIP_SEAM) }
 }
 
 /**

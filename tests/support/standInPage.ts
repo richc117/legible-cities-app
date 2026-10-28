@@ -11,30 +11,30 @@
 
 import { readdirSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { PAGE_SEAMS } from '../../src/shared/viewer'
+import { PAGE_SEAM_NAMES } from '../../src/shared/protocol'
 
 /**
  * The line a stand-in page ends its seam with to be a page the pinned engine
- * drew: every method of `PAGE_SEAMS` the page has not written itself, as a
+ * drew: every method of `PAGE_SEAM_NAMES` the page has not written itself, as a
  * function that does nothing, records nothing and answers nothing (issue
  * 465). Since then a page lacking any of them is one an older engine drew,
  * and the app redraws it when its project opens, which the stand-in engine
  * does by writing `{}`; a spec's page that is meant to be the map a person
  * is looking at carries this, and one meant to be an older engine's does not.
- * Read from the app's own list, so a pin that adds a seam moves every stand-in
- * with it.
+ * Read from the names generated from the pinned engine's schema, so a pin
+ * that adds a seam moves every stand-in with it.
  */
 export const EVERY_SEAM = everySeamBut([])
 
 /**
  * The same line, for a page an engine between two seams drew: every method
- * of `PAGE_SEAMS` but the ones named, and the page's own `__present` left as
+ * of `PAGE_SEAM_NAMES` but the ones named, and the page's own `__present` left as
  * it wrote it. `everySeamBut(['setCard', 'setDrawn'])` is a page from engine
  * v0.13.0 to v0.14.x, which has a theme and a trip and lacks only the
  * opening's two, and is older all the same (issue 517).
  */
 export function everySeamBut(gone: readonly string[]): string {
-  const names = PAGE_SEAMS.filter((name) => !gone.includes(name))
+  const names = PAGE_SEAM_NAMES.filter((name) => !gone.includes(name))
   return `(function () {
   var present = window.__present;
   ${JSON.stringify(names)}.forEach(function (name) {

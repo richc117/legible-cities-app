@@ -26,7 +26,8 @@ import {
   OPENING_REDRAW_FAILED,
   THEME_BY_RELOAD,
 } from '../../src/renderer/src/notebook/olderPage'
-import { PAGE_SEAMS } from '../../src/shared/viewer'
+import { engineBefore } from '../../src/renderer/src/record'
+import { PAGE_SEAM_NAMES, PAGE_SEAM_SINCE } from '../../src/shared/protocol'
 import { defaultProjectState } from '../support/project-state'
 
 const CELL = CELL_LIST.find((cell) => cell.id === 'frame') as Cell
@@ -251,12 +252,13 @@ describe('cell 03, open, for a read-only project with a day and no strip', () =>
 describe('cell 03, open, after a rebuild of its own failed', () => {
   const HINT = 'la-metro-rail has no stored layout cccccccc'
   const REASON = 'la-metro-rail has no stored layout cccccccc.'
-  /** A page from before engine v0.11.0: none of the seams added since. */
-  const OLDEST = PAGE_SEAMS.filter(
-    (name) => !['setTheme', 'setTrip', 'setCard', 'setDrawn'].includes(name),
-  )
-  /** A page from v0.13.0 to v0.14.x: everything but the opening's two. */
-  const NO_OPENING = PAGE_SEAMS.filter((name) => !['setCard', 'setDrawn'].includes(name))
+  /** The seam of a page drawn before `version`, by the schema's `since`. */
+  const seamBefore = (version: string): string[] =>
+    PAGE_SEAM_NAMES.filter((name) => engineBefore(PAGE_SEAM_SINCE[name], version))
+  /** A page from before `setTheme`: none of the seams added since. */
+  const OLDEST = seamBefore(PAGE_SEAM_SINCE.setTheme)
+  /** A page from after `setTrip` and before the opening: everything but the opening's two. */
+  const NO_OPENING = seamBefore(PAGE_SEAM_SINCE.setCard)
   /** The opening's rebuild, failed, as job `job-1`. */
   const failed = {
     job: () => ({ id: 'job-1' }),

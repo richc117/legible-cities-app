@@ -23,30 +23,43 @@ import {
   type OnOpenFacts,
 } from '../../src/renderer/src/notebook/olderPage'
 import type { DrawnFrom, ProjectRecord, ServiceWindow } from '../../src/shared/project/types'
-import {
-  PAGE_SEAMS,
-  SEAMS_MAX,
-  VIEWER_METHODS,
-  isOlderPage,
-  readSeams,
-} from '../../src/shared/viewer'
+import { PAGE_SEAM_NAMES, PAGE_SEAM_SINCE } from '../../src/shared/protocol'
+import { engineBefore } from '../../src/renderer/src/record'
+import { SEAMS_MAX, VIEWER_METHODS, isOlderPage, readSeams } from '../../src/shared/viewer'
 
 /** The seam of a page drawn at the pin. */
-const CURRENT: string[] = [...PAGE_SEAMS]
+const CURRENT: string[] = [...PAGE_SEAM_NAMES]
+
+/** The seam of a page drawn before `version`, by the schema's `since`. */
+const seamBefore = (version: string): string[] =>
+  CURRENT.filter((name) =>
+    engineBefore(PAGE_SEAM_SINCE[name as keyof typeof PAGE_SEAM_SINCE], version),
+  )
 
 /**
  * The seam of the pages the engine drew before each seam it added: before
- * v0.11.0 (no theme), v0.11.0 to v0.12.x (no trip) and v0.13.0 to v0.14.x
- * (no opening), as each version's page.html has it.
+ * `setTheme` (no theme), before `setTrip` (no trip) and before the opening's
+ * two (no opening), by the version the schema says each arrived at.
  */
 const before = (...gone: string[]): string[] => CURRENT.filter((name) => !gone.includes(name))
-const V0_10 = before('setTheme', 'setTrip', 'setCard', 'setDrawn')
-const V0_12 = before('setTrip', 'setCard', 'setDrawn')
-const V0_14 = before('setCard', 'setDrawn')
+const NO_THEME = seamBefore(PAGE_SEAM_SINCE.setTheme)
+const NO_TRIP = seamBefore(PAGE_SEAM_SINCE.setTrip)
+const NO_OPENING = seamBefore(PAGE_SEAM_SINCE.setCard)
 
 describe('which pages an older engine drew', () => {
   it('names every method the app drives among the pinned page’s', () => {
-    for (const method of VIEWER_METHODS) expect(PAGE_SEAMS).toContain(method)
+    for (const method of VIEWER_METHODS) expect(PAGE_SEAM_NAMES).toContain(method)
+  })
+
+  // The schema's `since` is what the older pages are made from, so it is
+  // held here to the order the engine added its seams in: the theme, then
+  // the trip, then the opening's two together, and nothing else since its
+  // first page.
+  it('arrived, by the schema, in the order the engine added them', () => {
+    expect(NO_THEME).toEqual(before('setTheme', 'setTrip', 'setCard', 'setDrawn'))
+    expect(NO_TRIP).toEqual(before('setTrip', 'setCard', 'setDrawn'))
+    expect(NO_OPENING).toEqual(before('setCard', 'setDrawn'))
+    expect(PAGE_SEAM_SINCE.setDrawn).toBe(PAGE_SEAM_SINCE.setCard)
   })
 
   it('is not one drawn at the pin', () => {
@@ -54,15 +67,15 @@ describe('which pages an older engine drew', () => {
   })
 
   it('is one drawn before each seam the engine added, not only the theme', () => {
-    expect(isOlderPage(V0_10), 'no setTheme').toBe(true)
-    expect(isOlderPage(V0_12), 'setTheme, and no setTrip').toBe(true)
+    expect(isOlderPage(NO_THEME), 'no setTheme').toBe(true)
+    expect(isOlderPage(NO_TRIP), 'setTheme, and no setTrip').toBe(true)
     // The page that has setTheme and setTrip and lacks only the opening's two:
     // a test tuned to the theme would call it current.
-    expect(isOlderPage(V0_14), 'setTheme and setTrip, and no opening').toBe(true)
+    expect(isOlderPage(NO_OPENING), 'setTheme and setTrip, and no opening').toBe(true)
   })
 
   it('is one lacking any single seam of the pin’s, whichever it is', () => {
-    for (const name of PAGE_SEAMS) expect(isOlderPage(before(name)), name).toBe(true)
+    for (const name of PAGE_SEAM_NAMES) expect(isOlderPage(before(name)), name).toBe(true)
   })
 
   it('is not one a newer engine drew, with seams beyond the pin’s', () => {
@@ -335,7 +348,7 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
     frameFailure({
       asked: 'job-1',
       job: 'job-1',
-      seams: V0_10,
+      seams: NO_THEME,
       ...over,
       run: { ...FAILED, ...run },
     })
@@ -408,13 +421,13 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
 
   it('lacks, of the theme and the trip, only what the page’s seam does not have', () => {
     // Mutation: the lacks built from "older" - every older page told both.
-    expect(pageLacks(V0_14), 'only the opening’s two').toEqual({ theme: false, trip: false })
+    expect(pageLacks(NO_OPENING), 'only the opening’s two').toEqual({ theme: false, trip: false })
     expect(pageLacks(before('setTrip')), 'only setTrip').toEqual({ theme: false, trip: true })
-    expect(pageLacks(V0_12), 'no trip and no opening').toEqual({ theme: false, trip: true })
-    expect(pageLacks(V0_10), 'none of them').toEqual({ theme: true, trip: true })
+    expect(pageLacks(NO_TRIP), 'no trip and no opening').toEqual({ theme: false, trip: true })
+    expect(pageLacks(NO_THEME), 'none of them').toEqual({ theme: true, trip: true })
     expect(pageLacks(before('setTheme')), 'only setTheme').toEqual({ theme: true, trip: false })
     expect(pageLacks(null), 'a page that did not say').toEqual({ theme: false, trip: false })
-    expect(failure({ seams: V0_14 })).toMatchObject({ lacks: { theme: false, trip: false } })
+    expect(failure({ seams: NO_OPENING })).toMatchObject({ lacks: { theme: false, trip: false } })
   })
 
   it('says what still holds for the seams the page lacks and no others', () => {

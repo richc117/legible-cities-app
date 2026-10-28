@@ -39,7 +39,8 @@ import {
   realInterpreter,
 } from '../support/real-engine'
 import { PAGE_PLAYING, PAGE_SPEED } from '../../src/renderer/src/transportState'
-import { PAGE_SEAMS, VIEWER_METHODS } from '../../src/shared/viewer'
+import { PAGE_SEAM_NAMES } from '../../src/shared/protocol'
+import { VIEWER_METHODS } from '../../src/shared/viewer'
 
 const CONFIG = localConfig()
 const CHECKOUT = CONFIG.engineCheckout
@@ -212,11 +213,15 @@ const TEMPLATE = enginePageTemplate(CHECKOUT, INTERPRETER)
 
 // A page lacking any seam the pinned engine's page has is one an older engine
 // drew, and is redrawn when its project opens (issue 465). That rests on
-// `PAGE_SEAMS` being the pinned page's seam exactly: a method the engine adds
-// and the list does not name would leave every page drawn before it judged
-// current, and a method the list names and the engine has dropped would have
-// every page redrawn on every open. So the two are held method for method, in
-// both directions, against the template of the engine that ran: the
+// `PAGE_SEAM_NAMES` being the pinned page's seam exactly: a method the page
+// adds and the names do not carry would leave every page drawn before it
+// judged current, and a method the names carry and the page has dropped would
+// have every page redrawn on every open. The names are generated from the
+// pinned engine's schema (`page.seam`, issue 607), and the engine's own tests
+// hold its schema to its page; this holds the app's side of that, cheaply: a
+// page template and a schema that disagree, in an engine the pin names, fail
+// here. So the two are held method for method, in both directions, against
+// the template of the engine that ran: the
 // installed engine's wherever an interpreter is named, which under an
 // editable install is the checkout's own file, and is the pin's when
 // `LEGIBLE_ENGINE_CHECKOUT` names the worktree `scripts/pin-engine.sh` makes;
@@ -224,7 +229,7 @@ const TEMPLATE = enginePageTemplate(CHECKOUT, INTERPRETER)
 describe.skipIf(CHECKOUT === null && INTERPRETER === null)(
   `the pinned engine's page template${CHECKOUT === null && INTERPRETER === null ? NO_ENGINE : ''}`,
   () => {
-    it('has exactly the seam PAGE_SEAMS names', () => {
+    it('has exactly the seam the pinned schema names (PAGE_SEAM_NAMES)', () => {
       expect(TEMPLATE.path, TEMPLATE.why ?? '').not.toBeNull()
       const html = readFileSync(TEMPLATE.path as string, 'utf8')
       const start = html.indexOf('window.__present = {')
@@ -239,7 +244,7 @@ describe.skipIf(CHECKOUT === null && INTERPRETER === null)(
         (m) => m[1],
       )
       expect(methods.length, 'the seam was read').toBeGreaterThan(10)
-      expect([...methods].sort()).toEqual([...PAGE_SEAMS].sort())
+      expect([...methods].sort()).toEqual([...PAGE_SEAM_NAMES].sort())
     })
   },
 )
