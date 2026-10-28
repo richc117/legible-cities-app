@@ -22,5 +22,13 @@
     "test": "tests/unit/export-tab.test.tsx",
     "title": "keeps what is typed into a dropped choice’s fields after they were emptied",
     "why": "useExportDrafts emptying the drafts on every render while the choice is dropped, not once (issue 433, part c): nothing typed into a dropped choice is kept."
+  },
+  {
+    "file": "src/renderer/src/export/useExportTables.ts",
+    "find": "  if (!ready && tables.status !== 'waiting') setTables({ status: 'waiting' })\n",
+    "replace": "",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "asks for the presets again, saying so, when the engine has gone and come back",
+    "why": "useExportTables keeping the last engine's tables while it is away (issue 433, part c): the old tables' form is drawn when it is back, before the presets are asked again."
   }
 ]
