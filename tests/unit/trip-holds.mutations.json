@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/Trip.tsx",
+    "find": "    setRefusals((current) => current.filter((refusal) => !holdSaid(refusal)))\n",
+    "replace": "    setRefusals([])\n",
+    "test": "tests/unit/trip-holds.test.tsx",
+    "title": "drops the hold’s sentence when the run ends, and keeps a refusal of another kind",
+    "why": "The reset filtering every refusal: the same-station sentence beside End goes with the hold's, though nothing about it changed."
+  },
+  {
+    "file": "src/renderer/src/Trip.tsx",
+    "find": "  if (held === null && refusals.some(holdSaid))\n    setRefusals((current) => current.filter((refusal) => !holdSaid(refusal)))\n",
+    "replace": "",
+    "test": "tests/unit/trip-holds.test.tsx",
+    "title": "drops the hold’s sentence when the run ends, and keeps a refusal of another kind",
+    "why": "The reset removed: the hold's sentence stays beside the picker after the run has ended."
+  }
+]
