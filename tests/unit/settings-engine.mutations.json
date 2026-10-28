@@ -6,5 +6,21 @@
     "test": "tests/unit/settings-engine.test.tsx",
     "title": "says it is measuring until the size comes, and again after a reset",
     "why": "The reset's measure not taking the old figure away first (issue 433, part c): after Reset the size line keeps the old figure rather than saying \"Measuring…\"."
+  },
+  {
+    "file": "src/renderer/src/Settings.tsx",
+    "find": "  const [info, setInfo] = useState<EngineInfo | null>(null)\n  if (!ready && info !== null) setInfo(null)\n",
+    "replace": "  const [held, setInfo] = useState<EngineInfo | null>(null)\n  const info = ready ? held : null\n",
+    "test": "tests/unit/settings-engine.test.tsx",
+    "title": "go as the engine goes, and do not come back before the new engine answers",
+    "why": "The versions derived from whether the engine is ready rather than reset as it goes (issue 433, part c): an engine restarting into another build shows the old build's versions until it answers."
+  },
+  {
+    "file": "src/renderer/src/Settings.tsx",
+    "find": "  if (!ready && info !== null) setInfo(null)\n",
+    "replace": "",
+    "test": "tests/unit/settings-engine.test.tsx",
+    "title": "go as the engine goes, and do not come back before the new engine answers",
+    "why": "The versions never reset as the engine goes (issue 433, part c): the previous engine's versions show while it restarts."
   }
 ]

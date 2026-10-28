@@ -2,9 +2,10 @@
 // Settings' lines that the engine and its folder answer, drawn into the
 // document with their effects running (issue 433, part c): the folder's
 // size, "Measuring…" until the main process answers and again after a
-// reset. The engine's `engine.info` is answered by a stand-in client in
-// place of the bridge's; the reset's dialog is a `<dialog>` whose
-// `showModal` jsdom lacks, stubbed here.
+// reset; and the engine's versions, gone as the engine goes and not shown
+// again for a build that has not answered. The engine's `engine.info` is
+// answered by a stand-in client in place of the bridge's; the reset's
+// dialog is a `<dialog>` whose `showModal` jsdom lacks, stubbed here.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import Settings from '../../src/renderer/src/Settings'
@@ -33,6 +34,16 @@ const VIEW: SettingsView = {
 }
 
 const SIZE: FolderSize = { bytes: 4096, files: 3, partial: false, missing: false }
+
+const INFO: EngineInfo = {
+  engine: '0.19.0',
+  protocol: 1,
+  python: '3.12.4',
+  loom: { commit: 'abc1234', backend: 'native' },
+  ffmpeg: '/usr/bin/ffmpeg',
+}
+
+const RESTARTING: EngineState = { state: 'restarting', attempt: 1, reason: 'it stopped' }
 
 // jsdom has the element and not its modal half (ADR-059).
 const dialog = HTMLDialogElement.prototype as Partial<HTMLDialogElement>
@@ -84,6 +95,12 @@ function draw(engineSize: () => Promise<FolderSize>, state: EngineState | null =
 const sizeLine = (): string | null | undefined =>
   document.getElementById('engine-folder-size')?.textContent
 
+/** The Versions section's terms and their values, as one line each. */
+const versions = (): string[] =>
+  [...(document.querySelector('[aria-labelledby="settings-versions"] dl')?.children ?? [])].map(
+    (element) => element.textContent ?? '',
+  )
+
 describe('the engine folder’s size', () => {
   it('says it is measuring until the size comes, and again after a reset', async () => {
     // Mutation (`settings-engine.mutations.json`): the reset's own
@@ -106,5 +123,36 @@ describe('the engine folder’s size', () => {
     sizes[1].resolve({ bytes: 0, files: 0, partial: false, missing: true })
     await answered()
     expect(sizeLine()).toBe('empty (the folder is not there yet)')
+  })
+})
+
+describe('the engine’s versions', () => {
+  it('go as the engine goes, and do not come back before the new engine answers', async () => {
+    // Mutations (`settings-engine.mutations.json`): the versions derived
+    // from `ready` instead of reset - the old build's come back with the
+    // engine; and the reset removed - they stay while it restarts.
+    engine.info = INFO
+    const { redraw } = draw(() => new Promise(() => undefined))
+    await answered()
+    expect(versions()).toContain('0.19.0')
+    expect(versions()).toContain('3.12.4')
+
+    redraw(RESTARTING)
+    await answered()
+    expect(versions(), 'only the app’s own version while the engine is away').toEqual([
+      'App',
+      '4.2.0-test',
+    ])
+
+    engine.info = null
+    redraw(READY)
+    await answered()
+    expect(versions(), 'not the old build’s while the new one is asked').toEqual([
+      'App',
+      '4.2.0-test',
+    ])
+    expect(
+      document.querySelector('[aria-labelledby="settings-versions"] [role="status"]')?.textContent,
+    ).toBe('Asking the engine…')
   })
 })
