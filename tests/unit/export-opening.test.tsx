@@ -1,12 +1,15 @@
+// @vitest-environment jsdom
 // Cell 06's Opening (issue 392, spec 035 FR-001 to FR-005): the select and
 // its words, the two durations and what a commit does with what is typed,
 // every opening offered whatever view the storyboard opens on, and what a
 // change does to the choice the record keeps. The rules are pure
-// (`renderer/src/opening.ts`); the markup is rendered to static markup, as
-// the other cells' tests are.
+// (`renderer/src/opening.ts`); the markup is rendered to static markup,
+// and the fields' following of the choice is drawn into the document
+// (issue 433, part c).
 
+import { act } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import ExportOpening from '../../src/renderer/src/ExportOpening'
 import { playedBy, usable, type ExportTables } from '../../src/renderer/src/exportChoice'
 import {
@@ -22,6 +25,9 @@ import {
 } from '../../src/renderer/src/opening'
 import type { ExportChoice } from '../../src/shared/export'
 import type { Preset, Storyboard, StoryboardBeat } from '../../src/shared/protocol'
+import { byName, cleanup, renderPanel } from '../support/render'
+
+afterEach(cleanup)
 
 const beat = (over: Partial<StoryboardBeat> & { secs: number }): StoryboardBeat => ({
   view: null,
@@ -139,6 +145,50 @@ describe('the two durations', () => {
         problem: 'A draw-in lasts from 2 to 20 seconds.',
       })
     expect(SECONDS_FIELDS.cardSecs.refused).toBe('A title card lasts from 1 to 10 seconds.')
+  })
+})
+
+describe('the two durations, drawn', () => {
+  const BOTH: ExportChoice = { ...GIF, opening: 'card-then-draw-in', cardSecs: 4, drawInSecs: 8 }
+
+  /** The field's draft: what the kit's host is told, whatever its input was typed with. */
+  const draft = (label: string): string | null | undefined =>
+    byName('textbox', label).closest('fig-input-text')?.getAttribute('value')
+  const invalid = (label: string): string | null | undefined =>
+    byName('textbox', label).closest('fig-input-text')?.getAttribute('aria-invalid')
+
+  it('follow other seconds in the choice, except in a field holding a number it refused', () => {
+    // Issue 433, part c: taken in the render that sees the seconds change.
+    // Mutations (`export-opening.mutations.json`): the refused field's
+    // exception dropped - the 99 being put right is overwritten; the
+    // following removed - the other field keeps the old seconds.
+    const onChange = vi.fn()
+    const view = renderPanel(<ExportOpening choice={BOTH} locked={false} onChange={onChange} />)
+    expect(draft('Card')).toBe('4')
+    expect(draft('Draw-in')).toBe('8')
+    const card = byName('textbox', 'Card') as HTMLInputElement
+    act(() => card.focus())
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(card, '99')
+      card.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    act(() => card.blur())
+    expect(invalid('Card'), 'the 99 is refused').toBe('true')
+    expect(document.getElementById('export-card-message')?.textContent).toBe(
+      'A title card lasts from 1 to 10 seconds.',
+    )
+    expect(onChange, 'nothing refused is written').not.toHaveBeenCalled()
+
+    view.rerender(
+      <ExportOpening
+        choice={{ ...BOTH, cardSecs: 5, drawInSecs: 12 }}
+        locked={false}
+        onChange={onChange}
+      />,
+    )
+    expect(draft('Card'), 'the refused field keeps what is being put right').toBe('99')
+    expect(invalid('Card')).toBe('true')
+    expect(draft('Draw-in'), 'the other field takes the choice’s seconds').toBe('12')
   })
 })
 

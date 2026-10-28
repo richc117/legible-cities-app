@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import type { ExportChoice } from '../../shared/export'
 import { hasCard, hasDrawIn, isOpening } from '../../shared/opening'
 import Select from './kit/Select'
@@ -70,16 +70,20 @@ export default function ExportOpening({ choice, locked, onChange }: Props): JSX.
   // A choice that arrives with other seconds - the record read again, the
   // project opened afresh - shows them, except in a field still holding a
   // number it refused, which a person is in the middle of putting right.
+  // Taken in the render that first sees the seconds change, compared with
+  // the seconds last taken, so a draft typed meanwhile is not reverted.
   const { cardSecs, drawInSecs } = choice
-  useEffect(() => {
+  const [taken, setTaken] = useState({ cardSecs, drawInSecs })
+  if (taken.cardSecs !== cardSecs || taken.drawInSecs !== drawInSecs) {
     const held = { cardSecs, drawInSecs }
+    setTaken(held)
     setFields((current) => {
       const drafts = { ...current.drafts }
       for (const key of KEYS)
         if (current.problems[key] === undefined) drafts[key] = textOf(key, held[key])
       return { drafts, problems: current.problems }
     })
-  }, [cardSecs, drawInSecs])
+  }
 
   const commit = (key: SecondsKey): void => {
     const read = readSeconds(fields.drafts[key], key)

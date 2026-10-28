@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/ExportOpening.tsx",
+    "find": "        if (current.problems[key] === undefined) drafts[key] = textOf(key, held[key])\n",
+    "replace": "        drafts[key] = textOf(key, held[key])\n",
+    "test": "tests/unit/export-opening.test.tsx",
+    "title": "follow other seconds in the choice, except in a field holding a number it refused",
+    "why": "The opening's seconds following the choice into a field that holds a refusal (issue 433, part c): the number a person is putting right is overwritten."
+  },
+  {
+    "file": "src/renderer/src/ExportOpening.tsx",
+    "find": "  if (taken.cardSecs !== cardSecs || taken.drawInSecs !== drawInSecs) {\n",
+    "replace": "  if (false) {\n",
+    "test": "tests/unit/export-opening.test.tsx",
+    "title": "follow other seconds in the choice, except in a field holding a number it refused",
+    "why": "The opening's seconds never following the choice after the first render (issue 433, part c): a record read again shows the old seconds."
+  }
+]
