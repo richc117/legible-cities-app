@@ -397,6 +397,7 @@ export function useProjectState(
     if (now.kind === 'redraw') {
       // Out of the control a run is about to disable, before it does.
       keepFocusInCell(document.activeElement)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the job this effect just started, known only from its start
       setRedrawAsked(
         redrawPageOnOpen(run, project, engine, { older: opened.older, running, drawnHere: drawn }),
       )
