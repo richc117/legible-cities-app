@@ -1,4 +1,5 @@
 import type { Theme } from '../../shared/project/types'
+import type { PageState } from '../../shared/protocol'
 import { isStationId } from '../../shared/trip'
 import type { ViewerMethod } from '../../shared/viewer'
 
@@ -64,25 +65,24 @@ export interface ViewerCall {
 }
 
 /**
- * What a page said it was showing. Deliberately loose: it is whatever
- * `state()` answered, which is the engine's shape and not ours, plus the
- * two fields a caller may know that the page does not report.
+ * What a page **claims** it was showing: whatever `state()` answered, which is
+ * the engine's shape and not ours, plus the two fields a caller may know that
+ * the page does not report. Deliberately loose: the field names are the
+ * schema's (`PageState`, generated), so a field the engine renames is a build
+ * error here, but every value is `unknown`, because a page we do not trust
+ * may answer anything at all and an older one answers fewer fields
+ * (ADR-028). Each is checked for shape before it is handed back.
+ *
+ * Of the page's fields the restore reads `viewName` (`showView`'s own name
+ * for the view now showing), `labels`, `now` (seconds into the service day)
+ * and `trip` (what the page's `setTrip` last answered: null, a trip with its
+ * legs, or `legs: null` and a reason). Of the caller's, `speed` (seconds of
+ * the service day per second of wall clock) and `playing`, which no page
+ * reports and only a caller that set them knows.
  */
-export interface PageState {
-  /** `showView`'s own name for the view now showing: "schematic", "time", "geographic". */
-  viewName?: unknown
-  labels?: unknown
-  /** Seconds into the service day. */
-  now?: unknown
-  /** Seconds of the service day per second of wall clock. Not reported by the page. */
+export type ClaimedPageState = { [K in keyof PageState]?: unknown } & {
   speed?: unknown
-  /** Not reported by the page either; known only to a caller that set it. */
   playing?: unknown
-  /**
-   * What the page's `setTrip` last answered (engine v0.13.0): null, a trip
-   * with its legs, or `legs: null` and a reason.
-   */
-  trip?: unknown
 }
 
 /** A view name is long enough to be readable and short enough not to be an essay. */
@@ -138,7 +138,7 @@ function shownTrip(value: unknown): [string, string] | null {
 export function restoreCalls(state: unknown, theme: Theme): ViewerCall[] {
   const calls: ViewerCall[] = [{ method: 'setTheme', args: [theme] }]
   if (state === null || typeof state !== 'object') return calls
-  const was = state as PageState
+  const was = state as ClaimedPageState
   const playing = flag(was.playing)
   const name = view(was.viewName)
   const labels = flag(was.labels)
