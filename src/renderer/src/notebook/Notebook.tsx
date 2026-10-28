@@ -2,12 +2,12 @@ import {
   Fragment,
   memo,
   useCallback,
-  useLayoutEffect,
   useState,
   type Dispatch,
   type JSX,
   type SetStateAction,
 } from 'react'
+import { flushSync } from 'react-dom'
 import type { ProjectRecord } from '../../../shared/project/types'
 import { CELL_LIST, runGraph, type Cell, type CellId, type CellState } from '../runGraph'
 import { CELL_VIEWS } from './cells'
@@ -84,14 +84,6 @@ function Column({ initial }: { initial: Record<CellId, boolean> }): JSX.Element 
   // `initial` is read by the first render alone: which cells are open is
   // the person's from then on.
   const [open, setOpen] = useState<Record<CellId, boolean>>(initial)
-  // A cell the map's empty state has sent a person to, once it is open and
-  // laid out: the same landing the rail's press makes.
-  const [landing, setLanding] = useState<CellId | null>(null)
-  useLayoutEffect(() => {
-    if (landing === null) return
-    setLanding(null)
-    landOnCell(landing)
-  }, [landing])
   const states = runGraph({
     record: project as NonNullable<typeof project>,
     run: runSnapshot,
@@ -101,11 +93,14 @@ function Column({ initial }: { initial: Record<CellId, boolean> }): JSX.Element 
     (cell: CellId): void => setOpen((was) => ({ ...was, [cell]: true })),
     [],
   )
-  // The map's empty state sends a person to cell 02: one function for the
-  // screen's life, so the map's slot passes it by.
+  // The map's empty state sends a person to cell 02, as the rail's press
+  // does: the open is committed before the landing, so the scroll is
+  // measured against the open cell and never against one about to grow
+  // (issue 433; it was a state for a layout effect to land on). One
+  // function for the screen's life, so the map's slot passes it by.
   const layOut = useCallback((): void => {
-    setOpen((was) => ({ ...was, process: true }))
-    setLanding('process')
+    flushSync(() => setOpen((was) => ({ ...was, process: true })))
+    landOnCell('process')
   }, [])
   return (
     <>
