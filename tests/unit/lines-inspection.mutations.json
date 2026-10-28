@@ -6,5 +6,13 @@
     "test": "tests/unit/lines-inspection.test.tsx",
     "title": "draws no colour rows of the last reading while the feed is read again",
     "why": "The reset removed: after an engine restart the colours' rows of the last reading are shown before the feed has been read again."
+  },
+  {
+    "file": "src/renderer/src/LineOrder.tsx",
+    "find": "  if (!ready && state.status !== 'waiting') setState(WAITING)\n",
+    "replace": "",
+    "test": "tests/unit/lines-inspection.test.tsx",
+    "title": "draws no order rows of the last reading while the feed is read again",
+    "why": "The reset removed: after an engine restart the order's rows of the last reading are shown before the feed has been read again."
   }
 ]

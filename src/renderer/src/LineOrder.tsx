@@ -72,6 +72,8 @@ type State =
   | { status: 'ready'; inspection: Inspection }
   | { status: 'failed'; message: string }
 
+const WAITING: State = { status: 'waiting' }
+
 /** What the list shows while a line is carried: which, from where, to where, and how far. */
 interface Drag {
   label: string
@@ -160,7 +162,12 @@ export default function LineOrder({
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
 
-  const [state, setState] = useState<State>({ status: 'waiting' })
+  const [state, setState] = useState<State>(WAITING)
+  // The engine gone takes the feed's lines with it, in the render that sees
+  // it go, so when it comes back the rows of the last reading are not shown
+  // while the feed is read again. The test of the status is what stops it
+  // setting state on every render while the engine is away.
+  if (!ready && state.status !== 'waiting') setState(WAITING)
   const [order, setOrder] = useState<Order>(() => orderOf(project))
   const [said, setSaid] = useState<string | null>(null)
   // Which button the line that moved left focus on: the one that made the
@@ -195,10 +202,7 @@ export default function LineOrder({
   const hovered = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!ready) {
-      setState({ status: 'waiting' })
-      return
-    }
+    if (!ready) return
     let left = false
     inspect(project.feed).then(
       (inspection) => {

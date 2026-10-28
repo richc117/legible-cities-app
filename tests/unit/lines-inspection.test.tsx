@@ -49,4 +49,8 @@ describe('cell 05’s lists, as the engine restarts', () => {
   it('draws no colour rows of the last reading while the feed is read again', async () => {
     expect(await acrossARestart('Lines')).toEqual([true, false, false])
   })
+
+  it('draws no order rows of the last reading while the feed is read again', async () => {
+    expect(await acrossARestart('Lines in the order they are drawn')).toEqual([true, false, false])
+  })
 })
