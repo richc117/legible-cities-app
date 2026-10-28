@@ -41,6 +41,7 @@ const INFO: EngineInfo = {
   python: '3.12.4',
   loom: { commit: 'abc1234', backend: 'native' },
   ffmpeg: '/usr/bin/ffmpeg',
+  home: '/srv/schematic',
 }
 
 const RESTARTING: EngineState = { state: 'restarting', attempt: 1, reason: 'it stopped' }
