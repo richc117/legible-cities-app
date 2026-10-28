@@ -1,0 +1,58 @@
+[
+  {
+    "file": "src/main/ipc-shape.ts",
+    "find": "      if (!isTopFrame(event)) throw new Error('forbidden')\n",
+    "replace": "",
+    "test": "tests/unit/guarded-handle.test.ts",
+    "title": "refuses a call from anything but the interface",
+    "why": "The guard gone: a project page in an iframe, which shares the origin, reaches every bridge."
+  },
+  {
+    "file": "src/main/ipc-shape.ts",
+    "find": "      if (!isTopFrame(event)) throw new Error('forbidden')\n      return handler(event, ...args)\n",
+    "replace": "      const answer = handler(event, ...args)\n      if (!isTopFrame(event)) throw new Error('forbidden')\n      return answer\n",
+    "test": "tests/unit/guarded-handle.test.ts",
+    "title": "before the handler is called",
+    "why": "The refusal after the work: the caller is told `forbidden`, but the store was written or the dialog opened all the same."
+  },
+  {
+    "file": "src/main/ipc-shape.ts",
+    "find": "      return handler(event, ...args)\n",
+    "replace": "      return handler(event, ...args.slice(1))\n",
+    "test": "tests/unit/guarded-handle.test.ts",
+    "title": "the event first and the arguments as sent",
+    "why": "The page's arguments shifted on the way in: every handler would read the wrong token, project or choice."
+  },
+  {
+    "file": "src/main/ipc-shape.ts",
+    "find": "    ipcMain.handle(channel, async (event, ...args: unknown[]) => {\n      if (!isTopFrame(event)) throw new Error('forbidden')\n",
+    "replace": "    ipcMain.handle(channel, async (event, ...args: unknown[]) => {\n      await Promise.resolve()\n      if (!isTopFrame(event)) throw new Error('forbidden')\n",
+    "test": "tests/unit/guarded-handle.test.ts",
+    "title": "reaches the handler in the turn it was called",
+    "why": "An await before the handler: a projects:* call sent later could reach the store's queue first, which the record session forbids."
+  },
+  {
+    "file": "src/main/feeds-ipc.ts",
+    "find": "  guardedHandle(ipcMain, isTopFrame)(CHANNELS.feedsPickZip, async (): Promise<PickedZip | null> => {\n",
+    "replace": "  ipcMain.handle(CHANNELS.feedsPickZip, async (event): Promise<PickedZip | null> => {\n    if (!isTopFrame(event)) throw new Error('forbidden')\n",
+    "test": "tests/unit/guarded-handle.test.ts",
+    "title": "is the only guard",
+    "why": "A bridge back to its own copy of the guard: the next change to the guard is made once and missed there."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "        ...(isLayoutId(params.layout) ? { layout: params.layout } : {}),\n",
+    "replace": "        ...(typeof params.layout === 'string' ? { layout: params.layout } : {}),\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "carries a stage report’s layout to the page, and only an id in the engine’s shape",
+    "why": "The engine bridge without `isLayoutId`: a stage report's layout in any shape, a path included, crosses to the page."
+  },
+  {
+    "file": "src/main/jsonrpc.ts",
+    "find": "  if (isLayoutId(data.layout)) kept.layout = data.layout\n",
+    "replace": "  if (typeof data.layout === 'string') kept.layout = data.layout\n",
+    "test": "tests/unit/jsonrpc.test.ts",
+    "title": "keeps a not-yet refusal’s layout, stage and building, each only in the engine’s shape",
+    "why": "The client without `isLayoutId`: a not-yet refusal's layout in a shape the engine never sends is kept and handed on."
+  }
+]

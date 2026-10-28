@@ -23,7 +23,15 @@ import {
 import { validateId } from './record/validate'
 import type { Destinations, Exporter } from './export'
 import type { StoreBlocked } from './ipc'
-import { badCall, redactShape, refusal, TOKEN, toShape, type PathRoots } from './ipc-shape'
+import {
+  badCall,
+  guardedHandle,
+  redactShape,
+  refusal,
+  TOKEN,
+  toShape,
+  type PathRoots,
+} from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 
 export type Send = (channel: string, payload: unknown) => void
@@ -63,14 +71,9 @@ export function registerExportHandlers(
    */
   roots: PathRoots,
 ): () => void {
-  const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
-    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      if (!isTopFrame(event)) throw new Error('forbidden')
-      return handler(...args)
-    })
-  }
+  const handle = guardedHandle(ipcMain, isTopFrame)
 
-  handle(CHANNELS.exportRun, async (token, projectId, choice): Promise<ExportAccepted> => {
+  handle(CHANNELS.exportRun, async (_event, token, projectId, choice): Promise<ExportAccepted> => {
     // The token becomes a folder name under the engine home, so a name
     // Windows reserves is refused with the rest.
     if (typeof token !== 'string' || !TOKEN.test(token) || RESERVED_NAME.test(token))
@@ -102,7 +105,7 @@ export function registerExportHandlers(
 
   // The preview's plan: answered, never thrown, so the engine's refusal
   // keeps its `data` on the way to the sentence the tab shows.
-  handle(CHANNELS.exportPreview, async (projectId, choice): Promise<ExportPreview> => {
+  handle(CHANNELS.exportPreview, async (_event, projectId, choice): Promise<ExportPreview> => {
     if (typeof projectId !== 'string' || validateId(projectId) !== null)
       return { ok: false, error: refusal('a preview needs a project', roots) }
     const problem = validateExportChoice(choice)
@@ -114,7 +117,7 @@ export function registerExportHandlers(
     return answer.ok ? answer : { ...answer, error: redactShape(answer.error, roots) }
   })
 
-  handle(CHANNELS.exportCancel, async (token) => {
+  handle(CHANNELS.exportCancel, async (_event, token) => {
     if (typeof token === 'string') exporter.cancel(token)
   })
 
@@ -133,15 +136,15 @@ export function registerExportHandlers(
     return projectId
   }
 
-  handle(CHANNELS.exportChooseDestination, async (projectId) =>
+  handle(CHANNELS.exportChooseDestination, async (_event, projectId) =>
     destinations.choose(readProject(projectId), blocked),
   )
 
-  handle(CHANNELS.exportUseAppFolder, async (projectId) =>
+  handle(CHANNELS.exportUseAppFolder, async (_event, projectId) =>
     destinations.useAppFolder(readProject(projectId), blocked),
   )
 
-  handle(CHANNELS.exportReveal, async (token) => {
+  handle(CHANNELS.exportReveal, async (_event, token) => {
     if (typeof token !== 'string') return
     const file = exporter.fileOf(token)
     if (file !== null) reveal(file)

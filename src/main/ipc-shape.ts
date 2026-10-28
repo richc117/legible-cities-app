@@ -48,6 +48,7 @@
 // path at a space the folder would have covered, and leave the rest for no
 // later pass to find.
 
+import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import type { Accepted } from '../shared/api'
 import { EngineError, ERROR_CODES, type EngineErrorShape } from '../shared/engine'
 import { log } from './log'
@@ -92,6 +93,30 @@ export const TOKEN = /^[A-Za-z0-9-]{1,64}$/
 
 export const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
+
+/** A handler as `ipcMain.handle` calls it: the event, then the page's arguments. */
+export type GuardedHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+
+/**
+ * `ipcMain.handle` for the interface's own top frame only, the one guard
+ * every bridge puts in front of its handlers (issue 598). A call from
+ * anywhere else - a project page in an iframe shares the origin but must
+ * not have the bridge - is refused with `forbidden` before the handler is
+ * called, so nothing of the call's work is done; and a call that passes
+ * reaches the handler in the same turn, with nothing awaited between, which
+ * the record session rests on (`registerProjectHandlers`, spec 037).
+ */
+export function guardedHandle(
+  ipcMain: IpcMain,
+  isTopFrame: (event: IpcMainInvokeEvent) => boolean,
+): (channel: string, handler: GuardedHandler) => void {
+  return (channel, handler) => {
+    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
+      if (!isTopFrame(event)) throw new Error('forbidden')
+      return handler(event, ...args)
+    })
+  }
+}
 
 /**
  * The app's own refusal in the engine's shape, its sentence in all three

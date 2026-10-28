@@ -21,6 +21,7 @@
 import { constants } from 'node:fs'
 import { open, rename as renameFile, type FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
+import { inTime } from './deadline'
 import { redactUrls } from './redact'
 
 /** The cap on one log file, in bytes: 5 MB. */
@@ -100,15 +101,7 @@ const reason = (error: unknown): string => {
  * the waits on a log, which must not hold up a quit or a button.
  */
 export async function within(work: Promise<unknown>, ms: number): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<void>((resolve) => {
-    timer = setTimeout(resolve, ms)
-  })
-  try {
-    await Promise.race([work.then(noop, noop), timeout])
-  } finally {
-    clearTimeout(timer)
-  }
+  await inTime(work.then(noop, noop), ms)
 }
 
 /**

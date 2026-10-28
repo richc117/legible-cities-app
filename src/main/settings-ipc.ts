@@ -28,7 +28,9 @@ import {
 import type { FirstRunResult } from '../shared/first-run'
 import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
 import { writeClipboard, type WriteText } from './clipboard'
+import { inTime, LAPSED } from './deadline'
 import { DESTINATION_REFUSALS } from './export'
+import { guardedHandle } from './ipc-shape'
 import { LOG_WAIT_MS, within } from './log-file'
 import { PickedPaths } from './picked'
 import {
@@ -36,8 +38,7 @@ import {
   destinationsInTheWay,
   destinationsSentence,
   folderSize,
-  inTime,
-  LAPSED,
+  FOLDERS_TIMEOUT_MS,
   lateSentence,
   oneAtATime,
   refuseReset,
@@ -361,6 +362,7 @@ export class SettingsService {
         this.#real(folder ?? this.#deps.defaults.engine).then((home) =>
           this.#projectsInTheWay(home, asking),
         ),
+        FOLDERS_TIMEOUT_MS,
       )
       if (inTheWay === LAPSED) throw new Error(lateSentence(asking.now))
       if (inTheWay.length > 0) {
@@ -516,36 +518,24 @@ export class SettingsService {
         () => undefined,
       ),
     )
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const late = Symbol('late')
-    const deadline = new Promise<typeof late>((resolve) => {
-      timer = setTimeout(() => resolve(late), HOMES_TIMEOUT_MS)
-    })
-    try {
-      const [real] = await Promise.all([
-        Promise.race([realHome().catch(() => home), deadline]),
-        within(Promise.all(shorts), HOMES_TIMEOUT_MS),
-      ])
-      if (real === late) {
-        throw new Error('the home folder did not answer in time, so nothing was copied')
-      }
-      found.add(real)
-      return [...found]
-    } finally {
-      clearTimeout(timer)
+    const [real] = await Promise.all([
+      inTime(
+        realHome().catch(() => home),
+        HOMES_TIMEOUT_MS,
+      ),
+      within(Promise.all(shorts), HOMES_TIMEOUT_MS),
+    ])
+    if (real === LAPSED) {
+      throw new Error('the home folder did not answer in time, so nothing was copied')
     }
+    found.add(real)
+    return [...found]
   }
 
   async #engineInfo(): Promise<DiagnosticsInput['engine']> {
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`no answer within ${ENGINE_INFO_TIMEOUT_MS / 1000} s`)),
-        ENGINE_INFO_TIMEOUT_MS,
-      )
-    })
     try {
-      const info = await Promise.race([this.#deps.diagnostics.engineInfo(), timeout])
+      const info = await inTime(this.#deps.diagnostics.engineInfo(), ENGINE_INFO_TIMEOUT_MS)
+      if (info === LAPSED) throw new Error(`no answer within ${ENGINE_INFO_TIMEOUT_MS / 1000} s`)
       return { info }
     } catch (error) {
       const message =
@@ -555,8 +545,6 @@ export class SettingsService {
             ? String((error as { message: unknown }).message)
             : String(error)
       return { absent: `The engine did not give its engine.info: ${message}` }
-    } finally {
-      clearTimeout(timer)
     }
   }
 
@@ -620,7 +608,7 @@ export class SettingsService {
     // nobody, after the flag has come down, which is why it only reads and
     // why `resetContents` is here and not at its end.
     const asking: Asking = { now: { what: 'engine' } }
-    const home = await inTime(this.#resetChecks(asking))
+    const home = await inTime(this.#resetChecks(asking), FOLDERS_TIMEOUT_MS)
     if (home === LAPSED) throw new Error(lateSentence(asking.now))
     const outcome = await resetContents(home)
     this.#deps.log(
@@ -713,15 +701,10 @@ export function registerSettingsHandlers(
   settings: SettingsService,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
-    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      if (!isTopFrame(event)) throw new Error('forbidden')
-      return handler(...args)
-    })
-  }
+  const handle = guardedHandle(ipcMain, isTopFrame)
 
   handle(CHANNELS.settingsRead, async () => settings.view())
-  handle(CHANNELS.settingsSetTheme, async (theme) => settings.setTheme(theme))
+  handle(CHANNELS.settingsSetTheme, async (_event, theme) => settings.setTheme(theme))
   handle(CHANNELS.settingsChooseEngineFolder, async () => settings.choose('engine'))
   handle(CHANNELS.settingsChooseExportFolder, async () => settings.choose('export'))
   handle(CHANNELS.settingsDefaultEngineFolder, async () => settings.useDefault('engine'))
@@ -733,7 +716,7 @@ export function registerSettingsHandlers(
   handle(CHANNELS.settingsResetEngineData, async () => settings.resetEngineData())
   // The one settings call that takes something from the page: the reports
   // of the maps it drew, as text, checked in the service before use.
-  handle(CHANNELS.settingsCopyDiagnostics, async (reports) => {
+  handle(CHANNELS.settingsCopyDiagnostics, async (_event, reports) => {
     await settings.copyDiagnostics(reports)
   })
 }

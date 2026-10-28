@@ -50,6 +50,7 @@ import { isViewerRole, type ViewerRole } from '../shared/viewer'
 import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
 import { writeClipboard, type WriteText } from './clipboard'
+import { guardedHandle } from './ipc-shape'
 
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -314,9 +315,9 @@ export function registerViewerHandlers(
   contentsFor: (event: IpcMainInvokeEvent) => WebContents | null,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
+  const guarded = guardedHandle(ipcMain, isTopFrame)
   const handle = (channel: string, handler: (...a: unknown[]) => Promise<unknown>): void => {
-    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      if (!isTopFrame(event)) throw new Error('forbidden')
+    guarded(channel, async (event, ...args: unknown[]) => {
       const contents = contentsFor(event)
       if (contents === null) throw new Error('the window has gone')
       return handler(contents, ...args)
@@ -354,8 +355,7 @@ export function registerClipboardHandler(
   writeText: WriteText,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  ipcMain.handle(CHANNELS.clipboardWrite, async (event, raw: unknown) => {
-    if (!isTopFrame(event)) throw new Error('forbidden')
+  guardedHandle(ipcMain, isTopFrame)(CHANNELS.clipboardWrite, async (_event, raw) => {
     if (typeof raw !== 'string') throw new Error('there is nothing to copy')
     // A cap, because the argument comes from another process and the
     // clipboard is the platform's, not ours to fill. Measured in bytes of
@@ -407,16 +407,16 @@ export function registerProjectHandlers(
   blocked: StoreBlocked = () => null,
   refused: (line: string) => void = () => undefined,
 ): void {
+  const guarded = guardedHandle(ipcMain, isTopFrame)
   const handle = (
     channel: string,
     handler: (...args: unknown[]) => Promise<unknown>,
     writes = true,
   ): void => {
     const writer = COMPLETIONS[channel]
-    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      // Only the interface's own top frame reaches the store: a project page
-      // in an iframe shares the origin but must not have the bridge.
-      if (!isTopFrame(event)) throw new Error('forbidden')
+    // Only the interface's own top frame reaches the store: a project page
+    // in an iframe shares the origin but must not have the bridge.
+    guarded(channel, async (_event, ...args: unknown[]) => {
       // A completion refused, here or by the store, is a map drawn and not
       // kept: said in the log, with the writer and the sentence, then
       // answered as the refusal it is. The store is still reached in this

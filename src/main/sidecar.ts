@@ -15,6 +15,7 @@ import {
   type EnginePin,
   type EngineState,
 } from '../shared/engine'
+import { inTime, LAPSED } from './deadline'
 import { redactUrls } from './redact'
 import { describeThrown, JsonRpcClient, ProtocolError, shown } from './jsonrpc'
 
@@ -836,14 +837,9 @@ export class Sidecar {
     }
   }
 
-  private waitFor(exited: Promise<void>, ms: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), ms)
-      void exited.then(() => {
-        clearTimeout(timer)
-        resolve(true)
-      })
-    })
+  /** True where `exited` came within `ms`, false where the deadline came first. */
+  private async waitFor(exited: Promise<void>, ms: number): Promise<boolean> {
+    return (await inTime(exited, ms)) !== LAPSED
   }
 
   // -- state --

@@ -33,7 +33,7 @@
 
 import { PATH_REST, QUOTE_CLOSES, QUOTED_CHAR, withoutPaths } from '../shared/engine'
 import { homePattern } from './diagnostics-text'
-import { inTime, LAPSED } from './settings'
+import { inTime, LAPSED } from './deadline'
 
 /** What a path is replaced with. */
 export const A_FILE = 'a file'

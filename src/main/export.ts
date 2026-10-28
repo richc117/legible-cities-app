@@ -48,11 +48,12 @@ import {
   type CaptureOptions,
   type CaptureResult,
 } from './capture'
+import { inTime, LAPSED } from './deadline'
 import { isObject, toShape, URLS_ONLY } from './ipc-shape'
 import { RESERVED_NAME } from './paths'
 import { PickedPaths } from './picked'
 import type { ProjectActivity } from './projectActivity'
-import { contains, inTime, LAPSED, oneAtATime, type FolderResolver } from './settings'
+import { contains, FOLDERS_TIMEOUT_MS, oneAtATime, type FolderResolver } from './settings'
 import type { Notification } from './sidecar'
 
 /** What the export needs from the supervisor; a test hands in a fake. */
@@ -925,7 +926,7 @@ export async function destinationRefusal(
   where: ForbiddenFolders,
 ): Promise<string | null> {
   const asking: { now: DestinationAsked } = { now: 'folder' }
-  const judged = await inTime(judgeDestination(folder, where, asking))
+  const judged = await inTime(judgeDestination(folder, where, asking), FOLDERS_TIMEOUT_MS)
   return judged === LAPSED ? destinationLate(asking.now) : judged
 }
 

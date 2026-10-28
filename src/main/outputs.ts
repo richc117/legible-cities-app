@@ -27,6 +27,7 @@ import { OUTPUTS_MAX, type ExportOutput } from '../shared/export'
 import { type ProjectRecord } from '../shared/project/types'
 import { validateId } from './record/validate'
 import { folderName } from './export'
+import { guardedHandle } from './ipc-shape'
 
 /** What the engine names a sidecar: the deliverable's own name and this. */
 export const SIDECAR_SUFFIX = '.json'
@@ -288,20 +289,15 @@ export function registerOutputHandlers(
   outputs: OutputSource,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
-    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      if (!isTopFrame(event)) throw new Error('forbidden')
-      return handler(...args)
-    })
-  }
+  const handle = guardedHandle(ipcMain, isTopFrame)
 
-  handle(CHANNELS.exportOutputs, async (projectId) => {
+  handle(CHANNELS.exportOutputs, async (_event, projectId) => {
     if (typeof projectId !== 'string' || validateId(projectId) !== null)
       throw new Error('a list of outputs needs a project')
     return outputs.list(projectId)
   })
 
-  handle(CHANNELS.exportRevealOutput, async (projectId, file) => {
+  handle(CHANNELS.exportRevealOutput, async (_event, projectId, file) => {
     if (typeof projectId !== 'string' || validateId(projectId) !== null)
       throw new Error('a reveal needs a project')
     // A bare name and nothing else. `Outputs.reveal` checks it against the

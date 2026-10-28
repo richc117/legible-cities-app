@@ -11,6 +11,7 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS } from '../shared/api'
 import { JOB_LOG_BYTES } from '../shared/jobs'
 import { containsHome, shortenHome } from './diagnostics-text'
+import { guardedHandle } from './ipc-shape'
 import { redactUrls } from './redact'
 import { writeClipboard, type WriteText } from './clipboard'
 
@@ -56,8 +57,7 @@ export function registerJobsHandlers(
   deps: JobsDeps,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  ipcMain.handle(CHANNELS.jobsCopyLog, async (event, raw: unknown) => {
-    if (!isTopFrame(event)) throw new Error('forbidden')
+  guardedHandle(ipcMain, isTopFrame)(CHANNELS.jobsCopyLog, async (_event, raw) => {
     await copyJobLog(raw, deps)
   })
 }

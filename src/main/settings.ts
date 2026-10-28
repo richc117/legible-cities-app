@@ -455,37 +455,12 @@ export function lateSentence(asked: Asked): string {
  * quit, with every engine request, export and record write refused
  * meanwhile, and a choice of the engine's folder that stalled would hold
  * every later one behind it.
+ *
+ * Each check is given it through `inTime` (`deadline.ts`), and since a
+ * check that lapsed is abandoned, not stopped, a check over folders must
+ * only read: whatever acts on its answer comes after it.
  */
 export const FOLDERS_TIMEOUT_MS = 5_000
-
-/** What `inTime` answers when the deadline came first. */
-export const LAPSED: unique symbol = Symbol('the folders were not checked in time')
-
-/**
- * `check`'s answer, or `LAPSED` once `ms` has passed, as `#homes` in
- * `settings-ipc.ts` bounds its own lookup. The timer is cleared whichever
- * way it ends, so nothing is left to hold a process open.
- *
- * **A check that lapsed is abandoned, not stopped**: nothing can take back
- * a question already put to the disk. So `check` must only read, and
- * whatever acts on its answer - a removal, a write - comes after this and
- * only on an answer that came in time. A check that fails after it was
- * abandoned fails unheard.
- */
-export async function inTime<T>(
-  check: Promise<T>,
-  ms: number = FOLDERS_TIMEOUT_MS,
-): Promise<T | typeof LAPSED> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  const deadline = new Promise<typeof LAPSED>((resolve) => {
-    timer = setTimeout(() => resolve(LAPSED), ms)
-  })
-  try {
-    return await Promise.race([check, deadline])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 export function refuseReset(home: string, guards: ResetGuards): string | null {
   if (!isAbsolute(home)) return 'the engine data folder is not a folder the app can reset'
