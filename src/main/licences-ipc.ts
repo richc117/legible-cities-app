@@ -15,6 +15,7 @@ import {
   type LicenceFileState,
   type LicencesView,
 } from '../shared/licences'
+import { guardedHandle } from './ipc-shape'
 
 export interface LicencesDeps {
   /** `app.isPackaged`: a development run carries no resources of its own. */
@@ -121,12 +122,7 @@ export function registerLicencesHandlers(
   licences: LicencesService,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  const handle = (channel: string, handler: () => Promise<unknown>): void => {
-    ipcMain.handle(channel, async (event) => {
-      if (!isTopFrame(event)) throw new Error('forbidden')
-      return handler()
-    })
-  }
+  const handle = guardedHandle(ipcMain, isTopFrame)
   handle(CHANNELS.licencesRead, async () => licences.view())
   handle(CHANNELS.licencesOpenNotices, () => licences.openNotices())
   handle(CHANNELS.licencesShowTexts, () => licences.showTexts())

@@ -10,6 +10,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { basename } from 'node:path'
 import { CHANNELS, type PickedZip } from '../shared/api'
+import { guardedHandle } from './ipc-shape'
 import { PickedPaths } from './picked'
 
 /** What the handler needs from Electron's dialog; a test hands in a fake. */
@@ -197,8 +198,7 @@ export function registerFeedsHandlers(
   picked: PickedPaths,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  ipcMain.handle(CHANNELS.feedsPickZip, async (event): Promise<PickedZip | null> => {
-    if (!isTopFrame(event)) throw new Error('forbidden')
+  guardedHandle(ipcMain, isTopFrame)(CHANNELS.feedsPickZip, async (): Promise<PickedZip | null> => {
     const path = await openZip()
     if (path === null) return null
     picked.remember(path)

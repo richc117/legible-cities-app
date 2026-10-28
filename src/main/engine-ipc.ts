@@ -58,11 +58,13 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
 import { REQUEST_FOR_NO_PROJECT, REQUEST_UNCHECKED } from '../shared/activity'
 import { ERROR_CODES, type EngineState, type JobLog, type JobProgress } from '../shared/engine'
+import { isLayoutId } from '../shared/layout'
 import type { Method } from '../shared/protocol'
-import { badCall, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
+import { inTime, LAPSED } from './deadline'
+import { badCall, guardedHandle, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { ProjectActivity, projectNamedBy } from './projectActivity'
 import { redactUrls } from './redact'
-import { FOLDERS_TIMEOUT_MS, inTime, LAPSED } from './settings'
+import { FOLDERS_TIMEOUT_MS } from './settings'
 import type { Notification } from './sidecar'
 
 /** What the handlers need from the supervisor; a test hands in a fake. */
@@ -97,9 +99,6 @@ export interface RecordLookup {
 export const NOT_SENT = 'The request could not be sent to the engine.'
 
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
-
-/** A layout's id as the engine writes one: 64 hex digits (`LayoutId`). */
-const LAYOUT_ID = /^[0-9a-f]{64}$/
 
 /**
  * The engine methods the interface calls (issue 429). A page's request naming
@@ -161,16 +160,11 @@ export function registerEngineHandlers(
   // to a cancel that came a moment later (issue 351).
   const cancelledEarly = new Set<string>()
 
-  const handle = (channel: string, handler: (...args: unknown[]) => Promise<unknown>): void => {
-    ipcMain.handle(channel, async (event, ...args: unknown[]) => {
-      if (!isTopFrame(event)) throw new Error('forbidden')
-      return handler(...args)
-    })
-  }
+  const handle = guardedHandle(ipcMain, isTopFrame)
 
   handle(CHANNELS.engineState, async () => engine.state)
 
-  handle(CHANNELS.engineRequest, async (token, method, params): Promise<EngineAccepted> => {
+  handle(CHANNELS.engineRequest, async (_event, token, method, params): Promise<EngineAccepted> => {
     if (typeof token !== 'string' || !TOKEN.test(token))
       return badCall('a request needs an id', roots)
     if (typeof method !== 'string' || method === '')
@@ -284,7 +278,7 @@ export function registerEngineHandlers(
     return { accepted: true }
   })
 
-  handle(CHANNELS.engineCancel, async (token) => {
+  handle(CHANNELS.engineCancel, async (_event, token) => {
     if (typeof token !== 'string') return
     const id = idOf.get(token)
     if (id === undefined) return
@@ -316,9 +310,7 @@ export function registerEngineHandlers(
         // cell 01 can draw the stage before the run ends. Only an id in the
         // engine's shape crosses; anything else is left behind and the
         // report goes on without it, as one from an older engine does.
-        ...(typeof params.layout === 'string' && LAYOUT_ID.test(params.layout)
-          ? { layout: params.layout }
-          : {}),
+        ...(isLayoutId(params.layout) ? { layout: params.layout } : {}),
       }
       send(CHANNELS.engineProgress, progress)
     } else if (

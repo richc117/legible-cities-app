@@ -7,6 +7,7 @@
 
 import type { Readable, Writable } from 'node:stream'
 import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
+import { isLayoutId } from '../shared/layout'
 import { redactUrls } from './redact'
 
 /**
@@ -186,7 +187,6 @@ interface Pending {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-const LAYOUT_ID = /^[0-9a-f]{64}$/
 const STAGE_NAMES: readonly string[] = ['gtfs2graph', 'topo', 'loom', 'octi']
 
 /**
@@ -200,7 +200,7 @@ const STAGE_NAMES: readonly string[] = ['gtfs2graph', 'topo', 'loom', 'octi']
  */
 function notYet(data: Record<string, unknown>): Pick<ErrorData, 'layout' | 'stage' | 'building'> {
   const kept: Pick<ErrorData, 'layout' | 'stage' | 'building'> = {}
-  if (typeof data.layout === 'string' && LAYOUT_ID.test(data.layout)) kept.layout = data.layout
+  if (isLayoutId(data.layout)) kept.layout = data.layout
   if (typeof data.stage === 'string' && STAGE_NAMES.includes(data.stage))
     kept.stage = data.stage as ErrorData['stage']
   if (data.building === true) kept.building = true

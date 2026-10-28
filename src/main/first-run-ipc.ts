@@ -10,6 +10,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS } from '../shared/api'
 import type { FirstRunResult } from '../shared/first-run'
+import { guardedHandle } from './ipc-shape'
 
 /**
  * The install document, on the repository's default branch. It arrives with
@@ -37,13 +38,10 @@ export function registerFirstRunHandlers(
   deps: FirstRunIpcDeps,
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): () => void {
-  ipcMain.handle(CHANNELS.firstRunGet, async (event) => {
-    if (!isTopFrame(event)) throw new Error('forbidden')
-    return deps.check.result
-  })
+  const handle = guardedHandle(ipcMain, isTopFrame)
+  handle(CHANNELS.firstRunGet, async () => deps.check.result)
   // Whatever arguments arrive are ignored: the address is this side's.
-  ipcMain.handle(CHANNELS.firstRunOpenInstallGuide, async (event) => {
-    if (!isTopFrame(event)) throw new Error('forbidden')
+  handle(CHANNELS.firstRunOpenInstallGuide, async () => {
     deps.log('opening the install document in the browser')
     await deps.openExternal(INSTALL_GUIDE_URL)
   })

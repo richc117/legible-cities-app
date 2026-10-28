@@ -20,10 +20,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   destinationsInTheWay,
   destinationsSentence,
-  FOLDERS_TIMEOUT_MS,
   folderSize,
-  inTime,
-  LAPSED,
   lateSentence,
   oneAtATime,
   realOrResolved,
@@ -643,64 +640,6 @@ describe('oneAtATime', () => {
     const asking = real(dir)
     expect(real(dir), 'the same question while it is unanswered').toBe(asking)
     expect(await asking).toBe(await realOrResolved(dir))
-  })
-})
-
-// Issue 206. A folder on a network share can stall rather than fail, so a
-// check over folders is given a deadline and abandoned when it lapses.
-describe('inTime', () => {
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('answers what the check answered, and leaves no timer', async () => {
-    vi.useFakeTimers()
-    expect(await inTime(Promise.resolve(['Bart']))).toEqual(['Bart'])
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('answers that the deadline lapsed for a check that never ends, at the deadline and not before', async () => {
-    vi.useFakeTimers()
-    let answered: unknown = 'nothing yet'
-    void inTime(new Promise<string>(() => undefined)).then((answer) => {
-      answered = answer
-    })
-    await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
-    expect(answered).toBe('nothing yet')
-    await vi.advanceTimersByTimeAsync(1)
-    expect(answered).toBe(LAPSED)
-    expect(vi.getTimerCount(), 'and the timer is gone').toBe(0)
-    expect(FOLDERS_TIMEOUT_MS).toBe(5_000)
-  })
-
-  it('fails as the check failed, and leaves no timer', async () => {
-    vi.useFakeTimers()
-    await expect(inTime(Promise.reject(new Error('refused')))).rejects.toThrow('refused')
-    expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('lets a check that fails after it was given up fail unheard', async () => {
-    vi.useFakeTimers()
-    const unheard: unknown[] = []
-    const listen = (reason: unknown): void => {
-      unheard.push(reason)
-    }
-    process.on('unhandledRejection', listen)
-    try {
-      let fail: (error: Error) => void = () => undefined
-      const check = new Promise<string>((_, reject) => {
-        fail = reject
-      })
-      const waiting = inTime(check, 10)
-      await vi.advanceTimersByTimeAsync(10)
-      expect(await waiting).toBe(LAPSED)
-      fail(new Error('the share answered at last, with a failure'))
-      vi.useRealTimers()
-      await new Promise((resolve) => setTimeout(resolve, 20))
-      expect(unheard).toEqual([])
-    } finally {
-      process.off('unhandledRejection', listen)
-    }
   })
 })
 

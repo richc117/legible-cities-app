@@ -1,0 +1,82 @@
+[
+  {
+    "file": "src/main/deadline.ts",
+    "find": "  } finally {\n    clearTimeout(timer)\n  }\n",
+    "replace": "  } finally {\n  }\n",
+    "test": "tests/unit/deadline.test.ts",
+    "title": "answers what the check answered, and leaves no timer",
+    "why": "The timer left running after a check that answered: every folder check, log wait and shutdown step would hold the process open until its deadline."
+  },
+  {
+    "file": "src/main/deadline.ts",
+    "find": "    timer = setTimeout(() => resolve(LAPSED), ms)\n",
+    "replace": "    timer = setTimeout(() => resolve(LAPSED), Math.min(ms, 5_000))\n",
+    "test": "tests/unit/deadline.test.ts",
+    "title": "keeps the deadline it is handed",
+    "why": "A deadline other than the one handed in (here the folders' five seconds as a ceiling, the old default leaking): a site with a longer bound would give up early."
+  },
+  {
+    "file": "src/main/deadline.ts",
+    "find": "    return await Promise.race([check, deadline])\n",
+    "replace": "    return await deadline\n",
+    "test": "tests/unit/deadline.test.ts",
+    "title": "keeps the deadline it is handed",
+    "why": "The check's answer never raced: everything waited out its whole deadline and lapsed, a check that answered in time included."
+  },
+  {
+    "file": "src/main/log-file.ts",
+    "find": "  await inTime(work.then(noop, noop), ms)\n",
+    "replace": "  await inTime(work, ms)\n",
+    "test": "tests/unit/log-file.test.ts",
+    "title": "gives up on work that never finishes after the time it is given, and never rejects",
+    "why": "`within` as a bare `inTime`: a log that fails to flush or close would reject, and a quit or a diagnostics copy waiting on it would fail with it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    return (await inTime(exited, ms)) !== LAPSED\n",
+    "replace": "    return (await inTime(exited, ms)) !== null\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "stops an engine that ignores the shutdown request by ending it",
+    "why": "`waitFor` reading a lapse as the engine having ended: an engine that ignores the shutdown request is never terminated, and outlives the app."
+  },
+  {
+    "file": "src/main/settings-ipc.ts",
+    "find": "    if (real === LAPSED) {\n",
+    "replace": "    if (real === null) {\n",
+    "test": "tests/unit/settings-ipc.test.ts",
+    "title": "refuses the copy when the home through its links does not answer in time",
+    "why": "The home's lookup lapsing read as an answer: the copy goes ahead with the deadline's symbol for the real home, and a real home in the text is never hidden."
+  },
+  {
+    "file": "src/main/settings-ipc.ts",
+    "find": "      if (info === LAPSED) throw new Error(`no answer within ${ENGINE_INFO_TIMEOUT_MS / 1000} s`)\n",
+    "replace": "",
+    "test": "tests/unit/settings-ipc.test.ts",
+    "title": "gives up on an engine that does not answer, and says so",
+    "why": "An engine.info that lapsed taken as its answer: the copy no longer says the engine gave no answer within five seconds."
+  },
+  {
+    "file": "src/main/settings-ipc.ts",
+    "find": "    const home = await inTime(this.#resetChecks(asking), FOLDERS_TIMEOUT_MS)\n",
+    "replace": "    const home = await inTime(this.#resetChecks(asking), FOLDERS_TIMEOUT_MS - 1)\n",
+    "test": "tests/unit/settings-ipc.test.ts",
+    "title": "gives up on a project’s folder that never answers: the flag comes down",
+    "why": "The reset's checks given a deadline other than the folders' one: it gives up before FOLDERS_TIMEOUT_MS, on a folder that might still have answered."
+  },
+  {
+    "file": "src/main/settings-ipc.ts",
+    "find": "        FOLDERS_TIMEOUT_MS,\n      )\n      if (inTheWay === LAPSED)",
+    "replace": "        FOLDERS_TIMEOUT_MS + 1,\n      )\n      if (inTheWay === LAPSED)",
+    "test": "tests/unit/settings-ipc.test.ts",
+    "title": "gives up on a project’s folder that never answers, names the project",
+    "why": "The engine folder's choice given a deadline other than the folders' one: it has not given up at FOLDERS_TIMEOUT_MS."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "  const judged = await inTime(judgeDestination(folder, where, asking), FOLDERS_TIMEOUT_MS)\n",
+    "replace": "  const judged = await inTime(judgeDestination(folder, where, asking), FOLDERS_TIMEOUT_MS - 1)\n",
+    "test": "tests/unit/export.test.ts",
+    "title": "refuses the folder when the deadline lapses, and says which folder did not answer",
+    "why": "A project's folder judged with a deadline other than the folders' one: the refusal comes before FOLDERS_TIMEOUT_MS."
+  }
+]

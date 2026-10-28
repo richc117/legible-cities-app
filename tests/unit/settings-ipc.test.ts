@@ -782,10 +782,19 @@ describe('choosing the engine folder while a project exports to a folder of its 
       const refused = expect(choosing).rejects.toThrow(
         'The folder the project “Los Angeles” exports to did not answer in time, so nothing was changed or removed; change where the project exports, or try again when it can be reached.',
       )
+      // A flag, not only an await: a refusal early or late fails at once,
+      // not at the test's own timeout.
+      let settled = false
+      const settle = (): void => {
+        settled = true
+      }
+      void choosing.then(settle, settle)
       await askedOrEnded(stalledWasAsked, choosing)
       await vi.advanceTimersByTimeAsync(FOLDERS_TIMEOUT_MS - 1)
+      expect(settled, 'not given up before the deadline').toBe(false)
       expect(h.store.current.engineFolder, 'not yet given up, and nothing stored').toBeNull()
       await vi.advanceTimersByTimeAsync(1)
+      expect(settled, 'given up at the deadline').toBe(true)
       await refused
       expect(h.store.current.engineFolder, 'nothing was stored').toBeNull()
       expect(vi.getTimerCount(), 'the timer was cleared').toBe(0)
