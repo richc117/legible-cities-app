@@ -102,5 +102,53 @@
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
     "title": "refuses a download that is not its pinned bytes in --sources too, and copies nothing",
     "why": "A wrong download left in the sources folder: unpinned bytes where the next run, or a developer, would find them."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  case \"$name\" in\n    '' | . | ..)\n      echo \"$1 names no file to fetch: a pinned URL must end in the archive's name\" >&2\n      exit 2 ;;\n  esac\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a pinned URL that names no file, and leaves the folder as it is",
+    "why": "No check of the name: the archive's path would be the folder itself. kept()'s refusal of a folder still stops the run and saves the folder, so what goes red is the message, which would name a folder rather than the pin at fault."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  if [ -d \"$1\" ] && [ ! -L \"$1\" ]; then\n    echo \"$(basename \"$1\") in $(dirname \"$1\") is a folder, not an archive: it is left as it is, and nothing is fetched over it\" >&2\n    exit 1\n  fi\n  local warn=\n  [ \"${GITHUB_ACTIONS:-}\" != true ] || warn='::warning::'\n  echo \"${warn}$(basename \"$1\") in $(dirname \"$1\") is not the pinned bytes: it is refused, removed and fetched afresh. If it came from a cache entry, delete that entry (gh cache delete <key>), or every run with its key fetches it again.\" >&2\n  rm -f \"$1\"\n",
+    "replace": "  local warn=\n  [ \"${GITHUB_ACTIONS:-}\" != true ] || warn='::warning::'\n  echo \"${warn}$(basename \"$1\") in $(dirname \"$1\") is not the pinned bytes: it is refused, removed and fetched afresh. If it came from a cache entry, delete that entry (gh cache delete <key>), or every run with its key fetches it again.\" >&2\n  rm -rf \"$1\"\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a folder where an archive should be, and removes nothing",
+    "why": "The recursive removal back: a folder at an archive's name, a developer's or the --sources output's, would be deleted with everything in it."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "if ! [[ $x264_commit =~ ^[0-9a-f]{40}$ ]]; then\n",
+    "replace": "if false; then\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses an x264 commit that is not a commit id, before any path is made of it",
+    "why": "Any commit pin taken: the tar's name, and so the path kept() removes at, would be made of whatever the pins file says, ../ included."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    cp \"$store/$name\" \"$3/$name\"\n    verify \"$3/$name\" \"$2\"\n",
+    "replace": "    cp \"$store/$name\" \"$3/$name\"\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a copy of FFmpeg’s tarball that did not land as the pinned file",
+    "why": "The copy unchecked: cp puts it inside a folder at its name and succeeds, and the run would go on as if the archive were in place. kept() does not see the destination, so this check is the one that fires."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    cp \"$file\" \"$1/$x264_tarball\"\n    verify \"$1/$x264_tarball\" \"$x264_sha\"\n",
+    "replace": "    cp \"$file\" \"$1/$x264_tarball\"\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a copy of x264’s tar in --sources that did not land as the pinned file",
+    "why": "The copy unchecked: the Corresponding Source would be written with a folder where x264's tar should be. kept() does not see the destination, so this check is the one that fires."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  verify \"$file\" \"$x264_sha\" || { rm -f \"$file\"; exit 1; }\n",
+    "replace": "  verify \"$file\" \"$x264_sha\" || exit 1\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses an x264 tar that is not its pinned bytes, and keeps none",
+    "why": "A wrong x264 tar left in the sources folder: unpinned bytes where the next run, or a developer, would find them."
   }
 ]

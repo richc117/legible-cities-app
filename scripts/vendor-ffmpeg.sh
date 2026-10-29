@@ -294,6 +294,12 @@ ffmpeg_sha=$(pin source.sha256)
 ffmpeg_tarball=${ffmpeg_url##*/}
 x264_repo=$(pin x264.repo)
 x264_commit=$(pin x264.commit)
+# A commit id and nothing else, before any path is made of it: the tar's
+# name is built from it, and kept() removes what sits at that name.
+if ! [[ $x264_commit =~ ^[0-9a-f]{40}$ ]]; then
+  echo "ffmpeg.x264.commit must be a commit id, 40 hexadecimal digits, not '$x264_commit'" >&2
+  exit 2
+fi
 x264_sha=$(pin x264.sha256)
 x264_tarball="x264-$x264_commit.tar"
 zlib_version=$(pin zlib.version)
@@ -320,17 +326,23 @@ verify() {
 # kept <file> <sha256>: whether <file> is already there and exactly the
 # pinned bytes. One that is there and is not is refused and removed, saying
 # so, so the caller fetches it afresh: a cache entry cannot be replaced, so
-# the workflow's run says which to delete.
+# the workflow's run says which to delete. Only a file or a link is ever
+# removed, never recursively: a folder at the name ends the script and is
+# left as it is.
 kept() {
   [ -e "$1" ] || return 1
   if [ -f "$1" ] && [ ! -L "$1" ] && verify "$1" "$2" 2>/dev/null; then
     echo "kept: $(basename "$1") matches its pin, so it is not fetched"
     return 0
   fi
+  if [ -d "$1" ] && [ ! -L "$1" ]; then
+    echo "$(basename "$1") in $(dirname "$1") is a folder, not an archive: it is left as it is, and nothing is fetched over it" >&2
+    exit 1
+  fi
   local warn=
   [ "${GITHUB_ACTIONS:-}" != true ] || warn='::warning::'
   echo "${warn}$(basename "$1") in $(dirname "$1") is not the pinned bytes: it is refused, removed and fetched afresh. If it came from a cache entry, delete that entry (gh cache delete <key>), or every run with its key fetches it again." >&2
-  rm -rf "$1"
+  rm -f "$1"
   return 1
 }
 
@@ -345,6 +357,13 @@ kept() {
 # failed transfer, never a wrong hash, which another try would not change.
 fetch() {
   local name=${1##*/} store=${sources:-$3}
+  # Before anything touches the disk: an empty name would make the archive's
+  # path the folder itself.
+  case "$name" in
+    '' | . | ..)
+      echo "$1 names no file to fetch: a pinned URL must end in the archive's name" >&2
+      exit 2 ;;
+  esac
   if ! kept "$store/$name" "$2"; then
     tries "$name" download "$1" "$store/$name"
     verify "$store/$name" "$2" || { rm -f "$store/$name"; exit 1; }

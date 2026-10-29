@@ -395,6 +395,81 @@ describe.skipIf(lacking)('vendor-ffmpeg.sh, a download that is not its pin', () 
   })
 })
 
+describe.skipIf(lacking)('vendor-ffmpeg.sh, what it never removes', () => {
+  // VENDOR_FFMPEG_PINS can name any file, and a folder can sit where an
+  // archive is looked for; neither may cost the folder holding it.
+  it('refuses a pinned URL that names no file, and leaves the folder as it is', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    mkdirSync(cache)
+    writeFileSync(join(cache, 'other'), 'a file of the developer’s\n')
+    const pins = rewrite(f, (p) => {
+      ;(p.ffmpeg.source as { url: string }).url = `${pathToFileURL(f.host).href}/`
+    })
+    const result = script(['--fetch', cache], pins)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('names no file to fetch')
+    expect(readdirSync(cache)).toEqual(['other'])
+  })
+
+  it('refuses a folder where an archive should be, and removes nothing', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    const [ffmpegName] = f.names
+    mkdirSync(join(cache, ffmpegName), { recursive: true })
+    writeFileSync(join(cache, ffmpegName, 'inside'), 'a file of the developer’s\n')
+    const result = script(['--fetch', cache], f.pinsFile)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain(`${ffmpegName} in ${cache} is a folder, not an archive`)
+    expect(fetches(result.stdout)).toBe(0)
+    expect(readdirSync(join(cache, ffmpegName))).toEqual(['inside'])
+  })
+
+  it('refuses an x264 commit that is not a commit id, before any path is made of it', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    mkdirSync(cache)
+    writeFileSync(join(cache, 'other'), 'a file of the developer’s\n')
+    const pins = rewrite(f, (p) => {
+      ;(p.ffmpeg.x264 as { commit: string }).commit = '../..'
+    })
+    const result = script(['--fetch', cache], pins)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain('ffmpeg.x264.commit must be a commit id')
+    expect(fetches(result.stdout)).toBe(0)
+    expect(readdirSync(cache)).toEqual(['other'])
+  })
+})
+
+describe.skipIf(lacking)('vendor-ffmpeg.sh, the check of a copy from the source cache', () => {
+  // cp copies into a folder that sits at the copy's name, and succeeds; the
+  // check of the copy is what stops the run.
+  it('refuses a copy of FFmpeg’s tarball that did not land as the pinned file', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    expect(script(['--fetch', cache], f.pinsFile).status).toBe(0)
+    const other = join(f.dir, 'other')
+    mkdirSync(join(other, f.names[0]), { recursive: true })
+    const result = script(['--fetch', other], f.pinsFile, { VENDOR_FFMPEG_SOURCES: cache })
+    expect(result.status).not.toBe(0)
+    expect(fetches(result.stdout)).toBe(0)
+  })
+
+  it('refuses a copy of x264’s tar in --sources that did not land as the pinned file', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    expect(script(['--fetch', cache], f.pinsFile).status).toBe(0)
+    const out = join(f.dir, 'ffmpeg-source')
+    mkdirSync(join(out, f.names[1]), { recursive: true })
+    const result = script(['--sources', out], f.pinsFile, {
+      ...standInGpg(f),
+      VENDOR_FFMPEG_SOURCES: cache,
+    })
+    expect(result.status).not.toBe(0)
+    expect(existsSync(join(out, 'BUILD.txt'))).toBe(false)
+  })
+})
+
 describe.skipIf(lacking)('vendor-ffmpeg.sh --sources', () => {
   it('takes the archives from the source cache and tries a signature again after a failed try', () => {
     const f = fixture()
