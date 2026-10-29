@@ -340,11 +340,14 @@ kept() {
 # fetch <url> <sha256> <dir>: the release archive at <url> in <dir>, verified.
 # With VENDOR_FFMPEG_SOURCES, it is taken from there, or fetched into there,
 # and then copied into <dir> and verified again, unless <dir> is that folder.
+# A download that is not the pinned bytes is removed, so nothing unpinned is
+# left for a save or the next run, and the script ends: tries() retries a
+# failed transfer, never a wrong hash, which another try would not change.
 fetch() {
   local name=${1##*/} store=${sources:-$3}
   if ! kept "$store/$name" "$2"; then
     tries "$name" download "$1" "$store/$name"
-    verify "$store/$name" "$2"
+    verify "$store/$name" "$2" || { rm -f "$store/$name"; exit 1; }
   fi
   if [ "$store" != "$3" ]; then
     cp "$store/$name" "$3/$name"
@@ -373,7 +376,10 @@ fetch_x264() {
 # fetch_commit <repo>: one try at the pinned commit of x264, into <repo>.
 fetch_commit() {
   echo "fetching x264 $x264_commit from $x264_repo"
-  git -C "$1" fetch -q --depth 1 "$x264_repo" "$x264_commit"
+  # A transfer slower than 1 KB/s for a minute fails, as download()'s does,
+  # so that tries() gets its turn rather than the job's timeout.
+  git -C "$1" -c http.lowSpeedLimit=1024 -c http.lowSpeedTime=60 \
+    fetch -q --depth 1 "$x264_repo" "$x264_commit"
 }
 
 # archive_x264 <file>: the tar of the pinned commit, fetched, at <file>.
@@ -386,11 +392,17 @@ archive_x264() {
     echo "x264: fetched $(git -C "$repo" rev-parse FETCH_HEAD), not $x264_commit" >&2
     exit 1
   fi
-  git -C "$repo" -c core.autocrlf=false -c core.eol=lf \
-    archive --format=tar --prefix="x264-$x264_commit/" -o "$file.part" FETCH_HEAD
+  # A .part left from before, a link above all, is never written through.
+  rm -f "$file.part"
+  if ! git -C "$repo" -c core.autocrlf=false -c core.eol=lf \
+    archive --format=tar --prefix="x264-$x264_commit/" -o "$file.part" FETCH_HEAD; then
+    rm -f "$file.part"
+    echo "x264: git archive of $x264_commit failed" >&2
+    exit 1
+  fi
   mv "$file.part" "$file"
   rm -rf "$repo"
-  verify "$file" "$x264_sha"
+  verify "$file" "$x264_sha" || { rm -f "$file"; exit 1; }
 }
 
 # ---------------------------------------------------------------------------

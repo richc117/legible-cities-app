@@ -11,6 +11,7 @@ import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import {
   chmodSync,
+  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -207,6 +208,11 @@ function rewrite(f: Fixture, change: (pins: Fixture['pins']) => void): string {
 function fetches(output: string): number {
   return output.split('\n').filter((line) => line.startsWith('fetching ')).length
 }
+/** How many downloads of a URL ending in `tail` a run's output says it made. */
+function fetchesOf(output: string, tail: string): number {
+  return output.split('\n').filter((line) => line.startsWith('fetching ') && line.endsWith(tail))
+    .length
+}
 /** The folder holds exactly the three archives, each its pinned bytes. */
 function expectPinned(f: Fixture, folder: string): void {
   expect(readdirSync(folder).sort()).toEqual([...f.names].sort())
@@ -334,6 +340,58 @@ describe.skipIf(lacking)('vendor-ffmpeg.sh --fetch', () => {
     expect(fetches(result.stdout)).toBe(4)
     expect(result.stderr).toContain(`could not fetch ${ffmpegName} in 4 tries`)
     expect(readdirSync(cache)).toEqual([])
+  })
+})
+
+describe.skipIf(lacking)('vendor-ffmpeg.sh, a download that is not its pin', () => {
+  // A host that serves other bytes than the pins name: the check after the
+  // download is the only thing between them and the build.
+  it('refuses a download that is not its pinned bytes, without trying again or keeping it', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    const [ffmpegName] = f.names
+    const pins = rewrite(f, (p) => {
+      ;(p.ffmpeg.source as { sha256: string }).sha256 = '0'.repeat(64)
+    })
+    const result = script(['--fetch', cache], pins)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain(`checksum mismatch for ${ffmpegName}`)
+    expect(fetchesOf(result.stdout, `/${ffmpegName}`)).toBe(1)
+    expect(existsSync(join(cache, ffmpegName))).toBe(false)
+  })
+
+  it('refuses an x264 tar that is not its pinned bytes, and keeps none', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    const [, x264Name] = f.names
+    const pins = rewrite(f, (p) => {
+      ;(p.ffmpeg.x264 as { sha256: string }).sha256 = '0'.repeat(64)
+    })
+    const result = script(['--fetch', cache], pins)
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain(`checksum mismatch for ${x264Name}`)
+    expect(
+      result.stdout.split('\n').filter((line) => line.startsWith('fetching x264 ')),
+    ).toHaveLength(1)
+    expect(existsSync(join(cache, x264Name))).toBe(false)
+    expect(existsSync(join(cache, `${x264Name}.part`))).toBe(false)
+  })
+
+  it('refuses a download that is not its pinned bytes in --sources too, and copies nothing', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    expect(script(['--fetch', cache], f.pinsFile).status).toBe(0)
+    const [ffmpegName] = f.names
+    const pins = rewrite(f, (p) => {
+      ;(p.ffmpeg.source as { sha256: string }).sha256 = '0'.repeat(64)
+    })
+    const out = join(f.dir, 'ffmpeg-source')
+    const result = script(['--sources', out], pins, { VENDOR_FFMPEG_SOURCES: cache })
+    expect(result.status).not.toBe(0)
+    expect(result.stderr).toContain(`checksum mismatch for ${ffmpegName}`)
+    expect(fetchesOf(result.stdout, `/${ffmpegName}`)).toBe(1)
+    expect(existsSync(join(out, ffmpegName))).toBe(false)
+    expect(existsSync(join(cache, ffmpegName))).toBe(false)
   })
 })
 

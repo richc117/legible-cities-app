@@ -45,7 +45,7 @@
     "replace": "  else\n    return 1\n",
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
     "title": "gives up after four tries, and leaves no part of a download behind",
-    "why": "A failed download's part left beside the archives: a later save of the folder would carry it into the cache entry."
+    "why": "A failed try's part left where it was written: a stale .part in the next try's way, or in a developer's sources folder, where a link of that name would be written through."
   },
   {
     "file": "scripts/vendor-ffmpeg.sh",
@@ -78,5 +78,29 @@
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
     "title": "takes the archives from the source cache and tries a signature again after a failed try",
     "why": "The signature fetched once: a single timeout or reset from ffmpeg.org on the .asc would fail the ffmpeg-source job, and with it every ffmpeg job of the run."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    verify \"$store/$name\" \"$2\" || { rm -f \"$store/$name\"; exit 1; }\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a download that is not its pinned bytes, without trying again or keeping it",
+    "why": "A downloaded archive used without its sha256 checked: whatever the host served would be built from, saved to the cache and shipped."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  verify \"$file\" \"$x264_sha\" || { rm -f \"$file\"; exit 1; }\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses an x264 tar that is not its pinned bytes, and keeps none",
+    "why": "x264's tar used without its sha256 checked: a commit whose archive is not the pinned tar would be built from and saved to the cache."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    verify \"$store/$name\" \"$2\" || { rm -f \"$store/$name\"; exit 1; }\n",
+    "replace": "    verify \"$store/$name\" \"$2\" || exit 1\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a download that is not its pinned bytes in --sources too, and copies nothing",
+    "why": "A wrong download left in the sources folder: unpinned bytes where the next run, or a developer, would find them."
   }
 ]
