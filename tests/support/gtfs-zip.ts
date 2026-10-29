@@ -7,8 +7,8 @@
 // zip's would: a table compressed by another method, or a size it does not
 // unpack to. The engine judges a zip by those headers before it reads a
 // byte of a table (its issue 81), so a few hundred bytes are enough to be
-// refused as a zip of gigabytes; `endRecordOnly` is a zip of nothing but an
-// end record that claims a count and a directory size.
+// refused as a zip of gigabytes; `claimingZip` is a zip of one member whose
+// end record claims a count of entries and a directory size of its own.
 
 import { writeFileSync } from 'node:fs'
 
@@ -48,7 +48,7 @@ function endRecord(entries: number, size: number, offset: number): Buffer {
 
 /** Writes the zip at `path`, without the tables `without` names, and answers the path. */
 export function gtfsZip(path: string, without: Stem[] = [], headers: Headers = {}): string {
-  const entries: { name: string; body: Buffer; method: number; size?: number }[] = []
+  const entries: Member[] = []
   for (const stem of STEMS) {
     if (without.includes(stem)) continue
     const body =
@@ -71,6 +71,24 @@ export function gtfsZip(path: string, without: Stem[] = [], headers: Headers = {
       method: member.method ?? 0,
       size: member.size,
     })
+  const { locals, centrals, offset } = members(entries)
+  const centralSize = centrals.reduce((s, b) => s + b.length, 0)
+  writeFileSync(
+    path,
+    Buffer.concat([...locals, ...centrals, endRecord(entries.length, centralSize, offset)]),
+  )
+  return path
+}
+
+interface Member {
+  name: string
+  body: Buffer
+  method: number
+  size?: number
+}
+
+/** The members' local headers and bodies, their directory records, and where the directory starts. */
+function members(entries: Member[]): { locals: Buffer[]; centrals: Buffer[]; offset: number } {
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
   let offset = 0
@@ -99,16 +117,35 @@ export function gtfsZip(path: string, without: Stem[] = [], headers: Headers = {
     centrals.push(central, n)
     offset += local.length + n.length + body.length
   }
-  const centralSize = centrals.reduce((s, b) => s + b.length, 0)
-  writeFileSync(
-    path,
-    Buffer.concat([...locals, ...centrals, endRecord(entries.length, centralSize, offset)]),
-  )
-  return path
+  return { locals, centrals, offset }
 }
 
-/** A zip of nothing but an end record claiming `entries` and a directory of `size` bytes. */
-export function endRecordOnly(path: string, entries: number, size: number): string {
-  writeFileSync(path, endRecord(entries, size, 0))
+/**
+ * A zip of one member, `readme.txt`, whose end record claims `entries` and a
+ * directory of `directory` bytes (its own size if left out), as a hostile
+ * zip's record would. It is a zip all the same to every zipfile the suites
+ * run on: from Python 3.13 `is_zipfile` also asks that a directory record
+ * begin where the end record's claimed size puts the directory's start (its
+ * own position less that size), so the member's real record is there, and
+ * the claimed size past it is filled with zeros up to the end record, which
+ * nothing reads: the engine refuses the claim before zipfile parses the
+ * directory.
+ */
+export function claimingZip(path: string, entries: number, directory?: number): string {
+  const { locals, centrals, offset } = members([
+    { name: 'readme.txt', body: Buffer.from('x\n'), method: 0 },
+  ])
+  const own = centrals.reduce((s, b) => s + b.length, 0)
+  const size = directory ?? own
+  if (size < own) throw new Error(`a directory of ${size} bytes cannot hold one of ${own}`)
+  writeFileSync(
+    path,
+    Buffer.concat([
+      ...locals,
+      ...centrals,
+      Buffer.alloc(size - own),
+      endRecord(entries, size, offset),
+    ]),
+  )
   return path
 }

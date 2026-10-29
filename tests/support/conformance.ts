@@ -39,7 +39,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { AGENCY, endRecordOnly, gtfsZip } from './gtfs-zip'
+import { AGENCY, claimingZip, gtfsZip } from './gtfs-zip'
 import type { Reply } from './raw-server'
 
 // ------------------------------------------------------------- the row
@@ -162,12 +162,14 @@ export function prepareFiles(): void {
   gtfsZip(join(HERE, ZIPS.noStopTimes), ['stop_times'])
   gtfsZip(join(HERE, ZIPS.noCalendar), ['calendar'])
   gtfsZip(join(HERE, ZIPS.whole))
-  // Zips whose headers claim what the engine refuses to read (its issue 81),
-  // a few hundred bytes each: more files than a feed has, a list of them
-  // longer than a feed's, a table compressed with bzip2 (method 12), a table
-  // that unpacks past a gigabyte, and three that unpack past two together.
-  endRecordOnly(join(HERE, ZIPS.manyFiles), 10_001, 0)
-  endRecordOnly(join(HERE, ZIPS.longList), 0, 10_460_001)
+  // Zips whose headers claim what the engine refuses to read (its issue 81):
+  // more files than a feed has, a list of them longer than a feed's, a table
+  // compressed with bzip2 (method 12), a table that unpacks past a gigabyte,
+  // and three that unpack past two together. Each is a few hundred bytes
+  // but the long list, which must span the 10.5 MB it claims for zipfile
+  // to take it for a zip at all (`claimingZip`).
+  claimingZip(join(HERE, ZIPS.manyFiles), 10_001)
+  claimingZip(join(HERE, ZIPS.longList), 1, 10_460_001)
   gtfsZip(join(HERE, ZIPS.bzip2), [], { method: { stops: 12 } })
   gtfsZip(join(HERE, ZIPS.hugeTable), [], { size: { stop_times: 1_000_000_001 } })
   gtfsZip(join(HERE, ZIPS.hugeTogether), [], {
@@ -178,7 +180,7 @@ export function prepareFiles(): void {
   // each and so at two together, a readme past every limit (not a table,
   // so never counted), and pathways.txt compressed with bzip2 (a table LOOM
   // never reads, so its compression is not judged).
-  endRecordOnly(join(HERE, ZIPS.filesAtLimit), 10_000, 0)
+  claimingZip(join(HERE, ZIPS.filesAtLimit), 10_000)
   gtfsZip(join(HERE, ZIPS.tablesAtLimit), [], {
     size: {
       routes: 1,
