@@ -14,5 +14,13 @@
     "test": "tests/unit/stand-in-shapes.test.ts",
     "title": "draws a stage the build has reported, and refuses one it has not in the engine’s shape",
     "why": "The hold after loom ignored: octi is reported before the question about loom's wait on it arrives, and loom is drawn where the engine refuses it."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if spec.get(\"stage\") != stage:\n                continue\n            until = spec.get(\"until\")\n",
+    "replace": "            if True:\n                continue\n            until = spec.get(\"until\")\n",
+    "test": "tests/unit/stand-in-shapes.test.ts",
+    "title": "draws a re-layout’s stored set until its build has the stage, then the build’s",
+    "why": "The hold ignored, so the laying out again runs on at the stand-in's clock: by the time the stored set is asked for topo, the new build has reported it and answers, where the stored set should."
   }
 ]

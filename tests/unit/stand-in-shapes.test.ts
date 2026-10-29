@@ -1683,7 +1683,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
 // build until it is cancelled, below: a cancel read while a build is being
 // timed is a race.)
 describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solves${WHY}`, () => {
-  const STEP_MS = 250
   let home = ''
   let sidecar: Sidecar
   const notes: { method: string; params: Record<string, unknown> }[] = []
@@ -1694,7 +1693,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
       join(home, 'fake-engine.json'),
       JSON.stringify({
         map_draws: true,
-        progress_delay_ms: STEP_MS,
+        progress_delay_ms: 1,
         // Mexico City is not on disk, so its first layout downloads it.
         presets_cached: ['la-metro-rail'],
         preset_download_delay_ms: 1,
@@ -1735,16 +1734,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
   /** A request's progress reports so far, in order. */
   const reports = (id: number): Record<string, unknown>[] =>
     notes.filter((n) => n.method === 'job/progress' && n.params.id === id).map((n) => n.params)
-  async function reportedBy(id: number, stage: string): Promise<void> {
-    const deadline = Date.now() + 20_000
-    while (!reports(id).some((r) => r.stage === stage)) {
-      if (Date.now() > deadline) throw new Error(`no report of ${stage} for request ${id}`)
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-  }
-  const ask = (params: Record<string, unknown>): Promise<unknown> =>
-    sidecar.request('render.stage', params, { deadlineMs: READY_MS }).result
-  const buildOf = (svg: string): string | undefined => /data-build="(\d+)"/.exec(svg)?.[1]
 
   it('names the layout on each stage’s report, a download’s never, and the map call’s four replays', async () => {
     const build = sidecar.request('graph.build', { key: 'cdmx-metro' }, { deadlineMs: READY_MS })
@@ -1781,30 +1770,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
       ...Array(4).fill(built.layout),
       ...Array(4).fill(null),
     ])
-  }, 30_000)
-
-  it('draws a re-layout’s stored set until its build has the stage, then the build’s', async () => {
-    const params = { key: 'la-metro-rail', mode: 'tram' }
-    const stored = (await sidecar.request('graph.build', params, { deadlineMs: READY_MS })
-      .result) as {
-      layout: string
-    }
-    const at = { key: 'la-metro-rail', layout: stored.layout, width: 800 }
-    const before = buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)
-    expect(before, 'every drawing names its build').toMatch(/^\d+$/)
-
-    const again = sidecar.request(
-      'graph.build',
-      { ...params, force: true },
-      { deadlineMs: READY_MS },
-    )
-    await reportedBy(again.id, 'gtfs2graph')
-    // Not reached by the new build: the stored set answers, never refused.
-    expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(before)
-    const fresh = buildOf(((await ask({ ...at, stage: 'gtfs2graph' })) as { svg: string }).svg)
-    expect(fresh, 'reached: the new build answers').toBe(String(Number(before) + 1))
-    await again.result
-    expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(fresh)
   }, 30_000)
 })
 
@@ -1883,6 +1848,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, (
     }
   }
   const release = (name: string): void => writeFileSync(join(home, name), '')
+  const buildOf = (svg: string): string | undefined => /data-build="(\d+)"/.exec(svg)?.[1]
   const ask = (params: Record<string, unknown>): Promise<unknown> =>
     sidecar.request('render.stage', params, { deadlineMs: READY_MS }).result
   async function refused(
@@ -1957,6 +1923,38 @@ describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, (
     await reportedBy(build.id, 'octi')
     expect(((await ask({ ...params, stage: 'loom' })) as { svg: string }).svg).toContain('loom: B')
     await build.result
+  }, 30_000)
+
+  it('draws a re-layout’s stored set until its build has the stage, then the build’s', async () => {
+    // The stored layout is built with both holds already released.
+    release('release-gtfs2graph')
+    release('release-loom')
+    const params = { key: 'la-metro-rail', mode: 'tram' }
+    const stored = (await sidecar.request('graph.build', params, { deadlineMs: READY_MS })
+      .result) as {
+      layout: string
+    }
+    const at = { key: 'la-metro-rail', layout: stored.layout, width: 800 }
+    const before = buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)
+    expect(before, 'every drawing names its build').toMatch(/^\d+$/)
+
+    // The laying out again is held after gtfs2graph, whatever the machine's speed.
+    rmSync(join(home, 'release-gtfs2graph'))
+    rmSync(join(home, 'release-loom'))
+    const again = sidecar.request(
+      'graph.build',
+      { ...params, force: true },
+      { deadlineMs: READY_MS },
+    )
+    await reportedBy(again.id, 'gtfs2graph')
+    // Not reached by the new build: the stored set answers, never refused.
+    expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(before)
+    const fresh = buildOf(((await ask({ ...at, stage: 'gtfs2graph' })) as { svg: string }).svg)
+    expect(fresh, 'reached: the new build answers').toBe(String(Number(before) + 1))
+    release('release-gtfs2graph')
+    release('release-loom')
+    await again.result
+    expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(fresh)
   }, 30_000)
 })
 
