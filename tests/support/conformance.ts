@@ -22,9 +22,9 @@
 // ever to take a row's params it would stop at its registry check and fail
 // the row cleanly, and not go on to download a feed and start LOOM. The rows
 // after them are what the engine refuses once the params are judged: a key
-// no feed has, a preset that cannot be removed, a zip that is not a feed, a
-// layout that is not stored, a capture that is not there, a plan the preset
-// cannot take.
+// no feed has, a preset that cannot be removed, a zip that is not a feed, an
+// address that is not on a public host, a layout that is not stored, a
+// capture that is not there, a plan the preset cannot take.
 //
 // A row that needs state the engine cannot be put in here is the stand-in's
 // alone, and says why (`standInOnly`); its state is a `Setup`, which the
@@ -1245,6 +1245,21 @@ engineRefuses(
     'feed',
     `${ZIPS.noCalendar} has neither calendar.txt nor calendar_dates.txt, so there is no service day to draw`,
   )
+  // An address on this machine or its network, refused before a byte is
+  // fetched, so it needs no network to be asked.
+  for (const source of [
+    'http://localhost/feed.zip',
+    'http://127.0.0.1:631/',
+    'http://[::1]/feed.zip',
+    'http://10.0.0.5/gtfs.zip',
+  ])
+    engineRefuses(
+      'feeds.add',
+      `an address that is not public, ${source}`,
+      { source },
+      'feed',
+      `${source} could not be fetched. Use an address on a public host; a feed cannot be fetched from this machine or its network.`,
+    )
   engineRefuses(
     'feeds.add',
     'a feed under a key a preset has',

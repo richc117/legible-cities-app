@@ -588,6 +588,32 @@ def lines_problem(lines) -> str | None:
     return None
 
 
+def local_host(url: str) -> bool:
+    """Whether a feed's address is on this machine or its network, which the
+    engine refuses to fetch from (v0.21.1, `feeds._check_hop`): `localhost`
+    or a name under it, or an IPv4 or IPv6 address written as one that is
+    not a public one. The engine also reads the other spellings of a number
+    (`feeds._numeric_readings`) and, through a proxy, what a name resolves
+    to; the app refuses every such address itself before it asks
+    (`src/main/feeds-ipc.ts`), so the stand-in is not sent one."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    try:
+        host = (urlsplit(url).hostname or "").rstrip(".").lower()
+    except ValueError:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (not ip.is_global or ip.is_loopback or ip.is_private or ip.is_link_local
+            or ip.is_unspecified or ip.is_multicast or ip.is_reserved)
+
+
 def _clock(value) -> bool:
     return isinstance(value, str) and CLOCK.fullmatch(value) is not None
 
@@ -2353,6 +2379,13 @@ class Engine:
         staging = folder / ".adding.zip"
         delay = self.control.get("add_delay_ms", 20) / 1000
         if source.startswith(("http://", "https://")):
+            if local_host(source):
+                # Refused before a byte is fetched, as engine v0.21.1 refuses
+                # it (`feeds._download`), naming the address as it was given.
+                error(msg_id, -32000, f"{source} could not be fetched. Use an address on a "
+                      "public host; a feed cannot be fetched from this machine or its network.",
+                      "feed")
+                return
             if self.control.get("add_refuses"):
                 # The engine's own shape (v0.8.3, `serve.classify`): the
                 # sentence as message and hint, and the detail the exception

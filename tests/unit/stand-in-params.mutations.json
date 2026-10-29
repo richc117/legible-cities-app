@@ -57,6 +57,14 @@
   },
   {
     "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if local_host(source):\n",
+    "replace": "            if False:\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "feeds.add fetching from this machine or its network, as the stand-in did before engine v0.21.1 was held to it: the address rows expect the engine's refusal."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
     "find": "                hint = (f\"{key!r} is still being laid out under layout {layout[:8]}, and the \"\n",
     "replace": "                hint = (f\"{key!r} is still being laid out, and the \"\n",
     "test": "tests/unit/stand-in-params.test.ts",

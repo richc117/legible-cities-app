@@ -1,5 +1,5 @@
 ---
-description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 3 in outline"
+description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 3 as they were built"
 ---
 
 # Tasks: The test pyramid
@@ -8,7 +8,7 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
 
 **Tests**: every new or changed test is shown red under a named mutation before it is called done (the lanes' hazard 11).
 
-**Organization**: by the three pull requests of research R7 for Part 1. Parts 2 and 3 are listed as their first tasks only and are planned again when they start.
+**Organization**: by the three pull requests of research R7 for Part 1. Parts 2 and 3 were listed as their first tasks only and planned again when they started; each task says the pull request that built it.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -40,15 +40,19 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
 - [x] T010 [US3] `docs/repository-settings.md`: list the seven required checks. `docs/ARCHITECTURE.md`, "Checks": correct "The smoke test". `CONTRIBUTING.md`: say what runs on a contributor's pull request (left to issue 488, which rewrites that file; the sentence is in lane 500's report).
 - [x] T011 [US3] The coordinator changes branch protection to contracts/ci-layers.md's seven checks in the same hour as the merge, and proves quickstart.md's FR-003 steps 1-5: steps 1 and 2 on the pull request itself (#506); step 3 and SC-001 on #488, the first documentation-only pull request after it (both `e2e` jobs under 30 seconds, every required check green 6½ minutes after the push); step 4 on the pushes to `main` that followed; step 5 the same hour.
 
-## Phase 4: Part 2, the DOM layer (outline; may follow 1.0; US1)
+## Phase 4: Part 2, the DOM layer (US1)
 
-- [ ] T012 [US1] `/spike` with the question "which DOM layer for component tests", timeboxed, comparing the four candidates of FR-004 on R7-02's hold, a debounce and a focus hand-back. Its report is an ADR.
-- [ ] T013 [US1] R7-02's rendered test of `LineOrder`'s read-back hold, shown red with `settling` off (FR-005).
-- [ ] T014 [US1] Replace the source-regex sites file by file (FR-006). `panel-release.test.ts` is done with spec 037's issue 490.
+- [x] T012 [US1] `/spike` with the question "which DOM layer for component tests", timeboxed, comparing the four candidates of FR-004 on R7-02's hold, a debounce and a focus hand-back. Its report is an ADR. Done: ADR-059, with the layer itself (#591), accepted in #604.
+- [x] T013 [US1] R7-02's rendered test of `LineOrder`'s read-back hold, shown red with `settling` off (FR-005). Done: `cheap-edit.test.tsx`, which met it before the spike, moved to jsdom with a real press (#591).
+- [ ] T014 [US1] Replace the source-regex sites file by file (FR-006). `panel-release.test.ts` is done with spec 037's issue 490. Begun: `cheap-edit.test.tsx` and `announcer-region.test.tsx` in #591, `panel-release.test.ts` with issue 490. Left, as of 2026-10-29: the wiring guards in `colours.test.ts`, `export-choice.test.ts`, `layout-as-it-solves.test.ts` and `rail.test.tsx`, which give no reason a rendered test cannot stand in.
 
-## Phase 5: Part 3, the mutation job (outline; after Part 2; US4)
+## Phase 5: Part 3, the mutation job (US4)
 
-- [ ] T015 [US4] Fix the mutation entry's form (data-model.md) and write the dispatch-only workflow (FR-008).
+- [x] T015 [US4] Fix the mutation entry's form (data-model.md) and write the dispatch-only workflow (FR-008). Done: the form in ADR-059's Consequences, `scripts/mutations.mjs` and `mutations.yml` (#601).
+
+## Phase 6: FR-007, the conformance table (US2)
+
+- [x] T016 [US2] One table of every refusal the pinned engine can be made to give without the network, a real LOOM or a long run, each sentence written once (`tests/support/conformance.ts`): the params rows of issue 473, and the refusals past the params (a key no feed has, a preset removed, a zip that is not a feed, a layout not stored, a capture not there, a plan the preset cannot take, a method no engine has). `stand-in-params.test.ts` asks it of the stand-in on every pull request; `conformance-real.test.ts`, a `*-real` suite, asks it of the engine in `determinism.yml`. A row that needs a build in flight is the stand-in's alone, with its reason; each kind of error no row holds is named with why (`UNREACHED`). Where the stand-in answered otherwise it was made to answer as the engine does, and `stand-in-params.mutations.json` shows a changed sentence turn its row red.
 
 ## Dependencies
 
@@ -56,6 +60,7 @@ description: "Tasks for spec 038, the test pyramid: Part 1 in full, Parts 2 and 
 - T011 follows T008-T010's merge.
 - Phase 4 follows Part 1, and T014's `panel-release` part follows issue 490.
 - Phase 5 follows Phase 4.
+- Phase 6 follows Phase 2, whose `*-real` glob runs its real-engine suite.
 
 ## Parallel opportunities
 
