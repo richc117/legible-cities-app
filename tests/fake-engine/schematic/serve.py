@@ -791,9 +791,13 @@ def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, 
 # `_given`, `_capture_job` and the rest), in the same order, and one place
 # judges a request before any method of the stand-in answers it (`handle`).
 # A stand-in is worth what it refuses (app issue 473);
-# tests/unit/stand-in-params.test.ts holds the table. Left to the engine
-# alone: a feed key no registry has, and a path inside the engine's own
-# repository, which the stand-in has no repository to be in.
+# tests/support/conformance.ts holds the table, which
+# tests/unit/stand-in-params.test.ts asks of the stand-in and
+# tests/unit/conformance-real.test.ts of the engine. A feed key no registry
+# has is not a params refusal: it is asked once the params are judged
+# (`Engine.refuses_unregistered`, the engine's `_registered`). Left to the
+# engine alone: a path inside the engine's own repository, which the
+# stand-in has no repository to be in.
 
 KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -1472,6 +1476,20 @@ class Engine:
                 result = {**result, "cancel_too_late": True}
         write({"jsonrpc": "2.0", "id": msg_id, "result": result})
 
+    def registered(self, key) -> bool:
+        """Whether a key names a feed here: a preset, or one a test added."""
+        return key in FEEDS or key in self.user_feeds()
+
+    def refuses_unregistered(self, msg_id, key) -> bool:
+        """The engine's ``serve._registered``: a key no feed has, refused with
+        kind feed once every param has been judged and before the method does
+        any work, by every method that names a feed (``export.encode`` by its
+        plan's). True when it refused, and the request is answered."""
+        if self.registered(key):
+            return False
+        error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+        return True
+
     def info(self) -> dict:
         return {"engine": self.control.get("version", "0.2.0"),
                 "protocol": self.control.get("protocol", 1),
@@ -1516,6 +1534,8 @@ class Engine:
             self.end_children()
             return False
         if method == "graph.build":
+            if self.refuses_unregistered(msg_id, (message.get("params") or {}).get("key")):
+                return True
             # Inside `replying`, as every threaded request is, so a build that
             # raises is answered and not left running for ever (issue 464).
             threading.Thread(target=self.replying,
@@ -1525,7 +1545,9 @@ class Engine:
         if method == "map.build":
             params = message.get("params") or {}
             layout = params["layout"]
-            if layout not in self.layouts:
+            if self.refuses_unregistered(msg_id, params.get("key")):
+                pass
+            elif layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
@@ -1544,6 +1566,8 @@ class Engine:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
             return True
         if method == "feeds.service":
+            if self.refuses_unregistered(msg_id, (message.get("params") or {}).get("key")):
+                return True
             threading.Thread(target=self.replying,
                              args=(msg_id, self.service, msg_id, message.get("params") or {}),
                              daemon=True).start()
@@ -1551,8 +1575,8 @@ class Engine:
         if method == "feeds.inspect":
             params = message.get("params") or {}
             key = params.get("key")
-            if key not in FEEDS and key not in self.user_feeds():
-                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            if self.refuses_unregistered(msg_id, key):
+                pass
             elif self.control.get("inspect_refuses"):
                 error(msg_id, -32000, self.control["inspect_refuses"], "feed")
             else:
@@ -1571,9 +1595,14 @@ class Engine:
             params = message.get("params") or {}
             layout = params.get("layout")
             stage = params.get("stage")
-            if layout not in self.layouts and layout not in self.building:
-                error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
-                      "lay the feed out first (graph.build)", "layout")
+            if self.refuses_unregistered(msg_id, params.get("key")):
+                pass
+            elif layout not in self.layouts and layout not in self.building:
+                # The engine's `render.stage` refusal (render.py), naming the
+                # layout it looked under.
+                error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph "
+                      f"under layout {layout[:8]}; lay the feed out first (graph.build)",
+                      "layout")
             elif self.control.get("stage_refuses"):
                 error(msg_id, -32000, self.control["stage_refuses"], "engine")
             else:
@@ -1616,6 +1645,10 @@ class Engine:
             return True
         if method == "export.plan":
             params = message.get("params") or {}
+            # A key no feed has is refused before the plan is judged, as the
+            # engine's handler asks `_registered` before `export.plan`.
+            if self.refuses_unregistered(msg_id, params.get("key")):
+                return True
             problem = self.plan_problem(params)
             if problem is not None:
                 # The shape of the options is the caller's mistake (params,
@@ -1635,6 +1668,9 @@ class Engine:
                 write({"jsonrpc": "2.0", "id": msg_id, "result": self.plan(params)})
             return True
         if method == "export.encode":
+            plan = (message.get("params") or {}).get("plan") or {}
+            if self.refuses_unregistered(msg_id, plan.get("key")):
+                return True
             threading.Thread(target=self.replying,
                              args=(msg_id, self.encode, msg_id, message.get("params") or {}),
                              daemon=True).start()
@@ -2196,8 +2232,7 @@ class Engine:
         if key in FEEDS:
             error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
             return
-        if key not in self.user_feeds():
-            error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+        if self.refuses_unregistered(msg_id, key):
             return
         started = time.monotonic()
         while True:
@@ -2234,8 +2269,7 @@ class Engine:
             if key in FEEDS:
                 error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
                 return
-            if key not in users:
-                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            if self.refuses_unregistered(msg_id, key):
                 return
             del users[key]
             self.write_user_feeds(users)

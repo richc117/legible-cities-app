@@ -1,0 +1,66 @@
+[
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "        error(msg_id, -32000, f\"{key!r} is not a registered feed\", \"feed\")\n",
+    "replace": "        error(msg_id, -32000, f\"{key!r} is not a known feed\", \"feed\")\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "The registry's refusal in other words: every method's row for a key no feed has expects the engine's sentence."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if self.refuses_unregistered(msg_id, params.get(\"key\")):\n                pass\n            elif layout not in self.layouts:\n",
+    "replace": "            if layout not in self.layouts:\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "map.build no longer asks the registry: a key no feed has is refused as a layout not stored, as the stand-in did before, where the engine says the feed is not registered."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "                      f\"under layout {layout[:8]}; lay the feed out first (graph.build)\",\n",
+    "replace": "                      f\"; lay the feed out first (graph.build)\",\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "render.stage's refusal of a layout not stored loses the layout it names, the sentence the stand-in had until the table held it to the engine's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "                error(msg_id, -32000, f\"{params['preset']} is a vector preset: nothing to \"\n                      \"capture\", \"export\")\n",
+    "replace": "                error(msg_id, -32000, f\"{params['preset']} is a vector preset: nothing to \"\n                      \"capture\", \"params\")\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "The vector preset's refusal with the wrong kind: the row holds the kind as well as the sentence."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            error(msg_id, -32000, f\"{what} is not a zip file, so it is not a GTFS feed\", \"feed\")\n",
+    "replace": "            error(msg_id, -32000, f\"{what} is not a zip file\", \"feed\")\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "feeds.add's refusal of a file that is not a zip, shortened: the row expects the engine's whole sentence."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "        return f\"storyboard holds no beats: a list holds 1 to {MAX_BEATS}\"\n",
+    "replace": "        return f\"storyboard holds no beats: a list holds 1 to {MAX_BEATS} beats\"\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "A params sentence of a storyboard's beats with a word more than the engine's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "               \"error\": {\"code\": -32601, \"message\": f\"Method Not Found: {method}\"}})\n",
+    "replace": "               \"error\": {\"code\": -32601, \"message\": f\"Method not found: {method}\"}})\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "The transport's refusal of a method no engine has, in other capitals than pylsp-jsonrpc's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "                hint = (f\"{key!r} is still being laid out under layout {layout[:8]}, and the \"\n",
+    "replace": "                hint = (f\"{key!r} is still being laid out, and the \"\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "while a layout is built",
+    "why": "The not-yet refusal without the layout it is under: the stand-in-only rows expect the engine's sentence."
+  }
+]

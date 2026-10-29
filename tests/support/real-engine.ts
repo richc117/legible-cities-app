@@ -1,4 +1,4 @@
-// What the seven `*-real` unit suites share (spec 038, FR-002): which
+// What the `*-real` unit suites share (spec 038, FR-002 and FR-007): which
 // interpreter runs the real engine, a home seeded from the committed BART
 // fixture, the engine started on a home, and the rule that where the
 // determinism workflow opts in, a suite that would skip fails instead.
@@ -72,7 +72,7 @@ export const NO_ENGINE =
  * A test that fails where the determinism workflow opted in and `missing`
  * holds, so a suite that would skip there is a failure rather than a pass
  * with nothing in it. Otherwise nothing is registered, not even a skipped
- * test: the workflow's run of the seven must read "no skipped" when every
+ * test: the workflow's run of the suites must read "no skipped" when every
  * suite ran, and a skip anywhere in it is then a suite that did not.
  */
 export function failIfRequired(suite: string, missing: boolean, why: string): void {
@@ -105,7 +105,7 @@ export const noLoom = (home: string): string => join(home, 'no-loom-here')
 
 /**
  * How long an engine is given to come up. A cold start imports pandas, which
- * on a fresh Windows runner is slow, and the seven suites start theirs side
+ * on a fresh Windows runner is slow, and the suites start theirs side
  * by side; the determinism fixture's own start allows the same.
  */
 export const HANDSHAKE_MS = 120_000

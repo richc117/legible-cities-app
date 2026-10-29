@@ -503,7 +503,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     const h = harness({ progress_delay_ms: 100 })
     h.sidecar.start()
     await h.until(ready)
-    const { id, result } = h.sidecar.request('graph.build', { key: 'x' })
+    const { id, result } = h.sidecar.request('graph.build', { key: 'la-metro-rail' })
     h.sidecar.cancel(id)
     await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
     expect(h.received().some((m) => m.method === '$/cancelRequest')).toBe(true)
@@ -526,7 +526,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     const h = harness({ silent: true })
     h.sidecar.start()
     await h.until(ready)
-    const { id, result } = h.sidecar.request('graph.build', { key: 'x' })
+    const { id, result } = h.sidecar.request('graph.build', { key: 'la-metro-rail' })
     const error = (await result.catch((e: EngineError) => e)) as EngineError
     expect(error.code).toBe(ERROR_CODES.inactive)
     expect(error.data?.hint).toContain('No progress for 300 ms')
@@ -750,7 +750,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     h.sidecar.start()
     await h.until(ready)
     const first = h.pid()
-    const inFlight = h.sidecar.request('graph.build', { key: 'x' }).result
+    const inFlight = h.sidecar.request('graph.build', { key: 'la-metro-rail' }).result
     process.kill(first, 'SIGKILL')
     await expect(inFlight).rejects.toMatchObject({ code: ERROR_CODES.engineExited })
     const restarting = await h.until((s) => s.state === 'restarting')
@@ -798,7 +798,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     h.sidecar.start()
     await h.until(ready)
     const pid = h.pid()
-    const inFlight = h.sidecar.request('graph.build', { key: 'x' }).result
+    const inFlight = h.sidecar.request('graph.build', { key: 'la-metro-rail' }).result
     const rejected = expect(inFlight).rejects.toMatchObject({ code: ERROR_CODES.engineExited })
     const started = Date.now()
     await h.sidecar.stop()
