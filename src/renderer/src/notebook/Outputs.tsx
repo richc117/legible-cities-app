@@ -6,6 +6,7 @@ import Button from '../kit/Button'
 import { exportable } from '../runGraph'
 import { useProjectExport, useProjectRecord } from './context'
 import Time from './Time'
+import { EXPORT_ONE, GONE, NOTHING_YET, UNNAMED_PRESET } from './outputWords'
 
 // What this project has produced, under the stepper in the rail (A5.5-21,
 // docs/DESIGN.md 8.2, "Outputs").
@@ -29,18 +30,6 @@ import Time from './Time'
 // the top of the screen with nothing said, so focus is handed to this
 // section's own heading - `useFocusHandback` hands it over only when the
 // element that went was this region's and focus has nowhere else to be.
-
-/** The way out of the empty state, a link-styled button after the sentence. */
-export const EXPORT_ONE = 'Export one in cell 06.'
-
-/** What a row says when its preset is missing from the sidecar. */
-export const UNNAMED_PRESET = 'an export'
-
-/** The sentence a project with nothing to show says. */
-export const NOTHING_YET = 'Nothing exported yet.'
-
-/** What a row says when its file is no longer beside its sidecar. */
-export const GONE = 'the file has been moved or deleted'
 
 /**
  * The empty state (docs/DESIGN.md 8.2, Empty states): one sentence and one

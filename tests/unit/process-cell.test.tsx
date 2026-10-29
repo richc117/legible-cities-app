@@ -29,6 +29,7 @@ import { describe, expect, it } from 'vitest'
 import { freshStages, type LayoutRun } from '../../src/renderer/src/engine/layoutRun'
 import ProcessCell from '../../src/renderer/src/notebook/cells/ProcessCell'
 import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
+import { OPENING_REDRAW_STOPPED } from '../../src/renderer/src/notebook/olderPage'
 import { CELL_LIST, type Cell } from '../../src/renderer/src/runGraph'
 import type { EngineState } from '../../src/shared/engine'
 import { DEFAULT_STYLE, type ProjectRecord } from '../../src/shared/project/types'
@@ -335,9 +336,7 @@ describe('cell 02, Process, after a rebuild of cell 03’s failed', () => {
     // Mutation: `frameFailed` not handed to the run panel - it says the day
     // was not drawn to a person who pressed nothing.
     const html = drawFailed('job-1')
-    expect(html).toContain(
-      '<p class="prose" role="status">The map was not redrawn as the project opened; cell 03 says why.</p>',
-    )
+    expect(html).toContain(`<p class="prose" role="status">${OPENING_REDRAW_STOPPED}</p>`)
     expect(html).not.toContain(ORDINARY)
     expect(html).toContain('Lay out')
     expect(html).toContain('Re-layout')
@@ -348,7 +347,7 @@ describe('cell 02, Process, after a rebuild of cell 03’s failed', () => {
     for (const redrawAsked of [null, 'job-0']) {
       const html = drawFailed(redrawAsked)
       expect(html, String(redrawAsked)).toContain(`<p class="prose" role="status">${ORDINARY}</p>`)
-      expect(html, String(redrawAsked)).not.toContain('cell 03 says why')
+      expect(html, String(redrawAsked)).not.toContain(OPENING_REDRAW_STOPPED)
     }
   })
 })

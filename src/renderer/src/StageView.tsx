@@ -18,6 +18,7 @@ import {
   LAYOUT_ORDER,
   STAGES,
   STAGES_EXPLAINED,
+  STAGE_KEYS,
   STAGE_SANDBOX,
   clearedSentence,
   drawnAnnouncements,
@@ -663,8 +664,7 @@ export default function StageView({ project, engine, read, reveal = null }: Prop
         <div className="stage-glass" aria-hidden="true" />
       </div>
       <p id="stage-keys" className="hint">
-        Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit, or use
-        the buttons.
+        {STAGE_KEYS}
       </p>
       {words !== null && (
         <NetworkInWords

@@ -22,6 +22,7 @@ import { announcement, ExportRun } from '../../src/renderer/src/engine/exportRun
 import {
   destinationLate,
   destinationRefusal,
+  DESTINATION_REFUSALS,
   Destinations,
   Exporter,
   folderName,
@@ -2215,10 +2216,8 @@ describe('where a project may not export to', () => {
   // folder inside the one waiting would, after the restart, be a record
   // nothing reads, exporting into the home a reset empties.
   describe('while another engine folder waits for a restart', () => {
-    const INSIDE =
-      'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.'
-    const HOLDS =
-      'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.'
+    const INSIDE = DESTINATION_REFUSALS.insideWaiting
+    const HOLDS = DESTINATION_REFUSALS.holdsWaiting
 
     it('refuses the folder that waits and anything inside it, without calling it the engine data folder', async () => {
       const t = tree()
@@ -2274,12 +2273,10 @@ describe('where a project may not export to', () => {
       // The folder waiting holds the home in force, so a folder in the home
       // is inside both, and one above both holds both.
       t.waiting.now = join(t.root, 'support')
-      expect(await destinationRefusal(join(t.home, 'out'), t.where)).toMatch(
-        /^Choose another folder: that folder is inside the engine data folder, which “Reset engine data” removes\.$/,
+      expect(await destinationRefusal(join(t.home, 'out'), t.where)).toBe(
+        DESTINATION_REFUSALS.insideHome,
       )
-      expect(await destinationRefusal(t.root, t.where)).toMatch(
-        /^Choose another folder: that folder holds the engine data folder, /,
-      )
+      expect(await destinationRefusal(t.root, t.where)).toBe(DESTINATION_REFUSALS.holdsHome)
     })
 
     it.skipIf(!canLink)(

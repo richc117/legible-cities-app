@@ -118,6 +118,10 @@ function useRemove(confirm: () => Promise<void>): {
   }
 }
 
+/** What the delete confirmation says goes, what stays, and that exported files stay where they are. */
+export const DELETE_PROJECT =
+  'This removes the project and its generated output. The feed stays. Exported files stay where they are.'
+
 export default function ProjectFooter(): JSX.Element {
   const { project } = useProjectRecord()
   const { exporting, layingOut } = useProjectRuns()
@@ -194,7 +198,7 @@ export default function ProjectFooter(): JSX.Element {
       <ConfirmDialog
         open={remove.confirming}
         title={`Delete ${project?.name ?? ''}?`}
-        description="This removes the project and its generated output. The feed stays. Exported files stay where they are."
+        description={DELETE_PROJECT}
         confirmLabel="Delete"
         onConfirm={remove.confirm}
         onCancel={remove.cancel}
