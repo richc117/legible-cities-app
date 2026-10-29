@@ -2439,6 +2439,18 @@ outside the asar, in the same shape on every target
 | `LICENSE`, `THIRD_PARTY_NOTICES.md` | the app's licence and the notices | a person, and Settings › Licences |
 | `LICENSE.electron.txt`, `LICENSES.chromium.html` | Electron's and Chromium's licences: in the resources on a Mac, where `electron-builder.yml` puts them back after electron-builder deletes them, and one folder up, beside the executable, on Windows | a person, and Settings › Licences |
 
+The vendor workflow's ffmpeg jobs cache the three source archives (FFmpeg's
+release tarball, x264's tar and zlib's release tarball) under a key made of
+their names and pinned sha256s, and `scripts/vendor-ffmpeg.sh --fetch`
+re-checks each against its sha256 on every hit, refusing and fetching again
+one that differs; an entry is saved only on a miss, after all three have
+verified. FFmpeg's and zlib's signatures are still checked on every run,
+with the signature and the key fetched each time, since a cached key would
+hide a revocation, and every fetch is tried four times with a growing wait.
+`determinism.yml` keys its built ffmpeg on the `ffmpeg` block of the pins
+and the scripts that build it, so another pin moving leaves it alone
+(issue 630).
+
 `.github/workflows/build.yml` builds the installers - a dmg on each Mac
 runner and an nsis installer on Windows - from the vendor artefacts of its
 own run: it calls `vendor.yml` as a reusable workflow, and each packaging

@@ -1,0 +1,170 @@
+[
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  if [ -f \"$1\" ] && [ ! -L \"$1\" ] && verify \"$1\" \"$2\" 2>/dev/null; then\n",
+    "replace": "  if [ -f \"$1\" ] && [ ! -L \"$1\" ]; then\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a cached archive that is not its pinned bytes, and fetches it afresh",
+    "why": "A cached archive kept without its sha256 checked: a corrupted cache entry would be built from, and shipped."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  if [ -f \"$1\" ] && [ ! -L \"$1\" ] && verify",
+    "replace": "  if [ -f \"$1\" ] && verify",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a cached archive that is a link, even to the right bytes",
+    "why": "A link kept as a cached archive: the saved entry would hold a link to a file outside it, and the next run's copy would point at nothing or at bytes no one checked."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  if ! kept \"$store/$name\" \"$2\"; then\n",
+    "replace": "  if ! kept \"$store/$name\" \"$2\" || true; then\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "fetches nothing for a warm cache, with the host gone",
+    "why": "A release tarball fetched whether or not the cache held it: a warm run would still depend on ffmpeg.org, which is the outage the cache is for."
+  },
+  {
+    "file": "scripts/vendor-signature.sh",
+    "find": "    if [ \"$attempt\" -ge 4 ]; then\n",
+    "replace": "    if [ \"$attempt\" -ge 1 ]; then\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "tries a download again after a failed try, and keeps what the later try fetched",
+    "why": "One try only: a single reset connection, curl's (35), which curl's own --retry does not retry, would fail the job again."
+  },
+  {
+    "file": "scripts/vendor-signature.sh",
+    "find": "    if [ \"$attempt\" -ge 4 ]; then\n",
+    "replace": "    if [ \"$attempt\" -ge 9 ]; then\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "gives up after four tries, and leaves no part of a download behind",
+    "why": "More tries than the four the workflows' timeouts were sized for: a dead host would hold the job until its timeout, not fail it."
+  },
+  {
+    "file": "scripts/vendor-signature.sh",
+    "find": "  else\n    rm -f \"$2.part\"\n    return 1\n",
+    "replace": "  else\n    return 1\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "gives up after four tries, and leaves no part of a download behind",
+    "why": "A failed try's part left where it was written: a stale .part in the next try's way, or in a developer's sources folder, where a link of that name would be written through."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "hashlib.sha256(canonical.encode(\"utf-8\")).hexdigest()",
+    "replace": "hashlib.sha256(open(sys.argv[1], \"rb\").read()).hexdigest()",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "leaves both keys alone when a pin outside the ffmpeg block moves",
+    "why": "The built-ffmpeg cache keyed on the whole pins file again: every engine pin would rebuild ffmpeg on every platform and fetch its sources, as before issue 630."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "listing = \"\".join(f\"{name} {sha}\\n\" for name, sha in archives)",
+    "replace": "listing = \"\".join(f\"{name}\\n\" for name, sha in archives)",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "moves the sources key when an archive’s pinned sha256 does",
+    "why": "The source cache keyed on the names alone: a new pin of the same file name would restore the old bytes, every run refusing them and fetching, and never saving the new ones."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "\"sources=ffmpeg-sources-\" + hashlib.sha256(listing.encode(\"utf-8\")).hexdigest()",
+    "replace": "\"sources=ffmpeg-sources-\" + hashlib.sha256(canonical.encode(\"utf-8\")).hexdigest()",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "moves the pins hash, and not the sources key, when anything else in the ffmpeg block does",
+    "why": "The source cache keyed on the whole ffmpeg block: a configure line or a note changing would fetch the same pinned archives from ffmpeg.org again."
+  },
+  {
+    "file": "scripts/vendor-signature.sh",
+    "find": "  tries \"$(basename \"$sig\")\" download \"$sig_url\" \"$sig\" 120\n",
+    "replace": "  download \"$sig_url\" \"$sig\" 120\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "takes the archives from the source cache and tries a signature again after a failed try",
+    "why": "The signature fetched once: a single timeout or reset from ffmpeg.org on the .asc would fail the ffmpeg-source job, and with it every ffmpeg job of the run."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    verify \"$store/$name\" \"$2\" || { rm -f \"$store/$name\"; exit 1; }\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a download that is not its pinned bytes, without trying again or keeping it",
+    "why": "A downloaded archive used without its sha256 checked: whatever the host served would be built from, saved to the cache and shipped."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  verify \"$file\" \"$x264_sha\" || { rm -f \"$file\"; exit 1; }\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses an x264 tar that is not its pinned bytes, and keeps none",
+    "why": "x264's tar used without its sha256 checked: a commit whose archive is not the pinned tar would be built from and saved to the cache."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    verify \"$store/$name\" \"$2\" || { rm -f \"$store/$name\"; exit 1; }\n",
+    "replace": "    verify \"$store/$name\" \"$2\" || exit 1\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a download that is not its pinned bytes in --sources too, and copies nothing",
+    "why": "A wrong download left in the sources folder: unpinned bytes where the next run, or a developer, would find them."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  case \"$name\" in\n    '' | . | ..)\n      echo \"$1 names no file to fetch: a pinned URL must end in the archive's name\" >&2\n      exit 2 ;;\n  esac\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a pinned URL that names no file, and leaves the folder as it is",
+    "why": "No check of the name: the archive's path would be the folder itself. kept()'s refusal of a folder still stops the run and saves the folder, so what goes red is the message, which would name a folder rather than the pin at fault."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  if [ -d \"$1\" ] && [ ! -L \"$1\" ]; then\n    echo \"$(basename \"$1\") in $(dirname \"$1\") is a folder, not an archive: it is left as it is, and nothing is fetched over it\" >&2\n    exit 1\n  fi\n  local warn=\n  [ \"${GITHUB_ACTIONS:-}\" != true ] || warn='::warning::'\n  echo \"${warn}$(basename \"$1\") in $(dirname \"$1\") is not the pinned bytes: it is refused, removed and fetched afresh. If it came from a cache entry, delete that entry (gh cache delete <key>), or every run with its key fetches it again.\" >&2\n  rm -f \"$1\"\n",
+    "replace": "  local warn=\n  [ \"${GITHUB_ACTIONS:-}\" != true ] || warn='::warning::'\n  echo \"${warn}$(basename \"$1\") in $(dirname \"$1\") is not the pinned bytes: it is refused, removed and fetched afresh. If it came from a cache entry, delete that entry (gh cache delete <key>), or every run with its key fetches it again.\" >&2\n  rm -rf \"$1\"\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a folder where an archive should be, and removes nothing",
+    "why": "The recursive removal back: a folder at an archive's name, a developer's or the --sources output's, would be deleted with everything in it."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "if ! [[ $x264_commit =~ ^[0-9a-f]{40}$ ]]; then\n",
+    "replace": "if false; then\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses an x264 commit that is not a commit id, before any path is made of it",
+    "why": "Any commit pin taken: the tar's name, and so the path kept() removes at, would be made of whatever the pins file says, ../ included."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    cp \"$store/$name\" \"$3/$name\"\n    verify \"$3/$name\" \"$2\"\n",
+    "replace": "    cp \"$store/$name\" \"$3/$name\"\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a copy of FFmpeg’s tarball that did not land as the pinned file",
+    "why": "The copy unchecked: cp puts it inside a folder at its name and succeeds, and the run would go on as if the archive were in place. kept() does not see the destination, so this check is the one that fires."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    cp \"$file\" \"$1/$x264_tarball\"\n    verify \"$1/$x264_tarball\" \"$x264_sha\"\n",
+    "replace": "    cp \"$file\" \"$1/$x264_tarball\"\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses a copy of x264’s tar in --sources that did not land as the pinned file",
+    "why": "The copy unchecked: the Corresponding Source would be written with a folder where x264's tar should be. kept() does not see the destination, so this check is the one that fires."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  verify \"$file\" \"$x264_sha\" || { rm -f \"$file\"; exit 1; }\n",
+    "replace": "  verify \"$file\" \"$x264_sha\" || exit 1\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "refuses an x264 tar that is not its pinned bytes, and keeps none",
+    "why": "A wrong x264 tar left in the sources folder: unpinned bytes where the next run, or a developer, would find them."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    [ ! -L \"$3/$name\" ] || rm -f \"$3/$name\"\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "replaces a link at a copy’s name, and writes nothing through it",
+    "why": "FFmpeg's copy written through a link at its name: cp overwrites whatever file the link points to, outside the folder, and the check that follows reads through the link and passes."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    [ ! -L \"$1/$x264_tarball\" ] || rm -f \"$1/$x264_tarball\"\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "replaces a link at a copy’s name, and writes nothing through it",
+    "why": "x264's copy written through a link at its name, as for FFmpeg's."
+  }
+]
