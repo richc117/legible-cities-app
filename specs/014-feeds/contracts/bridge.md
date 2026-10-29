@@ -23,8 +23,8 @@ before the supervisor sees it; a refusal is answered as a bad call (code
 -32600, kind `params`) with the sentence as its hint. Two methods are
 guarded:
 
-- `feeds.add`: `source` must be an `http://` or `https://` URL naming a
-  public host (the machine itself, loopback, link-local and the private
+- `feeds.add`: `source` must be an `http://` or `https://` URL, with no
+  whitespace anywhere in it (issue 598), naming a public host (the machine itself, loopback, link-local and the private
   ranges are refused: "Use an address on a public host; a feed cannot be
   fetched from this machine or its network."), or a path `pickZip`
   answered that no accepted add has spent. Any other path is refused:

@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from 'react'
 import type { EngineState } from '../../shared/engine'
+import { messageOf } from '../../shared/errors'
 import { withinWindow } from '../../shared/project/helpers'
 import { type ProjectRecord } from '../../shared/project/types'
 import { validateServiceDate } from '../../shared/project/validate'
@@ -245,7 +246,7 @@ export default function ServiceDay({
       await onDate(date)
       return true
     } catch (error) {
-      refuse(error instanceof Error ? error.message : String(error))
+      refuse(messageOf(error))
       return false
     }
   }

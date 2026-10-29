@@ -8,6 +8,7 @@
 import type { Readable, Writable } from 'node:stream'
 import { EngineError, isEngineErrorKind, type ErrorData } from '../shared/engine'
 import { isLayoutId } from '../shared/layout'
+import { isObject } from '../shared/errors'
 import { redactUrls } from './redact'
 
 /**
@@ -183,9 +184,6 @@ interface Pending {
   resolve(value: unknown): void
   reject(error: EngineError): void
 }
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 const STAGE_NAMES: readonly string[] = ['gtfs2graph', 'topo', 'loom', 'octi']
 

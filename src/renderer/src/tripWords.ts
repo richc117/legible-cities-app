@@ -1,4 +1,5 @@
 import type { Leg, Station, Trip } from '../../shared/trip'
+import { capitalised, fullStopped } from '../../shared/errors'
 import type { ComboboxOption } from './kit/comboboxModel'
 
 // Cell 03's Trip section in words (issue 272, spec 030): the steps a trip is
@@ -133,8 +134,7 @@ export const hiddenWords = (hidden: readonly string[]): string =>
 export function reasonSentence(reason: string): string {
   const said = reason.trim()
   if (said === '') return said
-  const first = said.charAt(0).toUpperCase() + said.slice(1)
-  return /[.!?]$/.test(first) ? first : `${first}.`
+  return fullStopped(capitalised(said))
 }
 
 /** A chosen station a new layout does not draw (spec 030 US4 scenario 2). */

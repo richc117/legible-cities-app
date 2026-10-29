@@ -33,6 +33,8 @@ import {
   type FirstRunTool,
   type ToolCheck,
 } from '../shared/first-run'
+import { messageOf } from '../shared/errors'
+import { escapeRegExp } from '../shared/patterns'
 import type { ToolTarget } from './config'
 import { shortenHome } from './diagnostics-text'
 
@@ -234,8 +236,6 @@ const lastName = (path: string): string =>
     .filter((part) => part !== '')
     .pop() ?? ''
 
-const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 /**
  * A detail with its absolute paths taken out, since it is shown on screen
  * and copied: each path the check itself knows is written as `…/` and its
@@ -269,7 +269,7 @@ export function withoutPaths(
     .sort((a, b) => b.length - a.length)) {
     const forms = [path, path.replace(/\\/g, '/'), path.replace(/\//g, '\\')]
     for (const form of new Set(forms)) {
-      out = out.replace(new RegExp(escape(form), 'gi'), `…/${lastName(path)}`)
+      out = out.replace(new RegExp(escapeRegExp(form), 'gi'), `…/${lastName(path)}`)
     }
   }
   out = shortenHome(out, homes, platform)
@@ -470,7 +470,7 @@ export class FirstRunCheck {
             verdict = {
               outcome: 'failed',
               kind: 'not-running',
-              detail: `The check itself failed: ${error instanceof Error ? error.message : String(error)}`,
+              detail: `The check itself failed: ${messageOf(error)}`,
             }
           }
           const ms = Math.max(0, Math.round(this.#now() - started))

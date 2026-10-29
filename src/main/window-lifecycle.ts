@@ -9,6 +9,8 @@
 // No Electron import, so the rules are tested without a session; index.ts
 // hands in the platform, the quit and the opener.
 
+import { messageOf } from '../shared/errors'
+
 /** What the closing handler needs: the platform's name and the app's own quit. */
 export interface AppWindowClosedDeps {
   platform: string
@@ -100,8 +102,6 @@ export interface ShutdownDeps {
   error: (message: string) => void
 }
 
-const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-
 /**
  * A line that cannot throw: the message is built inside the guard (a thrown
  * object whose string form throws) and so is the logger. Nothing here may
@@ -128,7 +128,7 @@ export function shutDown(deps: ShutdownDeps): void {
     try {
       abort.run()
     } catch (error) {
-      sayQuietly(deps.error, () => `${abort.name} did not end on quit: ${reason(error)}`)
+      sayQuietly(deps.error, () => `${abort.name} did not end on quit: ${messageOf(error)}`)
     }
   }
   if (deps.stop === null) return
@@ -139,7 +139,7 @@ export function shutDown(deps: ShutdownDeps): void {
     stopping = Promise.reject(error)
   }
   void stopping
-    .catch((error: unknown) => sayQuietly(deps.error, () => `stop failed: ${reason(error)}`))
+    .catch((error: unknown) => sayQuietly(deps.error, () => `stop failed: ${messageOf(error)}`))
     .finally(() => {
       deps.finished()
       deps.quit()

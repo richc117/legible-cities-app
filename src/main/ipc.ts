@@ -51,9 +51,7 @@ import type { ProjectStore } from './projects'
 import type { Viewer } from './viewer'
 import { writeClipboard, type WriteText } from './clipboard'
 import { guardedHandle } from './ipc-shape'
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
+import { isObject, messageOf } from '../shared/errors'
 
 function check(problem: string | null): void {
   if (problem !== null) throw new Error(problem)
@@ -396,7 +394,7 @@ const COMPLETIONS: Readonly<Record<string, string>> = {
  */
 export function refusedLine(writer: string, id: unknown, error: unknown): string {
   const project = typeof id === 'string' && validateId(id) === null ? id : 'an invalid id'
-  const sentence = error instanceof Error ? error.message : String(error)
+  const sentence = messageOf(error)
   return `${writer} for ${project} refused: ${sentence}`
 }
 

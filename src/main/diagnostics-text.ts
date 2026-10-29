@@ -12,6 +12,7 @@ import { open } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DIAGNOSTICS_REPORTS } from '../shared/api'
 import { describeCheck, FIRST_RUN_TOOLS, summarize, type FirstRunResult } from '../shared/first-run'
+import { escapeRegExp, SEP } from '../shared/patterns'
 import { lenientDecode, redactUrls } from './redact'
 
 /** Read-only, and on POSIX never through a symbolic link, as the log is written. */
@@ -96,14 +97,12 @@ export function composeDiagnostics(input: DiagnosticsInput): string {
   return parts.join('\n')
 }
 
-const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
 /** The platforms whose file systems ignore case by default, where a path can come back in either. */
 const caseless = (platform: string): boolean => platform === 'win32' || platform === 'darwin'
 
 /** One separator or more: either slash, doubled, or percent-encoded in a URL. */
-const SEPARATOR = '(?:[\\\\/]|%5[Cc]|%2[Ff])+'
-const LEADING_SEPARATOR = '(?:[\\\\/]|%5[Cc]|%2[Ff])'
+const SEPARATOR = `${SEP}+`
+const LEADING_SEPARATOR = SEP
 
 /**
  * What may not follow a match for it to be the whole folder name: a letter,
@@ -125,7 +124,9 @@ function segmentsOf(home: string): string[] | null {
 /** One segment as a log could have written it: as it is, or percent-encoded. */
 function segmentSource(segment: string): string {
   const encoded = encodeURIComponent(segment)
-  return encoded === segment ? escape(segment) : `(?:${escape(segment)}|${escape(encoded)})`
+  return encoded === segment
+    ? escapeRegExp(segment)
+    : `(?:${escapeRegExp(segment)}|${escapeRegExp(encoded)})`
 }
 
 /**
@@ -146,7 +147,7 @@ function shortNameSource(segment: string): string | null {
   const dot = segment.lastIndexOf('.')
   const base = dot > 0 ? segment.slice(0, dot) : segment
   const stem = base.replace(/[\s.]/g, '').slice(0, 6)
-  return stem === '' ? null : `${escape(stem)}~\\d+(?:\\.[^\\\\/\\s]{1,3})?`
+  return stem === '' ? null : `${escapeRegExp(stem)}~\\d+(?:\\.[^\\\\/\\s]{1,3})?`
 }
 
 /**

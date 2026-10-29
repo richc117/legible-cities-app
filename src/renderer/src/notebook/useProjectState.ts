@@ -2,6 +2,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState, type RefObjec
 import { DELETE_WHILE_DRAWING, DELETE_WHILE_EXPORTING } from '../../../shared/activity'
 import type { DeleteResult, ProjectRecord } from '../../../shared/api'
 import type { EngineState } from '../../../shared/engine'
+import { messageOf } from '../../../shared/errors'
 import type { ExportChoice } from '../../../shared/export'
 import { type ProjectInputs, type ProjectTuning, type Theme } from '../../../shared/project/types'
 import type { Inspection, RenderStageResult, StageName } from '../../../shared/protocol'
@@ -322,7 +323,7 @@ export function useProjectState(
         if (cancelled) return
         setState({
           status: 'error',
-          message: error instanceof Error ? error.message : String(error),
+          message: messageOf(error),
         })
       },
     )

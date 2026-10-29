@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { messageOf } from '../../../shared/errors'
 import type { ExportChoice } from '../../../shared/export'
 import { sameChoice, usable, type ExportTables } from '../exportChoice'
 
@@ -63,7 +64,7 @@ export function useExportChoice({
       // What is on disk is unknown now, so the next change is written
       // whatever it is.
       sent.current = null
-      setWriteProblem(error instanceof Error ? error.message : String(error))
+      setWriteProblem(messageOf(error))
     }
   }
   const change = (next: ExportChoice): void => {

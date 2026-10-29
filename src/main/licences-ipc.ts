@@ -9,6 +9,7 @@
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { dirname, join } from 'node:path'
 import { CHANNELS } from '../shared/api'
+import { capitalised } from '../shared/errors'
 import {
   describeUnavailable,
   type LicenceFile,
@@ -110,7 +111,7 @@ export class LicencesService {
     const failure = await this.#deps.openPath(path)
     if (failure !== '') {
       this.#deps.log(`${words} did not open: ${failure}`)
-      throw new Error(`${words[0].toUpperCase()}${words.slice(1)} could not be opened: ${failure}`)
+      throw new Error(`${capitalised(words)} could not be opened: ${failure}`)
     }
     this.#deps.log(`opened ${words}`)
   }

@@ -44,9 +44,7 @@ import {
   validateServiceDate,
 } from '../../shared/project/validate'
 import { isStorableFolder } from '../../shared/settings'
-
-export const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
+import { isObject } from '../../shared/errors'
 
 /**
  * A theme a person chose (A4-03). Checked in the main-side handler because

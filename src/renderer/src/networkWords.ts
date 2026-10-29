@@ -1,4 +1,5 @@
 import type { StageDescription, StageSummary } from '../../shared/protocol'
+import { isObject } from '../../shared/errors'
 
 // The geographic pane's long text alternative (issue 105, spec 031): the
 // engine's `description` of the stage graph turned into the sentences a
@@ -160,9 +161,6 @@ export function networkWords(description: StageDescription): NetworkWords {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
-
 const isStrings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string')
 
@@ -177,11 +175,11 @@ const isStrings = (value: unknown): value is string[] =>
  * The per-line `trip` is not read here and is not checked.
  */
 export function readDescription(value: unknown): StageDescription | null {
-  if (!isRecord(value) || !Array.isArray(value.lines)) return null
+  if (!isObject(value) || !Array.isArray(value.lines)) return null
   const extent = value.extent
   if (extent !== null) {
     if (
-      !isRecord(extent) ||
+      !isObject(extent) ||
       typeof extent.minutes !== 'number' ||
       typeof extent.line !== 'string' ||
       typeof extent.from !== 'string' ||
@@ -191,7 +189,7 @@ export function readDescription(value: unknown): StageDescription | null {
   }
   for (const line of value.lines) {
     if (
-      !isRecord(line) ||
+      !isObject(line) ||
       typeof line.label !== 'string' ||
       !isStrings(line.termini) ||
       !isStrings(line.stations) ||
@@ -200,12 +198,12 @@ export function readDescription(value: unknown): StageDescription | null {
     )
       return null
     for (const meeting of line.meets) {
-      if (!isRecord(meeting) || typeof meeting.station !== 'string' || !isStrings(meeting.lines))
+      if (!isObject(meeting) || typeof meeting.station !== 'string' || !isStrings(meeting.lines))
         return null
     }
     for (const branch of line.branches) {
       if (
-        !isRecord(branch) ||
+        !isObject(branch) ||
         !(branch.at === null || typeof branch.at === 'string') ||
         !isStrings(branch.stations)
       )

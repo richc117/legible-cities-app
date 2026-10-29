@@ -1,4 +1,5 @@
 import type { LayoutPenalties, LayoutTuning } from '../../shared/protocol'
+import { messageOf } from '../../shared/errors'
 import { sameTuning, settledTuning, tuningIsSet } from '../../shared/project/helpers'
 import { tuningRangeSentence } from '../../shared/project/sentences'
 import {
@@ -258,7 +259,7 @@ export const resettable = (view: TuningView): boolean =>
  * after it, so the person knows the fields have gone back to the record.
  */
 export function notSaved(reason: unknown): string {
-  const said = reason instanceof Error ? reason.message : String(reason)
+  const said = messageOf(reason)
   const sentence = said.endsWith('.') ? said : `${said}.`
   return `The tuning was not saved: ${sentence}`
 }

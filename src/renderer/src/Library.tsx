@@ -8,6 +8,7 @@ import {
   type EngineState,
 } from '../../shared/engine'
 import type { FeedRecord } from '../../shared/protocol'
+import { fullStopped, messageOf } from '../../shared/errors'
 import { uniqueName } from './record'
 import Card from './Card'
 import { sentenceFor, type AddSnapshot, type FeedAdd } from './engine/feedAdd'
@@ -90,10 +91,9 @@ export const UNANSWERED_REMOVAL =
  * the engine's own and cannot be removed and added again.
  */
 export function openFailed(name: string, error: unknown): string {
-  const said = (error instanceof Error ? error.message : String(error)).trim()
+  const said = messageOf(error).trim()
   if (said === '') return `Try again. ${name} could not be opened.`
-  const stopped = /[.!?…][”’")]*$/.test(said) ? said : `${said}.`
-  return `Try again. ${name} could not be opened: ${stopped}`
+  return `Try again. ${name} could not be opened: ${fullStopped(said)}`
 }
 
 /** Whether a failed request ended because the app stopped waiting, leaving its outcome unknown. */

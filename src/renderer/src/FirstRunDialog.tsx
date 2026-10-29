@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
+import { messageOf } from '../../shared/errors'
 import { failedTools, TOOL_NAMES, type FirstRunResult } from '../../shared/first-run'
 import { afterRendering, focusLost } from './focusHandback'
 import Button from './kit/Button'
@@ -227,9 +228,7 @@ export default function FirstRunDialog({
           onClick={() => {
             setSaid(null)
             window.api.firstRun.openInstallGuide().catch((error: unknown) => {
-              setSaid(
-                `The install document could not be opened: ${error instanceof Error ? error.message : String(error)}.`,
-              )
+              setSaid(`The install document could not be opened: ${messageOf(error)}.`)
             })
           }}
         >

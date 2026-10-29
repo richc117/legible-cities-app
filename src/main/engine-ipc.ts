@@ -61,9 +61,10 @@ import { ERROR_CODES, type EngineState, type JobLog, type JobProgress } from '..
 import { isLayoutId } from '../shared/layout'
 import type { Method } from '../shared/protocol'
 import { inTime, LAPSED } from './deadline'
-import { badCall, guardedHandle, isObject, TOKEN, toShape, type PathRoots } from './ipc-shape'
+import { badCall, guardedHandle, TOKEN, toShape, type PathRoots } from './ipc-shape'
 import { ProjectActivity, projectNamedBy } from './projectActivity'
 import { redactUrls } from './redact'
+import { isObject, messageOf } from '../shared/errors'
 import { FOLDERS_TIMEOUT_MS } from './settings'
 import type { Notification } from './sidecar'
 
@@ -238,7 +239,7 @@ export function registerEngineHandlers(
       release()
       // The thrown message goes to the log and not to the page: it is
       // whatever the supervisor threw, and a refusal is shown as it is.
-      const what = error instanceof Error ? error.message : String(error)
+      const what = messageOf(error)
       log(`refused ${method} before sending it: ${what}`)
       return badCall(NOT_SENT, roots)
     }

@@ -13,6 +13,7 @@ import {
 } from '../../shared/project/types'
 import { inStyleRange, isStyleChoice, radiiRefusal } from '../../shared/project/validate'
 import { fieldText, type View } from './styleRules'
+import { capitalised, isObject } from '../../shared/errors'
 
 // Cell 04's Look (issue 391, spec 034 FR-001): the engine's named looks,
 // offered at the head of the sizes group, each a convenience over fields and
@@ -71,10 +72,7 @@ export const LOOKS_WAITING = 'The looks come from the engine, and are offered on
 export const LOOKS_FAILED = 'The engine did not list its looks, so only its own sizes are offered.'
 
 /** A look's word: the engine's name with a first capital ("beck" is Beck). */
-export const lookLabel = (name: string): string => name.charAt(0).toUpperCase() + name.slice(1)
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value)
+export const lookLabel = (name: string): string => capitalised(name)
 
 /** The app's name for each of a look's fields, by the engine's. */
 const BY_WIRE = new Map<string, FigureKey | ChoiceKey>([

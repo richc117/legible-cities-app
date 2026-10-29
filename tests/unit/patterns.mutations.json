@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/shared/patterns.ts",
+    "find": "(?:[\\\\/]|%2[Ff]|%5[Cc])",
+    "replace": "(?:[\\\\/]|%2[Ff])",
+    "test": "tests/unit/patterns.test.ts",
+    "title": "is either slash, or either one percent-encoded in either case",
+    "why": "A percent-encoded backslash no longer a separator: a Windows path in a file URL would not end a word, and a home written that way would not be found."
+  },
+  {
+    "file": "src/shared/patterns.ts",
+    "find": "/[.*+?^${}()|[\\]\\\\]/g",
+    "replace": "/[*+?^${}|[\\]\\\\]/g",
+    "test": "tests/unit/patterns.test.ts",
+    "title": "matches the text exactly",
+    "why": "A full stop and brackets left unescaped: a path's \"a.b\" would match \"aXb\", and \"(x86)\" would be a group."
+  }
+]

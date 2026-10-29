@@ -16,6 +16,7 @@ import {
   type EngineState,
 } from '../shared/engine'
 import { inTime, LAPSED } from './deadline'
+import { isObject } from '../shared/errors'
 import { redactUrls } from './redact'
 import { describeThrown, JsonRpcClient, ProtocolError, shown } from './jsonrpc'
 
@@ -140,9 +141,6 @@ export const WROTE_IN_THE_LOG = 'what it wrote is in engine.log in the logs fold
 
 /** The longest delay a Node timer holds; a longer one fires at once. */
 const MAX_TIMER_MS = 2_147_483_647
-
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /**
  * How long, after the engine has exited, its stdio may take to give up the
