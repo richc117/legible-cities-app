@@ -250,7 +250,12 @@ const runs = new Map<string, LayoutRun>()
 /** Every run this session has made, as jobs, for the inspector (A1-03). */
 const registry = new JobRegistry()
 
-const today = (): string => {
+/**
+ * The local calendar day as `YYYY-MM-DD`, the anchor a layout run asks the
+ * engine for its service day with. The computer's own day and time zone, not
+ * UTC: a person at the end of their evening means that evening's date.
+ */
+export const today = (): string => {
   const now = new Date()
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`

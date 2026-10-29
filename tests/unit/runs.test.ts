@@ -3,9 +3,9 @@
 // sees runs made after a listener subscribed, cancels through a run's own
 // `cancel()`, and forgets a deleted project's jobs. Stub runs, no window.
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ExportRun, type ExportBridge } from '../../src/renderer/src/engine/exportRun'
-import { JobRegistry, type JobSource } from '../../src/renderer/src/engine/runs'
+import { JobRegistry, today, type JobSource } from '../../src/renderer/src/engine/runs'
 import { ERROR_CODES } from '../../src/shared/engine'
 import type { ExportProgress, ExportResult } from '../../src/shared/export'
 import type { ProjectRecord } from '../../src/shared/project/types'
@@ -388,5 +388,31 @@ describe('a reset of the engine data', () => {
     reads[0]([{ id: 'pa', name: 'Alpha' }])
     await late
     expect(registry.hasName('pa'), 'a list from before the reset is not applied').toBe(false)
+  })
+})
+
+describe('today, the anchor a layout run asks the engine for its day with', () => {
+  const zone = process.env.TZ
+
+  afterEach(() => {
+    vi.useRealTimers()
+    if (zone === undefined) delete process.env.TZ
+    else process.env.TZ = zone
+  })
+
+  it('is the local calendar day as YYYY-MM-DD, two figures for the month and the day', () => {
+    // Node honours a change of TZ at run time on macOS and Linux (not on
+    // Windows, where this row then detects nothing), so the zone is pinned to one
+    // where the local day and the UTC day differ (the mutation job runs in
+    // UTC, where they would not). Built from local parts: 23:30 in Los
+    // Angeles is already the next day in UTC.
+    process.env.TZ = 'America/Los_Angeles'
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 0, 5, 23, 30, 0))
+    expect(today()).toBe('2026-01-05')
+    vi.setSystemTime(new Date(2026, 8, 9, 0, 30, 0))
+    expect(today()).toBe('2026-09-09')
+    vi.setSystemTime(new Date(2026, 11, 31, 23, 59, 0))
+    expect(today()).toBe('2026-12-31')
   })
 })

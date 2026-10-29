@@ -1,6 +1,7 @@
 import type { ProjectRecord } from '../../shared/project/types'
 import {
   CELL_LIST,
+  cellLabel,
   cellOfRun,
   stalenessOf,
   type CellId,
@@ -105,9 +106,7 @@ export function runAllOffered(
 export function failureSentence(states: Record<CellId, CellStatus>): string | null {
   const failed = CELL_LIST.filter((cell) => states[cell.id].state === 'error')
   if (failed.length === 0) return null
-  return failed
-    .map((cell) => `${String(cell.number).padStart(2, '0')} ${cell.name} failed.`)
-    .join(' ')
+  return failed.map((cell) => `${cellLabel(cell.number, cell.name)} failed.`).join(' ')
 }
 
 /**
@@ -120,12 +119,11 @@ export function notebookSentence(
   record: Pick<ProjectRecord, 'layout' | 'drawn'>,
   states: Record<CellId, CellStatus>,
 ): string {
-  // Written as the rail and the cell rows write it (`cellLabel` in
-  // `notebook/Cell.tsx`), which this pure module does not import: that file
-  // brings the kit with it.
+  // Written as the rail and the cell rows write it: `cellLabel`, which lives
+  // in `runGraph.ts` because `notebook/Cell.tsx` brings the kit with it.
   const named = (id: CellId): string => {
     const cell = CELL_LIST.find((c) => c.id === id) as (typeof CELL_LIST)[number]
-    return `${String(cell.number).padStart(2, '0')} ${cell.name}`
+    return cellLabel(cell.number, cell.name)
   }
   const inState = (state: CellStatus['state']): CellId[] =>
     CELL_LIST.filter((cell) => states[cell.id].state === state).map((cell) => cell.id)

@@ -1,4 +1,11 @@
-import { CELL_LIST, runGraph, type CellId, type GraphRecord, type RunFacts } from './runGraph'
+import {
+  CELL_LIST,
+  cellLabel,
+  runGraph,
+  type CellId,
+  type GraphRecord,
+  type RunFacts,
+} from './runGraph'
 
 // How far a project has got, in words, for its row on the front door
 // (A5.6-04). Derived by the notebook's own run graph (A5.5-04) from the
@@ -21,7 +28,7 @@ const MAP_CELLS: readonly CellId[] = ['data', 'process', 'frame', 'style', 'line
 
 const named = (id: CellId): string => {
   const cell = CELL_LIST.find((c) => c.id === id) as (typeof CELL_LIST)[number]
-  return `${String(cell.number).padStart(2, '0')} ${cell.name}`
+  return cellLabel(cell.number, cell.name)
 }
 
 /** One sentence fragment saying how far the project has got. */

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   CELLS,
   CELL_LIST,
+  cellLabel,
+  cellNumber,
   cellOfRun,
   drawnMatchesEdits,
   exportable,
@@ -533,5 +535,29 @@ describe('a layout at its download', () => {
     })
     expect(refused.data).toEqual({ state: 'error', because: 'failed' })
     expect(refused.process.state).toBe('stale')
+  })
+})
+
+describe('the cell label, written once for the rail, the cell rows and every sentence', () => {
+  it('writes the number as two figures', () => {
+    expect(CELL_LIST.map((cell) => cellNumber(cell.number))).toEqual([
+      '01',
+      '02',
+      '03',
+      '04',
+      '05',
+      '06',
+    ])
+  })
+
+  it('joins the number and the name with one space, byte for byte as the screens read it', () => {
+    expect(CELL_LIST.map((cell) => cellLabel(cell.number, cell.name))).toEqual([
+      '01 Data',
+      '02 Process',
+      '03 Frame and service day',
+      '04 Style',
+      '05 Lines',
+      '06 Export',
+    ])
   })
 })
