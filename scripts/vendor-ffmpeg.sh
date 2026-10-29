@@ -160,16 +160,16 @@ if [ -n "$sources" ] && [ "$mode" != keys ]; then
   mkdir -p "$sources"
   sources=$(posix "$sources")
 fi
-backoff=${VENDOR_FFMPEG_BACKOFF:-15}
-case "$backoff" in
-  '' | *[!0-9]*) echo "VENDOR_FFMPEG_BACKOFF is a whole number of seconds, not '$backoff'" >&2; exit 2 ;;
+# Refused here, before anything is fetched, as well as by tries().
+case "${VENDOR_FFMPEG_BACKOFF:-15}" in
+  *[!0-9]*) echo "VENDOR_FFMPEG_BACKOFF is a whole number of seconds, not '$VENDOR_FFMPEG_BACKOFF'" >&2; exit 2 ;;
 esac
 
 # From the script's own place rather than from git: under MSYS2 on the
 # Windows runner, git may refuse a checkout another user's git made.
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-# signed and signature_status, shared with the loom-source job. SC1091 is
+# signed, signature_status, tries and download, shared with the LOOM jobs. SC1091 is
 # the linter's note that it was not given the helper as well, which the
 # commit hook gives it only when the helper changes too; over every file, it
 # is given, and followed.
@@ -334,38 +334,8 @@ kept() {
   return 1
 }
 
-# tries <what> <command...>: the command, run up to four times, waiting
-# $backoff seconds after the first failure and twice as long after each
-# next; the script ends after the fourth.
-tries() {
-  local what=$1 attempt=1 wait=$backoff; shift
-  while :; do
-    if "$@"; then return 0; fi
-    if [ "$attempt" -ge 4 ]; then
-      echo "could not fetch $what in $attempt tries" >&2
-      exit 1
-    fi
-    echo "try $attempt of 4 to fetch $what failed; trying again in $wait s" >&2
-    sleep "$wait"
-    attempt=$((attempt + 1))
-    wait=$((wait * 2))
-  done
-}
-
-# download <url> <file>: one try at <url>, into <file> only when it is whole.
-# A transfer slower than 1 KB/s for a minute is a failed try, not a wait of
-# fifteen minutes; curl's own retries are left to tries(), which also
-# retries a reset connection, as curl's do not.
-download() {
-  echo "fetching $1"
-  rm -f "$2.part"
-  if curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 --max-time 900 -o "$2.part" "$1"; then
-    mv "$2.part" "$2"
-  else
-    rm -f "$2.part"
-    return 1
-  fi
-}
+# tries and download, the bounded retry every fetch here goes through, are
+# in scripts/vendor-signature.sh, which signed() shares with the LOOM jobs.
 
 # fetch <url> <sha256> <dir>: the release archive at <url> in <dir>, verified.
 # With VENDOR_FFMPEG_SOURCES, it is taken from there, or fetched into there,

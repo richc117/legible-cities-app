@@ -27,6 +27,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const repo = resolve(__dirname, '../..')
 const SCRIPT = join(repo, 'scripts', 'vendor-ffmpeg.sh')
+const FINGERPRINT = 'A'.repeat(40)
 const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' }
 
 const made: string[] = []
@@ -85,6 +86,11 @@ function fixture(): Fixture {
   const zlibName = 'zlib-4.5.6.tar.gz'
   writeFileSync(join(host, ffmpegName), 'the release tarball of FFmpeg 1.2.3\n'.repeat(64))
   writeFileSync(join(host, zlibName), 'the release tarball of zlib 4.5.6\n'.repeat(64))
+  // Signatures and a key for --sources, which a stand-in gpg accepts: what
+  // is tested of it here is how they are fetched, not how they verify.
+  writeFileSync(join(host, `${ffmpegName}.asc`), 'a signature of FFmpeg 1.2.3\n')
+  writeFileSync(join(host, `${zlibName}.asc`), 'a signature of zlib 4.5.6\n')
+  writeFileSync(join(host, 'key.asc'), 'a signing key\n')
 
   const x264 = join(host, 'x264')
   expect(tool('git', ['init', '-q', x264]).status).toBe(0)
@@ -132,14 +138,35 @@ function fixture(): Fixture {
     ffmpeg: {
       version: '1.2.3',
       note: 'a fixture',
-      source: { url: pathToFileURL(join(host, ffmpegName)).href, sha256: shas[ffmpegName] },
+      source: {
+        url: pathToFileURL(join(host, ffmpegName)).href,
+        sha256: shas[ffmpegName],
+        signature: pathToFileURL(join(host, `${ffmpegName}.asc`)).href,
+        signing_key: { url: pathToFileURL(join(host, 'key.asc')).href, fingerprint: FINGERPRINT },
+        tag: 'n1.2.3',
+        commit: 'b'.repeat(40),
+      },
       x264: { repo: pathToFileURL(x264).href, commit: id, sha256: shas[x264Name] },
       zlib: {
         version: '4.5.6',
         url: pathToFileURL(join(host, zlibName)).href,
         sha256: shas[zlibName],
+        signature: pathToFileURL(join(host, `${zlibName}.asc`)).href,
+        signing_key: { url: pathToFileURL(join(host, 'key.asc')).href, fingerprint: FINGERPRINT },
       },
-      targets: {},
+      targets: Object.fromEntries(
+        ['darwin-arm64', 'darwin-x64', 'win-x64', 'linux-x64'].map((target) => [
+          target,
+          {
+            runner: 'a runner',
+            zlib: target === 'win-x64' ? 'static' : 'system',
+            ...(target === 'win-x64' ? { zlib_configure: '--static' } : {}),
+            x264_configure: '--enable-static',
+            configure: '--disable-everything',
+            reports: '1.2.3',
+          },
+        ]),
+      ),
     },
   }
   const pinsFile = join(dir, 'pins.json')
@@ -309,6 +336,52 @@ describe.skipIf(lacking)('vendor-ffmpeg.sh --fetch', () => {
     expect(readdirSync(cache)).toEqual([])
   })
 })
+
+describe.skipIf(lacking)('vendor-ffmpeg.sh --sources', () => {
+  it('takes the archives from the source cache and tries a signature again after a failed try', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    expect(script(['--fetch', cache], f.pinsFile).status).toBe(0)
+    const out = join(f.dir, 'ffmpeg-source')
+    const env = failingCurl(f, 2)
+    const result = script(['--sources', out], f.pinsFile, {
+      ...standInGpg(f),
+      ...env,
+      VENDOR_FFMPEG_SOURCES: cache,
+    })
+    expect(result.status, result.stderr).toBe(0)
+    const [ffmpegName, , zlibName] = f.names
+    expect(result.stderr).toContain(`try 1 of 4 to fetch ${ffmpegName}.asc failed`)
+    expect(result.stderr).toContain(`try 2 of 4 to fetch ${ffmpegName}.asc failed`)
+    expect(result.stdout).toContain(`signature ok: ${ffmpegName} by ${FINGERPRINT}`)
+    expect(result.stdout).toContain(`signature ok: ${zlibName} by ${FINGERPRINT}`)
+    // No archive fetched: only the two signatures and the key, twice.
+    const fetched = result.stdout.split('\n').filter((line) => line.startsWith('fetching '))
+    expect(fetched.filter((line) => /\.asc$/.test(line))).toHaveLength(fetched.length)
+    for (const name of f.names) expect(sha256(join(out, name)), name).toBe(f.shas[name])
+    expect(readFileSync(join(out, 'BUILD.txt'), 'utf8')).toContain(f.shas[ffmpegName])
+  })
+})
+
+/**
+ * A gpg that imports anything and calls every signature good by the pinned
+ * fingerprint, as a real one does for a good signature.
+ */
+function standInGpg(f: Fixture): NodeJS.ProcessEnv {
+  const bin = join(f.dir, 'bin')
+  mkdirSync(bin, { recursive: true })
+  const stub = join(bin, 'gpg')
+  writeFileSync(
+    stub,
+    '#!/usr/bin/env bash\n' +
+      'for arg in "$@"; do\n' +
+      '  [ "$arg" != --verify ] || echo "[GNUPG:] VALIDSIG 0 0 0 0 0 0 0 0 0 $GPG_FINGERPRINT"\n' +
+      'done\n' +
+      'exit 0\n',
+  )
+  chmodSync(stub, 0o755)
+  return { PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`, GPG_FINGERPRINT: FINGERPRINT }
+}
 
 /**
  * The environment for a curl that fails as ffmpeg.org's did on 29 Oct 2026

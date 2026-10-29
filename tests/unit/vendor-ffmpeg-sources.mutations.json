@@ -24,7 +24,7 @@
     "why": "A release tarball fetched whether or not the cache held it: a warm run would still depend on ffmpeg.org, which is the outage the cache is for."
   },
   {
-    "file": "scripts/vendor-ffmpeg.sh",
+    "file": "scripts/vendor-signature.sh",
     "find": "    if [ \"$attempt\" -ge 4 ]; then\n",
     "replace": "    if [ \"$attempt\" -ge 1 ]; then\n",
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
@@ -32,7 +32,7 @@
     "why": "One try only: a single reset connection, curl's (35), which curl's own --retry does not retry, would fail the job again."
   },
   {
-    "file": "scripts/vendor-ffmpeg.sh",
+    "file": "scripts/vendor-signature.sh",
     "find": "    if [ \"$attempt\" -ge 4 ]; then\n",
     "replace": "    if [ \"$attempt\" -ge 9 ]; then\n",
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
@@ -40,7 +40,7 @@
     "why": "More tries than the four the workflows' timeouts were sized for: a dead host would hold the job until its timeout, not fail it."
   },
   {
-    "file": "scripts/vendor-ffmpeg.sh",
+    "file": "scripts/vendor-signature.sh",
     "find": "  else\n    rm -f \"$2.part\"\n    return 1\n",
     "replace": "  else\n    return 1\n",
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
@@ -70,5 +70,13 @@
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
     "title": "moves the pins hash, and not the sources key, when anything else in the ffmpeg block does",
     "why": "The source cache keyed on the whole ffmpeg block: a configure line or a note changing would fetch the same pinned archives from ffmpeg.org again."
+  },
+  {
+    "file": "scripts/vendor-signature.sh",
+    "find": "  tries \"$(basename \"$sig\")\" download \"$sig_url\" \"$sig\" 120\n",
+    "replace": "  download \"$sig_url\" \"$sig\" 120\n",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "takes the archives from the source cache and tries a signature again after a failed try",
+    "why": "The signature fetched once: a single timeout or reset from ffmpeg.org on the .asc would fail the ffmpeg-source job, and with it every ffmpeg job of the run."
   }
 ]
