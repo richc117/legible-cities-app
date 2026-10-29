@@ -1,0 +1,18 @@
+[
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if spec.get(\"stage\") != stage:\n                continue\n            until = spec.get(\"until\")\n",
+    "replace": "            if True:\n                continue\n            until = spec.get(\"until\")\n",
+    "test": "tests/unit/stand-in-shapes.test.ts",
+    "title": "draws a stage the build has reported, and refuses one it has not in the engine’s shape",
+    "why": "The hold ignored, so the build runs on at the stand-in's clock: the stages asked for while it should be held are reported by the time the question arrives, and the refusals the row expects are drawings."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if spec.get(\"stage\") != stage:\n                continue\n            until = spec.get(\"until\")\n",
+    "replace": "            if spec.get(\"stage\") != stage or stage == \"loom\":\n                continue\n            until = spec.get(\"until\")\n",
+    "test": "tests/unit/stand-in-shapes.test.ts",
+    "title": "draws a stage the build has reported, and refuses one it has not in the engine’s shape",
+    "why": "The hold after loom ignored: octi is reported before the question about loom's wait on it arrives, and loom is drawn where the engine refuses it."
+  }
+]

@@ -1675,12 +1675,13 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
 // 01 draws the layout as it solves from both (issue 382), and the end-to-end
 // suite sees it against this stand-in, so the stand-in is held to the
 // engine's shapes and its choices here: the reports, the drawing from the
-// build, the refusal's code, kind, sentence and data, a day waiting on octi,
-// and a re-layout's stored set answering until the build has the stage. One
-// stand-in of its own, reporting slowly, so a stage can be asked for between
-// two reports. (Nothing left to draw after a cancel is judged against a
-// stand-in that holds the build until it is cancelled, below: a cancel read
-// while a build is being timed is a race.)
+// build and a re-layout's stored set answering until the build has the stage.
+// (The refusal's code, kind, sentence and data, and a day waiting on octi, are
+// judged below, against a build held at the stage.) One stand-in of its own,
+// reporting slowly, so a stage can be asked for between two reports. (Nothing
+// left to draw after a cancel is judged against a stand-in that holds the
+// build until it is cancelled, below: a cancel read while a build is being
+// timed is a race.)
 describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solves${WHY}`, () => {
   const STEP_MS = 250
   let home = ''
@@ -1697,7 +1698,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
         // Mexico City is not on disk, so its first layout downloads it.
         presets_cached: ['la-metro-rail'],
         preset_download_delay_ms: 1,
-        stage_waits_on: { loom: 'octi' },
       }),
     )
     sidecar = new Sidecar({
@@ -1744,23 +1744,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
   }
   const ask = (params: Record<string, unknown>): Promise<unknown> =>
     sidecar.request('render.stage', params, { deadlineMs: READY_MS }).result
-  /** A refusal's code, message and data, as the page receives them. */
-  async function refused(
-    request: Promise<unknown>,
-  ): Promise<{ code: number; message: string; data: unknown }> {
-    try {
-      await request
-    } catch (error) {
-      if (error instanceof EngineError)
-        return { code: error.code, message: error.message, data: error.data }
-      throw error
-    }
-    throw new Error('the stand-in drew a stage the engine refuses')
-  }
   const buildOf = (svg: string): string | undefined => /data-build="(\d+)"/.exec(svg)?.[1]
-  const notYetSentence = (key: string, layout: string, stage: string): string =>
-    `'${key}' is still being laid out under layout ${layout.slice(0, 8)}, and the build has ` +
-    `not reached its ${stage} stage yet; ask again when job/progress reports it`
 
   it('names the layout on each stage’s report, a download’s never, and the map call’s four replays', async () => {
     const build = sidecar.request('graph.build', { key: 'cdmx-metro' }, { deadlineMs: READY_MS })
@@ -1799,45 +1783,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
     ])
   }, 30_000)
 
-  it('draws a stage the build has reported, and refuses one it has not in the engine’s shape', async () => {
-    const build = sidecar.request(
-      'graph.build',
-      { key: 'la-metro-rail', mode: 'subway' },
-      { deadlineMs: READY_MS },
-    )
-    await reportedBy(build.id, 'gtfs2graph')
-    const layout = reports(build.id)[0].layout as string
-    const params = { key: 'la-metro-rail', layout, width: 800 }
-    const first = (await ask({ ...params, stage: 'gtfs2graph' })) as { svg: string }
-    expect(answerProblems('render.stage', first)).toEqual([])
-    expect(first.svg, 'drawn from the build').toContain('gtfs2graph: B')
-
-    const early = await refused(ask({ ...params, stage: 'topo' }))
-    const hint = notYetSentence('la-metro-rail', layout, 'topo')
-    expect(early).toEqual({
-      code: -32000,
-      message: hint,
-      data: { kind: 'layout', detail: hint, hint, layout, stage: 'topo', building: true },
-    })
-    expect(problems(description.$defs.ErrorData, early.data, 'data')).toEqual([])
-
-    // A day asks for minutes, which are read from octi: the answer waits on it.
-    const dated = await refused(ask({ ...params, stage: 'gtfs2graph', date: '2026-06-16' }))
-    expect(dated.data).toMatchObject({ stage: 'octi', building: true })
-    expect(dated.message).toBe(
-      `${notYetSentence('la-metro-rail', layout, 'octi')}; the minutes of a date are read ` +
-        'from the octi stage, so leave date out to draw gtfs2graph now',
-    )
-
-    // The control file has loom wait on octi, as a day does, and nothing else.
-    await reportedBy(build.id, 'loom')
-    const loom = await refused(ask({ ...params, stage: 'loom' }))
-    expect(loom.data).toMatchObject({ stage: 'octi', building: true, layout })
-    await reportedBy(build.id, 'octi')
-    expect(((await ask({ ...params, stage: 'loom' })) as { svg: string }).svg).toContain('loom: B')
-    await build.result
-  }, 30_000)
-
   it('draws a re-layout’s stored set until its build has the stage, then the build’s', async () => {
     const params = { key: 'la-metro-rail', mode: 'tram' }
     const stored = (await sidecar.request('graph.build', params, { deadlineMs: READY_MS })
@@ -1860,6 +1805,158 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
     expect(fresh, 'reached: the new build answers').toBe(String(Number(before) + 1))
     await again.result
     expect(buildOf(((await ask({ ...at, stage: 'topo' })) as { svg: string }).svg)).toBe(fresh)
+  }, 30_000)
+})
+
+// A stage asked for before the build has it is refused, and the stand-in must
+// be held at the stage to ask. A clock cannot hold it: the build reports a
+// stage every `progress_delay_ms`, and on a loaded runner it reached topo
+// before the question did (macOS CI, 28 Oct 2026, issue 619). So the build is
+// held after gtfs2graph and after loom (`holds_after_stage`'s `until`), the
+// questions are asked while it is held, and the test releases it by writing the
+// file it waits for. One stand-in of its own, reporting as fast as it can,
+// since the speed is the point: the row passes whatever it is. (The hold is the
+// control file's and holds every build of the stand-in, so the rows above,
+// which let builds run, have another.)
+describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, () => {
+  let home = ''
+  let sidecar: Sidecar
+  const notes: { method: string; params: Record<string, unknown> }[] = []
+
+  beforeAll(async () => {
+    home = mkdtempSync(join(tmpdir(), 'lc-held-'))
+    writeFileSync(
+      join(home, 'fake-engine.json'),
+      JSON.stringify({
+        map_draws: true,
+        progress_delay_ms: 1,
+        presets_cached: ['la-metro-rail'],
+        // The control file has loom wait on octi, as a day does, and nothing else.
+        stage_waits_on: { loom: 'octi' },
+        holds_after_stage: {
+          'graph.build': [
+            { stage: 'gtfs2graph', until: 'release-gtfs2graph' },
+            { stage: 'loom', until: 'release-loom' },
+          ],
+        },
+      }),
+    )
+    sidecar = new Sidecar({
+      command: [PYTHON as string, '-m', 'schematic.serve'],
+      env: engineEnvironment({
+        config: { home, loomBin: null, loomCommit: null, ffmpeg: null },
+        base: { ...process.env, PYTHONPATH: FAKE_ENGINE },
+        development: true,
+      }),
+      pin: PIN,
+      log: () => {},
+      bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
+    })
+    sidecar.onNotification((n) => {
+      if (typeof n.params === 'object' && n.params !== null)
+        notes.push({ method: n.method, params: n.params as Record<string, unknown> })
+    })
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('the stand-in never became ready')), READY_MS)
+      sidecar.onState((s) => {
+        if (s.state === 'ready') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+      sidecar.start()
+    })
+  }, READY_MS + 5_000)
+
+  afterAll(async () => {
+    await sidecar?.stop()
+    if (home !== '') rmSync(home, { recursive: true, force: true })
+  })
+
+  const reports = (id: number): Record<string, unknown>[] =>
+    notes.filter((n) => n.method === 'job/progress' && n.params.id === id).map((n) => n.params)
+  async function reportedBy(id: number, stage: string): Promise<void> {
+    const deadline = Date.now() + 20_000
+    while (!reports(id).some((r) => r.stage === stage)) {
+      if (Date.now() > deadline) throw new Error(`no report of ${stage} for request ${id}`)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+  }
+  const release = (name: string): void => writeFileSync(join(home, name), '')
+  const ask = (params: Record<string, unknown>): Promise<unknown> =>
+    sidecar.request('render.stage', params, { deadlineMs: READY_MS }).result
+  async function refused(
+    request: Promise<unknown>,
+  ): Promise<{ code: number; message: string; data: unknown }> {
+    try {
+      await request
+    } catch (error) {
+      if (error instanceof EngineError)
+        return { code: error.code, message: error.message, data: error.data }
+      throw error
+    }
+    throw new Error('the stand-in drew a stage the engine refuses')
+  }
+  const notYetSentence = (key: string, layout: string, stage: string): string =>
+    `'${key}' is still being laid out under layout ${layout.slice(0, 8)}, and the build has ` +
+    `not reached its ${stage} stage yet; ask again when job/progress reports it`
+
+  it('draws a stage the build has reported, and refuses one it has not in the engine’s shape', async () => {
+    const build = sidecar.request(
+      'graph.build',
+      { key: 'la-metro-rail', mode: 'subway' },
+      { deadlineMs: READY_MS },
+    )
+    await reportedBy(build.id, 'gtfs2graph')
+    const layout = reports(build.id)[0].layout as string
+    const params = { key: 'la-metro-rail', layout, width: 800 }
+
+    // Held after gtfs2graph: nothing later is reported, whatever the machine's speed.
+    const first = (await ask({ ...params, stage: 'gtfs2graph' })) as { svg: string }
+    expect(answerProblems('render.stage', first)).toEqual([])
+    expect(first.svg, 'drawn from the build').toContain('gtfs2graph: B')
+
+    const early = await refused(ask({ ...params, stage: 'topo' }))
+    const hint = notYetSentence('la-metro-rail', layout, 'topo')
+    expect(early).toEqual({
+      code: -32000,
+      message: hint,
+      data: { kind: 'layout', detail: hint, hint, layout, stage: 'topo', building: true },
+    })
+    expect(problems(description.$defs.ErrorData, early.data, 'data')).toEqual([])
+
+    // A day asks for minutes, which are read from octi: the answer waits on it.
+    const dated = await refused(ask({ ...params, stage: 'gtfs2graph', date: '2026-06-16' }))
+    expect(dated.data).toMatchObject({ stage: 'octi', building: true })
+    expect(dated.message).toBe(
+      `${notYetSentence('la-metro-rail', layout, 'octi')}; the minutes of a date are read ` +
+        'from the octi stage, so leave date out to draw gtfs2graph now',
+    )
+
+    // loom itself has not been reached either.
+    const unreached = await refused(ask({ ...params, stage: 'loom' }))
+    expect(unreached.message).toBe(notYetSentence('la-metro-rail', layout, 'loom'))
+    expect(unreached.data).toMatchObject({ stage: 'loom', building: true, layout })
+    expect(
+      reports(build.id).map((r) => r.stage),
+      'still held at gtfs2graph',
+    ).toEqual(['gtfs2graph'])
+
+    // Released, the build reports loom and is held again: loom is reported, and
+    // the control file has it wait on octi, which is not.
+    release('release-gtfs2graph')
+    await reportedBy(build.id, 'loom')
+    const loom = await refused(ask({ ...params, stage: 'loom' }))
+    expect(loom.data).toMatchObject({ stage: 'octi', building: true, layout })
+    expect(
+      reports(build.id).map((r) => r.stage),
+      'still held at loom',
+    ).toEqual(['gtfs2graph', 'topo', 'loom'])
+
+    release('release-loom')
+    await reportedBy(build.id, 'octi')
+    expect(((await ask({ ...params, stage: 'loom' })) as { svg: string }).svg).toContain('loom: B')
+    await build.result
   }, 30_000)
 })
 
