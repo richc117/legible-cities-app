@@ -278,12 +278,38 @@ jobs:
           fi
           echo "schema ok: $got"
 
+      # Keyed on FFmpeg's own pins and the scripts that build it, and nothing
+      # else (issue 630): `pins` is a hash of the ffmpeg block of
+      # vendor/pins.json alone (its version, sources, sha256s and configure
+      # lines), so a pin elsewhere, the engine's above all, leaves the built
+      # ffmpeg alone. Keyed on the whole file, as it was, every engine pin
+      # rebuilt ffmpeg on every platform and fetched its sources from
+      # ffmpeg.org, which then failed four runs in a day. `sources` is the
+      # key of vendor.yml's source cache, which a miss here restores.
+      - name: Name the ffmpeg caches' keys
+        id: ffmpeg-keys
+        run: bash scripts/vendor-ffmpeg.sh --keys | tee -a "$GITHUB_OUTPUT"
+
       - name: Restore the vendored ffmpeg
         id: ffmpeg-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: vendor/ffmpeg/${{ matrix.target }}
-          key: determinism-ffmpeg-${{ matrix.target }}-${{ hashFiles('vendor/pins.json', 'scripts/vendor-*.sh') }}
+          key: determinism-ffmpeg-${{ matrix.target }}-${{ steps.ffmpeg-keys.outputs.pins }}-${{ hashFiles('scripts/vendor-ffmpeg.sh', 'scripts/vendor-signature.sh') }}
+
+      # A miss builds from the source archives, restored from the cache the
+      # vendor jobs share and held to their pinned sha256s by --fetch before
+      # anything is opened, as there (vendor.yml has the reasoning); one that
+      # is missing or does not match is fetched afresh, and the entry is saved
+      # only on a miss and after all three verified.
+      - name: Restore ffmpeg's source archives
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        id: ffmpeg-sources
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.ffmpeg-keys.outputs.sources }}
+          enableCrossOsArchive: true
 
       # ffmpeg is built from the pinned sources by the script the vendor
       # workflow runs (ADR-040), so a cache miss needs the same toolchain:
@@ -302,10 +328,23 @@ jobs:
           HOMEBREW_NO_AUTO_UPDATE: '1'
         run: command -v pkg-config >/dev/null || brew install pkgconf
 
+      - name: Verify ffmpeg's source archives, fetching any that is missing or does not match (Linux, macOS)
+        if: runner.os != 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: bash scripts/vendor-ffmpeg.sh --fetch vendor/ffmpeg/.sources
+
+      - name: Save ffmpeg's verified source archives (Linux, macOS)
+        if: runner.os != 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true' && steps.ffmpeg-sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.ffmpeg-keys.outputs.sources }}
+          enableCrossOsArchive: true
+
       - name: Vendor ffmpeg (Linux, macOS)
         if: runner.os != 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         env:
           TARGET: ${{ matrix.target }}
+          VENDOR_FFMPEG_SOURCES: vendor/ffmpeg/.sources
         run: bash scripts/vendor-ffmpeg.sh "$TARGET"
 
       - name: Build tools for ffmpeg (Windows)
@@ -326,11 +365,25 @@ jobs:
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-python
 
+      - name: Verify ffmpeg's source archives, fetching any that is missing or does not match (Windows)
+        if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: bash scripts/vendor-ffmpeg.sh --fetch vendor/ffmpeg/.sources
+
+      - name: Save ffmpeg's verified source archives (Windows)
+        if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true' && steps.ffmpeg-sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.ffmpeg-keys.outputs.sources }}
+          enableCrossOsArchive: true
+
       - name: Build ffmpeg (Windows)
         if: runner.os == 'Windows' && steps.ffmpeg-cache.outputs.cache-hit != 'true'
         shell: msys2 {0}
         env:
           TARGET: ${{ matrix.target }}
+          VENDOR_FFMPEG_SOURCES: vendor/ffmpeg/.sources
         run: bash scripts/vendor-ffmpeg.sh --build-only "$TARGET" vendor/ffmpeg/.built-win-x64
 
       - name: Vendor ffmpeg (Windows)

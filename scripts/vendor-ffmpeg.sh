@@ -7,6 +7,8 @@
 #   scripts/vendor-ffmpeg.sh --build-only <target> <dir>     build into <dir>, prove nothing
 #   scripts/vendor-ffmpeg.sh --from <dir> <target> [outdir]  prove a pair built earlier, put it in place
 #   scripts/vendor-ffmpeg.sh --sources <dir>                 fetch and verify the Corresponding Source
+#   scripts/vendor-ffmpeg.sh --fetch <dir>                   the three source archives in <dir>, verified
+#   scripts/vendor-ffmpeg.sh --keys                          the cache keys the workflows use
 #
 # Targets: darwin-arm64, darwin-x64, win-x64 and linux-x64 (for tests only).
 # The result is <outdir>/<target>/ (vendor/ffmpeg by default) holding
@@ -42,11 +44,30 @@
 # repository commit they came from. The vendor job uploads it as the
 # ffmpeg-source artefact, and builds no binary until it has.
 #
+# --fetch is the source cache of the workflows (issue 630): FFmpeg's release
+# tarball, x264's tar and zlib's release tarball, each in <dir> and exactly
+# its pinned bytes. A copy already there that matches its sha256 is kept and
+# nothing is fetched for it; one that does not is refused, removed and
+# fetched afresh, which is how a corrupted cache entry becomes a miss; a
+# missing one is fetched. Every download is tried up to four times, waiting
+# 15, 30 and then 60 seconds between tries (VENDOR_FFMPEG_BACKOFF names
+# another first wait, in seconds), and a transfer that stalls below 1 KB/s
+# for a minute is a failed try. --keys prints, as `name=value` lines for
+# $GITHUB_OUTPUT, `sources`, the source cache's key, which is a hash of each
+# archive's name and pinned sha256 and nothing else, and `pins`, a hash of the
+# whole ffmpeg block of the pins and nothing else, which the built-ffmpeg
+# cache of determinism.yml is keyed on with this script, so that a pin
+# elsewhere (the engine's, say) leaves both caches alone.
+#
 # VENDOR_FFMPEG_PINS names another pins file, so a wrong checksum can be
 # tried without editing the committed one. VENDOR_FFMPEG_WORK names a folder
 # to build in and keep (sources already there that match their pins are not
 # fetched again); by default the work is in a temporary folder removed at
-# exit.
+# exit. VENDOR_FFMPEG_SOURCES names a folder of source archives, the one
+# --fetch filled: the build and --sources take each archive from there,
+# checked against its sha256 again before it is used, and fetch into it only
+# what is missing or does not match. --sources still checks FFmpeg's and
+# zlib's signatures, fetched as before, on every run.
 #
 # On Windows the proof runs under Git Bash, so as in vendor-python.sh every
 # hash is taken, and every pin read, by the build machine's Python rather
@@ -68,6 +89,8 @@ usage: vendor-ffmpeg.sh <target> [outdir]
        vendor-ffmpeg.sh --build-only <target> <dir>
        vendor-ffmpeg.sh --from <dir> <target> [outdir]
        vendor-ffmpeg.sh --sources <dir>
+       vendor-ffmpeg.sh --fetch <dir>
+       vendor-ffmpeg.sh --keys
 targets: darwin-arm64 darwin-x64 win-x64 linux-x64
 EOF
   exit 2
@@ -79,12 +102,16 @@ case "${1:-}" in
   --build-only) mode=build; shift ;;
   --from) [ -n "${2:-}" ] || usage; mode=prove; from=$2; shift 2 ;;
   --sources) mode=sources; shift ;;
+  --fetch) mode=fetch; shift ;;
+  --keys) mode=keys; shift ;;
   -*) usage ;;
 esac
 
 target=
 outdir=
-if [ "$mode" = sources ]; then
+if [ "$mode" = keys ]; then
+  [ $# -eq 0 ] || usage
+elif [ "$mode" = sources ] || [ "$mode" = fetch ]; then
   [ $# -eq 1 ] && [ -n "$1" ] || usage
   outdir=$1
 else
@@ -128,21 +155,37 @@ if [ -n "$keep" ]; then
   mkdir -p "$keep"
   keep=$(posix "$keep")
 fi
+sources=${VENDOR_FFMPEG_SOURCES:-}
+if [ -n "$sources" ] && [ "$mode" != keys ]; then
+  mkdir -p "$sources"
+  sources=$(posix "$sources")
+fi
+backoff=${VENDOR_FFMPEG_BACKOFF:-15}
+case "$backoff" in
+  '' | *[!0-9]*) echo "VENDOR_FFMPEG_BACKOFF is a whole number of seconds, not '$backoff'" >&2; exit 2 ;;
+esac
 
 # From the script's own place rather than from git: under MSYS2 on the
 # Windows runner, git may refuse a checkout another user's git made.
 root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
-# signed and signature_status, shared with the loom-source job.
+# signed and signature_status, shared with the loom-source job. SC1091 is
+# the linter's note that it was not given the helper as well, which the
+# commit hook gives it only when the helper changes too; over every file, it
+# is given, and followed.
+# shellcheck disable=SC1091
 # shellcheck source=scripts/vendor-signature.sh
 . "$root/scripts/vendor-signature.sh"
 pins=${pins:-$root/vendor/pins.json}
 # Made whichever way it was named: in a fresh checkout the default,
 # vendor/ffmpeg, does not exist (it is ignored), and the staging folder
 # below is made inside it. The first CI run of this script failed there on
-# every target but Windows, whose build step had already made it.
-outdir=${outdir:-$root/vendor/ffmpeg}
-mkdir -p "$outdir"
+# every target but Windows, whose build step had already made it. --keys
+# writes nothing.
+if [ "$mode" != keys ]; then
+  outdir=${outdir:-$root/vendor/ffmpeg}
+  mkdir -p "$outdir"
+fi
 
 host_py=
 for candidate in python3 python; do
@@ -189,6 +232,41 @@ PY
   # And stripped all the same, so no Python on no runner can bring one back.
   printf '%s' "${value//$'\r'/}"
 }
+
+# --keys: `sources`, from each source archive's file name and pinned sha256,
+# the names being the ones fetch() and fetch_x264() write; `pins`, from the
+# ffmpeg block of the pins as canonical JSON (keys sorted, no spaces), so
+# that it moves when any FFmpeg pin does and with nothing else.
+if [ "$mode" = keys ]; then
+  keys=$("$host_py" - "$pins_for_py" <<'PY'
+import hashlib, json, sys
+block = json.load(open(sys.argv[1], encoding="utf-8"))["ffmpeg"]
+def field(*path):
+    node = block
+    for part in path:
+        if not isinstance(node, dict) or part not in node:
+            sys.exit("ffmpeg." + ".".join(path) + " is missing from the pins")
+        node = node[part]
+    if not isinstance(node, str) or not node or any(c in node for c in "\r\n"):
+        sys.exit("ffmpeg." + ".".join(path) + " must be one non-empty line")
+    return node
+archives = [
+    (field("source", "url").rsplit("/", 1)[-1], field("source", "sha256")),
+    ("x264-" + field("x264", "commit") + ".tar", field("x264", "sha256")),
+    (field("zlib", "url").rsplit("/", 1)[-1], field("zlib", "sha256")),
+]
+listing = "".join(f"{name} {sha}\n" for name, sha in archives)
+canonical = json.dumps(block, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+out = (
+    "sources=ffmpeg-sources-" + hashlib.sha256(listing.encode("utf-8")).hexdigest() + "\n"
+    + "pins=" + hashlib.sha256(canonical.encode("utf-8")).hexdigest() + "\n"
+)
+sys.stdout.buffer.write(out.encode("utf-8"))
+PY
+  ) || exit 1
+  printf '%s\n' "${keys//$'\r'/}"
+  exit 0
+fi
 
 case "$target" in
   win-*) exe=.exe ;;
@@ -239,32 +317,101 @@ verify() {
   echo "checksum ok: $(basename "$1") $got"
 }
 
-# fetch <url> <sha256> <dir>: the release archive at <url> in <dir>, verified.
-fetch() {
-  local file="$3/${1##*/}"
-  if [ -f "$file" ] && verify "$file" "$2" 2>/dev/null; then return 0; fi
+# kept <file> <sha256>: whether <file> is already there and exactly the
+# pinned bytes. One that is there and is not is refused and removed, saying
+# so, so the caller fetches it afresh: a cache entry cannot be replaced, so
+# the workflow's run says which to delete.
+kept() {
+  [ -e "$1" ] || return 1
+  if [ -f "$1" ] && [ ! -L "$1" ] && verify "$1" "$2" 2>/dev/null; then
+    echo "kept: $(basename "$1") matches its pin, so it is not fetched"
+    return 0
+  fi
+  local warn=
+  [ "${GITHUB_ACTIONS:-}" != true ] || warn='::warning::'
+  echo "${warn}$(basename "$1") in $(dirname "$1") is not the pinned bytes: it is refused, removed and fetched afresh. If it came from a cache entry, delete that entry (gh cache delete <key>), or every run with its key fetches it again." >&2
+  rm -rf "$1"
+  return 1
+}
+
+# tries <what> <command...>: the command, run up to four times, waiting
+# $backoff seconds after the first failure and twice as long after each
+# next; the script ends after the fourth.
+tries() {
+  local what=$1 attempt=1 wait=$backoff; shift
+  while :; do
+    if "$@"; then return 0; fi
+    if [ "$attempt" -ge 4 ]; then
+      echo "could not fetch $what in $attempt tries" >&2
+      exit 1
+    fi
+    echo "try $attempt of 4 to fetch $what failed; trying again in $wait s" >&2
+    sleep "$wait"
+    attempt=$((attempt + 1))
+    wait=$((wait * 2))
+  done
+}
+
+# download <url> <file>: one try at <url>, into <file> only when it is whole.
+# A transfer slower than 1 KB/s for a minute is a failed try, not a wait of
+# fifteen minutes; curl's own retries are left to tries(), which also
+# retries a reset connection, as curl's do not.
+download() {
   echo "fetching $1"
-  curl -fsSL --retry 3 --connect-timeout 30 --max-time 900 -o "$file.part" "$1"
-  mv "$file.part" "$file"
-  verify "$file" "$2"
+  rm -f "$2.part"
+  if curl -fsSL --connect-timeout 30 --speed-limit 1024 --speed-time 60 --max-time 900 -o "$2.part" "$1"; then
+    mv "$2.part" "$2"
+  else
+    rm -f "$2.part"
+    return 1
+  fi
+}
+
+# fetch <url> <sha256> <dir>: the release archive at <url> in <dir>, verified.
+# With VENDOR_FFMPEG_SOURCES, it is taken from there, or fetched into there,
+# and then copied into <dir> and verified again, unless <dir> is that folder.
+fetch() {
+  local name=${1##*/} store=${sources:-$3}
+  if ! kept "$store/$name" "$2"; then
+    tries "$name" download "$1" "$store/$name"
+    verify "$store/$name" "$2"
+  fi
+  if [ "$store" != "$3" ]; then
+    cp "$store/$name" "$3/$name"
+    verify "$3/$name" "$2"
+  fi
 }
 
 # fetch_x264 <dir>: x264 at the pinned commit, as `git archive` writes it.
 # The commit is fetched by its id, which git verifies object by object, and
 # the tar is then checked against the pinned sha256; it is also the tar
 # VideoLAN's GitLab serves inside its .tar.bz2 of the commit. No line-ending
-# conversion, whatever git's configuration on the machine says.
+# conversion, whatever git's configuration on the machine says. With
+# VENDOR_FFMPEG_SOURCES, as for fetch().
 fetch_x264() {
-  local file="$1/$x264_tarball" repo="$work/x264.git" i
-  if [ -f "$file" ] && verify "$file" "$x264_sha" 2>/dev/null; then return 0; fi
+  local store=${sources:-$1}
+  local file="$store/$x264_tarball"
+  if ! kept "$file" "$x264_sha"; then
+    archive_x264 "$file"
+  fi
+  if [ "$store" != "$1" ]; then
+    cp "$file" "$1/$x264_tarball"
+    verify "$1/$x264_tarball" "$x264_sha"
+  fi
+}
+
+# fetch_commit <repo>: one try at the pinned commit of x264, into <repo>.
+fetch_commit() {
+  echo "fetching x264 $x264_commit from $x264_repo"
+  git -C "$1" fetch -q --depth 1 "$x264_repo" "$x264_commit"
+}
+
+# archive_x264 <file>: the tar of the pinned commit, fetched, at <file>.
+archive_x264() {
+  local file=$1 repo="$work/x264.git"
   rm -rf "$repo"
   git init -q "$repo"
-  for i in 1 2 3; do
-    echo "fetching x264 $x264_commit from $x264_repo"
-    if git -C "$repo" fetch -q --depth 1 "$x264_repo" "$x264_commit"; then break; fi
-    [ "$i" -lt 3 ] || { echo "could not fetch x264 $x264_commit" >&2; exit 1; }
-    sleep 10
-  done
+  tries "x264 $x264_commit" fetch_commit "$repo"
   if [ "$(git -C "$repo" rev-parse FETCH_HEAD)" != "$x264_commit" ]; then
     echo "x264: fetched $(git -C "$repo" rev-parse FETCH_HEAD), not $x264_commit" >&2
     exit 1
@@ -367,6 +514,19 @@ same() {
     exit 1
   fi
 }
+
+# ---------------------------------------------------------------------------
+# --fetch
+# ---------------------------------------------------------------------------
+
+# All three, whatever the target: one cache entry then serves every job.
+if [ "$mode" = fetch ]; then
+  fetch "$ffmpeg_url" "$ffmpeg_sha" "$outdir"
+  fetch_x264 "$outdir"
+  fetch "$zlib_url" "$zlib_sha" "$outdir"
+  echo "the three source archives in $outdir match their pins"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # --sources
@@ -507,7 +667,7 @@ build() {
   same "the FFmpeg configure line" "$(ffmpeg_line)" "$(pin configure "$target")"
 
   jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)
-  srcdir="$work/sources"
+  srcdir=${sources:-$work/sources}
   mkdir -p "$srcdir"
   fetch "$ffmpeg_url" "$ffmpeg_sha" "$srcdir"
   fetch_x264 "$srcdir"

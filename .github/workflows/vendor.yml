@@ -651,6 +651,29 @@ jobs:
   # beyond the pinned kinds. linux-x64 is for tests and is not shipped, so it
   # is proven here and not uploaded: an artefact of this public repository is
   # a conveyed GPL binary. A5-04 runs the script directly.
+  #
+  # The three source archives are cached (issue 630): ffmpeg.org timed out or
+  # reset the connection for the release tarball on four pull requests in a
+  # day, 29 Oct 2026, and each time a job went red for want of bytes the pins
+  # already name. Every ffmpeg job, ffmpeg-source first, restores
+  # vendor/ffmpeg/.sources under the key `--keys` prints, a hash of each
+  # archive's name and pinned sha256 and of nothing else, with no restore
+  # keys, since a near match is other bytes. `--fetch` then holds each archive
+  # there to its sha256: one that matches is used and nothing is fetched for
+  # it, one that does not is refused, removed and fetched afresh (a corrupted
+  # entry is a miss, with a warning to delete it, since an entry cannot be
+  # replaced), and a missing one is fetched, each download tried four times
+  # with a growing wait. The entry is saved only on a miss, and only after
+  # `--fetch` has verified all three (in ffmpeg-source, also after their
+  # signatures have). The build and --sources take each archive from there
+  # through VENDOR_FFMPEG_SOURCES and check its sha256 once more before
+  # opening it, so a cached archive is used only as the pinned bytes, and
+  # --sources still checks FFmpeg's and zlib's signatures on every run, with
+  # the signature and key fetched as before. enableCrossOsArchive lets the
+  # Windows job share the entry the Linux job saves. As with
+  # electron-ffmpeg-source below, this defends against a corrupted entry and
+  # drift, not against someone who can already write an entry in main's
+  # scope.
   ffmpeg:
     name: ffmpeg (${{ matrix.target }})
     # No ffmpeg artefact without its verified Corresponding Source in the
@@ -687,8 +710,33 @@ jobs:
             command -v pkg-config >/dev/null || brew install pkgconf
             if [ "$TARGET" = darwin-x64 ]; then brew install nasm; fi
           fi
+      - name: Name the source cache's key
+        id: keys
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --keys | tee -a "$GITHUB_OUTPUT"
+      - name: Restore the source archives from the cache
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.keys.outputs.sources }}
+          enableCrossOsArchive: true
+      - name: Verify the source archives against the pins, fetching any that is missing or does not match
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --fetch vendor/ffmpeg/.sources
+      # Only on a miss, and only once all three have verified, since a step
+      # runs only when every one before it succeeded.
+      - name: Save the verified source archives to the cache
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.keys.outputs.sources }}
+          enableCrossOsArchive: true
       - name: Build, verify and prove ffmpeg and ffprobe
         shell: bash
+        env:
+          VENDOR_FFMPEG_SOURCES: vendor/ffmpeg/.sources
         run: time bash scripts/vendor-ffmpeg.sh "$TARGET"
       - name: Refuse a binary that links anything outside the system, or is another architecture or macOS
         shell: bash
@@ -848,8 +896,33 @@ jobs:
             mingw-w64-ucrt-x86_64-nasm
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-python
+      - name: Name the source cache's key
+        id: keys
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --keys | tee -a "$GITHUB_OUTPUT"
+      - name: Restore the source archives from the cache
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.keys.outputs.sources }}
+          enableCrossOsArchive: true
+      # In MSYS2's shell, with the curl and git the build has always fetched
+      # with.
+      - name: Verify the source archives against the pins, fetching any that is missing or does not match
+        shell: msys2 {0}
+        run: bash scripts/vendor-ffmpeg.sh --fetch vendor/ffmpeg/.sources
+      - name: Save the verified source archives to the cache
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.keys.outputs.sources }}
+          enableCrossOsArchive: true
       - name: Build ffmpeg and ffprobe
         shell: msys2 {0}
+        env:
+          VENDOR_FFMPEG_SOURCES: vendor/ffmpeg/.sources
         run: time bash scripts/vendor-ffmpeg.sh --build-only "$TARGET" vendor/ffmpeg/.built-win-x64
       - name: Verify and prove them
         shell: bash
@@ -950,9 +1023,36 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Name the source cache's key
+        id: keys
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --keys | tee -a "$GITHUB_OUTPUT"
+      - name: Restore the source archives from the cache
+        id: restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.keys.outputs.sources }}
+          enableCrossOsArchive: true
+      - name: Verify the source archives against the pins, fetching any that is missing or does not match
+        shell: bash
+        run: bash scripts/vendor-ffmpeg.sh --fetch vendor/ffmpeg/.sources
+      # The signatures are checked here, on a hit as on a miss, with the
+      # signature and the key fetched as they always were.
       - name: Fetch and verify the sources
         shell: bash
+        env:
+          VENDOR_FFMPEG_SOURCES: vendor/ffmpeg/.sources
         run: bash scripts/vendor-ffmpeg.sh --sources ffmpeg-source
+      # Only on a miss, and only once all three have verified by sha256 and
+      # FFmpeg's and zlib's by signature too.
+      - name: Save the verified source archives to the cache
+        if: steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: vendor/ffmpeg/.sources
+          key: ${{ steps.keys.outputs.sources }}
+          enableCrossOsArchive: true
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ffmpeg-source
