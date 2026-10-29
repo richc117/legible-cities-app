@@ -101,7 +101,13 @@ writes before the app starts (every key optional):
                       a cancel is read while the method is still running whatever the machine's
                       speed, as octi_child does for graph.build. A cancel ends it at its next
                       step, as without the control, so name a stage that has one after it (not
-                      map.build's last, write); none lets it go on after n ms
+                      map.build's last, write); none lets it go on after n ms.
+                      {"stage": s, "until": f} holds graph.build after s until a file named f
+                      is in this home folder, which the test writes when it has asked what it
+                      wanted of the held build (the hold is then a fact the test releases, not
+                      a clock it races); a cancel ends it too, and n (default 20000) is only
+                      the deadline of a test that never released it, which fails the request
+                      with an engine error. The value may be a list, for two stages
     cancel_too_late   {method: ms}, for graph.build, map.build, export.encode and feeds.add: a
                       cancel of that method comes after its point of no return, as engine
                       v0.18.0 answers one (its issue 80). No cancel stops the method's own
@@ -1678,15 +1684,32 @@ class Engine:
             with self.children_lock:
                 self.octi_children.discard(child)
 
-    def hold_after(self, msg_id, method: str, stage: str) -> None:
-        """Wait for a cancel after ``method`` has reported ``stage``, when the
-        control file asks (``holds_after_stage``), up to the ms it names."""
-        spec = (self.control.get("holds_after_stage") or {}).get(method) or {}
-        if spec.get("stage") != stage:
-            return
-        deadline = time.monotonic() + spec.get("ms", 0) / 1000
-        while msg_id not in self.cancelled and time.monotonic() < deadline:
-            time.sleep(0.01)
+    def hold_after(self, msg_id, method: str, stage: str) -> bool:
+        """Hold ``method`` after it has reported ``stage``, when the control file
+        asks (``holds_after_stage``): up to the ms it names, ending at a cancel;
+        or, where it names a file (``until``), until that file is in the home
+        folder, a cancel ending it too. A hold that names a file and reaches
+        its deadline (``ms``, default 20 s) with neither is a test that never
+        released it: False, and the caller fails the request aloud rather than
+        let it go on as if released. True otherwise. The value is one hold or a
+        list, for a method held at two stages."""
+        specs = (self.control.get("holds_after_stage") or {}).get(method) or {}
+        for spec in specs if isinstance(specs, list) else [specs]:
+            if spec.get("stage") != stage:
+                continue
+            until = spec.get("until")
+            if until is not None and (not until or until in (".", "..")
+                                      or Path(until).name != until):
+                raise ValueError(f"holds_after_stage: {until!r} is not a file name")
+            deadline = time.monotonic() + spec.get("ms", 20_000 if until is not None else 0) / 1000
+            while msg_id not in self.cancelled and time.monotonic() < deadline:
+                if until is not None and (HOME / until).exists():
+                    break
+                time.sleep(0.01)
+            else:
+                if until is not None and msg_id not in self.cancelled:
+                    return False
+        return True
 
     def end_children(self) -> None:
         with self.children_lock:
@@ -1802,7 +1825,15 @@ class Engine:
             write({"jsonrpc": "2.0", "method": "job/progress",
                    "params": {"id": msg_id, "stage": stage, "fraction": i / 4,
                               "message": f"{stage}: 3 nodes, 2 edges", "layout": layout}})
-            self.hold_after(msg_id, "graph.build", stage)
+            if not self.hold_after(msg_id, "graph.build", stage):
+                self.forget_build(layout, entry)
+                message = (f"graph.build was held after {stage} until a file that never "
+                           "came: the test did not release it")
+                write({"jsonrpc": "2.0", "id": msg_id,
+                       "error": {"code": -32000, "message": message,
+                                 "data": {"kind": "engine", "hint": message,
+                                          "detail": message}}})
+                return
         if builds:
             number = entry["build"]
             self.layouts[layout] = "2026-09-10T00:%02d:%02d+00:00" % divmod(number, 60)
