@@ -35,11 +35,11 @@
 // The sentences of these refusals are spelled here and nowhere else in the
 // unit suite: a test of the stand-in that needs one imports it from here.
 
-import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { endRecordOnly, gtfsZip } from './gtfs-zip'
+import { AGENCY, endRecordOnly, gtfsZip } from './gtfs-zip'
 import type { Reply } from './raw-server'
 
 // ------------------------------------------------------------- the row
@@ -126,11 +126,14 @@ export const FEED = 'la-metro-rail'
 export const LAYOUT = 'a'.repeat(64)
 
 /**
- * The folder the rows' paths are in, made when this module is loaded, so a
- * suite that reads the table owns one of its own. `prepareFiles` writes the
- * files the `feeds.add` rows name; `removeFiles` takes the folder away.
+ * The folder the rows' paths are in, named when this module is loaded, so a
+ * suite that reads the table owns one of its own, and made only by
+ * `prepareFiles`, which writes the files the `feeds.add` rows name:
+ * importing the table writes nothing, so a suite that imports it for a
+ * sentence, or one whose tests all skip, leaves nothing behind.
+ * `removeFiles` takes the folder away.
  */
-export const HERE = mkdtempSync(join(tmpdir(), 'lc-conformance-'))
+export const HERE = join(tmpdir(), `lc-conformance-${randomUUID()}`)
 
 const ZIPS = {
   missing: 'missing.zip',
@@ -144,10 +147,16 @@ const ZIPS = {
   bzip2: 'bzip2.zip',
   hugeTable: 'huge-table.zip',
   hugeTogether: 'huge-together.zip',
+  filesAtLimit: 'files-at-limit.zip',
+  tablesAtLimit: 'tables-at-limit.zip',
+  hugeReadme: 'huge-readme.zip',
+  bzip2Pathways: 'bzip2-pathways.zip',
 }
 
 /** The files the `feeds.add` rows read; `missing.zip` is the one never written. */
 export function prepareFiles(): void {
+  // Not recursive: a folder already there is not this suite's.
+  mkdirSync(HERE)
   writeFileSync(join(HERE, ZIPS.notAZip), 'this is a page, not a zip\n')
   gtfsZip(join(HERE, ZIPS.noStops), ['stops'])
   gtfsZip(join(HERE, ZIPS.noStopTimes), ['stop_times'])
@@ -164,6 +173,27 @@ export function prepareFiles(): void {
   gtfsZip(join(HERE, ZIPS.hugeTogether), [], {
     size: { stops: 700_000_000, trips: 700_000_000, stop_times: 700_000_000 },
   })
+  // And one step short of each, which the engine reads on: the count at the
+  // limit (then refused for the table it lacks), two tables at a gigabyte
+  // each and so at two together, a readme past every limit (not a table,
+  // so never counted), and pathways.txt compressed with bzip2 (a table LOOM
+  // never reads, so its compression is not judged).
+  endRecordOnly(join(HERE, ZIPS.filesAtLimit), 10_000, 0)
+  gtfsZip(join(HERE, ZIPS.tablesAtLimit), [], {
+    size: {
+      routes: 1,
+      trips: 1,
+      calendar: 1,
+      stops: 1_000_000_000,
+      stop_times: 1_000_000_000 - 3 - Buffer.byteLength(AGENCY),
+    },
+  })
+  gtfsZip(join(HERE, ZIPS.hugeReadme), [], {
+    extra: [{ name: 'readme.txt', size: 3_000_000_000 }],
+  })
+  gtfsZip(join(HERE, ZIPS.bzip2Pathways), [], {
+    extra: [{ name: 'pathways.txt', body: 'pathway_id\n1\n', method: 12 }],
+  })
 }
 
 export function removeFiles(): void {
@@ -172,6 +202,8 @@ export function removeFiles(): void {
 
 // The sentences several fields share, as `serve.py` writes them.
 const KEY_SAYS = 'key must be a feed key: lower-case letters, digits and hyphens'
+const SOURCE_SAYS =
+  'source must be a URL with its scheme, or an absolute path to a zip the client owns'
 const LAYOUT_SAYS =
   'layout is required: the id graph.build answered with. A map is drawn from a stored layout and never lays one out itself.'
 const DATE_REQUIRED =
@@ -606,11 +638,9 @@ for (const method of [
 // -- feeds.add
 {
   const base = { source: join(HERE, 'metro.zip') }
-  const source =
-    'source must be a URL with its scheme, or an absolute path to a zip the client owns'
-  refuses('feeds.add', 'source: null', { source: null }, source)
-  refuses('feeds.add', 'source: left out', {}, source)
-  refuses('feeds.add', 'source: a relative path', { source: 'metro.zip' }, source)
+  refuses('feeds.add', 'source: null', { source: null }, SOURCE_SAYS)
+  refuses('feeds.add', 'source: left out', {}, SOURCE_SAYS)
+  refuses('feeds.add', 'source: a relative path', { source: 'metro.zip' }, SOURCE_SAYS)
   refuses('feeds.add', 'key: null', { ...base, key: null }, KEY_SAYS)
   refuses('feeds.add', 'key: capitals', { ...base, key: 'Metro' }, KEY_SAYS)
   const name = 'name must be text, up to 120 characters'
@@ -1487,13 +1517,46 @@ engineRefuses(
     'feed',
     `${ZIPS.hugeTogether} is too large to read: its files unpack to more than 2 GB together, the most a feed may; ${narrower}`,
   )
+  const taken = `'${FEED}' is already a feed; choose another key`
   engineRefuses(
     'feeds.add',
     'a feed under a key a preset has',
     add(ZIPS.whole, { key: FEED }),
     'feed',
-    `'${FEED}' is already a feed; choose another key`,
+    taken,
   )
+  // A step short of each limit, read on to the next refusal: what holds `>`
+  // where `>=` would be wrong, and the members the limits do not judge.
+  engineRefuses(
+    'feeds.add',
+    'a zip that claims as many files as a feed may hold',
+    add(ZIPS.filesAtLimit),
+    'feed',
+    `${ZIPS.filesAtLimit} has no stops.txt, so there is no network to draw`,
+  )
+  engineRefuses(
+    'feeds.add',
+    'a zip with a table of a gigabyte and tables of two together',
+    add(ZIPS.tablesAtLimit, { key: FEED }),
+    'feed',
+    taken,
+  )
+  engineRefuses(
+    'feeds.add',
+    'a zip with a readme past every limit, which is not a table',
+    add(ZIPS.hugeReadme, { key: FEED }),
+    'feed',
+    taken,
+  )
+  engineRefuses(
+    'feeds.add',
+    'a zip with pathways.txt compressed with bzip2, which LOOM never reads',
+    add(ZIPS.bzip2Pathways, { key: FEED }),
+    'feed',
+    taken,
+  )
+  // A scheme that is not http or https is no URL to the handler, and no absolute path.
+  refuses('feeds.add', 'source: an ftp address', { source: 'ftp://h/feed.zip' }, SOURCE_SAYS)
 }
 
 // -- map.build and render.stage: a layout that is not stored (pipeline.LayoutMissing)
@@ -1718,13 +1781,17 @@ export const UNREACHED: Record<string, string> = {
 
 /**
  * Refusals the engine gives with no network, LOOM or long run that no row
- * holds yet, each with what holding it would take. The table's own claim is
- * no wider than its rows and this list.
+ * holds yet, each with what holding it would take. With the rows, these are
+ * the refusals we know of; the table claims no more than that.
  */
 export const NOT_HELD: string[] = [
-  'feeds.add from an address the engine cannot fetch for its form, not its host (an unknown ' +
-    "scheme, a malformed host): refused in requests' or urllib3's words through feeds._why, " +
-    'which the stand-in does not have',
+  'feeds.add from an http or https address the engine cannot fetch for its form, not its host ' +
+    "(a malformed host): refused in requests' or urllib3's words through feeds._why, which the " +
+    'stand-in does not have (another scheme is no URL to the handler, and is a row)',
+  "a feed added from a file whose zip has since gone (feeds.fetch: \"'<key>' was added from a " +
+    'file and its zip is gone; add it again"), for graph.build, map.build, feeds.service, ' +
+    "feeds.inspect and a dated render.stage: a row needs a user feed in both homes' registries " +
+    'with no zip, and the stand-in answers such a feed as if its zip were there',
   'a zip whose directory lists more files than its end record says (feeds._opened, after the ' +
     'parse): the stand-in reads the record and not a second count',
   'a table that unpacks past what its header says (feeds._Counted): read a piece at a time, so ' +

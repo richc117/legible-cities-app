@@ -89,6 +89,46 @@
   },
   {
     "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "    if record[zipfile._ECD_ENTRIES_TOTAL] > ZIP_ENTRIES:\n",
+    "replace": "    if record[zipfile._ECD_ENTRIES_TOTAL] >= ZIP_ENTRIES:\n",
+    "why": "The count judged with >= where the engine's is >: a zip that claims exactly as many files as a feed may hold is refused, where the engine reads on."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            if info.file_size > ZIP_TABLE_BYTES:\n",
+    "replace": "            if info.file_size >= ZIP_TABLE_BYTES:\n",
+    "why": "A table of exactly a gigabyte refused, where the engine's limit lets it by."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "    if total > ZIP_FEED_BYTES:\n",
+    "replace": "    if total >= ZIP_FEED_BYTES:\n",
+    "why": "Tables of exactly two gigabytes together refused, where the engine's limit lets them by."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            if stem not in LOOM_SKIP and info.compress_type",
+    "replace": "            if info.compress_type",
+    "why": "pathways.txt judged for its compression, which the engine does not judge in a table LOOM never reads."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            if not (info.filename.endswith(\".txt\") and stem in GTFS_TABLES):\n",
+    "replace": "            if not info.filename.endswith(\".txt\"):\n",
+    "why": "A readme counted as a table: its stated size is then refused, where the engine never counts what is not a table."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
     "find": "                hint = (f\"{key!r} is still being laid out under layout {layout[:8]}, and the \"\n",
     "replace": "                hint = (f\"{key!r} is still being laid out, and the \"\n",
     "test": "tests/unit/stand-in-params.test.ts",

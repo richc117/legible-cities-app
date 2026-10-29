@@ -13,6 +13,8 @@
 import { writeFileSync } from 'node:fs'
 
 const STEMS = ['agency', 'stops', 'routes', 'trips', 'stop_times', 'calendar'] as const
+/** agency.txt, which a feed added with no name is named from, so its size is never stated. */
+export const AGENCY = 'agency_id,agency_name\nM,Metro de Prueba\n'
 export type Stem = (typeof STEMS)[number]
 
 export interface Headers {
@@ -20,6 +22,8 @@ export interface Headers {
   method?: Partial<Record<Stem, number>>
   /** The unpacked size a table's headers state (its own, if left out). */
   size?: Partial<Record<Stem, number>>
+  /** Members beyond the tables, each with what its headers state. */
+  extra?: { name: string; body?: string; method?: number; size?: number }[]
 }
 
 const crc = (buf: Buffer): number => {
@@ -44,24 +48,35 @@ function endRecord(entries: number, size: number, offset: number): Buffer {
 
 /** Writes the zip at `path`, without the tables `without` names, and answers the path. */
 export function gtfsZip(path: string, without: Stem[] = [], headers: Headers = {}): string {
-  const entries: { stem: Stem; name: string; body: Buffer }[] = []
+  const entries: { name: string; body: Buffer; method: number; size?: number }[] = []
   for (const stem of STEMS) {
     if (without.includes(stem)) continue
     const body =
       stem === 'agency'
-        ? 'agency_id,agency_name\nM,Metro de Prueba\n'
+        ? AGENCY
         : stem === 'calendar'
           ? 'service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\ns,1,1,1,1,1,0,0,20260101,20261231\n'
           : `${stem}_id\n1\n`
-    entries.push({ stem, name: `${stem}.txt`, body: Buffer.from(body) })
+    entries.push({
+      name: `${stem}.txt`,
+      body: Buffer.from(body),
+      method: headers.method?.[stem] ?? 0,
+      size: headers.size?.[stem],
+    })
   }
+  for (const member of headers.extra ?? [])
+    entries.push({
+      name: member.name,
+      body: Buffer.from(member.body ?? 'x\n'),
+      method: member.method ?? 0,
+      size: member.size,
+    })
   const locals: Buffer[] = []
   const centrals: Buffer[] = []
   let offset = 0
-  for (const { stem, name, body } of entries) {
+  for (const { name, body, method, size: stated } of entries) {
     const n = Buffer.from(name)
-    const method = headers.method?.[stem] ?? 0
-    const size = headers.size?.[stem] ?? body.length
+    const size = stated ?? body.length
     const local = Buffer.alloc(30)
     local.writeUInt32LE(0x04034b50, 0)
     local.writeUInt16LE(20, 4)

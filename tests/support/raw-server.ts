@@ -27,6 +27,8 @@ export interface Notification {
 export const DEADLINE_MS = 20_000
 /** How many of the server's last stderr lines a failure carries. */
 export const STDERR_LINES = 20
+/** How much of a stderr line with no end yet is kept: its last characters. */
+export const STDERR_LINE_CHARS = 2_000
 
 export class Server {
   #child: ChildProcessWithoutNullStreams
@@ -54,8 +56,11 @@ export class Server {
     this.#child.stderr.setEncoding('utf8')
     this.#child.stderr.on('data', (chunk: string) => {
       const lines = (this.#partial + chunk).split(/\r?\n/)
-      this.#partial = lines.pop() ?? ''
-      this.#stderr.push(...lines)
+      this.#partial = (lines.pop() ?? '').slice(-STDERR_LINE_CHARS)
+      // The last of them only, each at most a line's worth, pushed one at a
+      // time: a chunk of many lines is no argument list.
+      for (const line of lines.slice(-STDERR_LINES))
+        this.#stderr.push(line.slice(0, STDERR_LINE_CHARS))
       if (this.#stderr.length > STDERR_LINES)
         this.#stderr.splice(0, this.#stderr.length - STDERR_LINES)
     })
@@ -143,8 +148,14 @@ export class Server {
   }
 
   async stop(): Promise<void> {
-    if (this.#exited) return
-    const exited = new Promise<void>((resolve) => this.#child.once('exit', () => resolve()))
+    // Gone already, whether or not its stdio has closed: a child of the
+    // server's can hold its stderr open after the server itself has exited.
+    if (this.#exited || this.#child.exitCode !== null || this.#child.signalCode !== null) return
+    // Whichever comes first: the exit, or the close where the exit was missed.
+    const exited = new Promise<void>((resolve) => {
+      this.#child.once('exit', () => resolve())
+      this.#child.once('close', () => resolve())
+    })
     this.#child.stdin.end()
     const killer = setTimeout(() => this.#child.kill(), 10_000)
     await exited
