@@ -1698,9 +1698,10 @@ class Engine:
             if spec.get("stage") != stage:
                 continue
             until = spec.get("until")
-            if until is not None and Path(until).name != until:
+            if until is not None and (not until or until in (".", "..")
+                                      or Path(until).name != until):
                 raise ValueError(f"holds_after_stage: {until!r} is not a file name")
-            deadline = time.monotonic() + spec.get("ms", 20_000 if until else 0) / 1000
+            deadline = time.monotonic() + spec.get("ms", 20_000 if until is not None else 0) / 1000
             while msg_id not in self.cancelled and time.monotonic() < deadline:
                 if until is not None and (HOME / until).exists():
                     break

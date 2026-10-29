@@ -1671,17 +1671,14 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
 
 // Since engine v0.14.0 (its issue 43) every report of a layout's stage names
 // the layout, and render.stage draws a stage a running build has reported
-// from the build, refusing one it has not reached in a shape of its own. Cell
-// 01 draws the layout as it solves from both (issue 382), and the end-to-end
-// suite sees it against this stand-in, so the stand-in is held to the
-// engine's shapes and its choices here: the reports, the drawing from the
-// build and a re-layout's stored set answering until the build has the stage.
-// (The refusal's code, kind, sentence and data, and a day waiting on octi, are
-// judged below, against a build held at the stage.) One stand-in of its own,
-// reporting slowly, so a stage can be asked for between two reports. (Nothing
-// left to draw after a cancel is judged against a stand-in that holds the
-// build until it is cancelled, below: a cancel read while a build is being
-// timed is a race.)
+// from the build. Cell 01 draws the layout as it solves from both (issue 382),
+// and the end-to-end suite sees it against this stand-in, so the stand-in is
+// held to the engine's shapes here: the reports, which name the layout (a
+// download's never), and the map call's replays. (The refusal of a stage not
+// reached, and a re-layout's stored set answering until the build has the
+// stage, are judged below against a build held at the stage; nothing left to
+// draw after a cancel, against one held until it is cancelled: a stage asked
+// for or a cancel read while a build is being timed is a race.)
 describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solves${WHY}`, () => {
   let home = ''
   let sidecar: Sidecar
@@ -1873,56 +1870,64 @@ describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, (
       { key: 'la-metro-rail', mode: 'subway' },
       { deadlineMs: READY_MS },
     )
-    await reportedBy(build.id, 'gtfs2graph')
-    const layout = reports(build.id)[0].layout as string
-    const params = { key: 'la-metro-rail', layout, width: 800 }
+    try {
+      await reportedBy(build.id, 'gtfs2graph')
+      const layout = reports(build.id)[0].layout as string
+      const params = { key: 'la-metro-rail', layout, width: 800 }
 
-    // Held after gtfs2graph: nothing later is reported, whatever the machine's speed.
-    const first = (await ask({ ...params, stage: 'gtfs2graph' })) as { svg: string }
-    expect(answerProblems('render.stage', first)).toEqual([])
-    expect(first.svg, 'drawn from the build').toContain('gtfs2graph: B')
+      // Held after gtfs2graph: nothing later is reported, whatever the machine's speed.
+      const first = (await ask({ ...params, stage: 'gtfs2graph' })) as { svg: string }
+      expect(answerProblems('render.stage', first)).toEqual([])
+      expect(first.svg, 'drawn from the build').toContain('gtfs2graph: B')
 
-    const early = await refused(ask({ ...params, stage: 'topo' }))
-    const hint = notYetSentence('la-metro-rail', layout, 'topo')
-    expect(early).toEqual({
-      code: -32000,
-      message: hint,
-      data: { kind: 'layout', detail: hint, hint, layout, stage: 'topo', building: true },
-    })
-    expect(problems(description.$defs.ErrorData, early.data, 'data')).toEqual([])
+      const early = await refused(ask({ ...params, stage: 'topo' }))
+      const hint = notYetSentence('la-metro-rail', layout, 'topo')
+      expect(early).toEqual({
+        code: -32000,
+        message: hint,
+        data: { kind: 'layout', detail: hint, hint, layout, stage: 'topo', building: true },
+      })
+      expect(problems(description.$defs.ErrorData, early.data, 'data')).toEqual([])
 
-    // A day asks for minutes, which are read from octi: the answer waits on it.
-    const dated = await refused(ask({ ...params, stage: 'gtfs2graph', date: '2026-06-16' }))
-    expect(dated.data).toMatchObject({ stage: 'octi', building: true })
-    expect(dated.message).toBe(
-      `${notYetSentence('la-metro-rail', layout, 'octi')}; the minutes of a date are read ` +
-        'from the octi stage, so leave date out to draw gtfs2graph now',
-    )
+      // A day asks for minutes, which are read from octi: the answer waits on it.
+      const dated = await refused(ask({ ...params, stage: 'gtfs2graph', date: '2026-06-16' }))
+      expect(dated.data).toMatchObject({ stage: 'octi', building: true })
+      expect(dated.message).toBe(
+        `${notYetSentence('la-metro-rail', layout, 'octi')}; the minutes of a date are read ` +
+          'from the octi stage, so leave date out to draw gtfs2graph now',
+      )
 
-    // loom itself has not been reached either.
-    const unreached = await refused(ask({ ...params, stage: 'loom' }))
-    expect(unreached.message).toBe(notYetSentence('la-metro-rail', layout, 'loom'))
-    expect(unreached.data).toMatchObject({ stage: 'loom', building: true, layout })
-    expect(
-      reports(build.id).map((r) => r.stage),
-      'still held at gtfs2graph',
-    ).toEqual(['gtfs2graph'])
+      // loom itself has not been reached either.
+      const unreached = await refused(ask({ ...params, stage: 'loom' }))
+      expect(unreached.message).toBe(notYetSentence('la-metro-rail', layout, 'loom'))
+      expect(unreached.data).toMatchObject({ stage: 'loom', building: true, layout })
+      expect(
+        reports(build.id).map((r) => r.stage),
+        'still held at gtfs2graph',
+      ).toEqual(['gtfs2graph'])
 
-    // Released, the build reports loom and is held again: loom is reported, and
-    // the control file has it wait on octi, which is not.
-    release('release-gtfs2graph')
-    await reportedBy(build.id, 'loom')
-    const loom = await refused(ask({ ...params, stage: 'loom' }))
-    expect(loom.data).toMatchObject({ stage: 'octi', building: true, layout })
-    expect(
-      reports(build.id).map((r) => r.stage),
-      'still held at loom',
-    ).toEqual(['gtfs2graph', 'topo', 'loom'])
+      // Released, the build reports loom and is held again: loom is reported, and
+      // the control file has it wait on octi, which is not.
+      release('release-gtfs2graph')
+      await reportedBy(build.id, 'loom')
+      const loom = await refused(ask({ ...params, stage: 'loom' }))
+      expect(loom.data).toMatchObject({ stage: 'octi', building: true, layout })
+      expect(
+        reports(build.id).map((r) => r.stage),
+        'still held at loom',
+      ).toEqual(['gtfs2graph', 'topo', 'loom'])
 
-    release('release-loom')
-    await reportedBy(build.id, 'octi')
-    expect(((await ask({ ...params, stage: 'loom' })) as { svg: string }).svg).toContain('loom: B')
-    await build.result
+      release('release-loom')
+      await reportedBy(build.id, 'octi')
+      expect(((await ask({ ...params, stage: 'loom' })) as { svg: string }).svg).toContain(
+        'loom: B',
+      )
+      await build.result
+    } finally {
+      // A failed assertion must not leave the build held for the next row.
+      release('release-gtfs2graph')
+      release('release-loom')
+    }
   }, 30_000)
 
   it('draws a re-layout’s stored set until its build has the stage, then the build’s', async () => {
