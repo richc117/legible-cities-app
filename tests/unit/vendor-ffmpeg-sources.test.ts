@@ -468,6 +468,23 @@ describe.skipIf(lacking)('vendor-ffmpeg.sh, the check of a copy from the source 
     expect(result.status).not.toBe(0)
     expect(existsSync(join(out, 'BUILD.txt'))).toBe(false)
   })
+
+  it('replaces a link at a copy’s name, and writes nothing through it', () => {
+    const f = fixture()
+    const cache = join(f.dir, 'cache')
+    expect(script(['--fetch', cache], f.pinsFile).status).toBe(0)
+    const other = join(f.dir, 'other')
+    mkdirSync(other)
+    const victim = join(f.dir, 'victim')
+    writeFileSync(victim, 'left as it was')
+    symlinkSync(victim, join(other, f.names[0]))
+    symlinkSync(victim, join(other, f.names[1]))
+    const result = script(['--fetch', other], f.pinsFile, { VENDOR_FFMPEG_SOURCES: cache })
+    expect(result.status).toBe(0)
+    expect(readFileSync(victim, 'utf8')).toBe('left as it was')
+    expect(lstatSync(join(other, f.names[0])).isSymbolicLink()).toBe(false)
+    expect(lstatSync(join(other, f.names[1])).isSymbolicLink()).toBe(false)
+  })
 })
 
 describe.skipIf(lacking)('vendor-ffmpeg.sh --sources', () => {

@@ -150,5 +150,21 @@
     "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
     "title": "refuses an x264 tar that is not its pinned bytes, and keeps none",
     "why": "A wrong x264 tar left in the sources folder: unpinned bytes where the next run, or a developer, would find them."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    [ ! -L \"$3/$name\" ] || rm -f \"$3/$name\"\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "replaces a link at a copy’s name, and writes nothing through it",
+    "why": "FFmpeg's copy written through a link at its name: cp overwrites whatever file the link points to, outside the folder, and the check that follows reads through the link and passes."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    [ ! -L \"$1/$x264_tarball\" ] || rm -f \"$1/$x264_tarball\"\n",
+    "replace": "",
+    "test": "tests/unit/vendor-ffmpeg-sources.test.ts",
+    "title": "replaces a link at a copy’s name, and writes nothing through it",
+    "why": "x264's copy written through a link at its name, as for FFmpeg's."
   }
 ]

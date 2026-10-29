@@ -369,6 +369,8 @@ fetch() {
     verify "$store/$name" "$2" || { rm -f "$store/$name"; exit 1; }
   fi
   if [ "$store" != "$3" ]; then
+    # A link at the copy's name is removed, never written through.
+    [ ! -L "$3/$name" ] || rm -f "$3/$name"
     cp "$store/$name" "$3/$name"
     verify "$3/$name" "$2"
   fi
@@ -387,6 +389,7 @@ fetch_x264() {
     archive_x264 "$file"
   fi
   if [ "$store" != "$1" ]; then
+    [ ! -L "$1/$x264_tarball" ] || rm -f "$1/$x264_tarball"
     cp "$file" "$1/$x264_tarball"
     verify "$1/$x264_tarball" "$x264_sha"
   fi
