@@ -65,6 +65,30 @@
   },
   {
     "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "    if record[zipfile._ECD_ENTRIES_TOTAL] > ZIP_ENTRIES:\n",
+    "replace": "    if False:\n",
+    "why": "The end record's count not judged: a zip that claims more files than a feed has is read on, and refused for a table it lacks, where the engine refuses its count."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            parts[i] = part[:equals + 1] + REDACTED\n",
+    "replace": "            pass\n",
+    "why": "A query's values left in the refusal of a local address: the engine names a person's address with them hidden, since a link can carry a key."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "                return (f\"{what} compresses {name} in a way",
+    "replace": "                return (f\"{what} packs {name} in a way",
+    "why": "The refusal of a table compressed with bzip2, in other words than the engine's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
     "find": "                hint = (f\"{key!r} is still being laid out under layout {layout[:8]}, and the \"\n",
     "replace": "                hint = (f\"{key!r} is still being laid out, and the \"\n",
     "test": "tests/unit/stand-in-params.test.ts",

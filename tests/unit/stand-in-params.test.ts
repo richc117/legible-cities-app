@@ -26,11 +26,13 @@ import {
   FEED,
   HERE,
   LAYOUT,
+  NOT_HELD,
   PLAN,
   prepareFiles,
   removeFiles,
   rows,
   said,
+  STORED,
   UNREACHED,
 } from '../support/conformance'
 import { FAKE_ENGINE, findPython } from '../support/python'
@@ -240,7 +242,9 @@ async function standIn(
   return { home, server }
 }
 
-const plain = rows.filter((row) => row.setup === undefined)
+// The rows asked of the stand-in's own suite, a layout stored first for the
+// ones that need it; the held build's rows have a suite of their own.
+const plain = rows.filter((row) => row.setup !== 'building')
 const building = rows.filter((row) => row.setup === 'building')
 
 beforeAll(() => prepareFiles())
@@ -250,9 +254,15 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s refusals${WHY}`, () =>
   let home = ''
   let server: Server
 
-  beforeAll(async () => {
-    ;({ home, server } = await standIn({ map_draws: true, progress_delay_ms: 1 }))
-  }, READY_MS + 5_000)
+  beforeAll(
+    async () => {
+      ;({ home, server } = await standIn({ map_draws: true, progress_delay_ms: 1 }))
+      // The layout the `stored` rows name, laid out as the stand-in lays one out.
+      const stored = await server.request(STORED.request.method, STORED.request.params, READY_MS)
+      expect((stored.result as { layout?: string } | undefined)?.layout).toBe(STORED.layout)
+    },
+    2 * READY_MS + 5_000,
+  )
 
   afterAll(async () => {
     await server?.stop()
@@ -267,6 +277,17 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s refusals${WHY}`, () =>
     expect([...methods].filter((m) => !(m in SCHEMA.methods))).toEqual(['engine.nothing'])
     expect(Object.keys(SCHEMA.methods).filter((m) => !methods.has(m))).toEqual([])
     expect(rows.length).toBeGreaterThan(300)
+  })
+
+  it('asks the real engine every row but one that needs state it cannot be put in, and says why', () => {
+    for (const row of rows) {
+      const alone = row.standInOnly !== undefined
+      expect(alone, `${row.method} ${row.what}: stand-in only exactly when it has a setup`).toBe(
+        row.setup !== undefined,
+      )
+      if (alone) expect(row.standInOnly?.trim(), `${row.method} ${row.what}`).not.toBe('')
+    }
+    for (const gap of NOT_HELD) expect(gap.trim()).not.toBe('')
   })
 
   it('holds every kind of error the schema names, or says why it cannot', () => {

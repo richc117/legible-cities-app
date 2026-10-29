@@ -25,6 +25,8 @@ export interface Notification {
 
 // Under vitest's own test timeout, so a request that hangs says which it was.
 export const DEADLINE_MS = 20_000
+/** How many of the server's last stderr lines a failure carries. */
+export const STDERR_LINES = 20
 
 export class Server {
   #child: ChildProcessWithoutNullStreams
@@ -34,6 +36,8 @@ export class Server {
   #exited = false
   #why = 'the server has exited'
   #ended: (() => void)[] = []
+  #stderr: string[] = []
+  #partial = ''
   /** Every notification read so far, in the order it came. */
   readonly notifications: Notification[] = []
 
@@ -44,15 +48,30 @@ export class Server {
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
-    // Drained and dropped: the server logs to its stderr and nothing here reads it.
-    this.#child.stderr.resume()
+    // The server logs to its stderr: its last lines are kept, so a server
+    // that ends says why in the failure of the request it left unanswered,
+    // and not only that it has exited.
+    this.#child.stderr.setEncoding('utf8')
+    this.#child.stderr.on('data', (chunk: string) => {
+      const lines = (this.#partial + chunk).split(/\r?\n/)
+      this.#partial = lines.pop() ?? ''
+      this.#stderr.push(...lines)
+      if (this.#stderr.length > STDERR_LINES)
+        this.#stderr.splice(0, this.#stderr.length - STDERR_LINES)
+    })
     const ended = (why: string): void => {
       if (this.#exited) return
       this.#exited = true
       this.#why = why
       for (const end of this.#ended) end()
     }
-    this.#child.once('exit', () => ended('the server has exited'))
+    // On close, once its stderr has been read to the end, rather than on exit.
+    this.#child.once('close', (code, signal) =>
+      ended(
+        `the server has exited (${signal === null ? `exit ${code}` : `ended by ${signal}`})` +
+          this.#stderrTail(),
+      ),
+    )
     // An interpreter that is not there never starts, and says so only here.
     this.#child.once('error', (error) =>
       ended(`the server could not be run (${command}): ${error.message}`),
@@ -63,6 +82,12 @@ export class Server {
       this.#buffer = Buffer.concat([this.#buffer, chunk])
       this.#read()
     })
+  }
+
+  /** The server's last stderr lines, as the end of a failure's sentence, or nothing. */
+  #stderrTail(): string {
+    const lines = [...this.#stderr, ...(this.#partial === '' ? [] : [this.#partial])]
+    return lines.length === 0 ? '' : `; the last of its stderr:\n${lines.join('\n')}`
   }
 
   #read(): void {
@@ -102,7 +127,7 @@ export class Server {
       if (this.#exited) return reject(new Error(`${method}: ${this.#why}`))
       const timer = setTimeout(() => {
         this.#waiting.delete(id)
-        reject(new Error(`${method} was not answered in ${deadlineMs} ms`))
+        reject(new Error(`${method} was not answered in ${deadlineMs} ms${this.#stderrTail()}`))
       }, deadlineMs)
       this.#ended.push(() => {
         clearTimeout(timer)

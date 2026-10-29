@@ -10,34 +10,30 @@
 // The engine runs on a home of its own with no feed in it, cannot reach the
 // network (`OFFLINE`) and has no LOOM (`noLoom`), so nothing a row asks can
 // download a feed or lay one out: every row is refused before that. The
-// interpreter comes from the environment alone, never `.env.local`:
+// interpreter is found as the other `*-real` suites find it
+// (`realInterpreter`), so it runs wherever they do:
 //
 //   LEGIBLE_ENGINE_PYTHON=/path/to/engine/.venv/bin/python npx vitest run tests/unit/conformance-real.test.ts
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { engineEnvironment, resolveInterpreter } from '../../src/main/interpreter'
+import { engineEnvironment } from '../../src/main/interpreter'
 import { expected, prepareFiles, removeFiles, rows, said } from '../support/conformance'
 import { OFFLINE } from '../support/determinism'
 import { Server } from '../support/raw-server'
-import { failIfRequired, HANDSHAKE_MS, noLoom } from '../support/real-engine'
+import {
+  failIfRequired,
+  HANDSHAKE_MS,
+  localConfig,
+  NO_ENGINE,
+  noLoom,
+  realInterpreter,
+} from '../support/real-engine'
 
-const RESOLUTION = resolveInterpreter({
-  config: {
-    enginePython: process.env.LEGIBLE_ENGINE_PYTHON ?? null,
-    engineCheckout: process.env.LEGIBLE_ENGINE_CHECKOUT ?? null,
-  },
-  packaged: false,
-  resourcesPath: '',
-  platform: process.platform,
-  exists: existsSync,
-})
-const ENGINE = RESOLUTION.interpreter
-// A skipped block prints only its title, so the title says why, in the words
-// the resolution gave.
-const WHY = ENGINE === null ? ` (skipped: ${RESOLUTION.reason})` : ''
+const ENGINE = realInterpreter(localConfig())
+const WHY = ENGINE === null ? NO_ENGINE : ''
 
 failIfRequired('the conformance table against the real engine', ENGINE === null, 'no engine')
 
@@ -74,13 +70,6 @@ describe.skipIf(ENGINE === null)(`the conformance table, asked of the real engin
   afterAll(async () => {
     await server?.stop()
     if (home !== '') rmSync(home, { recursive: true, force: true })
-  })
-
-  it('is asked every row but the ones the stand-in alone can be, each with its reason', () => {
-    const alone = rows.filter((row) => row.standInOnly !== undefined)
-    expect(asked.length + alone.length).toBe(rows.length)
-    for (const row of alone) expect(row.standInOnly?.trim()).not.toBe('')
-    expect(asked.length).toBeGreaterThan(300)
   })
 
   it.each(asked)('refuses $method with $what, in its own words', async (row) => {

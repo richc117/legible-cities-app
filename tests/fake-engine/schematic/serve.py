@@ -214,6 +214,69 @@ FEEDS = {
 }
 REQUIRED = ("stops", "routes", "trips", "stop_times")
 
+# The limits engine v0.19.0 (its issue 81) holds a feed's zip to before it
+# reads a table, and the tables it holds to them (`feeds.GTFS_TABLES`; the
+# ones LOOM never reads, `feeds.LOOM_SKIP`, are not judged for their
+# compression), with its sentences (`feeds._too_many` and the rest).
+ZIP_ENTRIES = 10_000
+ZIP_DIRECTORY_BYTES = ZIP_ENTRIES * 46 + 10_000_000
+ZIP_TABLE_BYTES = 1_000_000_000
+ZIP_FEED_BYTES = 2_000_000_000
+GTFS_TABLES = frozenset({
+    "agency", "stops", "routes", "trips", "stop_times", "calendar",
+    "calendar_dates", "fare_attributes", "fare_rules", "shapes", "frequencies",
+    "transfers", "pathways", "levels", "feed_info", "translations",
+    "attributions", "areas", "stop_areas", "networks", "route_networks",
+    "fare_products", "fare_leg_rules", "fare_transfer_rules", "fare_media",
+    "timeframes", "booking_rules", "location_groups", "location_group_stops",
+})
+LOOM_SKIP = frozenset({"pathways", "translations", "attributions"})
+NARROWER = "use a feed filtered to the operator you need"
+
+
+def zip_limits_problem(path: Path, what: str) -> str | None:
+    """The engine's `feeds._opened` and `_check_sizes`, as the refusal they
+    raise, or None: the entries and the directory size the end record
+    claims, read before the directory is parsed; then each table's
+    compression and size as the directory states them, and their sum. Only
+    headers are read, so a zip that claims gigabytes is a few bytes here,
+    as it is to the engine."""
+    import zipfile
+    with path.open("rb") as fh:
+        record = zipfile._EndRecData(fh)
+    if not record:
+        return f"{what} is not a zip file, so it is not a GTFS feed"
+    if record[zipfile._ECD_ENTRIES_TOTAL] > ZIP_ENTRIES:
+        return (f"{what} holds more than {ZIP_ENTRIES:,} files, where a feed has a few dozen; "
+                "re-zip it with only the feed's tables")
+    if record[zipfile._ECD_SIZE] > ZIP_DIRECTORY_BYTES:
+        return (f"{what} lists its files in more than {ZIP_DIRECTORY_BYTES / 1e6:.3g} MB, where "
+                "a feed's list is a few kB; re-zip it with only the feed's tables")
+    try:
+        z = zipfile.ZipFile(path)
+    except zipfile.BadZipFile:
+        return f"{what} is not a zip file, so it is not a GTFS feed"
+    total = 0
+    with z:
+        for info in z.infolist():
+            stem = Path(info.filename).stem
+            if not (info.filename.endswith(".txt") and stem in GTFS_TABLES):
+                continue
+            name = Path(info.filename).name
+            if stem not in LOOM_SKIP and info.compress_type not in (zipfile.ZIP_STORED,
+                                                                   zipfile.ZIP_DEFLATED):
+                return (f"{what} compresses {name} in a way the engine cannot read a piece at "
+                        "a time; re-zip it with the standard Deflate method")
+            if info.file_size > ZIP_TABLE_BYTES:
+                return (f"{what} is too large to read: {name} unpacks to more than "
+                        f"{ZIP_TABLE_BYTES / 1e9:.3g} GB, the most one file in a feed may; "
+                        f"{NARROWER}")
+            total += info.file_size
+    if total > ZIP_FEED_BYTES:
+        return (f"{what} is too large to read: its files unpack to more than "
+                f"{ZIP_FEED_BYTES / 1e9:.3g} GB together, the most a feed may; {NARROWER}")
+    return None
+
 # The engine's export tables at the pinned tag (v0.8.2), restated from
 # `PRESETS` and `STORYBOARDS` in its export.py in the same shape its
 # `preset_table()` and `storyboard_table()` answer. The names are held equal
@@ -586,6 +649,51 @@ def lines_problem(lines) -> str | None:
         if rest:
             return f"{at} does not take {', '.join(sorted(rest))}"
     return None
+
+
+REDACTED = "<redacted>"
+
+
+def _shown_query(query: str) -> str:
+    """The engine's `feeds._shown_query`: each value replaced, and a part
+    with no name, or with only `=` padding after its first `=`, replaced whole."""
+    parts = re.split(r"([&;])", query)
+    for i in range(0, len(parts), 2):
+        part = parts[i]
+        if not part:
+            continue
+        equals = part.find("=")
+        if equals < 0 or re.fullmatch(r"=+", part[equals + 1:]):
+            parts[i] = REDACTED
+        elif equals < len(part) - 1:
+            parts[i] = part[:equals + 1] + REDACTED
+    return "".join(parts)
+
+
+def shown(url: str) -> str:
+    """An address as the engine's sentences name it (`feeds.shown`): the
+    scheme, the host and its port, the path and the query's names, and the
+    user information, every query value and the fragment a marker, since a
+    person's own address can carry a key."""
+    match = re.match(r"[A-Za-z][A-Za-z0-9+.-]*://", url)
+    scheme = match.group(0) if match else ""
+    rest = url[len(scheme):]
+    fragment = ""
+    at = rest.find("#")
+    if at >= 0:
+        fragment = "#" if at == len(rest) - 1 else f"#{REDACTED}"
+        rest = rest[:at]
+    query = ""
+    at = rest.find("?")
+    if at >= 0:
+        query = "?" + _shown_query(rest[at + 1:])
+        rest = rest[:at]
+    at = rest.find("/")
+    authority, path = (rest[:at], rest[at:]) if at >= 0 else (rest, "")
+    at = authority.rfind("@")
+    if at >= 0:
+        authority = f"{REDACTED}@{authority[at + 1:]}"
+    return scheme + authority + path + query + fragment
 
 
 def local_host(url: str) -> bool:
@@ -2381,9 +2489,9 @@ class Engine:
         if source.startswith(("http://", "https://")):
             if local_host(source):
                 # Refused before a byte is fetched, as engine v0.21.1 refuses
-                # it (`feeds._download`), naming the address as it was given.
-                error(msg_id, -32000, f"{source} could not be fetched. Use an address on a "
-                      "public host; a feed cannot be fetched from this machine or its network.",
+                # it (`feeds._download`), naming the address as `shown` does.
+                error(msg_id, -32000, f"{shown(source)} could not be fetched. Use an address on "
+                      "a public host; a feed cannot be fetched from this machine or its network.",
                       "feed")
                 return
             if self.control.get("add_refuses"):
@@ -2423,6 +2531,11 @@ class Engine:
         if not zipfile.is_zipfile(staging):
             staging.unlink()
             error(msg_id, -32000, f"{what} is not a zip file, so it is not a GTFS feed", "feed")
+            return
+        problem = zip_limits_problem(staging, what)
+        if problem is not None:
+            staging.unlink()
+            error(msg_id, -32000, problem, "feed")
             return
         with zipfile.ZipFile(staging) as z:
             stems = {Path(n).stem for n in z.namelist() if n.endswith(".txt")}

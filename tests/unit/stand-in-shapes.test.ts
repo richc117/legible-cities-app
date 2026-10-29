@@ -43,6 +43,7 @@ import { Sidecar } from '../../src/main/sidecar'
 import { EngineError, ERROR_CODES, type EnginePin, type EngineState } from '../../src/shared/engine'
 import { openingBeats, OPENINGS } from '../../src/shared/opening'
 import type { Storyboard } from '../../src/shared/protocol'
+import { minutesWait, notYet } from '../support/conformance'
 import { FAKE_ENGINE, findPython } from '../support/python'
 
 // -------------------------------------------------------------- validating
@@ -877,28 +878,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(stage.description.lines[0].meets).toEqual([])
   })
 
-  it('refuses a day as the engine’s handler does: null, malformed, and not on the calendar', async () => {
-    const layout = await layoutOf()
-    const stage = (date: unknown): Promise<unknown> =>
-      ask('render.stage', { key: 'la-metro-rail', layout, stage: 'topo', date })
-    const params = { code: PARAMS, kind: 'params' }
-    expect(await refusal(stage(null))).toEqual({
-      ...params,
-      message:
-        'date must be the service day as YYYY-MM-DD, or left out for a description without minutes',
-    })
-    for (const date of ['tomorrow', 20260616, '2026-6-16', '']) {
-      expect(await refusal(stage(date)), JSON.stringify(date)).toEqual({
-        ...params,
-        message: 'date must be a calendar day as YYYY-MM-DD',
-      })
-    }
-    expect(await refusal(stage('2026-02-30'))).toEqual({
-      ...params,
-      message: 'date: 2026-02-30 is not a calendar day',
-    })
-  })
-
   interface PlanAnswer {
     mode: string
     url: string
@@ -928,7 +907,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   // plan runs (params, -32602); what the plan itself refuses is an export
   // error (export, -32000).
   const PARAMS = -32602
-  const EXPORT = -32000
   interface Refusal {
     code: number
     kind: string | undefined
@@ -972,60 +950,11 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(queryOf(corner.url).get('corner')).toBe('bottom-left')
   })
 
-  it('refuses a caption or a corner that is not one in the handler’s words, as a params error', async () => {
-    const caption = 'caption must be text of 1 to 80 characters on one line'
-    // One sentence for not text, empty, over 80 and a line break alike.
-    for (const bad of ['x'.repeat(81), 'two\nlines', 'two\u2028lines', '', 7]) {
-      expect(await planRefused('instagram-post', { caption: bad }), JSON.stringify(bad)).toEqual({
-        code: PARAMS,
-        kind: 'params',
-        message: caption,
-      })
-    }
-    expect(await planRefused('portfolio-mp4', { clock_corner: 'middle' })).toEqual({
-      code: PARAMS,
-      kind: 'params',
-      message: 'clock_corner must be one of top-left, top-right, bottom-left, bottom-right',
-    })
-    // Eighty characters is allowed, and so is one.
+  // What it refuses of a caption or a corner, and in which words, is the
+  // conformance table's (tests/support/conformance.ts), asked of the engine too.
+  it('takes a caption of one to eighty characters', async () => {
     expect((await planFor('instagram-post', { caption: 'x'.repeat(80) })).caption).toHaveLength(80)
     expect((await planFor('instagram-post', { caption: 'x' })).caption).toBe('x')
-  })
-
-  it('refuses a corner the preset cannot take, in the plan’s words, as an export error', async () => {
-    const exportError = { code: EXPORT, kind: 'export' }
-    expect(await planRefused('instagram-reel', { clock_corner: 'bottom-right' })).toEqual({
-      ...exportError,
-      message:
-        "Choose another corner for the clock: on instagram-reel, Instagram's button rail covers the bottom right.",
-    })
-    expect(
-      await planRefused('instagram-story', { clock: true, clock_corner: 'bottom-right' }),
-    ).toEqual({
-      ...exportError,
-      message:
-        "Choose another corner for the clock: on instagram-story, Instagram's bottom zone covers the bottom right.",
-    })
-    expect(await planRefused('portfolio-mp4', { clock_corner: 'top-left' })).toEqual({
-      ...exportError,
-      message: 'Choose another corner for the clock: the title sits top left.',
-    })
-    expect(
-      await planRefused('portfolio-mp4', { clock_corner: 'top-left', caption: 'Rush hour' }),
-    ).toEqual({
-      ...exportError,
-      message: 'Choose another corner for the clock: the title and the caption sit top left.',
-    })
-    expect(
-      await planRefused('portfolio-mp4', {
-        clock_corner: 'top-left',
-        title: false,
-        caption: 'Rush hour',
-      }),
-    ).toEqual({
-      ...exportError,
-      message: 'Choose another corner for the clock: the caption sits top left.',
-    })
   })
 
   it('lets a corner through where nothing sits or covers it, with a note where the platform may', async () => {
@@ -1097,18 +1026,10 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect((await planFor('portfolio-mp4', { storyboard: 'morph' })).storyboard).toBe('morph')
   })
 
-  it('judges a list beat by beat whatever the preset, and ignores a good one on a still', async () => {
+  // A list is judged beat by beat whatever the preset, a still's too; the
+  // refusals are the conformance table's.
+  it('ignores a good list on a still, and a view and a clock beside it', async () => {
     const first = { secs: 2, view: 'map', at: '08:00' }
-    // The handler runs the engine's authored_beats on any list before it looks at the preset.
-    expect(await planRefused('instagram-post', { storyboard: [{ secs: 2 }] })).toEqual({
-      code: PARAMS,
-      kind: 'params',
-      message: 'storyboard[0].view is missing: the first beat names the view frame 0 is in',
-    })
-    expect(await planRefused('instagram-post', { storyboard: [] })).toMatchObject({
-      code: PARAMS,
-      message: 'storyboard holds no beats: a list holds 1 to 16',
-    })
     // A list that is good is ignored by a still, and so are a view and a clock beside it:
     // only a video's list says where it opens.
     const still = await planFor('instagram-post', { storyboard: [first] })
@@ -1120,52 +1041,9 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     })
     expect(beside).toMatchObject({ mode: 'still', storyboard: '', view: 'time', at: 9.5 * 3600 })
     // On a video preset the same request is the caller's mistake.
-    expect(await planRefused('portfolio-mp4', { storyboard: [first], view: 'time' })).toEqual({
-      code: PARAMS,
-      kind: 'params',
-      message: "view and at go on a list's first beat (storyboard[0]), not beside the list",
-    })
-  })
-
-  it('refuses a list the engine refuses, naming the beat and the field', async () => {
-    const refused = (
-      storyboard: unknown[],
-      extra: Record<string, unknown> = {},
-    ): Promise<unknown> =>
-      ask('export.plan', {
-        key: 'la-metro-rail',
-        preset: 'portfolio-mp4',
-        options: { storyboard, ...extra },
-      })
-    const first = { secs: 2, view: 'map', at: '08:00' }
-    await expect(refused([first], { view: 'time' })).rejects.toThrow(
-      /view and at go on a list's first beat \(storyboard\[0\]\), not beside the list/,
+    expect(await planRefused('portfolio-mp4', { storyboard: [first], view: 'time' })).toMatchObject(
+      { code: PARAMS, kind: 'params' },
     )
-    await expect(refused([])).rejects.toThrow(/storyboard holds no beats: a list holds 1 to 16/)
-    await expect(refused(Array.from({ length: 17 }, () => first))).rejects.toThrow(
-      /storyboard\[16\] is one beat too many/,
-    )
-    await expect(refused([{ secs: 2, at: '08:00' }])).rejects.toThrow(
-      /storyboard\[0\]\.view is missing/,
-    )
-    await expect(refused([{ secs: 2, view: 'map' }])).rejects.toThrow(
-      /storyboard\[0\]\.at is missing/,
-    )
-    await expect(refused([first, { secs: 31 }])).rejects.toThrow(
-      /storyboard\[1\]\.secs must be seconds, from 0\.5 to 30/,
-    )
-    await expect(refused([first, { secs: 1, view: 'sideways' }])).rejects.toThrow(
-      /storyboard\[1\]\.view must be one of geographic, map, linear, time, or null/,
-    )
-    await expect(refused([{ ...first, tween: 1 }])).rejects.toThrow(
-      /storyboard\[0\]\.tween must be 0/,
-    )
-    await expect(refused([first, { secs: 1, colour: 'red' }])).rejects.toThrow(
-      /storyboard\[1\] does not take colour/,
-    )
-    await expect(
-      refused([first, ...Array.from({ length: 3 }, () => ({ secs: 30 }))]),
-    ).rejects.toThrow(/past the 90 seconds a list may last/)
   })
 
   it('answers the preset table and the storyboard table, a beat with every field as before', async () => {
@@ -1201,7 +1079,8 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(sent?.params).toMatchObject({ style: params.style, lines: params.lines })
   })
 
-  it('writes a person’s own alt text into the sidecar, trimmed, and refuses a blank or overlong one', async () => {
+  // A blank or overlong one is refused, in the conformance table's words.
+  it('writes a person’s own alt text into the sidecar, trimmed', async () => {
     const planned = await planFor('instagram-post')
     mkdirSync(join(home, 'shots'), { recursive: true })
     const source = join(home, 'shots', '000000.png')
@@ -1221,12 +1100,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     )
     expect((await encode({ alt: '  Two lines meet at Bravo.\n' })).sidecar.alt).toBe(
       'Two lines meet at Bravo.',
-    )
-    const refused = (alt: string): Promise<unknown> =>
-      ask('export.encode', { plan: planned, source, dest, provenance: { alt } })
-    await expect(refused('  \n ')).rejects.toThrow(/provenance\.alt is empty; omit it instead/)
-    await expect(refused('x'.repeat(1001))).rejects.toThrow(
-      /provenance\.alt is 1,001 characters; it may be at most 1,000/,
     )
   })
 
@@ -1314,33 +1187,9 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     ])
   })
 
-  it('refuses a tuning as the engine’s handler does, before any tool starts, as a params error', async () => {
-    // Mutation: the stand-in's range check dropped - 600 is then laid out.
-    const refused = (tuning: unknown): Promise<Refusal> =>
-      refusal(ask('graph.build', { key: 'la-metro-rail', tuning }))
-    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
-    expect(await refused({ merge_distance: 600 })).toEqual(
-      params('tuning.merge_distance must be from 5 to 500, in metres'),
-    )
-    expect(await refused({ grid_size: 24 })).toEqual(
-      params(
-        'tuning.grid_size must be from 25 to 400, as a percentage of the distance between adjacent stations',
-      ),
-    )
-    expect(await refused({ penalties: { deg180: 10.5 } })).toEqual(
-      params('tuning.penalties.deg180 must be from 0 to 10, as a cost without a unit'),
-    )
-    expect(await refused({ grid: 'quadtree' })).toEqual(
-      params('tuning.grid must be one of octilinear, ortholinear, orthoradial, hexalinear'),
-    )
-    expect(await refused({ slider: 3 })).toEqual(params('tuning does not take slider'))
-    expect(await refused({ penalties: { deg30: 1 } })).toEqual(
-      params('tuning.penalties does not take deg30'),
-    )
-    expect(await refused(null)).toEqual(
-      params("tuning must be an object of LOOM's own settings, or left out"),
-    )
-    // The description refuses each of them too, so no test can send one.
+  // The stand-in refuses a tuning the engine's handler refuses, before any
+  // tool starts, in its words: the conformance table holds each case.
+  it('has the description refuse a tuning the engine refuses, so no test can send one', () => {
     for (const tuning of [{ merge_distance: 600 }, { grid: 'quadtree' }, { slider: 3 }, null])
       expect(
         paramsProblems('graph.build', { key: 'la-metro-rail', tuning }),
@@ -1397,10 +1246,9 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
         },
       },
     ])
-    expect(await refusal(ask('style.presets', { name: 'beck' }))).toEqual({
+    expect(await refusal(ask('style.presets', { name: 'beck' }))).toMatchObject({
       code: PARAMS,
       kind: 'params',
-      message: 'style.presets takes no parameters',
     })
   })
 
@@ -1430,50 +1278,21 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(sent?.params).toMatchObject({ style: params.style, dot_radius: 8, trail: 1.5 })
   })
 
-  it('refuses a marker, a face, a train number or a field the style does not take, as the engine’s handler does', async () => {
-    // Mutation: the stand-in takes any style - a train number sent inside
-    // `style` is then drawn here and refused by the engine.
+  // A marker, a face, a train number or a field the style does not take is
+  // refused as the engine's handler refuses it, in the conformance table's
+  // words; what is held here is what the stand-in takes, and that the
+  // description refuses what the schema can hold.
+  it('takes a look’s name with a face, and has the description refuse the shapes the schema can hold', async () => {
     const layout = await layoutOf()
-    const refused = (extra: Record<string, unknown>): Promise<Refusal> =>
-      refusal(ask('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }))
-    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
-    const cases: [Record<string, unknown>, string][] = [
-      [
-        { style: { station_shape: 'triangle' } },
-        'style.station_shape must be circle, tick or square',
-      ],
-      [
-        { style: { interchange_shape: 'tick' } },
-        'style.interchange_shape must be circle or square',
-      ],
-      [
-        { style: { label_font: 'comic-sans' } },
-        'style.label_font must be system, inter or atkinson-hyperlegible-next',
-      ],
-      [{ style: { dot_radius: 8 } }, 'style does not take dot_radius'],
-      [{ dot_radius: 13 }, "dot_radius must be from 2 to 12, in SVG user units at the map's width"],
-      [{ trail: 3.5 }, 'trail must be from 0 to 3, in seconds of playback'],
-      [{ trail: '1' }, 'trail must be from 0 to 3, in seconds of playback'],
-      [{ style: { background: '#ffffff\n' } }, 'style.background must be a colour written #rrggbb'],
-      [
-        { style: { line_width: 30 } },
-        "style.line_width must be from 1 to 24, in SVG user units at the map's width",
-      ],
-      [
-        { style: { station_radius: 8 } },
-        'style.interchange_radius (6) must not be below style.station_radius (8); a field left out counts as its default, so send both',
-      ],
-      [
-        { style: { preset: 'beck', line_width: 6 } },
-        'style.preset cannot be sent with the fields it resolves to; send one or the other',
-      ],
-      [
-        { style: { preset: 'sketch' } },
-        'style.preset must be beck, blueprint or paper; style.presets describes each',
-      ],
+    const cases: Record<string, unknown>[] = [
+      { style: { station_shape: 'triangle' } },
+      { style: { interchange_shape: 'tick' } },
+      { style: { label_font: 'comic-sans' } },
+      { style: { dot_radius: 8 } },
+      { dot_radius: 13 },
+      { trail: 3.5 },
+      { trail: '1' },
     ]
-    for (const [extra, message] of cases)
-      expect(await refused(extra), JSON.stringify(extra)).toEqual(params(message))
     // A look's name alone, with or without a face, is the engine's to take.
     expect(
       await ask('map.build', {
@@ -1484,7 +1303,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
       }),
     ).toBeTruthy()
     // The description refuses the shapes the schema can hold, so no test can send one.
-    for (const [extra] of cases.slice(0, 7))
+    for (const extra of cases)
       expect(
         paramsProblems('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }),
         JSON.stringify(extra),
@@ -1496,20 +1315,9 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
   // The app leaves `style` and `lines` out and never sends a null, so the
   // stand-in refusing one is what keeps a change that began sending it from
   // passing here and failing against the engine (app issue 471).
-  it('refuses a null style and a null lines, which the engine takes no more for the field left out', async () => {
-    // Mutation: style_problem and lines_problem return None for a null (the
-    // v0.18.0 stand-in's `if style is None: return None`) - the null is then
-    // drawn here and refused by the engine.
+  // The stand-in's refusal of each null is the conformance table's.
+  it('has the description refuse a null style and a null lines, and takes both left out', async () => {
     const layout = await layoutOf()
-    const refused = (extra: Record<string, unknown>): Promise<Refusal> =>
-      refusal(ask('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', ...extra }))
-    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
-    expect(await refused({ style: null })).toEqual(params('style must be an object'))
-    expect(await refused({ lines: null })).toEqual(
-      params(
-        "lines must be an object of line label to the line's name, hidden, width, casing and dash",
-      ),
-    )
     // The description refuses a null in both too, so no test can send one by mistake.
     for (const extra of [{ style: null }, { lines: null }])
       expect(
@@ -1570,86 +1378,41 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
     expect(readFileSync(plain.files.html, 'utf8')).toBe('{}')
   })
 
-  it('refuses a line’s options as the engine’s handler does, before anything is drawn', async () => {
-    // Mutation: the stand-in takes any `lines` - a width of 2 would then be
-    // drawn here and refused by the engine.
-    const layout = await layoutOf()
-    const refused = (lines: unknown): Promise<Refusal> =>
-      refusal(ask('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', lines }))
-    const params = (message: string): Refusal => ({ code: PARAMS, kind: 'params', message })
-    const cases: [unknown, string][] = [
-      [
-        ['A'],
-        "lines must be an object of line label to the line's name, hidden, width, casing and dash",
-      ],
-      [{ A: 7 }, "lines['A'] must be an object of name, hidden, width, casing and dash"],
-      [{ A: { name: '' } }, "lines['A'].name must be from 1 to 40 characters with no line break"],
-      [
-        { A: { name: 'x'.repeat(41) } },
-        "lines['A'].name must be from 1 to 40 characters with no line break",
-      ],
-      [
-        { A: { name: 'two\u2028lines' } },
-        "lines['A'].name must be from 1 to 40 characters with no line break",
-      ],
-      [{ A: { hidden: 'yes' } }, "lines['A'].hidden must be true or false"],
-      [
-        { A: { width: 2 } },
-        "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width",
-      ],
-      [
-        { A: { width: true } },
-        "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width",
-      ],
-      [{ A: { casing: 0.5 } }, "lines['A'].casing must be an object of width and color"],
-      [
-        { A: { casing: { width: 0.5, color: '#ffffff', dash: 1 } } },
-        "lines['A'].casing must be an object of width and color",
-      ],
-      [{ A: { casing: { width: 0.5 } } }, "lines['A'].casing must have both width and color"],
-      [
-        { A: { casing: { width: 1.5, color: '#ffffff' } } },
-        "lines['A'].casing.width must be from 0 to 1, as a multiple of line_width on each side",
-      ],
-      [
-        { A: { casing: { width: 0.5, color: 'white' } } },
-        "lines['A'].casing.color must be a colour written #rrggbb",
-      ],
-      [{ A: { dash: 'wavy' } }, "lines['A'].dash must be solid, dashed or dotted"],
-      [{ A: { colour: '#ff0000', alias: 'x' } }, "lines['A'] does not take alias, colour"],
-      [
-        { "it's": { width: 2 } },
-        `lines["it's"].width must be from 0.75 to 1.5, as a multiple of line_width`,
-      ],
+  // A line's options are refused as the engine's handler refuses them,
+  // before anything is drawn, in the conformance table's words.
+  it('has the description refuse a line’s options the engine refuses, so no test can send one', () => {
+    const layout = 'a'.repeat(64)
+    const cases: unknown[] = [
+      ['A'],
+      { A: 7 },
+      { A: { name: '' } },
+      { A: { name: 'x'.repeat(41) } },
+      { A: { name: 'two\u2028lines' } },
+      { A: { hidden: 'yes' } },
+      { A: { width: 2 } },
+      { A: { width: true } },
+      { A: { casing: 0.5 } },
+      { A: { casing: { width: 0.5, color: '#ffffff', dash: 1 } } },
+      { A: { casing: { width: 0.5 } } },
+      { A: { casing: { width: 1.5, color: '#ffffff' } } },
+      { A: { casing: { width: 0.5, color: 'white' } } },
+      { A: { dash: 'wavy' } },
+      { A: { colour: '#ff0000', alias: 'x' } },
+      { "it's": { width: 2 } },
     ]
-    for (const [lines, message] of cases)
-      expect(await refused(lines), JSON.stringify(lines)).toEqual(params(message))
     // The description refuses every one of them too, so no test can send one.
-    for (const [lines] of cases)
+    for (const lines of cases)
       expect(
         paramsProblems('map.build', { key: 'la-metro-rail', layout, date: '2026-06-16', lines }),
         JSON.stringify(lines),
       ).not.toEqual([])
   })
 
-  it('refuses a map whose every line is hidden, with the feed’s kind and the engine’s sentence', async () => {
+  // A map whose every line is hidden is refused with the feed's kind, in the
+  // conformance table's words (a stand-in-only row, on a stored layout).
+  it('refuses a map whose every line is hidden on a narrower layout too', async () => {
     // Mutation: the stand-in draws a map with no line - the app's own
     // refusal would then have nothing behind it to stand in for.
-    const layout = await layoutOf()
-    expect(
-      await refusal(
-        ask('map.build', {
-          key: 'la-metro-rail',
-          layout,
-          date: '2026-06-16',
-          lines: { A: { hidden: true }, B: { hidden: true } },
-        }),
-      ),
-    ).toEqual({
-      code: -32000,
-      kind: 'feed',
-      message: 'la-metro-rail: every line on this map is hidden; show at least one line to draw it',
-    })
     // A narrower layout carries A alone, so hiding A is every line there.
     const tram = await layoutOf({ mode: 'tram' })
     expect(
@@ -1860,9 +1623,8 @@ describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, (
     }
     throw new Error('the stand-in drew a stage the engine refuses')
   }
-  const notYetSentence = (key: string, layout: string, stage: string): string =>
-    `'${key}' is still being laid out under layout ${layout.slice(0, 8)}, and the build has ` +
-    `not reached its ${stage} stage yet; ask again when job/progress reports it`
+  // The sentence is the conformance table's, which holds the stand-in-only rows of it.
+  const notYetSentence = notYet
 
   it('draws a stage the build has reported, and refuses one it has not in the engine’s shape', async () => {
     const build = sidecar.request(
@@ -1893,8 +1655,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, (
       const dated = await refused(ask({ ...params, stage: 'gtfs2graph', date: '2026-06-16' }))
       expect(dated.data).toMatchObject({ stage: 'octi', building: true })
       expect(dated.message).toBe(
-        `${notYetSentence('la-metro-rail', layout, 'octi')}; the minutes of a date are read ` +
-          'from the octi stage, so leave date out to draw gtfs2graph now',
+        notYetSentence('la-metro-rail', layout, 'octi') + minutesWait('octi', 'gtfs2graph'),
       )
 
       // loom itself has not been reached either.
@@ -2439,24 +2200,6 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s opening${WHY}`, () => 
     return answer
   }
 
-  const refusedWith = async (storyboard: unknown[]): Promise<string> => {
-    try {
-      await ask('export.plan', {
-        key: 'la-metro-rail',
-        preset: 'linkedin-video',
-        options: { storyboard },
-      })
-    } catch (error) {
-      if (error instanceof EngineError) {
-        expect(error.code, error.message).toBe(-32602)
-        expect(error.data?.kind).toBe('params')
-        return error.message
-      }
-      throw error
-    }
-    throw new Error('the stand-in planned a list the engine refuses')
-  }
-
   const map = { secs: 2, view: 'map', at: '08:00' }
 
   it('writes a card and a draw-in into the plan’s beats only where true', async () => {
@@ -2474,52 +2217,8 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s opening${WHY}`, () => 
     expect(answer.beats[2]).not.toHaveProperty('card')
   })
 
-  it('refuses what the engine’s authored_beats refuses, in its sentences', async () => {
-    expect(await refusedWith([{ ...map, card: 'yes' }])).toBe(
-      'storyboard[0].card must be true or false',
-    )
-    expect(await refusedWith([{ ...map, secs: 0.5, card: true }])).toBe(
-      'storyboard[0].secs must be at least 1 second on a title card',
-    )
-    expect(await refusedWith([{ ...map, draw_in: 1 }])).toBe(
-      'storyboard[0].draw_in must be true or false',
-    )
-    expect(await refusedWith([{ ...map, secs: 1.5, draw_in: true }])).toBe(
-      'storyboard[0].secs must be at least 2 seconds on a draw-in',
-    )
-    expect(
-      await refusedWith([
-        { ...map, draw_in: true },
-        { secs: 2, draw_in: true },
-      ]),
-    ).toBe(
-      'storyboard[1].draw_in is a second draw-in: a storyboard draws the network in once, and storyboard[0] does',
-    )
-    expect(await refusedWith([{ ...map, sweep: true, hours: 1, draw_in: true }])).toBe(
-      'storyboard[0].sweep must be false on a draw-in: the clock holds while the network draws in',
-    )
-    expect(await refusedWith([{ ...map, view: 'linear', draw_in: true }])).toBe(
-      'storyboard[0].view must be geographic or map on a draw-in, not linear',
-    )
-    expect(
-      await refusedWith([
-        { ...map, view: 'time' },
-        { secs: 2, draw_in: true },
-      ]),
-    ).toBe(
-      'storyboard[1].draw_in is on the time view, which it keeps from the beat before: a draw-in is on the geographic or map view',
-    )
-    expect(
-      await refusedWith([
-        map,
-        { secs: 2, view: 'linear' },
-        { secs: 2, view: 'map', draw_in: true },
-      ]),
-    ).toBe(
-      'storyboard[1].view must be geographic or map: the network is undrawn until the draw-in at storyboard[2], and the linear view shows it whole',
-    )
-  })
-
+  // What authored_beats refuses of a card or a draw-in, and in which words,
+  // is the conformance table's.
   it('notes a title card too short for its words, and is silent for one long enough', async () => {
     // Los Angeles, Metro Rail, Tuesday 16 June 2026 and six words of caption:
     // fourteen words, 4.2 seconds of reading.
@@ -2564,7 +2263,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s opening${WHY}`, () => 
     const bad = { ...answer, beats: [{ ...answer.beats[0], card: 'yes' }] }
     await expect(
       ask('export.encode', { plan: bad, source: frames, dest: join(home, 'exports', 'bad.gif') }),
-    ).rejects.toMatchObject({ message: 'plan.beats[0] has a card that is not true or false' })
+    ).rejects.toMatchObject({ code: -32602, data: { kind: 'params' } })
   })
 })
 
@@ -2855,13 +2554,10 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
       rejection(sidecar.request('export.encode', { plan, ...paths }, { deadlineMs: 5_000 }).result)
     const noDest = await asked({ source })
     expect(noDest.code).toBe(-32602)
-    expect(noDest.data).toMatchObject({ kind: 'params', hint: 'dest must be an absolute path' })
+    expect(noDest.data).toMatchObject({ kind: 'params' })
     const relative = await asked({ source: 'shots/000000.png', dest })
     expect(relative.code).toBe(-32602)
-    expect(relative.data).toMatchObject({
-      kind: 'params',
-      hint: 'source must be an absolute path',
-    })
+    expect(relative.data).toMatchObject({ kind: 'params' })
     expect(existsSync(dest), 'nothing was written').toBe(false)
   })
 
@@ -2869,14 +2565,13 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
     // Mutation: the check removed - the still is then copied over itself.
     const { sidecar, home } = await standIn({ encode_delay_ms: 1 })
     const { plan, source } = await still(sidecar, home)
-    const sentence =
-      'dest must not be the source, or put its sidecar or a .part file on it: the source is read and never written to'
+    // Its sentence is the conformance table's.
     // The source itself as the destination.
     const itself = await rejection(
       sidecar.request('export.encode', { plan, source, dest: source }).result,
     )
     expect(itself.code).toBe(-32602)
-    expect(itself.data).toMatchObject({ kind: 'params', hint: sentence })
+    expect(itself.data).toMatchObject({ kind: 'params' })
     // A source that is the .part the destination would be written to.
     const shotPart = join(home, 'shots', 'x.png.part')
     writeFileSync(shotPart, 'a still')
@@ -2888,7 +2583,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
       }).result,
     )
     expect(beside.code).toBe(-32602)
-    expect(beside.data).toMatchObject({ kind: 'params', hint: sentence })
+    expect(beside.data).toMatchObject({ kind: 'params' })
     expect(readFileSync(source, 'utf8'), 'the source is as it was').toBe('a still')
     expect(readFileSync(shotPart, 'utf8')).toBe('a still')
   })

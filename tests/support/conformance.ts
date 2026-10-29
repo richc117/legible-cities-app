@@ -1,6 +1,7 @@
-// The conformance table (spec 038, User Story 2, FR-007): every refusal the
-// engine can be made to give without the network, a real LOOM or a long run,
-// as the request and the answer, each sentence written here once. Two suites
+// The conformance table (spec 038, User Story 2, FR-007): the refusals the
+// engine gives without the network, a real LOOM or a long run, as the
+// request and the answer, each sentence written here once; the ones it can
+// give so and that are not here yet are named at the end (`NOT_HELD`). Two suites
 // read it: `tests/unit/stand-in-params.test.ts` asks the stand-in engine
 // (`tests/fake-engine/schematic/serve.py`) on every pull request, and
 // `tests/unit/conformance-real.test.ts` asks the pinned engine in the
@@ -30,12 +31,15 @@
 // alone, and says why (`standInOnly`); its state is a `Setup`, which the
 // stand-in's suite makes before it asks. `UNREACHED` names each kind of error
 // the protocol has that no row holds, and why.
+//
+// The sentences of these refusals are spelled here and nowhere else in the
+// unit suite: a test of the stand-in that needs one imports it from here.
 
 import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { gtfsZip } from './gtfs-zip'
+import { endRecordOnly, gtfsZip } from './gtfs-zip'
 import type { Reply } from './raw-server'
 
 // ------------------------------------------------------------- the row
@@ -48,7 +52,7 @@ export interface Refusal {
 }
 
 /** The state a stand-in-only row needs, made before it is asked. */
-export type Setup = 'building'
+export type Setup = 'building' | 'stored'
 
 export interface Row {
   method: string
@@ -135,6 +139,11 @@ const ZIPS = {
   noStopTimes: 'no-stop-times.zip',
   noCalendar: 'no-calendar.zip',
   whole: 'whole.zip',
+  manyFiles: 'many-files.zip',
+  longList: 'long-list.zip',
+  bzip2: 'bzip2.zip',
+  hugeTable: 'huge-table.zip',
+  hugeTogether: 'huge-together.zip',
 }
 
 /** The files the `feeds.add` rows read; `missing.zip` is the one never written. */
@@ -144,6 +153,17 @@ export function prepareFiles(): void {
   gtfsZip(join(HERE, ZIPS.noStopTimes), ['stop_times'])
   gtfsZip(join(HERE, ZIPS.noCalendar), ['calendar'])
   gtfsZip(join(HERE, ZIPS.whole))
+  // Zips whose headers claim what the engine refuses to read (its issue 81),
+  // a few hundred bytes each: more files than a feed has, a list of them
+  // longer than a feed's, a table compressed with bzip2 (method 12), a table
+  // that unpacks past a gigabyte, and three that unpack past two together.
+  endRecordOnly(join(HERE, ZIPS.manyFiles), 10_001, 0)
+  endRecordOnly(join(HERE, ZIPS.longList), 0, 10_460_001)
+  gtfsZip(join(HERE, ZIPS.bzip2), [], { method: { stops: 12 } })
+  gtfsZip(join(HERE, ZIPS.hugeTable), [], { size: { stop_times: 1_000_000_001 } })
+  gtfsZip(join(HERE, ZIPS.hugeTogether), [], {
+    size: { stops: 700_000_000, trips: 700_000_000, stop_times: 700_000_000 },
+  })
 }
 
 export function removeFiles(): void {
@@ -178,6 +198,27 @@ const PLAN_SAYS = 'plan must be the object export.plan answered with'
 const FILENAME_SAYS = 'plan.filename must be the file name export.plan answered with'
 const NOTES_SAYS = 'plan.notes must be a list of strings'
 const notOnTheCalendar = (name: string): string => `${name}: 2026-02-30 is not a calendar day`
+const MERGE_DISTANCE_SAYS = 'tuning.merge_distance must be from 5 to 500, in metres'
+const GRID_SAYS = 'tuning.grid must be one of octilinear, ortholinear, orthoradial, hexalinear'
+const LINE_WIDTH_SAYS =
+  "style.line_width must be from 1 to 24, in SVG user units at the map's width"
+const STATION_SHAPE_SAYS = 'style.station_shape must be circle, tick or square'
+const LABEL_FONT_SAYS = 'style.label_font must be system, inter or atkinson-hyperlegible-next'
+const DOT_RADIUS_SAYS = "dot_radius must be from 2 to 12, in SVG user units at the map's width"
+const TRAIL_SAYS = 'trail must be from 0 to 3, in seconds of playback'
+const MAP_LINES_SAYS =
+  "lines must be an object of line label to the line's name, hidden, width, casing and dash"
+const LINE_SAYS = "lines['A'] must be an object of name, hidden, width, casing and dash"
+const LINE_NAME_SAYS = "lines['A'].name must be from 1 to 40 characters with no line break"
+const LINE_HIDDEN_SAYS = "lines['A'].hidden must be true or false"
+const LINE_STROKE_SAYS = "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width"
+const LINE_CASING_SAYS = "lines['A'].casing must be an object of width and color"
+const LINE_DASH_SAYS = "lines['A'].dash must be solid, dashed or dotted"
+const DEST_SAYS =
+  'dest must not be the source, or put its sidecar or a .part file on it: the source is read and never written to'
+const NO_BEATS_SAYS = 'storyboard holds no beats: a list holds 1 to 16'
+const NO_VIEW_SAYS = 'storyboard[0].view is missing: the first beat names the view frame 0 is in'
+const CAPTION_SAYS = 'caption must be text of 1 to 80 characters on one line'
 
 // -- the methods that take no parameters (serve._no_params)
 for (const method of [
@@ -254,14 +295,9 @@ for (const method of [
     'graph.build',
     'tuning.merge_distance: null',
     { ...base, tuning: { merge_distance: null } },
-    'tuning.merge_distance must be from 5 to 500, in metres',
+    MERGE_DISTANCE_SAYS,
   )
-  refuses(
-    'graph.build',
-    'tuning.grid: null',
-    { ...base, tuning: { grid: null } },
-    'tuning.grid must be one of octilinear, ortholinear, orthoradial, hexalinear',
-  )
+  refuses('graph.build', 'tuning.grid: null', { ...base, tuning: { grid: null } }, GRID_SAYS)
   refuses(
     'graph.build',
     'tuning.penalties: null',
@@ -279,6 +315,26 @@ for (const method of [
     'a member it does not take',
     { ...base, bogus: 1 },
     'graph.build does not take bogus',
+  )
+  const tuned = (what: string, tuning: unknown, says: string): void =>
+    refuses('graph.build', `tuning: ${what}`, { ...base, tuning }, says)
+  tuned('a merge distance past its range', { merge_distance: 600 }, MERGE_DISTANCE_SAYS)
+  tuned(
+    'a grid size under its range',
+    { grid_size: 24 },
+    'tuning.grid_size must be from 25 to 400, as a percentage of the distance between adjacent stations',
+  )
+  tuned(
+    'a penalty past its range',
+    { penalties: { deg180: 10.5 } },
+    'tuning.penalties.deg180 must be from 0 to 10, as a cost without a unit',
+  )
+  tuned('a grid LOOM does not draw', { grid: 'quadtree' }, GRID_SAYS)
+  tuned('a setting LOOM does not have', { slider: 3 }, 'tuning does not take slider')
+  tuned(
+    'a penalty LOOM does not have',
+    { penalties: { deg30: 1 } },
+    'tuning.penalties does not take deg30',
   )
   refusesRaw(
     'graph.build',
@@ -344,79 +400,147 @@ for (const method of [
     'map.build',
     'style.line_width: null',
     { ...base, style: { line_width: null } },
-    "style.line_width must be from 1 to 24, in SVG user units at the map's width",
+    LINE_WIDTH_SAYS,
   )
   refuses(
     'map.build',
     'style.station_shape: null',
     { ...base, style: { station_shape: null } },
-    'style.station_shape must be circle, tick or square',
+    STATION_SHAPE_SAYS,
   )
   refuses(
     'map.build',
     'style.label_font: null',
     { ...base, style: { label_font: null } },
-    'style.label_font must be system, inter or atkinson-hyperlegible-next',
+    LABEL_FONT_SAYS,
   )
-  refuses(
-    'map.build',
-    'dot_radius: null',
-    { ...base, dot_radius: null },
-    "dot_radius must be from 2 to 12, in SVG user units at the map's width",
-  )
-  refuses(
-    'map.build',
-    'trail: null',
-    { ...base, trail: null },
-    'trail must be from 0 to 3, in seconds of playback',
-  )
-  refuses(
-    'map.build',
-    'lines: null',
-    { ...base, lines: null },
-    "lines must be an object of line label to the line's name, hidden, width, casing and dash",
-  )
-  refuses(
-    'map.build',
-    'lines.A: null',
-    { ...base, lines: { A: null } },
-    "lines['A'] must be an object of name, hidden, width, casing and dash",
-  )
+  refuses('map.build', 'dot_radius: null', { ...base, dot_radius: null }, DOT_RADIUS_SAYS)
+  refuses('map.build', 'trail: null', { ...base, trail: null }, TRAIL_SAYS)
+  refuses('map.build', 'lines: null', { ...base, lines: null }, MAP_LINES_SAYS)
+  refuses('map.build', 'lines.A: null', { ...base, lines: { A: null } }, LINE_SAYS)
   refuses(
     'map.build',
     'lines.A.name: null',
     { ...base, lines: { A: { name: null } } },
-    "lines['A'].name must be from 1 to 40 characters with no line break",
+    LINE_NAME_SAYS,
   )
   refuses(
     'map.build',
     'lines.A.hidden: null',
     { ...base, lines: { A: { hidden: null } } },
-    "lines['A'].hidden must be true or false",
+    LINE_HIDDEN_SAYS,
   )
   refuses(
     'map.build',
     'lines.A.width: null',
     { ...base, lines: { A: { width: null } } },
-    "lines['A'].width must be from 0.75 to 1.5, as a multiple of line_width",
+    LINE_STROKE_SAYS,
   )
   refuses(
     'map.build',
     'lines.A.casing: null',
     { ...base, lines: { A: { casing: null } } },
-    "lines['A'].casing must be an object of width and color",
+    LINE_CASING_SAYS,
   )
   refuses(
     'map.build',
     'lines.A.dash: null',
     { ...base, lines: { A: { dash: null } } },
-    "lines['A'].dash must be solid, dashed or dotted",
+    LINE_DASH_SAYS,
   )
   refuses(
     'map.build',
     'a member it does not take',
     { ...base, bogus: 1 },
     'map.build does not take bogus',
+  )
+  const styled = (what: string, extra: Params, says: string): void =>
+    refuses('map.build', what, { ...base, ...extra }, says)
+  styled(
+    'style.station_shape: a shape it lacks',
+    { style: { station_shape: 'triangle' } },
+    STATION_SHAPE_SAYS,
+  )
+  styled(
+    'style.interchange_shape: a tick',
+    { style: { interchange_shape: 'tick' } },
+    'style.interchange_shape must be circle or square',
+  )
+  styled(
+    'style.label_font: a face it lacks',
+    { style: { label_font: 'comic-sans' } },
+    LABEL_FONT_SAYS,
+  )
+  styled(
+    'style.dot_radius: a train number in the style',
+    { style: { dot_radius: 8 } },
+    'style does not take dot_radius',
+  )
+  styled('dot_radius: past its range', { dot_radius: 13 }, DOT_RADIUS_SAYS)
+  styled('trail: past its range', { trail: 3.5 }, TRAIL_SAYS)
+  styled('trail: a text', { trail: '1' }, TRAIL_SAYS)
+  styled(
+    'style.background: a colour with a line break',
+    { style: { background: '#ffffff\n' } },
+    `style.background ${COLOUR}`,
+  )
+  styled('style.line_width: past its range', { style: { line_width: 30 } }, LINE_WIDTH_SAYS)
+  styled(
+    'style.station_radius: above the interchange radius it leaves at its default',
+    { style: { station_radius: 8 } },
+    'style.interchange_radius (6) must not be below style.station_radius (8); a field left out counts as its default, so send both',
+  )
+  styled(
+    'style.preset: beside a field it resolves',
+    { style: { preset: 'beck', line_width: 6 } },
+    'style.preset cannot be sent with the fields it resolves to; send one or the other',
+  )
+  styled(
+    'style.preset: a look it lacks',
+    { style: { preset: 'sketch' } },
+    'style.preset must be beck, blueprint or paper; style.presets describes each',
+  )
+  const lined = (what: string, lines: unknown, says: string): void =>
+    refuses('map.build', `lines: ${what}`, { ...base, lines }, says)
+  lined('a list', ['A'], MAP_LINES_SAYS)
+  lined('a line that is a number', { A: 7 }, LINE_SAYS)
+  lined('an empty name', { A: { name: '' } }, LINE_NAME_SAYS)
+  lined('a name over 40', { A: { name: 'x'.repeat(41) } }, LINE_NAME_SAYS)
+  lined('a name with a line separator', { A: { name: 'two\u2028lines' } }, LINE_NAME_SAYS)
+  lined('hidden: a text', { A: { hidden: 'yes' } }, LINE_HIDDEN_SAYS)
+  lined('a width past its range', { A: { width: 2 } }, LINE_STROKE_SAYS)
+  lined('a width that is true', { A: { width: true } }, LINE_STROKE_SAYS)
+  lined('a casing that is a number', { A: { casing: 0.5 } }, LINE_CASING_SAYS)
+  lined(
+    'a casing with a dash',
+    { A: { casing: { width: 0.5, color: '#ffffff', dash: 1 } } },
+    LINE_CASING_SAYS,
+  )
+  lined(
+    'a casing with no colour',
+    { A: { casing: { width: 0.5 } } },
+    "lines['A'].casing must have both width and color",
+  )
+  lined(
+    'a casing past its range',
+    { A: { casing: { width: 1.5, color: '#ffffff' } } },
+    "lines['A'].casing.width must be from 0 to 1, as a multiple of line_width on each side",
+  )
+  lined(
+    'a casing colour that is a name',
+    { A: { casing: { width: 0.5, color: 'white' } } },
+    `lines['A'].casing.color ${COLOUR}`,
+  )
+  lined('a dash it lacks', { A: { dash: 'wavy' } }, LINE_DASH_SAYS)
+  lined(
+    'two fields it does not take',
+    { A: { colour: '#ff0000', alias: 'x' } },
+    "lines['A'] does not take alias, colour",
+  )
+  lined(
+    'a label with a quote in it',
+    { "it's": { width: 2 } },
+    `lines["it's"].width must be from 0.75 to 1.5, as a multiple of line_width`,
   )
   refusesRaw(
     'map.build',
@@ -539,6 +663,14 @@ for (const method of [
     'date must be the service day as YYYY-MM-DD, or left out for a description without minutes',
   )
   refuses('render.stage', 'date: a number', { ...base, date: 20260616 }, `date ${NOT_A_DAY}`)
+  for (const date of ['tomorrow', '2026-6-16', ''])
+    refuses('render.stage', `date: ${JSON.stringify(date)}`, { ...base, date }, `date ${NOT_A_DAY}`)
+  refuses(
+    'render.stage',
+    'date: not on the calendar',
+    { ...base, date: '2026-02-30' },
+    notOnTheCalendar('date'),
+  )
   refuses(
     'render.stage',
     'a member it does not take',
@@ -626,10 +758,22 @@ for (const method of [
   const tag = 'tag must be a short filename suffix: letters, digits, dot, underscore, hyphen'
   refuses('export.plan', 'options.tag: null', options({ tag: null }), tag)
   refuses('export.plan', 'options.tag: a path', options({ tag: 'a/b' }), tag)
-  const caption = 'caption must be text of 1 to 80 characters on one line'
-  refuses('export.plan', 'options.caption: null', options({ caption: null }), caption)
-  refuses('export.plan', 'options.caption: empty', options({ caption: '' }), caption)
-  refuses('export.plan', 'options.caption: two lines', options({ caption: 'a\nb' }), caption)
+  refuses('export.plan', 'options.caption: null', options({ caption: null }), CAPTION_SAYS)
+  refuses('export.plan', 'options.caption: empty', options({ caption: '' }), CAPTION_SAYS)
+  refuses('export.plan', 'options.caption: two lines', options({ caption: 'a\nb' }), CAPTION_SAYS)
+  refuses(
+    'export.plan',
+    'options.caption: over 80',
+    options({ caption: 'x'.repeat(81) }),
+    CAPTION_SAYS,
+  )
+  refuses(
+    'export.plan',
+    'options.caption: a line separator',
+    options({ caption: 'two\u2028lines' }),
+    CAPTION_SAYS,
+  )
+  refuses('export.plan', 'options.caption: a number', options({ caption: 7 }), CAPTION_SAYS)
   const corner = 'clock_corner must be one of top-left, top-right, bottom-left, bottom-right'
   refuses('export.plan', 'options.clock_corner: null', options({ clock_corner: null }), corner)
   refuses(
@@ -946,7 +1090,13 @@ export const PLAN = {
     'export.encode',
     'dest: the source itself',
     encode({ source: join(HERE, 'same.mp4'), dest: join(HERE, 'same.mp4') }),
-    'dest must not be the source, or put its sidecar or a .part file on it: the source is read and never written to',
+    DEST_SAYS,
+  )
+  refuses(
+    'export.encode',
+    'dest: one whose .part is the source',
+    encode({ source: join(HERE, 'x.png.part'), dest: join(HERE, 'x.png') }),
+    DEST_SAYS,
   )
   refuses(
     'export.encode',
@@ -1049,7 +1199,45 @@ for (const method of [
       { key: KEY, preset: 'instagram-reel', options: { storyboard: beats } },
       says,
     )
-  listed('no beats', [], 'storyboard holds no beats: a list holds 1 to 16')
+  listed('no beats', [], NO_BEATS_SAYS)
+  // Judged whatever the preset: a still, which ignores a good list, refuses a bad one.
+  const still = (what: string, beats: unknown[], says: string): void =>
+    refuses(
+      'export.plan',
+      `options.storyboard on a still: ${what}`,
+      { key: KEY, preset: 'instagram-post', options: { storyboard: beats } },
+      says,
+    )
+  still('no beats', [], NO_BEATS_SAYS)
+  still('a first beat with no view', [{ secs: 2 }], NO_VIEW_SAYS)
+  listed(
+    'a second beat too long',
+    [FIRST, { secs: 31 }],
+    'storyboard[1].secs must be seconds, from 0.5 to 30',
+  )
+  listed(
+    'a second beat on a view the page lacks',
+    [FIRST, { secs: 1, view: 'sideways' }],
+    'storyboard[1].view must be one of geographic, map, linear, time, or null',
+  )
+  listed(
+    'a second beat with a field it does not take',
+    [FIRST, { secs: 1, colour: 'red' }],
+    "storyboard[1] does not take colour; a beat's fields are secs, view, labels, at, speed, sweep, hours, span, tween, card, draw_in",
+  )
+  listed(
+    'a draw-in that keeps the chart from the beat before',
+    [
+      { ...FIRST, view: 'time' },
+      { secs: 2, draw_in: true },
+    ],
+    'storyboard[1].draw_in is on the time view, which it keeps from the beat before: a draw-in is on the geographic or map view',
+  )
+  listed(
+    'the rows on a later beat before the draw-in',
+    [FIRST, { secs: 2, view: 'linear' }, { secs: 2, view: 'map', draw_in: true }],
+    'storyboard[1].view must be geographic or map: the network is undrawn until the draw-in at storyboard[2], and the linear view shows it whole',
+  )
   listed(
     'seventeen beats',
     Array.from({ length: 17 }, () => FIRST),
@@ -1076,11 +1264,7 @@ for (const method of [
     [{ ...FIRST, view: 'globe' }],
     'storyboard[0].view must be one of geographic, map, linear, time, or null',
   )
-  listed(
-    'a first beat with no view',
-    [{ secs: 2, at: '08:00' }],
-    'storyboard[0].view is missing: the first beat names the view frame 0 is in',
-  )
+  listed('a first beat with no view', [{ secs: 2, at: '08:00' }], NO_VIEW_SAYS)
   listed(
     'labels: a text',
     [{ ...FIRST, labels: 'yes' }],
@@ -1247,19 +1431,62 @@ engineRefuses(
   )
   // An address on this machine or its network, refused before a byte is
   // fetched, so it needs no network to be asked.
-  for (const source of [
-    'http://localhost/feed.zip',
-    'http://127.0.0.1:631/',
-    'http://[::1]/feed.zip',
-    'http://10.0.0.5/gtfs.zip',
+  // The address is named as the engine names one a person gave, its query's
+  // values and its fragment hidden, since a link can carry a key.
+  for (const [source, named] of [
+    ['http://localhost/feed.zip', 'http://localhost/feed.zip'],
+    ['http://127.0.0.1:631/', 'http://127.0.0.1:631/'],
+    ['http://[::1]/feed.zip', 'http://[::1]/feed.zip'],
+    ['http://10.0.0.5/gtfs.zip', 'http://10.0.0.5/gtfs.zip'],
+    [
+      'http://localhost:8080/feeds/la.zip?city=la&v=2#top',
+      'http://localhost:8080/feeds/la.zip?city=<redacted>&v=<redacted>#<redacted>',
+    ],
   ])
     engineRefuses(
       'feeds.add',
       `an address that is not public, ${source}`,
       { source },
       'feed',
-      `${source} could not be fetched. Use an address on a public host; a feed cannot be fetched from this machine or its network.`,
+      `${named} could not be fetched. Use an address on a public host; a feed cannot be fetched from this machine or its network.`,
     )
+  const reZip = "re-zip it with only the feed's tables"
+  const narrower = 'use a feed filtered to the operator you need'
+  engineRefuses(
+    'feeds.add',
+    'a zip that claims more files than a feed has',
+    add(ZIPS.manyFiles),
+    'feed',
+    `${ZIPS.manyFiles} holds more than 10,000 files, where a feed has a few dozen; ${reZip}`,
+  )
+  engineRefuses(
+    'feeds.add',
+    "a zip that claims a longer list of files than a feed's",
+    add(ZIPS.longList),
+    'feed',
+    `${ZIPS.longList} lists its files in more than 10.5 MB, where a feed's list is a few kB; ${reZip}`,
+  )
+  engineRefuses(
+    'feeds.add',
+    'a zip with a table compressed with bzip2',
+    add(ZIPS.bzip2),
+    'feed',
+    `${ZIPS.bzip2} compresses stops.txt in a way the engine cannot read a piece at a time; re-zip it with the standard Deflate method`,
+  )
+  engineRefuses(
+    'feeds.add',
+    'a zip with a table that unpacks past a gigabyte',
+    add(ZIPS.hugeTable),
+    'feed',
+    `${ZIPS.hugeTable} is too large to read: stop_times.txt unpacks to more than 1 GB, the most one file in a feed may; ${narrower}`,
+  )
+  engineRefuses(
+    'feeds.add',
+    'a zip whose tables unpack past two gigabytes together',
+    add(ZIPS.hugeTogether),
+    'feed',
+    `${ZIPS.hugeTogether} is too large to read: its files unpack to more than 2 GB together, the most a feed may; ${narrower}`,
+  )
   engineRefuses(
     'feeds.add',
     'a feed under a key a preset has',
@@ -1392,11 +1619,18 @@ export const BUILDING = {
     .update(JSON.stringify({ agency: null, feed: FEED, mode: 'subway' }).replace(/([:,])/g, '$1 '))
     .digest('hex'),
 }
+/**
+ * The not-yet refusal's sentence, for any key, layout and stage: the
+ * stand-in's suite of a held build asks for it with its own layout.
+ */
+export const notYet = (key: string, layout: string, stage: string): string =>
+  `'${key}' is still being laid out under layout ${layout.slice(0, 8)}, and the build has not reached its ${stage} stage yet; ask again when job/progress reports it`
+/** What a dated request adds to it, when the minutes wait on `waited` and not on `stage`. */
+export const minutesWait = (waited: string, stage: string): string =>
+  `; the minutes of a date are read from the ${waited} stage, so leave date out to draw ${stage} now`
 {
   const why =
     'the engine draws from a build in flight only while LOOM lays the layout out, and no suite here has LOOM'
-  const notYet = (stage: string): string =>
-    `'${FEED}' is still being laid out under layout ${BUILDING.layout.slice(0, 8)}, and the build has not reached its ${stage} stage yet; ask again when job/progress reports it`
   const building = (what: string, params: Params, sentence: string): void => {
     rows.push({
       method: 'render.stage',
@@ -1410,14 +1644,49 @@ export const BUILDING = {
   building(
     'a stage the build in flight has not reached',
     { key: FEED, layout: BUILDING.layout, stage: 'octi' },
-    notYet('octi'),
+    notYet(FEED, BUILDING.layout, 'octi'),
   )
   building(
     'a date, whose minutes wait on a stage the build has not reached',
     { key: FEED, layout: BUILDING.layout, stage: 'gtfs2graph', date: '2026-06-16' },
-    `${notYet('octi')}; the minutes of a date are read from the octi stage, so leave date out to draw gtfs2graph now`,
+    notYet(FEED, BUILDING.layout, 'octi') + minutesWait('octi', 'gtfs2graph'),
   )
 }
+
+// -- map.build of a stored layout with every line it carries hidden: the
+// stand-in's alone
+//
+// The engine refuses it once it has read the stored layout, so the layout
+// must be one both sides store under the same id; the engine's only stored
+// layout here is the BART fixture's, a feed the stand-in does not have. The
+// stand-in's suite lays FEED out first (`STORED`), whose layout carries the
+// lines A and B.
+export const STORED = {
+  request: { method: 'graph.build', params: JSON.stringify({ key: FEED }) },
+  layout: createHash('sha256')
+    .update(JSON.stringify({ agency: null, feed: FEED, mode: 'all' }).replace(/([:,])/g, '$1 '))
+    .digest('hex'),
+}
+rows.push({
+  method: 'map.build',
+  what: 'a stored layout with every line it carries hidden',
+  params: text({
+    key: FEED,
+    layout: STORED.layout,
+    date: '2026-06-16',
+    lines: { A: { hidden: true }, B: { hidden: true } },
+  }),
+  expect: {
+    error: {
+      code: ENGINE_CODE,
+      kind: 'feed',
+      sentence: `${FEED}: every line on this map is hidden; show at least one line to draw it`,
+    },
+  },
+  standInOnly:
+    "the engine's one stored layout here is the BART fixture's, and the stand-in has no BART feed to store one under the same id",
+  setup: 'stored',
+})
 
 // -- engine.shutdown, last: refused before it stops anything, and a server it did
 // stop would answer no row after it
@@ -1446,6 +1715,25 @@ export const UNREACHED: Record<string, string> = {
     'the engine failing in a way it did not expect, or failing to start: no request makes either happen ' +
     "on purpose (the stand-in's info_refuses and its fallback -32603 stand in for them)",
 }
+
+/**
+ * Refusals the engine gives with no network, LOOM or long run that no row
+ * holds yet, each with what holding it would take. The table's own claim is
+ * no wider than its rows and this list.
+ */
+export const NOT_HELD: string[] = [
+  'feeds.add from an address the engine cannot fetch for its form, not its host (an unknown ' +
+    "scheme, a malformed host): refused in requests' or urllib3's words through feeds._why, " +
+    'which the stand-in does not have',
+  'a zip whose directory lists more files than its end record says (feeds._opened, after the ' +
+    'parse): the stand-in reads the record and not a second count',
+  'a table that unpacks past what its header says (feeds._Counted): read a piece at a time, so ' +
+    'only a gigabyte of bytes reaches the limit, which is a long run',
+  'a Python whose zipfile lacks the private end-record reader (feeds._unchecked): not one a suite ' +
+    'runs on',
+  "export.encode's source or dest inside the engine's own repository: the stand-in has no " +
+    'repository, and the vendored engine is installed from a wheel',
+]
 
 // --------------------------------------------------------- the comparison
 
