@@ -214,6 +214,69 @@ FEEDS = {
 }
 REQUIRED = ("stops", "routes", "trips", "stop_times")
 
+# The limits engine v0.19.0 (its issue 81) holds a feed's zip to before it
+# reads a table, and the tables it holds to them (`feeds.GTFS_TABLES`; the
+# ones LOOM never reads, `feeds.LOOM_SKIP`, are not judged for their
+# compression), with its sentences (`feeds._too_many` and the rest).
+ZIP_ENTRIES = 10_000
+ZIP_DIRECTORY_BYTES = ZIP_ENTRIES * 46 + 10_000_000
+ZIP_TABLE_BYTES = 1_000_000_000
+ZIP_FEED_BYTES = 2_000_000_000
+GTFS_TABLES = frozenset({
+    "agency", "stops", "routes", "trips", "stop_times", "calendar",
+    "calendar_dates", "fare_attributes", "fare_rules", "shapes", "frequencies",
+    "transfers", "pathways", "levels", "feed_info", "translations",
+    "attributions", "areas", "stop_areas", "networks", "route_networks",
+    "fare_products", "fare_leg_rules", "fare_transfer_rules", "fare_media",
+    "timeframes", "booking_rules", "location_groups", "location_group_stops",
+})
+LOOM_SKIP = frozenset({"pathways", "translations", "attributions"})
+NARROWER = "use a feed filtered to the operator you need"
+
+
+def zip_limits_problem(path: Path, what: str) -> str | None:
+    """The engine's `feeds._opened` and `_check_sizes`, as the refusal they
+    raise, or None: the entries and the directory size the end record
+    claims, read before the directory is parsed; then each table's
+    compression and size as the directory states them, and their sum. Only
+    headers are read, so a zip that claims gigabytes is a few bytes here,
+    as it is to the engine."""
+    import zipfile
+    with path.open("rb") as fh:
+        record = zipfile._EndRecData(fh)
+    if not record:
+        return f"{what} is not a zip file, so it is not a GTFS feed"
+    if record[zipfile._ECD_ENTRIES_TOTAL] > ZIP_ENTRIES:
+        return (f"{what} holds more than {ZIP_ENTRIES:,} files, where a feed has a few dozen; "
+                "re-zip it with only the feed's tables")
+    if record[zipfile._ECD_SIZE] > ZIP_DIRECTORY_BYTES:
+        return (f"{what} lists its files in more than {ZIP_DIRECTORY_BYTES / 1e6:.3g} MB, where "
+                "a feed's list is a few kB; re-zip it with only the feed's tables")
+    try:
+        z = zipfile.ZipFile(path)
+    except zipfile.BadZipFile:
+        return f"{what} is not a zip file, so it is not a GTFS feed"
+    total = 0
+    with z:
+        for info in z.infolist():
+            stem = Path(info.filename).stem
+            if not (info.filename.endswith(".txt") and stem in GTFS_TABLES):
+                continue
+            name = Path(info.filename).name
+            if stem not in LOOM_SKIP and info.compress_type not in (zipfile.ZIP_STORED,
+                                                                   zipfile.ZIP_DEFLATED):
+                return (f"{what} compresses {name} in a way the engine cannot read a piece at "
+                        "a time; re-zip it with the standard Deflate method")
+            if info.file_size > ZIP_TABLE_BYTES:
+                return (f"{what} is too large to read: {name} unpacks to more than "
+                        f"{ZIP_TABLE_BYTES / 1e9:.3g} GB, the most one file in a feed may; "
+                        f"{NARROWER}")
+            total += info.file_size
+    if total > ZIP_FEED_BYTES:
+        return (f"{what} is too large to read: its files unpack to more than "
+                f"{ZIP_FEED_BYTES / 1e9:.3g} GB together, the most a feed may; {NARROWER}")
+    return None
+
 # The engine's export tables at the pinned tag (v0.8.2), restated from
 # `PRESETS` and `STORYBOARDS` in its export.py in the same shape its
 # `preset_table()` and `storyboard_table()` answer. The names are held equal
@@ -588,6 +651,77 @@ def lines_problem(lines) -> str | None:
     return None
 
 
+REDACTED = "<redacted>"
+
+
+def _shown_query(query: str) -> str:
+    """The engine's `feeds._shown_query`: each value replaced, and a part
+    with no name, or with only `=` padding after its first `=`, replaced whole."""
+    parts = re.split(r"([&;])", query)
+    for i in range(0, len(parts), 2):
+        part = parts[i]
+        if not part:
+            continue
+        equals = part.find("=")
+        if equals < 0 or re.fullmatch(r"=+", part[equals + 1:]):
+            parts[i] = REDACTED
+        elif equals < len(part) - 1:
+            parts[i] = part[:equals + 1] + REDACTED
+    return "".join(parts)
+
+
+def shown(url: str) -> str:
+    """An address as the engine's sentences name it (`feeds.shown`): the
+    scheme, the host and its port, the path and the query's names, and the
+    user information, every query value and the fragment a marker, since a
+    person's own address can carry a key."""
+    match = re.match(r"[A-Za-z][A-Za-z0-9+.-]*://", url)
+    scheme = match.group(0) if match else ""
+    rest = url[len(scheme):]
+    fragment = ""
+    at = rest.find("#")
+    if at >= 0:
+        fragment = "#" if at == len(rest) - 1 else f"#{REDACTED}"
+        rest = rest[:at]
+    query = ""
+    at = rest.find("?")
+    if at >= 0:
+        query = "?" + _shown_query(rest[at + 1:])
+        rest = rest[:at]
+    at = rest.find("/")
+    authority, path = (rest[:at], rest[at:]) if at >= 0 else (rest, "")
+    at = authority.rfind("@")
+    if at >= 0:
+        authority = f"{REDACTED}@{authority[at + 1:]}"
+    return scheme + authority + path + query + fragment
+
+
+def local_host(url: str) -> bool:
+    """Whether a feed's address is on this machine or its network, which the
+    engine refuses to fetch from (v0.21.1, `feeds._check_hop`): `localhost`
+    or a name under it, or an IPv4 or IPv6 address written as one that is
+    not a public one. The engine also reads the other spellings of a number
+    (`feeds._numeric_readings`) and, through a proxy, what a name resolves
+    to; the app refuses every such address itself before it asks
+    (`src/main/feeds-ipc.ts`), so the stand-in is not sent one."""
+    import ipaddress
+    from urllib.parse import urlsplit
+    try:
+        host = (urlsplit(url).hostname or "").rstrip(".").lower()
+    except ValueError:
+        return False
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    return (not ip.is_global or ip.is_loopback or ip.is_private or ip.is_link_local
+            or ip.is_unspecified or ip.is_multicast or ip.is_reserved)
+
+
 def _clock(value) -> bool:
     return isinstance(value, str) and CLOCK.fullmatch(value) is not None
 
@@ -791,9 +925,13 @@ def resolve_corner(preset: dict, options: dict, clock: bool) -> tuple[str, str, 
 # `_given`, `_capture_job` and the rest), in the same order, and one place
 # judges a request before any method of the stand-in answers it (`handle`).
 # A stand-in is worth what it refuses (app issue 473);
-# tests/unit/stand-in-params.test.ts holds the table. Left to the engine
-# alone: a feed key no registry has, and a path inside the engine's own
-# repository, which the stand-in has no repository to be in.
+# tests/support/conformance.ts holds the table, which
+# tests/unit/stand-in-params.test.ts asks of the stand-in and
+# tests/unit/conformance-real.test.ts of the engine. A feed key no registry
+# has is not a params refusal: it is asked once the params are judged
+# (`Engine.refuses_unregistered`, the engine's `_registered`). Left to the
+# engine alone: a path inside the engine's own repository, which the
+# stand-in has no repository to be in.
 
 KEY_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -1472,6 +1610,20 @@ class Engine:
                 result = {**result, "cancel_too_late": True}
         write({"jsonrpc": "2.0", "id": msg_id, "result": result})
 
+    def registered(self, key) -> bool:
+        """Whether a key names a feed here: a preset, or one a test added."""
+        return key in FEEDS or key in self.user_feeds()
+
+    def refuses_unregistered(self, msg_id, key) -> bool:
+        """The engine's ``serve._registered``: a key no feed has, refused with
+        kind feed once every param has been judged and before the method does
+        any work, by every method that names a feed (``export.encode`` by its
+        plan's). True when it refused, and the request is answered."""
+        if self.registered(key):
+            return False
+        error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+        return True
+
     def info(self) -> dict:
         return {"engine": self.control.get("version", "0.2.0"),
                 "protocol": self.control.get("protocol", 1),
@@ -1516,6 +1668,8 @@ class Engine:
             self.end_children()
             return False
         if method == "graph.build":
+            if self.refuses_unregistered(msg_id, (message.get("params") or {}).get("key")):
+                return True
             # Inside `replying`, as every threaded request is, so a build that
             # raises is answered and not left running for ever (issue 464).
             threading.Thread(target=self.replying,
@@ -1525,7 +1679,9 @@ class Engine:
         if method == "map.build":
             params = message.get("params") or {}
             layout = params["layout"]
-            if layout not in self.layouts:
+            if self.refuses_unregistered(msg_id, params.get("key")):
+                pass
+            elif layout not in self.layouts:
                 error(msg_id, -32000, f"{params.get('key', 'x')} has no stored layout "
                       f"{layout[:8]}; lay the feed out first (graph.build)", "layout")
             elif self.control.get("map_draws"):
@@ -1544,6 +1700,8 @@ class Engine:
                 error(msg_id, -32000, "the stand-in draws nothing", "engine")
             return True
         if method == "feeds.service":
+            if self.refuses_unregistered(msg_id, (message.get("params") or {}).get("key")):
+                return True
             threading.Thread(target=self.replying,
                              args=(msg_id, self.service, msg_id, message.get("params") or {}),
                              daemon=True).start()
@@ -1551,8 +1709,8 @@ class Engine:
         if method == "feeds.inspect":
             params = message.get("params") or {}
             key = params.get("key")
-            if key not in FEEDS and key not in self.user_feeds():
-                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            if self.refuses_unregistered(msg_id, key):
+                pass
             elif self.control.get("inspect_refuses"):
                 error(msg_id, -32000, self.control["inspect_refuses"], "feed")
             else:
@@ -1571,9 +1729,14 @@ class Engine:
             params = message.get("params") or {}
             layout = params.get("layout")
             stage = params.get("stage")
-            if layout not in self.layouts and layout not in self.building:
-                error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph; "
-                      "lay the feed out first (graph.build)", "layout")
+            if self.refuses_unregistered(msg_id, params.get("key")):
+                pass
+            elif layout not in self.layouts and layout not in self.building:
+                # The engine's `render.stage` refusal (render.py), naming the
+                # layout it looked under.
+                error(msg_id, -32000, f"{params.get('key', 'x')!r} has no stored {stage} graph "
+                      f"under layout {layout[:8]}; lay the feed out first (graph.build)",
+                      "layout")
             elif self.control.get("stage_refuses"):
                 error(msg_id, -32000, self.control["stage_refuses"], "engine")
             else:
@@ -1616,6 +1779,10 @@ class Engine:
             return True
         if method == "export.plan":
             params = message.get("params") or {}
+            # A key no feed has is refused before the plan is judged, as the
+            # engine's handler asks `_registered` before `export.plan`.
+            if self.refuses_unregistered(msg_id, params.get("key")):
+                return True
             problem = self.plan_problem(params)
             if problem is not None:
                 # The shape of the options is the caller's mistake (params,
@@ -1635,6 +1802,9 @@ class Engine:
                 write({"jsonrpc": "2.0", "id": msg_id, "result": self.plan(params)})
             return True
         if method == "export.encode":
+            plan = (message.get("params") or {}).get("plan") or {}
+            if self.refuses_unregistered(msg_id, plan.get("key")):
+                return True
             threading.Thread(target=self.replying,
                              args=(msg_id, self.encode, msg_id, message.get("params") or {}),
                              daemon=True).start()
@@ -2196,8 +2366,7 @@ class Engine:
         if key in FEEDS:
             error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
             return
-        if key not in self.user_feeds():
-            error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+        if self.refuses_unregistered(msg_id, key):
             return
         started = time.monotonic()
         while True:
@@ -2234,8 +2403,7 @@ class Engine:
             if key in FEEDS:
                 error(msg_id, -32000, f"{key!r} is a built-in feed and cannot be removed", "feed")
                 return
-            if key not in users:
-                error(msg_id, -32000, f"{key!r} is not a registered feed", "feed")
+            if self.refuses_unregistered(msg_id, key):
                 return
             del users[key]
             self.write_user_feeds(users)
@@ -2319,6 +2487,13 @@ class Engine:
         staging = folder / ".adding.zip"
         delay = self.control.get("add_delay_ms", 20) / 1000
         if source.startswith(("http://", "https://")):
+            if local_host(source):
+                # Refused before a byte is fetched, as engine v0.21.1 refuses
+                # it (`feeds._download`), naming the address as `shown` does.
+                error(msg_id, -32000, f"{shown(source)} could not be fetched. Use an address on "
+                      "a public host; a feed cannot be fetched from this machine or its network.",
+                      "feed")
+                return
             if self.control.get("add_refuses"):
                 # The engine's own shape (v0.8.3, `serve.classify`): the
                 # sentence as message and hint, and the detail the exception
@@ -2356,6 +2531,11 @@ class Engine:
         if not zipfile.is_zipfile(staging):
             staging.unlink()
             error(msg_id, -32000, f"{what} is not a zip file, so it is not a GTFS feed", "feed")
+            return
+        problem = zip_limits_problem(staging, what)
+        if problem is not None:
+            staging.unlink()
+            error(msg_id, -32000, problem, "feed")
             return
         with zipfile.ZipFile(staging) as z:
             stems = {Path(n).stem for n in z.namelist() if n.endswith(".txt")}

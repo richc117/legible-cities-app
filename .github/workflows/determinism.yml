@@ -413,13 +413,15 @@ jobs:
 
       # The fixture's folder must be the id this engine addresses for BART,
       # or the exports below compare a layout no project could have. Proven
-      # on every run, against the engine this run installed, beside the six
-      # other suites that hold the app to the real engine (spec 038, FR-002):
-      # the protocol, the supervisor, the registry, the layout, the opening
-      # and the generated page. There is no engine checkout here, so each
-      # finds what it needs in a home seeded from the BART fixture, and none
-      # downloads a feed. With the opt-in below a suite that would skip fails
-      # instead, so the summary must read seven files passed, none skipped.
+      # on every run, against the engine this run installed, beside the seven
+      # other suites that hold the app to the real engine (spec 038, FR-002
+      # and FR-007): the protocol, the supervisor, the registry, the layout,
+      # the opening, the generated page and the conformance table
+      # (conformance-real). There is no engine checkout here, so each finds
+      # what it needs in a home seeded from the BART fixture, or needs none,
+      # and none downloads a feed. With the opt-in below a suite that would
+      # skip fails instead, so the summary must read eight files passed, none
+      # skipped.
       - name: Hold the app to the pinned engine, the fixture's layout id included
         run: npx vitest run tests/unit/*-real.test.ts
         env:

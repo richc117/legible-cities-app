@@ -1,0 +1,138 @@
+[
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "        error(msg_id, -32000, f\"{key!r} is not a registered feed\", \"feed\")\n",
+    "replace": "        error(msg_id, -32000, f\"{key!r} is not a known feed\", \"feed\")\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "The registry's refusal in other words: every method's row for a key no feed has expects the engine's sentence."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if self.refuses_unregistered(msg_id, params.get(\"key\")):\n                pass\n            elif layout not in self.layouts:\n",
+    "replace": "            if layout not in self.layouts:\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "map.build no longer asks the registry: a key no feed has is refused as a layout not stored, as the stand-in did before, where the engine says the feed is not registered."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "                      f\"under layout {layout[:8]}; lay the feed out first (graph.build)\",\n",
+    "replace": "                      f\"; lay the feed out first (graph.build)\",\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "render.stage's refusal of a layout not stored loses the layout it names, the sentence the stand-in had until the table held it to the engine's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "                error(msg_id, -32000, f\"{params['preset']} is a vector preset: nothing to \"\n                      \"capture\", \"export\")\n",
+    "replace": "                error(msg_id, -32000, f\"{params['preset']} is a vector preset: nothing to \"\n                      \"capture\", \"params\")\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "The vector preset's refusal with the wrong kind: the row holds the kind as well as the sentence."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            error(msg_id, -32000, f\"{what} is not a zip file, so it is not a GTFS feed\", \"feed\")\n",
+    "replace": "            error(msg_id, -32000, f\"{what} is not a zip file\", \"feed\")\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "feeds.add's refusal of a file that is not a zip, shortened: the row expects the engine's whole sentence."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "        return f\"storyboard holds no beats: a list holds 1 to {MAX_BEATS}\"\n",
+    "replace": "        return f\"storyboard holds no beats: a list holds 1 to {MAX_BEATS} beats\"\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "A params sentence of a storyboard's beats with a word more than the engine's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "               \"error\": {\"code\": -32601, \"message\": f\"Method Not Found: {method}\"}})\n",
+    "replace": "               \"error\": {\"code\": -32601, \"message\": f\"Method not found: {method}\"}})\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "The transport's refusal of a method no engine has, in other capitals than pylsp-jsonrpc's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "            if local_host(source):\n",
+    "replace": "            if False:\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "why": "feeds.add fetching from this machine or its network, as the stand-in did before engine v0.21.1 was held to it: the address rows expect the engine's refusal."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "    if record[zipfile._ECD_ENTRIES_TOTAL] > ZIP_ENTRIES:\n",
+    "replace": "    if False:\n",
+    "why": "The end record's count not judged: a zip that claims more files than a feed has is read on, and refused for a table it lacks, where the engine refuses its count."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            parts[i] = part[:equals + 1] + REDACTED\n",
+    "replace": "            pass\n",
+    "why": "A query's values left in the refusal of a local address: the engine names a person's address with them hidden, since a link can carry a key."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "                return (f\"{what} compresses {name} in a way",
+    "replace": "                return (f\"{what} packs {name} in a way",
+    "why": "The refusal of a table compressed with bzip2, in other words than the engine's."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "    if record[zipfile._ECD_ENTRIES_TOTAL] > ZIP_ENTRIES:\n",
+    "replace": "    if record[zipfile._ECD_ENTRIES_TOTAL] >= ZIP_ENTRIES:\n",
+    "why": "The count judged with >= where the engine's is >: a zip that claims exactly as many files as a feed may hold is refused, where the engine reads on."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            if info.file_size > ZIP_TABLE_BYTES:\n",
+    "replace": "            if info.file_size >= ZIP_TABLE_BYTES:\n",
+    "why": "A table of exactly a gigabyte refused, where the engine's limit lets it by."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "    if total > ZIP_FEED_BYTES:\n",
+    "replace": "    if total >= ZIP_FEED_BYTES:\n",
+    "why": "Tables of exactly two gigabytes together refused, where the engine's limit lets them by."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            if stem not in LOOM_SKIP and info.compress_type",
+    "replace": "            if info.compress_type",
+    "why": "pathways.txt judged for its compression, which the engine does not judge in a table LOOM never reads."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "in the engine’s words",
+    "find": "            if not (info.filename.endswith(\".txt\") and stem in GTFS_TABLES):\n",
+    "replace": "            if not info.filename.endswith(\".txt\"):\n",
+    "why": "A readme counted as a table: its stated size is then refused, where the engine never counts what is not a table."
+  },
+  {
+    "file": "tests/fake-engine/schematic/serve.py",
+    "find": "                hint = (f\"{key!r} is still being laid out under layout {layout[:8]}, and the \"\n",
+    "replace": "                hint = (f\"{key!r} is still being laid out, and the \"\n",
+    "test": "tests/unit/stand-in-params.test.ts",
+    "title": "while a layout is built",
+    "why": "The not-yet refusal without the layout it is under: the stand-in-only rows expect the engine's sentence."
+  }
+]

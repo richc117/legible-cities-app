@@ -16,13 +16,13 @@ What `ci.yml` and `determinism.yml` promise after Part 1, and what branch protec
 
 ## `determinism.yml`
 
-Unchanged in its platforms, load option and timeout. Its `pull_request` paths name `tests/unit/*-real.test.ts` in place of `tests/unit/determinism-real.test.ts`, so a change to any of the seven runs it; its other triggers are unchanged. Its unit step becomes:
+Unchanged in its platforms, load option and timeout. Its `pull_request` paths name `tests/unit/*-real.test.ts` in place of `tests/unit/determinism-real.test.ts`, so a change to any of the eight (`conformance-real` among them since FR-007) runs it; its other triggers are unchanged. Its unit step becomes:
 
 ```
 npx vitest run tests/unit/*-real.test.ts
 ```
 
-It runs with `LEGIBLE_DETERMINISM_TEST=1` and the `LEGIBLE_ENGINE_PYTHON` it already exports. None of the seven suites skips there; a skip is a failure of this contract. It stays not required.
+It runs with `LEGIBLE_DETERMINISM_TEST=1` and the `LEGIBLE_ENGINE_PYTHON` it already exports. None of the eight suites skips there; a skip is a failure of this contract. It stays not required.
 
 ## Branch protection on `main`
 

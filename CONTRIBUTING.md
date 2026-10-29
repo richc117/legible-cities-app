@@ -95,10 +95,10 @@ engine; the `determinism` workflow does (below).
 
 - `npm run dev` runs the app against the engine named by
   `LEGIBLE_ENGINE_CHECKOUT`.
-- The seven unit suites `sidecar-real`, `feeds-real`, `protocol-real`,
-  `opening-real`, `layout-real`, `viewer-real` and `determinism-real` find the
-  engine through `LEGIBLE_ENGINE_PYTHON` first, then
-  `LEGIBLE_ENGINE_CHECKOUT`'s `.venv`. A feed, a stored layout or a page they
+- The eight unit suites `sidecar-real`, `feeds-real`, `protocol-real`,
+  `opening-real`, `layout-real`, `viewer-real`, `conformance-real` and
+  `determinism-real` find the engine through `LEGIBLE_ENGINE_PYTHON` first,
+  then `LEGIBLE_ENGINE_CHECKOUT`'s `.venv`. A feed, a stored layout or a page they
   need comes from the committed BART fixture, so an interpreter with the
   pinned engine is enough. A few checks beyond the fixture still want a
   checkout: `layout-real`'s Los Angeles block, a layout the engine has cached
@@ -113,7 +113,7 @@ engine; the `determinism` workflow does (below).
   it **fails rather than skips** unless `LEGIBLE_ENGINE_PYTHON` names an
   interpreter with the pinned engine and `SCHEMATIC_FFMPEG` names an ffmpeg
   with `ffprobe` beside it. The `determinism` workflow runs it, the
-  `typeface` spec and the seven `*-real` suites, on three platforms, on pull
+  `typeface` spec and the eight `*-real` suites, on three platforms, on pull
   requests that touch what an export is made of or any of those suites. There
   a suite that would skip fails instead, so a skip cannot pass for a run. It is
   not a required check.

@@ -10,12 +10,13 @@
 // has them cached, the three feeds the Inspect view's issue names are read
 // from it as well.
 
-import { cpSync, existsSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { Sidecar } from '../../src/main/sidecar'
 import type { FeedRecord, FeedsList, Inspection } from '../../src/shared/protocol'
 import { ANCHOR } from '../support/determinism'
+import { gtfsZip } from '../support/gtfs-zip'
 import {
   BART,
   ENGINE_TEST_MS,
@@ -36,63 +37,6 @@ const INTERPRETER = realInterpreter(CONFIG)
 const WHY = INTERPRETER === null ? NO_ENGINE : ''
 
 failIfRequired('the registry against the real engine', INTERPRETER === null, 'no engine')
-
-// A small GTFS zip, stored entries; the same shape the end-to-end suite writes.
-function gtfsZip(path: string, without: string[] = []): string {
-  const entries: { name: string; body: Buffer }[] = []
-  for (const stem of ['agency', 'stops', 'routes', 'trips', 'stop_times', 'calendar']) {
-    if (without.includes(stem)) continue
-    const body =
-      stem === 'agency'
-        ? 'agency_id,agency_name\nM,Metro de Prueba\n'
-        : stem === 'calendar'
-          ? 'service_id,monday,tuesday,wednesday,thursday,friday,saturday,sunday,start_date,end_date\ns,1,1,1,1,1,0,0,20260101,20261231\n'
-          : `${stem}_id\n1\n`
-    entries.push({ name: `${stem}.txt`, body: Buffer.from(body) })
-  }
-  const crc = (buf: Buffer): number => {
-    let c = ~0
-    for (const b of buf) {
-      c ^= b
-      for (let k = 0; k < 8; k++) c = c & 1 ? (c >>> 1) ^ 0xedb88320 : c >>> 1
-    }
-    return ~c >>> 0
-  }
-  const locals: Buffer[] = []
-  const centrals: Buffer[] = []
-  let offset = 0
-  for (const { name, body } of entries) {
-    const n = Buffer.from(name)
-    const local = Buffer.alloc(30)
-    local.writeUInt32LE(0x04034b50, 0)
-    local.writeUInt16LE(20, 4)
-    local.writeUInt32LE(crc(body), 14)
-    local.writeUInt32LE(body.length, 18)
-    local.writeUInt32LE(body.length, 22)
-    local.writeUInt16LE(n.length, 26)
-    const central = Buffer.alloc(46)
-    central.writeUInt32LE(0x02014b50, 0)
-    central.writeUInt16LE(20, 4)
-    central.writeUInt16LE(20, 6)
-    central.writeUInt32LE(crc(body), 16)
-    central.writeUInt32LE(body.length, 20)
-    central.writeUInt32LE(body.length, 24)
-    central.writeUInt16LE(n.length, 28)
-    central.writeUInt32LE(offset, 42)
-    locals.push(local, n, body)
-    centrals.push(central, n)
-    offset += local.length + n.length + body.length
-  }
-  const centralSize = centrals.reduce((s, b) => s + b.length, 0)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(entries.length, 8)
-  end.writeUInt16LE(entries.length, 10)
-  end.writeUInt32LE(centralSize, 12)
-  end.writeUInt32LE(offset, 16)
-  writeFileSync(path, Buffer.concat([...locals, ...centrals, end]))
-  return path
-}
 
 describe.skipIf(INTERPRETER === null)(`the registry against the real engine${WHY}`, () => {
   it(

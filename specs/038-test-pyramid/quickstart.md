@@ -17,7 +17,7 @@ LEGIBLE_ENGINE_PYTHON=../lc-engine-current/.venv/bin/python LEGIBLE_DETERMINISM_
   npx vitest run tests/unit/*-real.test.ts
 ```
 
-All seven run, with no skips and with no `LEGIBLE_ENGINE_CHECKOUT` set: each finds its stored layout, feed or page from the BART fixture. Then dispatch `determinism.yml` on the branch with `repeats: 1`. Each platform's log lists the seven files, passed.
+All eight run (`conformance-real` among them since FR-007), with no skips and with no `LEGIBLE_ENGINE_CHECKOUT` set: each finds its stored layout, feed or page from the BART fixture. Then dispatch `determinism.yml` on the branch with `repeats: 1`. Each platform's log lists the eight files, passed.
 
 ## FR-003, the split
 
