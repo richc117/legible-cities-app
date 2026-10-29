@@ -35,6 +35,7 @@ import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { cellHandback, cellHeading, laidOutProject, openProject } from '../support/project'
+import { EXPORT_ONE, GONE, NOTHING_YET } from '../../src/renderer/src/notebook/outputWords'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -245,7 +246,7 @@ test('Outputs lists what is on disk, from files this session never wrote', async
     // Written before the project is opened, so nothing in this process has
     // ever seen an export: this is the restart, without the restart.
     await laidOutProject(page, 'LA Metro Rail', PROJECT)
-    await expect(page.getByText('Nothing exported yet.')).toBeVisible()
+    await expect(page.getByText(NOTHING_YET)).toBeVisible()
 
     wroteExport(h, 'la-reel.mp4', 'instagram-reel')
     // Back to the Library and in again, which mounts the screen afresh.
@@ -266,11 +267,11 @@ test('the empty Outputs offers to export, and a press lands on cell 06’s headi
   await withApp(h, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', PROJECT)
     const outputs = page.getByRole('region', { name: 'Outputs' })
-    await expect(outputs).toContainText('Nothing exported yet.')
+    await expect(outputs).toContainText(NOTHING_YET)
     // Cell 06 starts closed on a project with a layout, so the press has to
     // open it as well as land on it.
     await expect(cellHeading(page, 'export')).toHaveAttribute('aria-expanded', 'false')
-    await outputs.getByRole('button', { name: 'Export one in cell 06.' }).click()
+    await outputs.getByRole('button', { name: EXPORT_ONE }).click()
     await expect(cellHeading(page, 'export')).toHaveAttribute('aria-expanded', 'true')
     await expect(cellHandback(page, 'export')).toBeFocused()
   })
@@ -291,7 +292,7 @@ test('a file moved or deleted since reads as gone, and offers nothing to press',
     // The press finds it gone, says so, and does not fail: the row stays,
     // because what was made is still worth saying.
     await reveal.click()
-    await expect(outputs.getByText('the file has been moved or deleted')).toBeVisible()
+    await expect(outputs.getByText(GONE)).toBeVisible()
     await expect(outputs.getByText('instagram-reel')).toBeVisible()
     await expect(reveal).toHaveCount(0)
     // An icon beside the sentence, never the hue by itself (principle 1).

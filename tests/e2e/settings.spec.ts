@@ -27,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
+import { DESTINATION_REFUSALS } from '../../src/main/export'
 import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
@@ -516,14 +517,13 @@ test('refuses a project an export folder inside or around the engine folder that
       let panel = await exportCell(page)
       await chooserAnswers(app, join(videos, 'engine', 'exports'))
       await panel.getByRole('button', { name: 'Choose folder' }).click()
-      await expect(panel.getByRole('alert')).toHaveText(
-        'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.',
+      await expect(panel.getByRole('alert')).toHaveText(DESTINATION_REFUSALS.insideWaiting)
+      await expect(panel.getByRole('alert'), 'a sentence that leads with what to do').toHaveText(
+        /^Choose another folder: /,
       )
       await chooserAnswers(app, videos)
       await panel.getByRole('button', { name: 'Choose folder' }).click()
-      await expect(panel.getByRole('alert')).toHaveText(
-        'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.',
-      )
+      await expect(panel.getByRole('alert')).toHaveText(DESTINATION_REFUSALS.holdsWaiting)
       expect(record().destination, 'and neither was written').toBeNull()
       await expect(panel.getByText(/exports go to the app’s export folder/)).toBeVisible()
 

@@ -1,0 +1,50 @@
+[
+  {
+    "file": "src/renderer/src/notebook/ProjectFooter.tsx",
+    "find": "        description={DELETE_PROJECT}\n",
+    "replace": "        description=\"This removes the project.\"\n",
+    "test": "tests/unit/project-footer.test.tsx",
+    "title": "says what goes, what stays and that exported files stay where they are",
+    "why": "The confirmation drawing a sentence of its own instead of the exported one: the test imports the constant, so it is the drawing that must differ for it to go red."
+  },
+  {
+    "file": "src/renderer/src/notebook/Outputs.tsx",
+    "find": "            {EXPORT_ONE}\n          </button>",
+    "replace": "            Export one in cell 6.\n          </button>",
+    "test": "tests/unit/rail.test.tsx",
+    "title": "says its sentence and offers one way to fill it, link-styled",
+    "why": "The empty state's button reading a sentence other than EXPORT_ONE: the test no longer asserts the constant equals a literal, so it asserts the rendered button holds the constant."
+  },
+  {
+    "file": "src/renderer/src/notebook/olderPage.ts",
+    "find": "failure?.kind === 'opening' ? OPENING_REDRAW_STOPPED : ordinary",
+    "replace": "failure?.kind === 'opening' ? 'The map was not redrawn.' : ordinary",
+    "test": "tests/unit/process-cell.test.tsx",
+    "title": "points at cell 03 for the opening’s redraw, and keeps its buttons",
+    "why": "Cell 02 saying something other than OPENING_REDRAW_STOPPED for the opening's failed redraw: the test imports the constant, not a copy of its words."
+  },
+  {
+    "file": "src/renderer/src/notebook/olderPage.ts",
+    "find": "failure?.kind === 'opening' ? OPENING_REDRAW_STOPPED : ordinary",
+    "replace": "OPENING_REDRAW_STOPPED",
+    "test": "tests/unit/process-cell.test.tsx",
+    "title": "keeps its own sentence for a rebuild the opening did not start",
+    "why": "The opening's sentence said for every failure of cell 03's: the neutral test asks for the constant to be absent, not for a fragment of its words."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "    if (contains(next, real)) return DESTINATION_REFUSALS.insideWaiting\n",
+    "replace": "    if (contains(next, real)) return DESTINATION_REFUSALS.insideHome\n",
+    "test": "tests/unit/export.test.ts",
+    "title": "refuses the folder that waits and anything inside it, without calling it the engine data folder",
+    "why": "A folder inside the one waiting refused with the sentence for the home in force: the test compares with DESTINATION_REFUSALS.insideWaiting, not with a copy of its words."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "    if (contains(real, next)) return DESTINATION_REFUSALS.holdsWaiting\n",
+    "replace": "    if (contains(real, next)) return DESTINATION_REFUSALS.holdsHome\n",
+    "test": "tests/unit/settings-ipc.test.ts",
+    "title": "is refused inside or around the folder Settings has just taken, and allowed once that is taken back",
+    "why": "A folder around the one Settings holds refused with the home's sentence: this test now reads its expected sentence from DESTINATION_REFUSALS."
+  }
+]

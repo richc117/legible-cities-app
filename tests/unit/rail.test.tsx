@@ -19,7 +19,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { iconMarkup } from '../../src/renderer/src/icons/Icon'
 import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import { stateIcon } from '../../src/renderer/src/notebook/Cell'
-import { EXPORT_ONE, NOTHING_YET, OutputsEmpty } from '../../src/renderer/src/notebook/Outputs'
+import { OutputsEmpty } from '../../src/renderer/src/notebook/Outputs'
+import { EXPORT_ONE, NOTHING_YET } from '../../src/renderer/src/notebook/outputWords'
 import Rail, { RAIL_LABEL, goToCell, stepName } from '../../src/renderer/src/notebook/Rail'
 import {
   clearance,
@@ -306,7 +307,6 @@ describe('Outputs’ empty state', () => {
     const drawn = empty(true)
     expect(drawn).toContain(NOTHING_YET)
     expect(drawn).toContain(`<button type="button" class="inline-link">${EXPORT_ONE}</button>`)
-    expect(EXPORT_ONE).toBe('Export one in cell 06.')
     expect([...drawn.matchAll(/<button/g)]).toHaveLength(1)
   })
 

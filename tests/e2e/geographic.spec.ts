@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { cell, createProject, layOut, openCell, openProject, panel } from '../support/project'
-import { STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
+import { STAGE_KEYS, STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -230,7 +230,8 @@ test('pans, zooms and fits by the buttons alone, with no key and no drag (issue 
       .toBe(fittedText)
 
     // The hint says the buttons are there.
-    await expect(view.locator('#stage-keys')).toContainText('or use the buttons.')
+    await expect(view.locator('#stage-keys')).toHaveText(STAGE_KEYS)
+    await expect(view.locator('#stage-keys')).toContainText(/buttons/)
   })
 })
 

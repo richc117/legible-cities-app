@@ -20,7 +20,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { FAKE_ENGINE } from '../support/python'
 import { PYTHON, profile, sweep, withApp, type Profile } from '../support/a11y'
 import { cell, laidOutProject, panel } from '../support/project'
-import { STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
+import { STAGE_KEYS, STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
 import { networkWords } from '../../src/renderer/src/networkWords'
 import type { StageDescription } from '../../src/shared/protocol'
 
@@ -113,7 +113,7 @@ test('the pane is named for its counts, and the network in words says where the 
       `The gtfs2graph stage, as the feed draws its routes: ${lineCount} lines, ${stations} stations`,
     )
     await expect(pane, 'and is described by the keys hint, as before').toHaveAccessibleDescription(
-      /^Zoom with the wheel or plus and minus/,
+      STAGE_KEYS,
     )
 
     // The disclosure is the next stop after the pane, and closed. The frame

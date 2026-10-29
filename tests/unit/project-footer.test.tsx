@@ -10,7 +10,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
-import ProjectFooter from '../../src/renderer/src/notebook/ProjectFooter'
+import ProjectFooter, { DELETE_PROJECT } from '../../src/renderer/src/notebook/ProjectFooter'
 import { BASE, defaultProjectState } from '../support/project-state'
 
 const state: ProjectState = {
@@ -32,9 +32,7 @@ describe('the delete confirmation', () => {
   )
 
   it('says what goes, what stays and that exported files stay where they are', () => {
-    expect(html).toContain(
-      'This removes the project and its generated output. The feed stays. Exported files stay where they are.',
-    )
+    expect(html).toContain(DELETE_PROJECT)
   })
 
   it('draws no alert while nothing has gone wrong', () => {

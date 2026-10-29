@@ -249,6 +249,10 @@ export function viewed(
   return keyed(view, key, pane)
 }
 
+/** The hint under the pane, which the pane's description names (`#stage-keys`). */
+export const STAGE_KEYS =
+  'Zoom with the wheel or plus and minus, pan by dragging or with the arrows, 0 to fit, or use the buttons.'
+
 /**
  * The pane's buttons (issue 546, WCAG 2.5.7): the single-pointer way to
  * everything the drag, the wheel and the keys do. Each presses the key it is

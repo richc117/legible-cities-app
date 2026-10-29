@@ -27,6 +27,7 @@ import { act, type JSX } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ProjectProviders, type ProjectState } from '../../src/renderer/src/notebook/context'
 import Notebook from '../../src/renderer/src/notebook/Notebook'
+import { EXPORT_ONE } from '../../src/renderer/src/notebook/outputWords'
 import {
   answered,
   BASE,
@@ -171,7 +172,7 @@ describe('the Outputs’ empty state', () => {
     await column()
     watched = '06'
     expect(toggleOf('06').getAttribute('aria-expanded'), 'closed as it opens').toBe('false')
-    press('Export one in cell 06.')
+    press(EXPORT_ONE)
     expect(scrolls).toEqual([{ expanded: 'true', focused: true }])
   })
 })

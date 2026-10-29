@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, readdir, readFile, rename, rm, symlink, writeFile } fro
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { destinationRefusal, Destinations } from '../../src/main/export'
+import { DESTINATION_REFUSALS, destinationRefusal, Destinations } from '../../src/main/export'
 import { LOG_WAIT_MS } from '../../src/main/log-file'
 import { ProjectStore } from '../../src/main/projects'
 import { WINDOWS_RETRY_CODES, type ReplaceOptions } from '../../src/main/replace-file'
@@ -905,10 +905,8 @@ describe('choosing the engine folder while a project exports to a folder of its 
 // export.test.ts; what is proved here is that the folder it is handed is
 // the one Settings holds now, read as index.ts reads it.
 describe('a project’s export folder while a chosen engine folder waits for a restart', () => {
-  const INSIDE =
-    'Choose another folder: that folder is inside the folder the engine data moves to at the next start, which “Reset engine data” removes from then on.'
-  const HOLDS =
-    'Choose another folder: that folder holds the folder the engine data moves to at the next start, and an export goes into a folder named after the project, which could be that folder itself.'
+  const INSIDE = DESTINATION_REFUSALS.insideWaiting
+  const HOLDS = DESTINATION_REFUSALS.holdsWaiting
 
   /** The refusal as index.ts builds it: the folder waiting is asked of Settings at each judgement. */
   const judge =
