@@ -26,7 +26,13 @@ import {
   type WindowBounds,
 } from '../shared/settings'
 import type { FirstRunResult } from '../shared/first-run'
-import { areReports, diagnosticsText, tailLog, type DiagnosticsInput } from './diagnostics-text'
+import {
+  areReports,
+  DIAGNOSTICS_BUDGET,
+  diagnosticsText,
+  tailLog,
+  type DiagnosticsInput,
+} from './diagnostics-text'
 import { writeClipboard, type WriteText } from './clipboard'
 import { inTime, LAPSED } from './deadline'
 import { DESTINATION_REFUSALS } from './export'
@@ -485,6 +491,13 @@ export class SettingsService {
       await this.#homes(),
       d.platform,
     )
+    // Only the head, which is never cut, can leave a copy over the budget:
+    // say so, since the copy is still made and the person is not told.
+    if (text.length > DIAGNOSTICS_BUDGET) {
+      this.#deps.log(
+        `warning: the diagnostics are ${text.length} characters, over the budget of ${DIAGNOSTICS_BUDGET}, with every log line and report already left out`,
+      )
+    }
     await writeClipboard(d.writeText, text)
     this.#deps.log(`copied diagnostics (${Buffer.byteLength(text, 'utf8')} bytes) to the clipboard`)
   }

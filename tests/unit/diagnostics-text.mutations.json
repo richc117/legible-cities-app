@@ -78,5 +78,45 @@
     "test": "tests/unit/diagnostics-text.test.ts",
     "title": "reads correctly for a log of one line, and for one of none",
     "why": "The plural kept for one line: the trim line reads \"its last 1 lines\"."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      mainLog: finish(input.mainLog),",
+    "replace": "      mainLog: input.mainLog,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "holds the finished copy to the budget when redaction makes lines longer, and still hides the home",
+    "why": "The log composed unfinished: the budget is kept on text that redaction then lengthens, and the finished copy is over it."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "{ absent: finish(input.engine.absent) }",
+    "replace": "input.engine",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "finishes the engine sentence too, since the head is never cut",
+    "why": "The engine's sentence left unfinished: its addresses grow in redaction after the budget was kept."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  if (whole.length <= DIAGNOSTICS_BUDGET) return whole",
+    "replace": "  if (whole.length < DIAGNOSTICS_BUDGET) return whole",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "trims at one character over the budget and not at the budget",
+    "why": "The comparison made strict: a copy of exactly the budget is cut though it fits."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "map ${reports === 1 ? 'report' : 'reports'}`",
+    "replace": "map reports`",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "counts the reports in the singular for one, and says there were none for none",
+    "why": "The plural for one report: the line reads \"1 of 1 map reports\"."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      ? 'no map reports'",
+    "replace": "      ? '0 of 0 map reports'",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "counts the reports in the singular for one, and says there were none for none",
+    "why": "Zero reports read as \"0 of 0\" instead of saying there were none."
   }
 ]

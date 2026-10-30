@@ -1594,6 +1594,18 @@ describe('copying diagnostics', () => {
     expect(h.copied[0]).toContain('No map has been drawn since the app started.')
   })
 
+  it('copies a head that alone is over the budget, and logs a warning naming the length', async () => {
+    const big = await harness({ engineInfo: async () => ({ blob: 'x'.repeat(60_000) }) })
+    await big.call(CHANNELS.settingsCopyDiagnostics, [])
+    expect(big.copied[0].length).toBeGreaterThan(60_000)
+    expect(big.logs.filter((l) => l.includes('over the budget'))).toEqual([
+      `warning: the diagnostics are ${big.copied[0].length} characters, over the budget of 48000, with every log line and report already left out`,
+    ])
+    const small = await harness()
+    await small.call(CHANNELS.settingsCopyDiagnostics, [])
+    expect(small.logs.some((l) => l.includes('over the budget'))).toBe(false)
+  })
+
   it('writes the home folder as ~, wherever it appears', async () => {
     const h = await harness({
       homes: (root) => [join(root, 'home', 'someone')],

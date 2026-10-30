@@ -20,6 +20,7 @@ import {
   tailLog,
   type DiagnosticsInput,
 } from '../../src/main/diagnostics-text'
+import { redactUrls } from '../../src/main/redact'
 
 const roots: string[] = []
 
@@ -187,7 +188,7 @@ describe('the budget', () => {
       input({ mainLog: logOf('main', 400, 150), engineLog: logOf('engine', 10, 150) }),
     )
     expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
-    expect(text).toMatch(/engine\.log 10, and 1 of 1 map reports/)
+    expect(text).toMatch(/engine\.log 10, and 1 of 1 map report\./)
     expect(text).toContain('engine line 0 ')
     expect(text).not.toContain('main line 0 ')
     expect(text).toContain('main line 399 ')
@@ -245,7 +246,7 @@ describe('the budget', () => {
       input({ mainLog: 'm'.repeat(60_000), engineLog: 'e'.repeat(60_000) }),
     )
     expect(none.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
-    expect(none).toContain('main.log keeps no lines, engine.log no lines, and 0 of 1 map reports.')
+    expect(none).toContain('main.log keeps no lines, engine.log no lines, and 0 of 1 map report.')
     expect(none).toContain('## main.log, no lines kept\n\nNo lines kept.')
     expect(none).not.toMatch(/\b1 lines\b|\b0 lines\b/)
   })
@@ -283,20 +284,55 @@ describe('the budget', () => {
     expect(text).not.toContain('the last 200 lines')
   })
 
-  it('holds the finished copy to the budget when redaction makes a line longer, and still hides the home', async () => {
+  it('holds the finished copy to the budget when redaction makes lines longer, and still hides the home', async () => {
     const home = join(await folder(), 'someone')
-    // A short query value becomes <redacted>, which is longer than it was.
-    const url = 'https://example.org/g.zip?k=1'
-    const lines = Array.from({ length: 400 }, (_, i) => `main line ${i} ${url} ${home}/x`)
-    const text = diagnosticsText(
-      input({ mainLog: lines.join('\n'), engineLog: logOf('engine', 400, 100) }),
-      [home],
-      'linux',
-    )
+    // Short query values become <redacted>, which is longer than they were.
+    // The home is on one line only, so what grows is not what shrinks.
+    const url = 'https://example.org/g.zip?a=1&b=2&c=3'
+    const lines = Array.from({ length: 400 }, (_, i) => `main line ${i} ${url}`)
+    lines[399] += ` ${home}/x`
+    const given = input({ mainLog: lines.join('\n'), engineLog: logOf('engine', 400, 100) })
+    // The premise: what composes within the budget raw is over it once redacted.
+    expect(redactUrls(composeDiagnostics(given)).length).toBeGreaterThan(DIAGNOSTICS_BUDGET)
+    const text = diagnosticsText(given, [home], 'linux')
     expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
     expect(text).toMatch(TRIM)
     expect(text).toContain('<redacted>')
+    expect(text).toContain('main line 399 ')
+    expect(text).toContain('~/x')
     expect(text).not.toContain(home)
+  })
+
+  it('finishes the engine sentence too, since the head is never cut', () => {
+    const absent = Array.from({ length: 800 }, () => 'https://example.org/?a=1&b=2').join(' ')
+    const given = input({
+      engine: { absent },
+      mainLog: logOf('main', 400, 100),
+      engineLog: logOf('engine', 400, 100),
+    })
+    expect(redactUrls(composeDiagnostics(given)).length).toBeGreaterThan(DIAGNOSTICS_BUDGET)
+    const text = diagnosticsText(given, [], 'linux')
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(text).toContain('<redacted>')
+  })
+
+  it('trims at one character over the budget and not at the budget', () => {
+    const base = composeDiagnostics(input({ mainLog: '' })).length
+    const at = composeDiagnostics(input({ mainLog: 'x'.repeat(DIAGNOSTICS_BUDGET - base) }))
+    expect(at.length).toBe(DIAGNOSTICS_BUDGET)
+    expect(at).not.toMatch(TRIM)
+    const over = composeDiagnostics(input({ mainLog: 'x'.repeat(DIAGNOSTICS_BUDGET - base + 1) }))
+    expect(over).toMatch(TRIM)
+    expect(over.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+  })
+
+  it('counts the reports in the singular for one, and says there were none for none', () => {
+    const long = { mainLog: logOf('main', 400, 150), engineLog: logOf('engine', 400, 150) }
+    const one = composeDiagnostics(input({ ...long, reports: ['one report'] }))
+    expect(one).toMatch(/, and 1 of 1 map report\. The whole logs/)
+    const none = composeDiagnostics(input({ ...long, reports: [] }))
+    expect(none).toMatch(/, and no map reports\. The whole logs/)
+    expect(none).not.toMatch(/\b0 of 0\b/)
   })
 })
 

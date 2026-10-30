@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/main/settings-ipc.ts",
+    "find": "    if (text.length > DIAGNOSTICS_BUDGET) {",
+    "replace": "    if (text.length < 0) {",
+    "test": "tests/unit/settings-ipc.test.ts",
+    "title": "copies a head that alone is over the budget, and logs a warning naming the length",
+    "why": "The warning never logged: a copy that stays over the budget would leave without a word anywhere."
+  }
+]

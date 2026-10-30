@@ -85,7 +85,10 @@ export const LOG_FLOOR = 20
 interface Kept {
   main: string[]
   engine: string[]
-  /** How many of the oldest reports are gone. */
+  /**
+   * How many reports are gone from the front of the list: those of the
+   * projects opened first in the session, which is the order the page sends.
+   */
   reportsDropped: number
 }
 
@@ -110,9 +113,13 @@ function trimLine(kept: Kept, reports: number): string {
       : kept.engine.length === 1
         ? '1 line'
         : `${kept.engine.length}`
+  const reportsKept =
+    reports === 0
+      ? 'no map reports'
+      : `${reports - kept.reportsDropped} of ${reports} map ${reports === 1 ? 'report' : 'reports'}`
   return (
     `Trimmed to fit a GitHub issue: main.log keeps ${mainKept}, ` +
-    `engine.log ${engineKept}, and ${reports - kept.reportsDropped} of ${reports} map reports. ` +
+    `engine.log ${engineKept}, and ${reportsKept}. ` +
     'The whole logs are in the logs folder (Settings › Open logs folder); attach them to the report.'
   )
 }
@@ -171,7 +178,7 @@ type Drop = 'main' | 'engine' | 'report'
  * 1. the oldest line of whichever log is longer now (so the two shrink
  *    together, and the one that said more says less first), down to
  *    `LOG_FLOOR` lines in each;
- * 2. the oldest map reports;
+ * 2. the map reports of the projects opened first in the session;
  * 3. only then the lines below the floor, the same way, oldest first.
  *
  * The head sections are not in it.
@@ -210,8 +217,9 @@ function dropOrder(input: DiagnosticsInput, main: string[], engine: string[]): D
  * It is the one place the whole text exists (the page sends the map reports
  * in, main adds the logs), so it is where the budget is kept: a text over
  * `DIAGNOSTICS_BUDGET` loses its oldest log lines down to `LOG_FLOOR`, then
- * its oldest map reports, then what is left of the logs, and says so in a line under the heading. App, Runtime, Operating
- * system, Engine and Bundled tools are never cut: they are what a report
+ * the map reports of the projects opened first in the session, then what is
+ * left of the logs, and says so in a line under the heading. App, Runtime,
+ * Operating system, Engine and Bundled tools are never cut: they are what a report
  * cannot do without, and they are small.
  */
 export function composeDiagnostics(input: DiagnosticsInput): string {
@@ -229,9 +237,10 @@ export function composeDiagnostics(input: DiagnosticsInput): string {
       reportsDropped: count('report'),
     })
   }
-  // The fewest steps that fit: each step only shortens the text, bar the
-  // digits of the counts in the line that says so, which the final loop
-  // makes good.
+  // The fewest steps that fit. Each step shortens the text, bar the digits
+  // of the counts in the line that says so, which can add a character; the
+  // margin the budget leaves covers that. If no step fits, the head alone is
+  // too long, and the caller says so in the log rather than here.
   let low = 1
   let high = order.length
   while (low < high) {
@@ -239,9 +248,7 @@ export function composeDiagnostics(input: DiagnosticsInput): string {
     if (after(middle).length <= DIAGNOSTICS_BUDGET) high = middle
     else low = middle + 1
   }
-  let steps = low
-  while (steps < order.length && after(steps).length > DIAGNOSTICS_BUDGET) steps += 1
-  return after(steps)
+  return after(low)
 }
 
 /** The platforms whose file systems ignore case by default, where a path can come back in either. */
@@ -399,6 +406,9 @@ export function diagnosticsText(
   const text = finish(
     composeDiagnostics({
       ...input,
+      // The head is never cut, so it is the one part that must be finished
+      // here too: a sentence with addresses in it can grow.
+      engine: 'info' in input.engine ? input.engine : { absent: finish(input.engine.absent) },
       mainLog: finish(input.mainLog),
       engineLog: finish(input.engineLog),
       reports: input.reports.map(finish),
