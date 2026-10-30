@@ -63,10 +63,16 @@ import { useSnapshot } from './useSnapshot'
 // `drawn.theme` would be the theme switch's other button under another
 // name (specs/028-the-notebook/contracts/run-graph.md, "Revert").
 
-/** The sentence a day outside the window gets, on the form and from the store alike. */
+/**
+ * The sentence a day outside the window gets on the form; the store's own
+ * refusal (`serviceDayRefusal`) writes the window's days the same way.
+ */
 export function outsideWindow(start: string, end: string): string {
   return `The feed covers ${dayWords(start)} to ${dayWords(end)}.`
 }
+
+/** What "Draw for this day" says with no day in the control (issue 559). */
+export const CHOOSE_A_DAY = 'Choose a day.'
 
 /** What the section is called, as its name inside cell 03. */
 const NAME = 'Service day'
@@ -276,7 +282,9 @@ export default function ServiceDay({
   }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const invalid = validateServiceDate(value)
+    // An emptied control, or one half typed, reports no value: what the
+    // person is missing is a day, not the record's way of writing one.
+    const invalid = value === '' ? CHOOSE_A_DAY : validateServiceDate(value)
     if (invalid !== null) return refuse(invalid)
     if (!withinWindow(value, service)) return refuse(outsideWindow(service.start, service.end))
     if (value === project.date && !undrawn) return

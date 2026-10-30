@@ -10,33 +10,20 @@
 // ISO stays where it is the value and not the words: a date control's
 // value, a copied log, and a sentence of the engine's shown as it wrote it.
 //
-// Nothing is imported, so an end-to-end spec running in plain Node can
-// import these and compare what the screen says with the record. Each
-// formatter is made when it is asked for rather than once at load: one made
-// at load keeps the zone it was made in, so a machine moved across zones
-// would go on reading the old one, and a test could not move the zone
-// under it.
+// `dayWords` is `src/shared/dates.ts`'s, because the store's refusal of a
+// day says the window's days too; it is re-exported here so the interface
+// has one place to ask. A moment's formatters stay on this side: they read
+// the person's zone and hour cycle, which are the interface's to say, and
+// nothing the main process writes should depend on them. The only import
+// is that file, which imports nothing, so an end-to-end spec running in
+// plain Node can import this. Each formatter is made when it is asked for
+// rather than once at load: one made at load keeps the zone it was made
+// in, so a machine moved across zones would go on reading the old one, and
+// a test could not move the zone under it.
 
-/** "2026-09-17", the record's form of a day. */
-const DAY = /^\d{4}-\d{2}-\d{2}$/
+import { DAY_PARTS, dayWords } from '../../shared/dates'
 
-const dayParts = { day: 'numeric', month: 'long', year: 'numeric' } as const
-
-/**
- * A day the record holds, "2026-09-17", as "17 September 2026".
- *
- * **In UTC, and it must be.** A day has no zone; `Date` gives it one, UTC
- * midnight, and read in the person's zone that is the evening before
- * anywhere west of Greenwich, so a map drawn for 17 September would say it
- * was drawn for the 16th in Los Angeles. A string that is not a day comes
- * back as it was, which is what the screen said before.
- */
-export function dayWords(day: string): string {
-  if (!DAY.test(day)) return day
-  const date = new Date(`${day}T00:00:00Z`)
-  if (Number.isNaN(date.getTime())) return day
-  return new Intl.DateTimeFormat('en-GB', { ...dayParts, timeZone: 'UTC' }).format(date)
-}
+export { dayWords }
 
 /**
  * A time of day, in the person's own locale and hour cycle and with no
@@ -59,5 +46,5 @@ export function timeWords(when: Date | number): string {
 export function momentWords(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return iso
-  return `${new Intl.DateTimeFormat('en-GB', dayParts).format(date)} at ${timeWords(date)}`
+  return `${new Intl.DateTimeFormat('en-GB', DAY_PARTS).format(date)} at ${timeWords(date)}`
 }

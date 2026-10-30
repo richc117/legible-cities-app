@@ -1612,7 +1612,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         log.note(`"${sentence}"`)
         await expect(diagnostics.locator('caption')).toHaveText(
-          /^What the engine measured drawing the map for \d{4}-\d{2}-\d{2}$/,
+          new RegExp(`^What the engine measured drawing the map for ${DAY_IN_WORDS}$`),
         )
       })
       await log.soft('an explanation on a press, gone on Escape', async () => {
