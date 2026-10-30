@@ -26,15 +26,15 @@
   {
     "file": "src/renderer/src/Library.tsx",
     "find": "        ? SAMPLES_AWAY\n",
-    "replace": "        ? `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`\n",
+    "replace": "        ? `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${down}`\n",
     "test": "tests/unit/front-door.test.tsx",
     "title": "does not report the app’s own quit as a failure",
     "why": "The app's own quit reported as a failure on the Library as the engine goes down with the window."
   },
   {
     "file": "src/renderer/src/Library.tsx",
-    "find": "    if (engine.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`\n",
-    "replace": "    if (engine.state === 'unavailable') return SAMPLES_ENGINE_DOWN\n",
+    "find": "    if (engine.state === 'unavailable') return `${engine.reason} ${down}`\n",
+    "replace": "    if (engine.state === 'unavailable') return down\n",
     "test": "tests/unit/front-door.test.tsx",
     "title": "carries the whole reason, first",
     "why": "The samples region dropping an unavailable engine's reason: the status line cuts a long one short, so a person would read it nowhere in full (issue 547)."

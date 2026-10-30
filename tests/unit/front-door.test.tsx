@@ -16,6 +16,7 @@ import Library, {
   ProjectCards,
   SAMPLES_AWAY,
   SAMPLES_ENGINE_DOWN,
+  SAMPLES_ENGINE_DOWN_LISTED,
   SAMPLES_NONE,
   SAMPLES_STOPPED_FIRST,
   SAMPLES_UNREAD,
@@ -871,10 +872,28 @@ describe('what the samples region offers while the engine is down (issue 562)', 
     expect(html.endsWith('<p>the actions</p></section>')).toBe(true)
   })
 
+  it('says over cards that a new sample cannot be opened, not that none can be listed', () => {
+    const pin = { repo: 'https://github.com/x/y', tag: 'v1.0.0', version: '1.0.0', protocol: 1 }
+    const down: EngineState[] = [
+      { state: 'stopped', reason: 'It exited.', retryable: true },
+      { state: 'unavailable', reason: 'Reinstall the app.', retryable: true },
+      { state: 'mismatched', expected: pin, found: { version: '0.9.0', protocol: 1 } },
+    ]
+    for (const engine of down) {
+      const over = samplesSentence(engine, 'listed', true)
+      expect(over?.endsWith(SAMPLES_ENGINE_DOWN_LISTED), engine.state).toBe(true)
+      expect(over).not.toContain('cannot be listed')
+      // With no cards, the sentence it always said.
+      expect(samplesSentence(engine, 'listed')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
+    }
+    expect(SAMPLES_ENGINE_DOWN_LISTED).toContain('press Copy diagnostics')
+  })
+
   it('draws the sentence with the actions even over cards, never the buttons alone', () => {
     const sentence = samplesSentence(
       { state: 'stopped', reason: 'It exited.', retryable: true },
       'unread',
+      true,
     ) as string
     const html = renderToStaticMarkup(
       <SampleCities
