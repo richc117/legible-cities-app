@@ -81,8 +81,8 @@
   },
   {
     "file": "src/renderer/src/Library.tsx",
-    "find": "export const SAMPLES_STOPPED_FIRST = 'Quit and open Legible Cities again.'\n",
-    "replace": "export const SAMPLES_STOPPED_FIRST = 'Quit Legible Cities and open it again.'\n",
+    "find": "  'Press Try again to start the engine once more, or quit and open Legible Cities again.'\n",
+    "replace": "  'Press Try again to start the engine once more, or quit Legible Cities and open it again.'\n",
     "test": "tests/unit/install-guide-sentences.test.ts",
     "title": "quotes every sentence it promises, word for word",
     "why": "What the Library leads with for a stopped engine reworded in the code: the guide's quotation of it must follow."
