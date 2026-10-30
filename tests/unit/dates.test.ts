@@ -3,10 +3,12 @@ import { dayWords, momentWords, timeWords } from '../../src/renderer/src/dates'
 
 // The interface's one way of writing a day and a moment (issue 559).
 //
-// Node honours a change of TZ at run time on macOS and Linux (not on
-// Windows, where these rows then detect nothing), so the zone is pinned to
-// one west of Greenwich, where UTC midnight is the evening before (the
-// mutation job runs in UTC, where it would not be). The formatters make
+// The zone is pinned to one west of Greenwich, where UTC midnight is the
+// evening before (the mutation job runs in UTC, where it would not be).
+// Node honours a change of TZ at run time on POSIX: this file's mutation
+// was watched going red under it on macOS, and `runs.test.ts` relies on
+// the same on Linux. On Windows it is not proven either way; there the
+// rows may read the runner's own zone and detect nothing. The formatters make
 // their `Intl.DateTimeFormat` when asked, so the zone set here is the one
 // they read.
 
