@@ -713,7 +713,10 @@ are the design's half of those answers.
   chip by the width of the chip's focus ring and its offset
   (`--focus-ring-offset` plus `--focus-ring-width`) on whichever side it is
   placed, is brought into the window when it opens or takes focus (the chip's
-  scroller moves by the least that fits both, never smoothly), and closes
+  scroller moves by the least that fits both, never smoothly, and never so
+  far that the chip goes under the header or past the window's foot; a
+  panel above its chip may then lie over the header, which it is drawn
+  above, since a chip moved out of sight is the worse loss), and closes
   when focus lands anywhere but its chip or inside it, by a key or by the
   app: an auto popover is dismissed by a press and not by focus, and one left
   open covered the controls beside its chip - placed above a chip near the
