@@ -913,11 +913,7 @@ if (!hasLock) {
       log: (message) => log.info('help', message),
     }
     registerHelpHandlers(ipcMain, helpDeps, isTopFrame)
-    registerMenuHandlers(
-      ipcMain,
-      menuCommands,
-      (event) => mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame,
-    )
+    registerMenuHandlers(ipcMain, menuCommands, isTopFrame)
     setAppMenu(helpDeps)
     mainWindow = createWindow()
 

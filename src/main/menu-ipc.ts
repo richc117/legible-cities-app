@@ -11,9 +11,10 @@
 //
 // No Electron import beyond types, so the rule is tested without a session.
 
-import type { IpcMain, IpcMainEvent } from 'electron'
+import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS } from '../shared/api'
 import type { MenuCommand } from '../shared/menu'
+import { guardedHandle } from './ipc-shape'
 
 export class MenuCommands {
   readonly #send: (command: MenuCommand) => void
@@ -49,15 +50,17 @@ export class MenuCommands {
 }
 
 /**
- * The page's word that it listens, from the interface's own top frame only;
- * any other frame's is ignored, as every handler refuses one.
+ * The page's word that it listens, from the interface's own top frame only,
+ * through the one guard every handler has. The held command goes out as an
+ * event, before the reply, which carries nothing.
  */
 export function registerMenuHandlers(
   ipcMain: IpcMain,
   commands: MenuCommands,
-  isTopFrame: (event: IpcMainEvent) => boolean,
+  isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
-  ipcMain.on(CHANNELS.menuListening, (event) => {
-    if (isTopFrame(event)) commands.listening()
+  const handle = guardedHandle(ipcMain, isTopFrame)
+  handle(CHANNELS.menuListening, async () => {
+    commands.listening()
   })
 }

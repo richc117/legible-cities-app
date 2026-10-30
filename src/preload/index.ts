@@ -172,7 +172,9 @@ const api: Api = {
       const off = subscribe<unknown>(CHANNELS.menuCommand, (command) => {
         if (isMenuCommand(command)) listener(command)
       })
-      ipcRenderer.send(CHANNELS.menuListening)
+      // Nothing to wait for: the held command comes as an event. A refusal
+      // leaves the page as deaf as it was, and is not the listener's to hear.
+      ipcRenderer.invoke(CHANNELS.menuListening).catch(() => undefined)
       return off
     },
   },

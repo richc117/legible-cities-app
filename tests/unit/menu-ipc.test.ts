@@ -3,7 +3,7 @@
 // it says it listens; a page that goes stops hearing until the next one
 // says so; and only the interface's own top frame can say it listens.
 
-import type { IpcMain, IpcMainEvent } from 'electron'
+import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { MenuCommands, registerMenuHandlers } from '../../src/main/menu-ipc'
 import { CHANNELS } from '../../src/shared/api'
@@ -48,21 +48,22 @@ describe('the menu’s commands', () => {
     expect(sent).toEqual(['about', 'copy-diagnostics'])
   })
 
-  it('hears that the page listens from the interface’s own top frame only', () => {
-    const handlers = new Map<string, (event: IpcMainEvent) => void>()
+  it('hears that the page listens from the interface’s own top frame only', async () => {
+    type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+    const handlers = new Map<string, Handler>()
     const ipc = {
-      on: (channel: string, handler: (event: IpcMainEvent) => void) =>
-        handlers.set(channel, handler),
+      handle: (channel: string, handler: Handler) => handlers.set(channel, handler),
     } as unknown as IpcMain
     const { sent, menu } = commands()
     let top = false
     registerMenuHandlers(ipc, menu, () => top)
     expect([...handlers.keys()]).toEqual([CHANNELS.menuListening])
     menu.command('settings')
-    handlers.get(CHANNELS.menuListening)!({} as IpcMainEvent)
+    const listening = handlers.get(CHANNELS.menuListening)!
+    await expect(listening({} as IpcMainInvokeEvent)).rejects.toThrow('forbidden')
     expect(sent, 'a frame that is not the top frame is not heard').toEqual([])
     top = true
-    handlers.get(CHANNELS.menuListening)!({} as IpcMainEvent)
+    await listening({} as IpcMainInvokeEvent)
     expect(sent).toEqual(['settings'])
   })
 })
