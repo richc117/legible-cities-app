@@ -24,8 +24,8 @@ describe('the presets’ titles', () => {
 
   it('says GIF in the title of every GIF, since the chooser says nothing after its size', () => {
     // `presetWords` drops a GIF's format on the strength of this, so a GIF
-    // titled without it would read as a still. The engine's own table says
-    // which presets are GIFs.
+    // titled without it would read as a still. Which presets are GIFs is
+    // the v0.8.2 table's to say, held to the stand-in by `export.test.ts`.
     const table = JSON.parse(
       readFileSync(resolve(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
     ) as { presets: Preset[] }

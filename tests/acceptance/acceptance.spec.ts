@@ -2490,6 +2490,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
           (o) => !/^[A-Z][^,:]*, \d+ by \d+(, [A-Z0-9]+( still)?)?$/.test(o),
         )
         expect(odd).toEqual([])
+        // The real engine's formats, against the titles: an option with
+        // nothing after its size is a GIF, and its title must say so.
+        expect(options.filter((o) => /^[^,]+, \d+ by \d+$/.test(o) && !o.includes('GIF'))).toEqual(
+          [],
+        )
         // And never the engine's id, which is the file's name and not a person's.
         const named = (o: string, id: string): boolean =>
           new RegExp(`(^|[^A-Za-z-])${id}($|[^A-Za-z-])`).test(o)

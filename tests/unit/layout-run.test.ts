@@ -626,7 +626,9 @@ describe('a rebuild for a chosen day', () => {
 
   it("shows the main process's refusal of a day outside the window", async () => {
     const { run, calls, completeRebuild, record } = setup({ layout: LAYOUT, service: WINDOW })
-    completeRebuild.mockRejectedValueOnce(new Error('the feed covers 2026-01-01 to 2026-12-31'))
+    completeRebuild.mockRejectedValueOnce(
+      new Error('the feed covers 1 January 2026 to 31 December 2026'),
+    )
     run.rebuild(record, READY, '2027-01-01')
     await tick()
     calls[0].resolve({ files: {} })
@@ -1984,7 +1986,7 @@ describe('a redraw drawn and then not kept', () => {
       start: (run, record, engine) => run.rebuild(record, engine, '2026-09-12'),
       refuse: ({ completeRebuild }) =>
         completeRebuild.mockRejectedValueOnce(
-          new Error('the feed covers 2026-01-01 to 2026-12-31'),
+          new Error('the feed covers 1 January 2026 to 31 December 2026'),
         ),
       words:
         /^The map was drawn for that day, but the project could not keep it\. Nothing was written: it keeps its day/,
