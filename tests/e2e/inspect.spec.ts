@@ -23,6 +23,7 @@ import { holdWrites } from '../support/hold-writes'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
+  cellGroup,
   cellHandback,
   cellHeading,
   closeCell,
@@ -129,7 +130,12 @@ test('shows what is in the feed, sorts the routes, and marks what the mode keeps
     await expect(histogram.getByRole('row').nth(1)).toContainText('left out')
     await expect(histogram.getByRole('row').nth(2)).toContainText('kept')
     await expect.poll(() => readRecord(engineHome).mode).toBe('subway')
-    await expect(page.getByRole('definition').filter({ hasText: /^subway$/ })).toBeVisible()
+    // The picker says the mode, so the cell's field list does not say it
+    // again (issue 560).
+    await expect(inspect.getByRole('combobox', { name: 'Mode' })).toHaveValue('subway')
+    const fields = cellGroup(page, 'data')
+    await expect(fields.getByRole('term').filter({ hasText: /^Feed$/ })).toHaveCount(1)
+    await expect(fields.getByRole('term').filter({ hasText: /^Mode$/ })).toHaveCount(0)
 
     // Only one operator: no operator control.
     await expect(inspect.getByRole('combobox', { name: 'Operator' })).toHaveCount(0)
@@ -182,7 +188,12 @@ test('a feed with several operators offers the choice, filters the routes, and s
     // asks with what the write left (issue 388, held by a test below), and
     // since issue 407 reads the store's answer in the beat between it
     // arriving and the screen rendering it too.
-    await expect(page.getByRole('definition').filter({ hasText: /^every operator$/ })).toBeVisible()
+    // The picker says every operator, so the field list has no Operator row
+    // (issue 560); what the run asks with is read from what it sent, below.
+    await expect(operator).toHaveValue('')
+    const fields = cellGroup(page, 'data')
+    await expect(fields.getByRole('term').filter({ hasText: /^Feed$/ })).toHaveCount(1)
+    await expect(fields.getByRole('term').filter({ hasText: /^Operator$/ })).toHaveCount(0)
     await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
