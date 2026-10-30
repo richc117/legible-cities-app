@@ -21,6 +21,7 @@ what is different the first time you open the new one.
 - [Updating from an earlier release](#updating-from-an-earlier-release)
 - [What the app writes, and where](#what-the-app-writes-and-where)
 - [Uninstall completely](#uninstall-completely)
+- [Troubleshooting](#troubleshooting)
 - [Report a problem](#report-a-problem)
 
 ## What you need
@@ -143,9 +144,8 @@ opens like any other app, from Applications, Launchpad or the Dock. To
 install a newer version over an old one, quit the app first; on a Mac, choose
 **Replace** when the Finder asks, because **Keep Both** leaves two copies.
 
-If macOS says the app **is damaged and can't be opened**, the download did
-not arrive intact: move the app to the Trash, download the `.dmg` again, and
-check it as described above. If it happens again, [report it](#report-a-problem).
+If macOS says the app **is damaged and can't be opened**, see
+[Troubleshooting](#macos-says-the-app-is-damaged-and-cant-be-opened).
 
 ## Install on Windows
 
@@ -308,6 +308,155 @@ do these in order.
    the `Legible Cities` folder on your desktop (inside OneDrive, if OneDrive
    backs up your desktop), or the export folder you chose, if you no longer
    want them.
+
+## Troubleshooting
+
+Each of these says what you see, what it means and what to do. Where a
+sentence is set apart like this, it is the app's own, word for word.
+If none of them fits, or the fix does not hold, [report it](#report-a-problem).
+
+### macOS says the app "is damaged and can't be opened"
+
+The download did not arrive intact. Move the app to the Trash, download the
+`.dmg` again, and check it as described in
+[Check the download](#check-the-download-optional). If it happens again,
+[report it](#report-a-problem).
+
+### The app says a bundled tool could not run
+
+The app carries two tools it cannot work without: LOOM, which lays a map
+out, and ffmpeg, which makes the exports. Each time it starts, it runs both
+once. If one will not run, a window opens over the Library with a title
+naming the tool or tools, one of these sentences for each, and a button to
+**Copy diagnostics**, a button called **How to install** that opens this
+page, and **OK**. The title is one of:
+
+> LOOM will not run
+
+> ffmpeg will not run
+
+> LOOM and ffmpeg will not run
+
+The sentences, and what each means:
+
+> The bundled LOOM tools are missing, so maps cannot be laid out.
+
+The LOOM files are not where the app looks for them: the install is damaged,
+or something removed them.
+
+> The bundled LOOM tools did not answer in time, so maps cannot be laid out.
+
+They started and did not finish. If it comes back each time, report it.
+
+> The bundled LOOM tools did not run, so maps cannot be laid out.
+
+They could not start, stopped with an error or printed something unexpected.
+Security software that blocks programs can cause this: see the next section.
+
+> This installation is incomplete: the small feed the app checks LOOM with is missing, so the LOOM tools could not be checked and maps cannot be laid out.
+
+A file the app uses to test LOOM is missing, so LOOM itself was not judged.
+The install is damaged.
+
+> The bundled ffmpeg is missing, so exports cannot be made.
+
+> The bundled ffmpeg did not answer in time, so exports cannot be made.
+
+> The bundled ffmpeg did not run, so exports cannot be made.
+
+These mean the same for ffmpeg as the three sentences above mean for LOOM.
+
+The Library still opens, and everything that does not need the tool that
+failed still works: a missing LOOM stops laying out maps, a missing ffmpeg
+stops exports. **Reinstalling the app usually puts it right**: quit it,
+download the file for your computer again from the
+[Releases page](https://github.com/richc117/legible-cities-app/releases)
+and install it over the old one, as [Install on a Mac](#install-on-a-mac) or
+[Install on Windows](#install-on-windows) says. Reinstalling does not touch
+your projects. Settings keeps what the check found, under **Bundled tools**, after
+you press **OK**, and **Copy diagnostics** includes it.
+
+### Your antivirus quarantined ffmpeg or loom
+
+Security software sometimes takes a program it does not know out of the
+folder it is in, and the app then says, in the sentences above, that the tool
+is missing or did not run. The installers are not signed (see the start of
+this page), which makes a flag more likely. It is usually a false alarm, and
+you can [check the download](#check-the-download-optional) before you install
+to know the file is the one the release was built with.
+
+1. Open your security software and find its list of quarantined or blocked
+   items. On Windows with Microsoft Defender, that is **Windows Security**,
+   then **Virus & threat protection**, then **Protection history**. Open the
+   entry for ffmpeg or one of the LOOM tools, and choose **Actions**, then
+   **Restore** (or **Allow on device**).
+2. Restore it, then start Legible Cities again. If the files were removed and
+   cannot be restored, reinstall the app.
+3. If your software keeps flagging them, add the app's folder (the first row
+   of the table for your system in
+   [What the app writes, and where](#what-the-app-writes-and-where)) to its
+   exclusions.
+
+If you think a file was wrongly flagged, Microsoft takes submissions at
+[its file submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission),
+and other vendors have a similar form.
+
+### A feed will not download
+
+A feed is downloaded from the address you gave. Laying out a map needs a
+download first, and the app cannot make the agency's server answer.
+
+- **The app refuses the address before it tries.** Two of its sentences are
+  worth knowing:
+
+  > Paste the whole address, starting with http:// or https://; a feed address must be a URL with its scheme.
+
+  > Use an address on a public host; a feed cannot be fetched from this machine or its network.
+
+  The second means the address names your own computer or a private network,
+  such as `localhost` or an address that begins `192.168.`. The app downloads
+  feeds from public servers only. If you have the feed as a zip file, add the
+  file instead of its address.
+- **Open the address in a web browser.** If the browser cannot download the
+  zip either, the agency's server is down or the address has changed. Try
+  later, or look for the feed's current address on the agency's website.
+- **A proxy or a firewall.** On a network that reaches the internet through a
+  proxy, or that blocks downloads of zip files, the browser may have the
+  setting that the app lacks. Download the zip in the browser, then add the
+  file in the app.
+- **Read what cell 01 says.** The download is drawn in cell 01 (Data) of the
+  project, with its progress and, when it stops, the engine's reason. When
+  the feed did not download, cell 02 (Process) says:
+
+  > Nothing was laid out: the feed did not download. Cell 01 says why.
+
+  **Copy diagnostics** includes the engine's log.
+
+### The engine is unavailable
+
+The engine is the program that does the work behind the maps. If the app
+cannot start it, the Library and the project say so with a reason, and
+nothing that needs it works. In an installed app the reason is one of these
+two:
+
+> Reinstall the app. The bundled Python runtime is missing.
+
+> Reinstall the app. The bundled engine could not be started.
+
+Both mean the same thing for you: the engine's files are missing or will not
+start. Do as the sentence says: reinstall the app, over the old one, as above.
+If the same sentence comes back, [report it](#report-a-problem) with the
+diagnostics, and the log named in the next section.
+
+### Where the logs are
+
+The app writes two logs, `main.log` and `engine.log`. **Settings**, under
+**Logs and diagnostics**, has a button, **Open logs folder**, that opens the
+folder; the tables in
+[What the app writes, and where](#what-the-app-writes-and-where) say where it
+is on a [Mac](#on-a-mac) and on [Windows](#on-windows), for when the app
+will not open at all. **Copy diagnostics**, beside it, copies the last lines
+of both, with your home folder written as `~`; read it before you share it.
 
 ## Report a problem
 
