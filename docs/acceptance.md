@@ -1045,8 +1045,9 @@ into a plain text editor.
   its last `<N>` lines, engine.log `<M>`, and `<K>` of `<R>` map reports.
   The whole logs are in the logs folder (Settings › Open logs folder);
   attach them to the report." (main.log cut to one line reads "its last
-  line", engine.log "1 line", either cut to nothing "no lines"; one map
-  report reads "1 of 1 map report", and none "no map reports") with the
+  line", engine.log "1 line", either cut to nothing "no lines"; a session
+  with one map reads "… of 1 map report", one with none "no map reports")
+  with the
   oldest log lines gone and the newest kept, each log keeping at least its
   newest 20 lines until the reports of the projects opened first in the
   session have gone, the five sections from **App** to **Bundled tools** whole, and no

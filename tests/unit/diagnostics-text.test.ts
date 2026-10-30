@@ -289,16 +289,27 @@ describe('the budget', () => {
     // Short query values become <redacted>, which is longer than they were.
     // The home is on one line only, so what grows is not what shrinks.
     const url = 'https://example.org/g.zip?a=1&b=2&c=3'
-    const lines = Array.from({ length: 400 }, (_, i) => `main line ${i} ${url}`)
-    lines[399] += ` ${home}/x`
-    const given = input({ mainLog: lines.join('\n'), engineLog: logOf('engine', 400, 100) })
+    const lines = (name: string): string[] =>
+      Array.from({ length: 600 }, (_, i) => `${name} line ${i} ${url}`)
+    const mainLines = lines('main')
+    mainLines[599] += ` ${home}/x`
+    // The logs and one report each carry the same URL, so that leaving any
+    // one of them unfinished is enough to take the copy over the budget.
+    const report = `a map report ${Array.from({ length: 400 }, () => url).join(' ')}`
+    const given = input({
+      mainLog: mainLines.join('\n'),
+      engineLog: lines('engine').join('\n'),
+      reports: [report],
+    })
     // The premise: what composes within the budget raw is over it once redacted.
     expect(redactUrls(composeDiagnostics(given)).length).toBeGreaterThan(DIAGNOSTICS_BUDGET)
     const text = diagnosticsText(given, [home], 'linux')
     expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
     expect(text).toMatch(TRIM)
     expect(text).toContain('<redacted>')
-    expect(text).toContain('main line 399 ')
+    expect(text).toContain('main line 599 ')
+    expect(text).toContain('engine line 599 ')
+    expect(text).toContain('a map report ')
     expect(text).toContain('~/x')
     expect(text).not.toContain(home)
   })

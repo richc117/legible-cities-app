@@ -1599,7 +1599,7 @@ describe('copying diagnostics', () => {
     await big.call(CHANNELS.settingsCopyDiagnostics, [])
     expect(big.copied[0].length).toBeGreaterThan(60_000)
     expect(big.logs.filter((l) => l.includes('over the budget'))).toEqual([
-      `warning: the diagnostics are ${big.copied[0].length} characters, over the budget of 48000, with every log line and report already left out`,
+      `warning: the diagnostics are ${big.copied[0].length} characters, over the budget of 48000; the head, which is never cut, may be too long on its own`,
     ])
     const small = await harness()
     await small.call(CHANNELS.settingsCopyDiagnostics, [])

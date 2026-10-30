@@ -118,5 +118,21 @@
     "test": "tests/unit/diagnostics-text.test.ts",
     "title": "counts the reports in the singular for one, and says there were none for none",
     "why": "Zero reports read as \"0 of 0\" instead of saying there were none."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      engineLog: finish(input.engineLog),",
+    "replace": "      engineLog: input.engineLog,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "holds the finished copy to the budget when redaction makes lines longer, and still hides the home",
+    "why": "The engine log composed unfinished: the budget is kept on text that redaction then lengthens."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      reports: input.reports.map(finish),",
+    "replace": "      reports: input.reports,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "holds the finished copy to the budget when redaction makes lines longer, and still hides the home",
+    "why": "The reports composed unfinished: the budget is kept on text that redaction then lengthens."
   }
 ]

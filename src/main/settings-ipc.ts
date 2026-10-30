@@ -491,11 +491,12 @@ export class SettingsService {
       await this.#homes(),
       d.platform,
     )
-    // Only the head, which is never cut, can leave a copy over the budget:
-    // say so, since the copy is still made and the person is not told.
+    // A copy can still be over the budget when the head, which is never cut,
+    // is too long on its own: say so, since the copy is still made and the
+    // person is not told.
     if (text.length > DIAGNOSTICS_BUDGET) {
       this.#deps.log(
-        `warning: the diagnostics are ${text.length} characters, over the budget of ${DIAGNOSTICS_BUDGET}, with every log line and report already left out`,
+        `warning: the diagnostics are ${text.length} characters, over the budget of ${DIAGNOSTICS_BUDGET}; the head, which is never cut, may be too long on its own`,
       )
     }
     await writeClipboard(d.writeText, text)
