@@ -688,6 +688,9 @@ are the design's half of those answers.
   An outline and a hard-edged shadow on one element are read as two bands,
   each counting towards the thickness only if it clears 3:1 itself
   (`tests/support/ring.ts`); no control draws one today.
+  A heading that takes focus by script is as wide as its words, so its ring is.
+  A cell's heading is the exception: its row is a band, and the ring is the
+  band's.
 - Forced colours (Windows high contrast; issue 436). The mode replaces every
   colour with the user's palette and removes every `box-shadow`, so the
   resting edges drawn as a shadow - the kit's text field, a select, a

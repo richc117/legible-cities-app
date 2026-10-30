@@ -186,7 +186,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Heading, and the New project card first among the cards (ADR-047): one Tab from the heading, with projects or without | swept | swept | swept | swept | pass (the card's pairs below; the plus `--accent` on `--surface-sunken`, 5.59 and 4.49 for a glyph's 3.0) | pass | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
+| Heading, and the New project card first among the cards (ADR-047): one Tab from the heading, with projects or without | swept | swept | swept (the heading takes focus on opening, with its ring round the heading's words, issue 564) | swept | pass (the card's pairs below; the plus `--accent` on `--surface-sunken`, 5.59 and 4.49 for a glyph's 3.0) | pass | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Empty state: the introduction, then Your projects holding the New project card alone, with the quiet line beside it, "Projects you make appear here, most recently opened first." (ADR-047; a paragraph, not a live region, gone with the first project) | swept | swept | swept | swept | fixed (C6); the quiet line `--text-muted` on `--surface` | fixed (C1, C6) | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Your projects: one card each, a button named `Open <name>`, described by where it runs and how far it has got (A5.6-04, ADR-047); its picture area the engine's thumbnail of the map as an `<img alt="">` in the interface's palette, or where there is none (not drawn yet, or the file did not load) the empty area, one `train` glyph hidden from the tree (issue 287) | swept | swept (names read from the tree are the same in Night and Parchment, with the thumbnail and without) | swept | swept | pass (`--text`, `--text-muted`; `--text-muted` on `--surface-hover` under the pointer; the glyph `--text-faint` on `--surface-sunken`, measured on the element in both themes; a picture is decorative and is not measured) | pass | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Sample cities: the same card, one button, named by its facts - name, where it runs, and its chip "downloaded" or "not downloaded yet"; what its mode keeps is no longer among them (A5.6-02, ADR-047); its picture the one the engine made for that city, shipped with the app, an `<img alt="">` that swaps with the theme and changes no name (issue 287); one press opens it laying out (A5.6-03) | swept | swept (names the same in both themes with the pictures present) | swept | swept | pass (the same pairs; the chip `--text-muted` on `--surface-sunken`) | pass | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
@@ -202,7 +202,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, above) | swept | swept | swept | swept | pass (`--text`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| The project's name as the `h1`, no breadcrumb around it (A5.5-22, issue 275; the way back is in the header, above) | swept | swept | swept (focus is put on it, with its ring round the heading's words, issue 564) | swept | pass (`--text`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | The notebook's sentence, Run all and Stop | Run all's handover to Stop and back, and focus to the sentence when Run all does not come back, asserted in `layout.spec.ts` ("Run all…" tests); not swept, since every sweep is of a project already drawn, where Run all is not drawn, and Stop exists only during a run | swept (the sentence one `role="status"`, and beside it a hidden `role="alert"` that holds the failure, if there is one, and is empty otherwise; Run all's name) | Run all and Stop not swept: audit only (the kit button's ring) | audit only | pass (`--text`; the primary button C1) | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Read-only notice | n/a | pass (`role="status"`) | n/a | n/a | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
@@ -314,7 +314,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Toggle, heading, Close, Escape | pass; the toggle controls the Inspector while it is open (F6) | pass | pass | pass (no slide at any setting) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Toggle, heading, Close, Escape | pass; the toggle controls the Inspector while it is open (F6) | pass | pass (the heading's ring is round the heading's words, issue 564) | pass (no slide at any setting) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job; the compact line has no labels, so the state line under the title names the stage and its place, "running collapse, 2 of 8", issue 278) | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Below 900px, over the main region | audit only (the main region `inert`; not in the sweep) | audit only | audit only | audit only | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
@@ -323,7 +323,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The dialog: its details disclosure, Copy diagnostics, How to install, OK | swept: OK focused on opening, the Tab walk reaches the disclosure and the three buttons, Escape closes it | swept (labelled by its title, described by its sentences) | swept | swept | pass | pass (the primary button as C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Focus after it closes | asserted: back on the front door's heading; if what held focus when it opened has gone, the open screen's heading takes it | n/a | n/a | n/a | n/a | n/a | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Focus after it closes | asserted: back on the front door's heading, with its ring round the heading's words (issue 564); if what held focus when it opened has gone, the open screen's heading takes it | n/a | n/a | n/a | n/a | n/a | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Waiting for another dialog | e2e (`first-run.spec.ts`): never over a dialog a person has open, or over the mismatch dialog | n/a | n/a | n/a | n/a | n/a | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
 ### Mismatch dialog
@@ -900,7 +900,8 @@ a table).
 ### The front door (Library)
 
 - **Heading and New project.** On opening, listen for the heading
-  "Library" read first, at level 1 (focus is put there). Tab: **New
+  "Library" read first, at level 1 (focus is put there, and a sighted
+  reader sees its ring round the word, not across the column). Tab: **New
   project**, a button, the first card in the list "Projects", with
   projects or without (ADR-047). Its plus is not read. Adding a feed is
   inside it since A5.6-05.
@@ -995,7 +996,8 @@ a table).
 ### Project: the header, the rail and the map
 
 - **The heading.** Open **Los Angeles** from **Your projects**. Listen
-  for its name read as a level-1 heading (focus is put there). There is no
+  for its name read as a level-1 heading (focus is put there, with its ring
+  round the heading's words). There is no
   navigation landmark "Breadcrumb" (issue 275); the way back is the header's
   "Back to Library".
 - **The notebook's sentence, Run all and Stop.** After the heading, listen
@@ -1596,7 +1598,7 @@ start the app normally.
   **How to install** (it opens the install document in the browser; come
   back), and **OK**. Focus never leaves the dialog while it is open.
 - **Focus after it closes.** Press Escape (or **OK**). Listen for focus on
-  the Library's heading, "Library". The dialog does not come back this
+  the Library's heading, "Library" (its ring round the heading's words). The dialog does not come back this
   session.
 - **Waiting for another dialog.** Start the app the same way, and press
   **New project** as soon as the Library appears, before the check has
