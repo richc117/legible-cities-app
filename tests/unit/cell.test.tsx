@@ -38,7 +38,7 @@ describe('a cell', () => {
   it('opens its row on a chevron that is decorative, so the name does not hold it', () => {
     // The first thing in the button, before the number: it says the row
     // toggles and which way it is (issue 279). `Icon` hides an unlabelled
-    // glyph from the tree, so the row's name is still "03 Frame ...".
+    // glyph from the tree, so the row's name is still "03 Day ...".
     const row = /<button[^>]*class="cell-head"[^>]*>(.*?)<\/button>/.exec(draw())?.[1] ?? ''
     expect(row).toMatch(/^<span class="icon cell-chevron"[^>]*aria-hidden="true"/)
     expect(row.indexOf('cell-chevron')).toBeLessThan(row.indexOf('cell-number'))
@@ -87,7 +87,7 @@ describe('a cell', () => {
         /<button[^>]*aria-label/,
       )
       expect(html).toContain('03')
-      expect(html).toContain('Day')
+      expect(html).toContain('<span class="cell-name">Day</span>')
       expect(html).toContain(stateWord(state))
     }
   })

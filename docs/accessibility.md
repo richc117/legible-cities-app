@@ -1017,8 +1017,8 @@ a table).
   moved or deleted", with no button.
 - **Skip past the map.** Tab past cells 01 and 02. Listen for a button
   "Skip past the map" and look for it appearing over the top edge of the
-  map. Press it: listen for focus on cell 03's heading, "03 Frame and
-  service day", with the map not read. Look for the focus ring on a band
+  map. Press it: listen for focus on cell 03's heading, "03 Day", with
+  the map not read. Look for the focus ring on a band
   of the interface's ground, clear against the map in either of the
   project's themes. Shift+Tab from cell 03 walks back through the map,
   which is expected (F3, issue 106).

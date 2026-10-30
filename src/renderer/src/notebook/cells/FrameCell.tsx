@@ -139,10 +139,9 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
               first in the cell, with the engine's reason. For the redraw a
               project's opening asked for, in words for a person who pressed
               nothing, and then what still holds of the map on screen. It is
-              not a live region: the header's alert says "03 Frame and
-              service day failed." once, assertively, and a second
-              announcement of the same failure here would say it twice
-              (FR-017). The cell's own state reads failed and its row says
+              not a live region: the header's alert says "03 Day failed."
+              once, assertively, and a second announcement of the same
+              failure here would say it twice (FR-017). The cell's own state reads failed and its row says
               so. */}
           {failed !== null && (
             <>

@@ -118,10 +118,11 @@
    name and a word and not for a fourth thing. That was wrong: in plain
    Chromium with these stylesheets, at the rail's own width and against the
    longest state word there is ("not drawn yet"), the icon and its gap cost
-   twenty pixels and add no truncation anywhere. Five of the six names measure 28 to 48
-   pixels and have 71 left for them, where they had 91; the sixth, "Frame
-   and service day" at 137, is cut with the icon and cut without it, since
-   it is longer than the rail either way. Nothing overflows. The row was
+   twenty pixels and add no truncation anywhere. All six names fit in the 71
+   pixels left for them, where they had 91: five measure 28 to 48, and cell
+   03's old name, 137, was the one cut, with the icon and without it, until
+   issue 565 renamed the cell "Day". The rail spec holds every name to
+   that at 1024 and 1280 pixels wide. Nothing overflows. The row was
    37 pixels tall and then 40; it is one control's height now, the
    maintainer's call of 30 Sep 2026, with the icon centred in it.
 
