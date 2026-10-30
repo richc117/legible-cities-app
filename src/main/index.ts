@@ -470,7 +470,7 @@ function setAppMenu(help: HelpIpcDeps): void {
   if (process.platform === 'darwin') {
     app.setAboutPanelOptions({
       applicationName: PRODUCT_NAME,
-      applicationVersion: app.getVersion(),
+      applicationVersion: __RELEASE_LABEL__,
       copyright: 'Licensed under GPL-3.0-or-later.',
     })
   }

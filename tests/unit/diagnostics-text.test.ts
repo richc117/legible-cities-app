@@ -100,7 +100,8 @@ describe('the composed text', () => {
   // The label is fixed at build time (issue 558), so what the main process
   // hands Settings and the diagnostics is held here from the source: both
   // read about().app.version, and it must be the label, not Electron's
-  // app.getVersion(), which is package.json's X.Y.Z without the -rc.N.
+  // app.getVersion(), which is package.json's X.Y.Z without the -rc.N. The
+  // macOS About panel (issue 554) says the same label, so no call to it is left.
   it("is handed the build's release label for the app, not Electron's version", async () => {
     // Mutation: about() back on app.getVersion(), so a candidate says 1.0.0.
     const index = await readFile(join(__dirname, '../../src/main/index.ts'), 'utf8')
