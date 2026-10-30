@@ -31,6 +31,7 @@ import {
 import { useColourPanel, type ColourPanelProps } from './ColourChip'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
+import { useFocusHandback } from './focusHandback'
 import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
 import LineOptionsDisclosure from './LineOptionsDisclosure'
 import { useCheapEdit } from './notebook/useCheapEdit'
@@ -238,41 +239,24 @@ export default function LineColours({
   // disagreement this panel exists to prevent.
   const panelClosed = (): void => edit.release()
 
-  // Reset every line removes the last thing it had to remove and disables
-  // itself, and Chromium blurs a disabled element. Focus goes to the
-  // control that came, Put back, when there is something to put back, and
-  // else to the cell's heading, so a screen reader stays in the cell (A3-04
-  // learned this). Put back goes as it is pressed, and hands focus back to
-  // the reset, which is pressable again (issue 561). Both are asked for at
-  // the press and given once the controls they name are drawn: after the
-  // kit's own effects, so the reset is no longer disabled when it is asked.
+  // Reset every line and Put back, each the way back from the other (issue
+  // 561). Their focus is the section's hand-back, below.
   const resetRef = useRef<HTMLElement>(null)
   const putBackRef = useRef<HTMLElement>(null)
-  const focusTo = useRef<'put back' | 'reset' | null>(null)
-  useEffect(() => {
-    const to = focusTo.current
-    if (to === null) return
-    focusTo.current = null
-    const target = to === 'put back' ? putBackRef.current : resetRef.current
-    // A target that went or is disabled after all - Put back's start
-    // refused, its write refused - cannot hold focus: the heading can.
-    const able = target !== null && target.isConnected && !target.hasAttribute('disabled')
-    ;(able ? target : handback.current)?.focus()
-  })
   const resetEvery = (): void => {
     closePanels()
     const next = resetAll()
     setPalette(next)
-    if (edit.reset(next)) focusTo.current = 'put back'
-    else handback.current?.focus()
+    edit.reset(next)
   }
   // The colours the map was drawn in before the reset, through the same
   // cheap edit as any colour: one redraw, and the record written once the
   // map carries them.
   const putBack = (): void => {
-    if (edit.before === null) return
-    focusTo.current = 'reset'
-    release(edit.before)
+    const before = edit.before
+    if (before === null) return
+    setPalette(before)
+    edit.putBack(before)
   }
 
   const inspection = state.status === 'ready' ? state.inspection : null
@@ -285,6 +269,24 @@ export default function LineColours({
     [inspection, mode, agency],
   )
   const nothingToReset = isReset(palette)
+  // Reset every line removes the last thing it had to remove and disables
+  // itself, and Chromium blurs a disabled element; Put back goes as it is
+  // pressed. Whichever held focus, it goes to the control that is there:
+  // Put back while it is offered, else the reset while it can be pressed,
+  // else the cell's heading, so a screen reader stays in the cell (A3-04,
+  // A6-07). Watched on Put back being offered and on the reset being
+  // pressable, so a stop that comes later - the reset's redraw failing,
+  // Put back's refused - hands it on too; focus a person put elsewhere is
+  // theirs (`useFocusHandback`).
+  useFocusHandback(
+    section,
+    () => {
+      if (putBackRef.current !== null) return putBackRef.current
+      const reset = resetRef.current
+      return reset !== null && !reset.hasAttribute('disabled') ? reset : handback.current
+    },
+    `${edit.before !== null}/${nothingToReset}`,
+  )
   // Each line's options (issue 394), in a closed disclosure under its row:
   // the colours' kind of cheap edit, held and drawn by their own hook.
   const options = useLineOptions({

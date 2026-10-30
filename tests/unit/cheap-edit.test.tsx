@@ -1129,6 +1129,48 @@ describe.each([COLOURS_RESET, SIZES_RESET])('$name: Put back', (reset) => {
     )
   })
 
+  it('keeps its values through Reset, Put back and Reset again during the first redraw', async () => {
+    // The second reset is drawn after the first's redraw has written a
+    // `drawn` that is the reset's own; the values kept at the first press
+    // are still the ones to put back. Mutation (`cheap-edit.mutations.json`):
+    // the slot cleared there when `drawn` equals the reset - Put back is
+    // gone, and the colours with it.
+    await openDrawn(reset)
+    press(reset.reset)
+    firstTry(reset.panel)
+    expect(run.snapshot.state, 'the first reset draws').toBe('running')
+    press(reset.putBack)
+    press(reset.reset)
+    drawnNow(reset, reset.after)
+    wait(REDRAW_DELAY)
+    expect(reset.sent(), 'the second reset draws nothing: the record holds it').toEqual([
+      reset.resetValue,
+    ])
+    expect(offered(reset.putBack), 'still offered').toBe(true)
+    press(reset.putBack)
+    firstTry(reset.panel)
+    expect(reset.sent().at(-1)).toEqual(reset.beforeValue)
+  })
+
+  it('stays offered when Put back’s own redraw stops, and goes once it is drawn', async () => {
+    // Mutation (`cheap-edit.mutations.json`): a stop of Put back's redraw
+    // forgetting the slot - the values before the reset are lost for good.
+    await openDrawn(reset)
+    press(reset.reset)
+    firstTry(reset.panel)
+    drawnNow(reset, reset.after)
+    press(reset.putBack)
+    expect(offered(reset.putBack), 'not while it is drawn').toBe(false)
+    firstTry(reset.panel)
+    moved(snap('cancelled', reset.panel.own))
+    expect(offered(reset.putBack), 'offered again after the stop').toBe(true)
+    press(reset.putBack)
+    firstTry(reset.panel)
+    expect(reset.sent()).toEqual([reset.resetValue, reset.beforeValue, reset.beforeValue])
+    drawnNow(reset, reset.before)
+    expect(offered(reset.putBack), 'drawn: one step, and nothing left').toBe(false)
+  })
+
   it('goes when the reset’s own redraw stops, the record still holding what it had', async () => {
     await openDrawn(reset)
     press(reset.reset)

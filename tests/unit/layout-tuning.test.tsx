@@ -400,16 +400,14 @@ describe('Put back the tuning this layout was made with', () => {
   const buttons = (html: string): string[] =>
     [...html.matchAll(/<fig-button[^>]*>([^<]*)<\/fig-button>/g)].map((m) => m[1])
 
-  it('is drawn beside Reset while it is offered, and the reset’s line says so once it is LOOM’s own', () => {
+  it('is drawn beside Reset while it is offered, with the section’s line empty as it opens', () => {
+    // The line is Reset's to fill (put-back-focus.test.tsx), never the
+    // record's: a section opened on a cleared tuning says nothing.
     const reset = shown(undefined)
     expect(buttons(reset)).toEqual([RESET_LABEL, PUT_BACK_TUNING])
-    expect(reset).toContain(
-      `<p class="message" role="status" aria-live="polite">${TUNING_RESET_SAID}</p>`,
-    )
-    // A field moved since the layout: Put back, and no word of a reset.
-    const moved = shown({ grid: 'hexalinear' })
-    expect(buttons(moved)).toEqual([RESET_LABEL, PUT_BACK_TUNING])
-    expect(moved).toContain('<p class="message" role="status" aria-live="polite"></p>')
+    expect(reset).toContain('<p class="message" role="status" aria-live="polite"></p>')
+    expect(reset).not.toContain(TUNING_RESET_SAID)
+    expect(buttons(shown({ grid: 'hexalinear' }))).toEqual([RESET_LABEL, PUT_BACK_TUNING])
     expect(buttons(shown({ grid: 'hexalinear', deg90: 4 }))).toEqual([RESET_LABEL])
   })
 })

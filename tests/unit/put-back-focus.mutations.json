@@ -1,34 +1,66 @@
 [
   {
     "file": "src/renderer/src/LineColours.tsx",
-    "find": "    if (edit.reset(next)) focusTo.current = 'put back'\n    else handback.current?.focus()\n",
-    "replace": "    edit.reset(next)\n    handback.current?.focus()\n",
+    "find": "      if (putBackRef.current !== null) return putBackRef.current\n      const reset = resetRef.current\n",
+    "replace": "      const reset = resetRef.current\n",
     "test": "tests/unit/put-back-focus.test.tsx",
     "title": "hands focus to Put back, and Put back hands it back to the reset",
-    "why": "Reset every line handing focus to the cell's heading whatever comes: a keyboard or screen reader user is left on the heading with Put back somewhere below, unannounced as the place to go."
+    "why": "The hand-back not preferring Put back: Reset every line hands focus to the cell's heading, with Put back below it unannounced as the place to go."
   },
   {
     "file": "src/renderer/src/LineColours.tsx",
-    "find": "    focusTo.current = 'reset'\n    release(edit.before)\n",
-    "replace": "    release(edit.before)\n",
+    "find": "      return reset !== null && !reset.hasAttribute('disabled') ? reset : handback.current\n",
+    "replace": "      return handback.current\n",
     "test": "tests/unit/put-back-focus.test.tsx",
     "title": "hands focus to Put back, and Put back hands it back to the reset",
-    "why": "Put back not handing focus back as it goes: the button is removed under the focus it held, and Chromium puts focus on the body, the A6-07 defect."
+    "why": "Put back not handing focus back to the reset as it goes: focus lands on the heading, away from the control that undoes Put back in turn (Reset every line)."
   },
   {
     "file": "src/renderer/src/StyleFields.tsx",
-    "find": "    if (edit.reset({})) focusTo.current = 'put back'\n    else handback.current?.focus()\n",
-    "replace": "    edit.reset({})\n    handback.current?.focus()\n",
+    "find": "      if (putBackRef.current !== null) return putBackRef.current\n      const reset = resetRef.current\n",
+    "replace": "      const reset = resetRef.current\n",
     "test": "tests/unit/put-back-focus.test.tsx",
     "title": "hands focus to Put back, and Put back hands it back to the reset",
-    "why": "The sizes' reset handing focus to the cell's heading whatever comes: Put back your sizes stands below it unannounced as the place to go."
+    "why": "The hand-back not preferring Put back: the sizes' reset hands focus to the cell's heading, with Put back below it unannounced as the place to go."
+  },
+  {
+    "file": "src/renderer/src/StyleFields.tsx",
+    "find": "      return reset !== null && !reset.hasAttribute('disabled') ? reset : handback.current\n",
+    "replace": "      return handback.current\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus to Put back, and Put back hands it back to the reset",
+    "why": "Put back not handing focus back to the reset as it goes: focus lands on the heading, away from the control that undoes Put back in turn (the sizes' reset)."
+  },
+  {
+    "file": "src/renderer/src/LineColours.tsx",
+    "find": "    `${edit.before !== null}/${nothingToReset}`,\n",
+    "replace": "    'once',\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus on to the reset when the reset’s redraw later fails",
+    "why": "The hand-back keyed on nothing that moves: a stop that comes after the hand-off takes Put back away under the focus, and focus is left on the body."
   },
   {
     "file": "src/renderer/src/LayoutTuning.tsx",
-    "find": "    if (putBackTuning(project, {}) !== null) focusTo.current = 'put back'\n    else heading.current?.focus()\n",
-    "replace": "    heading.current?.focus()\n",
+    "find": "      if (putBackRef.current !== null) return putBackRef.current\n      const button = resetRef.current\n",
+    "replace": "      const button = resetRef.current\n",
     "test": "tests/unit/put-back-focus.test.tsx",
     "title": "hands focus to Put back for a layout made with a tuning",
-    "why": "The tuning's reset handing focus to the section's heading on a layout made with a tuning, where Put back the tuning this layout was made with is the control that came."
+    "why": "The tuning's hand-back not preferring Put back: Reset hands focus to the section's heading on a layout made with a tuning, where Put back is the control that came."
+  },
+  {
+    "file": "src/renderer/src/LayoutTuning.tsx",
+    "find": "      return button !== null && !button.hasAttribute('disabled') ? button : heading.current\n",
+    "replace": "      return heading.current\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus to Put back for a layout made with a tuning",
+    "why": "The tuning's Put back not handing focus back to Reset as it goes: focus lands on the section's heading."
+  },
+  {
+    "file": "src/renderer/src/LayoutTuning.tsx",
+    "find": "{resetSaid && laid !== null ? TUNING_RESET_SAID : ''}",
+    "replace": "{laid !== null ? TUNING_RESET_SAID : ''}",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "says its line from Reset’s press",
+    "why": "The tuning's line said whenever Put back is offered: it fills on a section opened after a reset, or when one field moves away from the layout's tuning, saying a reset happened that did not."
   }
 ]

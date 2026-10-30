@@ -64,9 +64,10 @@ import { useSnapshot } from '../useSnapshot'
 //   and again as the reset is drawn, for a reset held behind a redraw.
 //   The panel offers them back, through the same cheap edit as any change.
 //   It is one step and no history: the slot goes at the section's next
-//   edit (Put back's own included), at a stop of the panel's own redraw -
-//   the reset was then never drawn and the record still holds the values -
-//   and with the panel, so a project screen that closes takes it along.
+//   edit, once Put back's own redraw is drawn (one that stops offers Put
+//   back again), at a stop of the reset's own redraw - the reset was then
+//   never drawn and the record still holds the values - and with the
+//   panel, so a project screen that closes takes it along.
 //   It is never written to the record, and never travels with a change
 //   flushed as its panel goes.
 //
@@ -170,10 +171,13 @@ export interface CheapEdit<V> {
   reset: (next: V) => boolean
   /**
    * What Put back offers: the section as the map was drawn from it when the
-   * reset was pressed, until the section's next edit; null when there is
-   * nothing to put back. Put back itself is `change` with it.
+   * reset was pressed, until the section's next edit or until Put back is
+   * drawn; null when there is nothing to put back, and while Put back's own
+   * redraw goes.
    */
   before: V | null
+  /** Put back: `before` drawn as a change is, and forgotten once the map carries it. */
+  putBack: (value: V) => void
 }
 
 /** What the hook reads at the moment it acts, from the latest render. */
@@ -489,33 +493,54 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
     latest.current = { ...options, snapshot }
   })
   // Put back's one slot (issue 561): the section as the map was drawn from
-  // it when the reset was pressed, by the project it was kept for. State, so
-  // the panel draws Put back from it; the panel's, so it goes with the
-  // panel and is never written anywhere.
-  const [kept, setKept] = useState<{ id: string; value: V } | null>(null)
-  // The reset waiting to be drawn, by reference, so the slot can be taken
-  // again from the record as it stands when the reset is drawn: a reset
-  // pressed while another redraw of the panel's goes is held, and that
-  // redraw writes a `drawn` the slot must follow, or Put back would undo
-  // two steps (the review of issue 561).
+  // it when the reset was pressed, by the project it was kept for, and
+  // whether Put back is being drawn. State, so the panel draws Put back
+  // from it; the panel's, so it goes with the panel and is never written
+  // anywhere.
+  const [kept, setKept] = useState<{ id: string; value: V; going: boolean } | null>(null)
+  // The reset waiting to be drawn, and Put back waiting to be drawn, each by
+  // reference. A reset pressed while another redraw of the panel's goes is
+  // held, and that redraw writes a `drawn` the slot must follow, or Put back
+  // would undo two steps (the review of issue 561). Put back's own values
+  // are forgotten only once the map carries them, so a Put back whose
+  // redraw stops or is refused is offered again rather than lost.
   const resetting = useRef<V | null>(null)
+  const restoring = useRef<V | null>(null)
   const forget = (): void => {
     resetting.current = null
+    restoring.current = null
     setKept(null)
   }
   const keepFor = (next: V): boolean => {
     const facts = latest.current
     const drawn = facts.drawnOf?.(facts.project) ?? null
     const keep = drawn !== null && !facts.same(drawn, next)
-    setKept(keep ? { id: facts.project.id, value: drawn } : null)
+    setKept(keep ? { id: facts.project.id, value: drawn, going: false } : null)
     return keep
   }
+  // A change is about to be compared and drawn. For a reset, the slot is
+  // taken again from the record as it stands - but only replaced, never
+  // cleared: a reset pressed again during the first one's redraw, after a
+  // Put back, meets a `drawn` that is already the reset's own, and the
+  // values kept at the first press are still the ones to put back.
   const drawing = (next: V): void => {
     if (resetting.current === null || !Object.is(resetting.current, next)) return
     resetting.current = null
-    keepFor(next)
+    const facts = latest.current
+    const drawn = facts.drawnOf?.(facts.project) ?? null
+    if (drawn !== null && !facts.same(drawn, next))
+      setKept({ id: facts.project.id, value: drawn, going: false })
   }
-  const [edit] = useState(() => editor(latest, setWaiting, forget, drawing))
+  // The panel's own redraw stopped, or its start was refused. A reset's:
+  // nothing was reset, so nothing is left to put back. Put back's: the
+  // values are still to be put back, and Put back is offered again.
+  const stopped = (): void => {
+    if (restoring.current === null) return forget()
+    restoring.current = null
+    resetting.current = null
+    setKept((was) => (was === null ? null : { ...was, going: false }))
+  }
+  const [edit] = useState(() => editor(latest, setWaiting, stopped, drawing))
   // A person's edit of the section is the next step, and Put back's slot
   // goes with it: one step back, never two.
   const [api] = useState(() => ({
@@ -541,10 +566,30 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
     reset: (next: V): boolean => {
       const keep = keepFor(next)
       resetting.current = next
+      restoring.current = null
       edit.change(next)
       return keep
     },
+    // Put back: the kept values through the same cheap edit as any change.
+    // The slot stays, hidden, until the map carries them (below), so a stop
+    // offers Put back again; any edit meanwhile forgets it as usual.
+    putBack: (value: V): void => {
+      restoring.current = value
+      resetting.current = null
+      setKept((was) => (was === null ? null : { ...was, going: true }))
+      edit.change(value)
+    },
   }))
+
+  // Put back is drawn once nothing of the panel's own is drawing or waiting
+  // and the record holds its values: the redraw's completion wrote them.
+  useEffect(() => {
+    const value = restoring.current
+    if (value === null) return
+    if (snapshot.state === 'running' && options.own(snapshot)) return
+    if (edit.unbuilt.held !== null) return
+    if (options.same(options.stored(options.project), value)) forget()
+  })
 
   usePutBack(snapshot.state, options.own(snapshot), edit.putBack)
 
@@ -570,8 +615,8 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
     ...api,
     waiting,
     // Only for the project it was kept for: a panel handed another project
-    // has nothing of this one's to put back.
-    before: kept !== null && kept.id === project.id ? kept.value : null,
+    // has nothing of this one's to put back. Not while Put back is drawn.
+    before: kept !== null && kept.id === project.id && !kept.going ? kept.value : null,
   }
 }
 

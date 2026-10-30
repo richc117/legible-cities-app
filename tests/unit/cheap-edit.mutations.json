@@ -38,5 +38,21 @@
     "test": "tests/unit/cheap-edit.test.tsx",
     "title": "stays when a panel closes with no gesture under it",
     "why": "Every release taken as an edit: the colour panel the reset closed reports its close a task later, and Put back goes under the focus the reset handed it."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (drawn !== null && !facts.same(drawn, next))\n      setKept({ id: facts.project.id, value: drawn, going: false })\n",
+    "replace": "    setKept(\n      drawn !== null && !facts.same(drawn, next)\n        ? { id: facts.project.id, value: drawn, going: false }\n        : null,\n    )\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "keeps its values through Reset, Put back and Reset again during the first redraw",
+    "why": "The slot cleared as the reset is drawn when drawn already is the reset's own: Reset, Put back and Reset again during the first redraw loses the values kept at the first press."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (restoring.current === null) return forget()\n",
+    "replace": "    return forget()\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "stays offered when Put back’s own redraw stops",
+    "why": "A stop of Put back's own redraw forgetting the slot: a cancelled or failed Put back loses the values before the reset for good."
   }
 ]

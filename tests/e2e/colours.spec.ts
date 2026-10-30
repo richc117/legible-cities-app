@@ -949,14 +949,14 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
 
     // Reset every line pressed with a panel open and focus still on its chip,
     // as an assistive technology's click presses it: no pointer event
-    // light-dismisses the panel and no key has moved focus off the chip, so
-    // what closes it is the reset handing focus on - since issue 561 to Put
-    // back your colours, the control that came, as the map was drawn in a
-    // colour of the person's own (a panel closes when focus lands outside it
-    // and its chip, issue 436) - and no empty box is left in the top layer.
+    // light-dismisses the panel and no key has moved focus off the chip, and
+    // the reset does not take focus a person put somewhere that can still
+    // hold it (`useFocusHandback`), so what closes the panel is the reset
+    // itself (`closePanels()`), and no empty box is left in the top layer.
+    // Put back is offered beside it all the same (issue 561).
     //
-    // Mutation: drop both of `resetEvery`'s focus hand-offs (LineColours.tsx)
-    // and the panel stays open here.
+    // Mutation: remove the reset's `closePanels()` (LineColours.tsx) and the
+    // panel stays open here.
     await chipOf('A').click()
     const one = panel.getByRole('group', { name: 'Colour for line A' })
     await one.getByLabel('Hex value').fill('#ff0000')
@@ -969,8 +969,8 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     const resetAll = panel.getByRole('button', { name: 'Reset every line' })
     await resetAll.evaluate((el) => (el as HTMLElement).click())
     await expect(one).toBeHidden()
-    const putBack = panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })
-    await expect(putBack, 'the reset handed focus to Put back').toBeFocused()
+    await expect(chipOf('A'), 'focus stays where the person left it').toBeFocused()
+    await expect(panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })).toHaveCount(1)
     expect(
       await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
       'no panel left open',
@@ -979,13 +979,10 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
 
     // And with focus already on cell 05's heading: a panel opened by a press
     // that moves no focus (a screen reader's activation in browse mode), then
-    // Reset every line pressed the same way. Neither press moves focus; the
-    // reset's hand-off to Put back does, and the panel closes with it. The
-    // reset's own `closePanels()` is what closes a panel when the reset has
-    // nothing to put back and the heading already holds focus, so the
-    // hand-off moves none: a map drawn in the reset's own colours with a
-    // colour still to draw, which this stand-in cannot hold still long
-    // enough to press into.
+    // Reset every line pressed the same way. Neither press moves focus, and
+    // the heading can hold it, so no focus closes the panel: the reset closes
+    // it itself. `line-colours-reset.browser.test.tsx` holds the same with
+    // nothing to put back.
     const busy = panel.locator('section.line-colours')
     await expect(busy, 'the reset’s redraw has finished').toHaveAttribute('aria-busy', 'false', {
       timeout: 30_000,
@@ -1004,8 +1001,8 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     await expect(one).toBeVisible()
     await expect(heading05, 'opening the panel moved no focus').toBeFocused()
     await resetAll.evaluate((el) => (el as HTMLElement).click())
-    await expect(one, 'the panel is closed').toBeHidden()
-    await expect(putBack).toBeFocused()
+    await expect(one, 'the reset closed the panel itself').toBeHidden()
+    await expect(heading05).toBeFocused()
     expect(
       await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
       'no panel left open',

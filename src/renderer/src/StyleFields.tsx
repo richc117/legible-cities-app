@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react'
+import { useId, useRef, useState, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
 import {
   type ChoiceKey,
@@ -10,6 +10,7 @@ import { isStyleChoice } from '../../shared/project/validate'
 import { sameStyle } from './record'
 import { REDRAW_DELAY } from './colours'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
+import { useFocusHandback } from './focusHandback'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
@@ -188,31 +189,29 @@ export default function StyleFields({
     if (isStyleChoice(key, value)) show(chooseIn(view, key, value))
   }
 
+  // The reset and Put back, each the way back from the other (issue 561).
   // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element. Focus goes to the control that
-  // came, Put back, when there is something to put back, and else to the
-  // cell's heading, so a screen reader stays in the cell (A3-04 learned
-  // this). Put back goes as it is pressed and hands focus back to the reset
-  // (issue 561). Both are asked for at the press and given once the
-  // controls they name are drawn, after the kit's own effects, so the reset
-  // is no longer disabled when it is asked.
+  // and Chromium blurs a disabled element; Put back goes as it is pressed.
+  // Whichever held focus, it goes to the control that is there: Put back
+  // while it is offered, else the reset while it can be pressed, else the
+  // cell's heading, so a screen reader stays in the cell (A3-04, A6-07).
+  // Watched on Put back being offered and on the reset being pressable, so
+  // a stop that comes later hands it on too (`useFocusHandback`).
+  const sectionRef = useRef<HTMLElement>(null)
   const resetRef = useRef<HTMLElement>(null)
   const putBackRef = useRef<HTMLElement>(null)
-  const focusTo = useRef<'put back' | 'reset' | null>(null)
-  useEffect(() => {
-    const to = focusTo.current
-    if (to === null) return
-    focusTo.current = null
-    const target = to === 'put back' ? putBackRef.current : resetRef.current
-    // A target that went or is disabled after all - Put back's start
-    // refused, its write refused - cannot hold focus: the heading can.
-    const able = target !== null && target.isConnected && !target.hasAttribute('disabled')
-    ;(able ? target : handback.current)?.focus()
-  })
+  useFocusHandback(
+    sectionRef,
+    () => {
+      if (putBackRef.current !== null) return putBackRef.current
+      const reset = resetRef.current
+      return reset !== null && !reset.hasAttribute('disabled') ? reset : handback.current
+    },
+    `${edit.before !== null}/${resettable(view)}`,
+  )
   const reset = (): void => {
     setView({ style: {}, drafts: draftsOf({}), problems: {} })
-    if (edit.reset({})) focusTo.current = 'put back'
-    else handback.current?.focus()
+    edit.reset({})
   }
   // The group as the map was drawn with it before the reset, through the
   // same cheap edit as any size: drawn once after the delay, and written
@@ -220,9 +219,8 @@ export default function StyleFields({
   const putBack = (): void => {
     const before = edit.before
     if (before === null) return
-    focusTo.current = 'reset'
     setView(viewOf(before))
-    edit.change(before)
+    edit.putBack(before)
   }
 
   // A field in the sizes' pattern, a size's or a train's: its name, the
@@ -278,7 +276,7 @@ export default function StyleFields({
   }
 
   return (
-    <section className="style-fields" aria-label={NAME} aria-busy={busy}>
+    <section ref={sectionRef} className="style-fields" aria-label={NAME} aria-busy={busy}>
       <LookSelect style={view.style} engine={engine} onChoose={chooseLook} />
       <p className="prose">{UNIT_SENTENCE}</p>
       {STYLE_FIELDS.map(({ key, label }) => field(key, label))}

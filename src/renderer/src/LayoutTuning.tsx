@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
-import { sameTuning, tuningIsSet } from '../../shared/project/helpers'
+import { sameTuning } from '../../shared/project/helpers'
 import {
   DEFAULT_TUNING,
   PENALTY_KEYS,
@@ -9,6 +9,7 @@ import {
 } from '../../shared/project/types'
 import { isGrid } from '../../shared/project/validate'
 import Icon from './icons/Icon'
+import { useFocusHandback } from './focusHandback'
 import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'
 import Select from './kit/Select'
@@ -73,6 +74,11 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const [view, setView] = useState<TuningView>(() => tuningViewOf(project.tuning))
   // Why the last write was refused, said once in the section; empty after.
   const [unsaved, setUnsaved] = useState<string | null>(null)
+  // Whether the last write was Reset's, with a tuning to put back (issue
+  // 561): what the section's polite line says, set by Reset alone and
+  // cleared by every other write and by a refusal, so the line is empty
+  // as the section opens and does not fill because a run ended.
+  const [resetSaid, setResetSaid] = useState(false)
 
   // The tuning the last write asked for, and that write while its answer has
   // not come. The answers come back in the order the writes were sent (spec
@@ -100,12 +106,14 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const write = (next: ProjectTuning): void => {
     asked.current = next
     setUnsaved(null)
+    setResetSaid(false)
     const mine = onChange(next)
       .catch((reason: unknown) => {
         // Nothing was kept, so the fields go back to the record and say why.
         asked.current = stored.current ?? {}
         setView(tuningViewOf(stored.current))
         setUnsaved(notSaved(reason))
+        setResetSaid(false)
       })
       .finally(() => {
         if (latest.current === mine) latest.current = null
@@ -125,37 +133,35 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   // another (issue 561): derived from the record, so nothing is kept.
   const laid = putBackTuning(project, view.tuning)
 
-  // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element. When the layout was made with a
-  // tuning, Put back is the control that comes, and focus goes to it; else
-  // to the section's heading first, so it stays in the section (A6-07). Put
-  // back goes as it is pressed and hands focus back to the reset. Both are
-  // asked for at the press and given once the controls they name are
-  // drawn, after the kit's own effects, so the reset is no longer disabled
-  // when it is asked.
+  // Reset and Put back, each the way back from the other. A button that
+  // removes the last thing it had to remove disables itself, and Chromium
+  // blurs a disabled element; Put back goes as it is pressed. Whichever
+  // held focus, it goes to the control that is there: Put back while it is
+  // offered, else Reset while it can be pressed, else the section's heading,
+  // never the toggle, where a reflexive Space would close the section
+  // (A6-07). Watched on Put back being offered and on Reset being
+  // pressable, so a write the store refuses later hands it on too
+  // (`useFocusHandback`).
+  const root = useRef<HTMLDivElement>(null)
   const resetRef = useRef<HTMLElement>(null)
   const putBackRef = useRef<HTMLElement>(null)
-  const focusTo = useRef<'put back' | 'reset' | null>(null)
-  useEffect(() => {
-    const to = focusTo.current
-    if (to === null) return
-    focusTo.current = null
-    const target = to === 'put back' ? putBackRef.current : resetRef.current
-    // A target that went or is disabled after all - Put back's start
-    // refused, its write refused - cannot hold focus: the heading can.
-    const able = target !== null && target.isConnected && !target.hasAttribute('disabled')
-    ;(able ? target : heading.current)?.focus()
-  })
+  useFocusHandback(
+    root,
+    () => {
+      if (putBackRef.current !== null) return putBackRef.current
+      const button = resetRef.current
+      return button !== null && !button.hasAttribute('disabled') ? button : heading.current
+    },
+    `${laid !== null}/${resettable(view)}`,
+  )
   const reset = (): void => {
-    if (putBackTuning(project, {}) !== null) focusTo.current = 'put back'
-    else heading.current?.focus()
     show(tuningViewOf({}))
+    setResetSaid(putBackTuning(project, {}) !== null)
   }
   // Written as any choice is, at once, and the cells below read as drawn
   // again because the tuning and the layout agree, not because anything ran.
   const putBack = (): void => {
     if (laid === null) return
-    focusTo.current = 'reset'
     show(tuningViewOf(laid))
   }
 
@@ -196,7 +202,7 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   }
 
   return (
-    <div className="layout-tuning">
+    <div className="layout-tuning" ref={root}>
       <Disclosure
         className="layout-tuning-toggle"
         heading="h3"
@@ -240,10 +246,10 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
         </fieldset>
         {/* The section's one polite line (issue 561), in the document before
             it has anything to say, as a live region must be: the reset's
-            sentence while the tuning is LOOM's own and the layout was made
-            with another, and nothing otherwise. */}
+            sentence from Reset's press while there is a tuning to put
+            back, and nothing otherwise. */}
         <p className="message" role="status" aria-live="polite">
-          {laid !== null && !tuningIsSet(view.tuning) ? TUNING_RESET_SAID : ''}
+          {resetSaid && laid !== null ? TUNING_RESET_SAID : ''}
         </p>
         <div className="toolbar">
           <Button ref={resetRef} disabled={!resettable(view)} onClick={reset}>
