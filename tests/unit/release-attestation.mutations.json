@@ -33,11 +33,11 @@
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "        run: |\n          set -euo pipefail\n          for subject in release-assets/*.dmg",
-    "replace": "        run: |\n          for subject in release-assets/*.dmg",
+    "find": "              --deny-self-hosted-runners\n          done\n",
+    "replace": "              --deny-self-hosted-runners || true\n          done\n",
     "test": "tests/unit/release-attestation.test.ts",
     "title": "fails when one subject is refused, rather than going on",
-    "why": "The script without set -e: a refused installer would not stop the loop, and the job would end green on the last subject's status."
+    "why": "A refused verify swallowed by || true: with -e on, as a runner has it, this is what really fails open, and the job would end green over a subject that did not verify."
   },
   {
     "file": ".github/workflows/build.yml",
@@ -62,5 +62,29 @@
     "test": "tests/unit/release-attestation.test.ts",
     "title": "verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched",
     "why": "The acceptance verify without the tag: a download attested for some other ref of this repository would be recorded as verified."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --source-digest \"$GITHUB_SHA\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "asks for this repository, this workflow file, this ref and commit, and no self-hosted runner",
+    "why": "The verify without --source-digest: an attestation for this tag's name but another commit (a tag moved after the build) would verify."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "                    --source-digest \"$digest\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies a tag the attest job's commit is in, by name and by commit, and records it",
+    "why": "The acceptance verify bound to the tag's name and not its commit: a download attested for another commit under the same tag name would be recorded as verified."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          case \"$contains\" in\n",
+    "replace": "          case \"$((1 - contains))\" in\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "records a tag from before the attest job as not attested, and asks gh for nothing",
+    "why": "The branches for a tag with and without the attest job swapped: a tag from before attestations would be asked for one and fail, and a current tag would be recorded as not attested and never verified."
   }
 ]

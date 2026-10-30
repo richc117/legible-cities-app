@@ -1,0 +1,18 @@
+[
+  {
+    "file": "docs/acceptance.md",
+    "find": "| Attestation verified? | yes / no / not attested (before 1.0) |\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is the results template's run table, row for row",
+    "why": "A row missing from the checklist's template while the record still writes it: the two a person pastes side by side would no longer match."
+  },
+  {
+    "file": "tests/acceptance/record.ts",
+    "find": "  'Attestation verified?',\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is the results template's run table, row for row",
+    "why": "A field the workflow computes and the record does not list: applyPrior drops it silently and the run's issue never shows whether the attestation was verified."
+  }
+]

@@ -14,9 +14,18 @@
 // SHA256SUMS.txt, and attests. A release cannot be run without a tag, so the
 // shape is held here, and the digest check is run against fixture folders.
 
-import { spawnSync } from 'node:child_process'
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -266,13 +275,15 @@ describe('acceptance.yml verifies the attestation of the Release it downloads', 
     expect(step).toContain('--repo "$GITHUB_REPOSITORY"')
     expect(step).toContain('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml"')
     expect(step).toContain('--source-ref "refs/tags/$TAG"')
+    expect(step).toContain('digest=$(git rev-parse "refs/tags/$TAG^{commit}")')
+    expect(step).toContain('--source-digest "$digest"')
     expect(step).toContain('--deny-self-hosted-runners')
     expect(step).toContain('GH_TOKEN: ${{ github.token }}')
   })
 
   it('fails the step when the verify is refused, and records a tag from before attestations as not automated', () => {
     expect(step).toMatch(
-      /refs\/tags\/\$TAG"[^\n]*\n[^\n]*--deny-self-hosted-runners; then\n[^\n]*field 'Attestation verified\?' no\n[^\n]*step 1 fail [^\n]*\n[^\n]*\n\s*exit 1\n/,
+      /--deny-self-hosted-runners; then\n[^\n]*field 'Attestation verified\?' no\n[^\n]*step 1 fail [^\n]*\n[^\n]*\n\s*exit 1\n/,
     )
     expect(step).toContain("field 'Attestation verified?' yes")
     expect(step).toContain("field 'Attestation verified?' 'not attested (before 1.0)'")
@@ -363,6 +374,30 @@ describe.skipIf(lacking !== '')(
   },
 )
 
+/**
+ * A step's script run as a runner runs a `shell: bash` step: written to a file
+ * and given to `bash --noprofile --norc -eo pipefail`, so that `-e` is on
+ * before the script's first line, as it is there and not under `bash -c`.
+ */
+function asRunner(
+  script: string,
+  options: { cwd: string; env: NodeJS.ProcessEnv },
+): SpawnSyncReturns<string> {
+  const folder = mkdtempSync(join(tmpdir(), 'lc-step-'))
+  try {
+    const file = join(folder, 'step.sh')
+    writeFileSync(file, script)
+    return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', file], {
+      cwd: options.cwd,
+      env: options.env,
+      encoding: 'utf8',
+      timeout: 30_000,
+    })
+  } finally {
+    rmSync(folder, { recursive: true, force: true })
+  }
+}
+
 // The verify job's script, run as the job runs it: in the workspace, over a
 // downloaded folder, with a stand-in `gh` that records what it was asked and
 // refuses a file that is not there, as the real one does.
@@ -398,10 +433,8 @@ describe.skipIf(process.platform === 'win32' || !tool('bash'))(
       return dir
     }
     const run = (dir: string) =>
-      spawnSync('bash', ['-c', script], {
+      asRunner(script, {
         cwd: dir,
-        encoding: 'utf8',
-        timeout: 30_000,
         env: {
           ...process.env,
           PATH: `${join(dir, 'bin')}:${process.env.PATH ?? ''}`,
@@ -442,6 +475,170 @@ describe.skipIf(process.platform === 'win32' || !tool('bash'))(
     it('fails when a kind of installer, or the checksum file, is not there at all', () => {
       expect(run(workspace(['A.dmg', 'SHA256SUMS.txt'])).status).not.toBe(0)
       expect(run(workspace(['A.dmg', 'C-setup.exe'])).status).not.toBe(0)
+    })
+  },
+)
+
+// Acceptance step 1, run as a runner runs it over a throwaway repository: one
+// tag before the commit that brought attestations, one after, and a stand-in
+// `gh` that downloads fixtures and records every other call. Whether a tag is
+// old enough to have no attestation is the one place the step can fail open
+// (a tag wrongly judged old is recorded as not attested and never verified),
+// so it is run and not read.
+describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
+  "acceptance.yml's step 1, run over tags before and after the attest job",
+  () => {
+    const made: string[] = []
+    afterEach(() => {
+      for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true })
+    })
+    const step = runOf(acceptance, 'Step 1, download the installer and check it')
+    const asset = 'Legible-Cities-1.0.0-mac-arm64.dmg'
+
+    interface Setup {
+      dir: string
+      attestedSince: string
+      afterCommit: string
+    }
+
+    function git(dir: string, ...args: string[]): string {
+      const run = spawnSync(
+        'git',
+        [
+          '-c',
+          'user.name=lane',
+          '-c',
+          'user.email=lane@example.com',
+          '-c',
+          'commit.gpgsign=false',
+          '-c',
+          'tag.gpgsign=false',
+          ...args,
+        ],
+        { cwd: dir, encoding: 'utf8', timeout: 30_000 },
+      )
+      expect(run.status, `git ${args.join(' ')}: ${run.stderr}`).toBe(0)
+      return run.stdout.trim()
+    }
+
+    async function setup(): Promise<Setup> {
+      const { formatSums } = await load()
+      const dir = mkdtempSync(join(tmpdir(), 'lc-accept-'))
+      made.push(dir)
+      git(dir, 'init', '-q')
+      git(dir, 'commit', '-q', '--allow-empty', '-m', 'before attestations')
+      git(dir, 'tag', '-a', 'v0.1.0', '-m', 'old')
+      git(dir, 'commit', '-q', '--allow-empty', '-m', 'the attest job')
+      const attestedSince = git(dir, 'rev-parse', 'HEAD')
+      git(dir, 'commit', '-q', '--allow-empty', '-m', 'after')
+      git(dir, 'tag', '-a', 'v1.0.0-rc.1', '-m', 'new')
+      const afterCommit = git(dir, 'rev-parse', 'v1.0.0-rc.1^{commit}')
+      // The record CLI is the real one: its output is what the step records.
+      mkdirSync(join(dir, 'tests', 'acceptance'), { recursive: true })
+      for (const name of ['record-cli.mjs', 'pure.mjs']) {
+        copyFileSync(
+          join(repo, 'tests', 'acceptance', name),
+          join(dir, 'tests', 'acceptance', name),
+        )
+      }
+      mkdirSync(join(dir, 'fixtures'))
+      mkdirSync(join(dir, 'bin'))
+      mkdirSync(join(dir, 'download'))
+      writeFileSync(join(dir, 'fixtures', asset), 'dmg\n')
+      writeFileSync(
+        join(dir, 'fixtures', 'SHA256SUMS.txt'),
+        formatSums([{ name: asset, sha256: createHash('sha256').update('dmg\n').digest('hex') }]),
+      )
+      writeFileSync(
+        join(dir, 'bin', 'gh'),
+        [
+          '#!/bin/bash',
+          'echo "$*" >> "$STUB_LOG"',
+          'case "$1 $2" in',
+          '  "release download")',
+          '    while [ $# -gt 0 ]; do [ "$1" = --dir ] && dir=$2; shift; done',
+          '    cp "$STUB_FIXTURES"/* "$dir"/ ;;',
+          '  "attestation verify") [ -z "${STUB_REFUSE:-}" ] || exit 1 ;;',
+          '  *) exit 64 ;;',
+          'esac',
+          '',
+        ].join('\n'),
+      )
+      chmodSync(join(dir, 'bin', 'gh'), 0o755)
+      return { dir, attestedSince, afterCommit }
+    }
+
+    function run(setupped: Setup, tag: string, refuse = '') {
+      const { dir, attestedSince } = setupped
+      const result = asRunner(step, {
+        cwd: dir,
+        env: {
+          ...process.env,
+          PATH: `${join(dir, 'bin')}:${process.env.PATH ?? ''}`,
+          TAG: tag,
+          ASSET: asset,
+          DOWNLOAD: join(dir, 'download'),
+          PRIOR: join(dir, 'prior.json'),
+          GITHUB_REPOSITORY: 'owner/repo',
+          ATTESTED_SINCE: attestedSince,
+          STUB_LOG: join(dir, 'gh-calls.txt'),
+          STUB_FIXTURES: join(dir, 'fixtures'),
+          STUB_REFUSE: refuse,
+        },
+      })
+      const file = join(dir, 'prior.json')
+      const prior = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+      const log = existsSync(join(dir, 'gh-calls.txt'))
+        ? readFileSync(join(dir, 'gh-calls.txt'), 'utf8').trim().split('\n')
+        : []
+      return {
+        result,
+        field: prior.fields?.['Attestation verified?'] as string | undefined,
+        step1: prior.steps?.['1'] as { result: string; notes: string } | undefined,
+        verifies: log.filter((line) => line.startsWith('attestation verify')),
+      }
+    }
+
+    it("verifies a tag the attest job's commit is in, by name and by commit, and records it", async () => {
+      const setupped = await setup()
+      const done = run(setupped, 'v1.0.0-rc.1')
+      expect(done.result.status, done.result.stderr).toBe(0)
+      expect(done.field).toBe('yes')
+      expect(done.step1?.result).toBe('pass')
+      expect(done.verifies).toHaveLength(2)
+      expect(done.verifies[0]).toContain(`verify ${join(setupped.dir, 'download', asset)} `)
+      expect(done.verifies[1]).toContain(
+        `verify ${join(setupped.dir, 'download', 'SHA256SUMS.txt')} `,
+      )
+      for (const call of done.verifies) {
+        expect(call).toContain('--repo owner/repo ')
+        expect(call).toContain('--signer-workflow owner/repo/.github/workflows/build.yml ')
+        expect(call).toContain('--source-ref refs/tags/v1.0.0-rc.1 ')
+        expect(call).toContain(`--source-digest ${setupped.afterCommit} `)
+        expect(call).toMatch(/--deny-self-hosted-runners$/)
+      }
+    })
+
+    it('records a tag from before the attest job as not attested, and asks gh for nothing', async () => {
+      const done = run(await setup(), 'v0.1.0')
+      expect(done.result.status, done.result.stderr).toBe(0)
+      expect(done.field).toBe('not attested (before 1.0)')
+      expect(done.step1?.result).toBe('pass, part not automated')
+      expect(done.verifies).toEqual([])
+    })
+
+    it('fails a tag git cannot find, and records no verification', async () => {
+      const done = run(await setup(), 'v9.9.9')
+      expect(done.result.status).not.toBe(0)
+      expect(done.field).not.toBe('yes')
+      expect(done.verifies).toEqual([])
+    })
+
+    it('fails the step, and records no, when gh refuses an attestation', async () => {
+      const done = run(await setup(), 'v1.0.0-rc.1', '1')
+      expect(done.result.status).not.toBe(0)
+      expect(done.field).toBe('no')
+      expect(done.step1?.result).toBe('fail')
     })
   },
 )
