@@ -13,5 +13,6 @@ test.describe(
   },
   () => {
     test('is quarantined with the whole group', async () => {})
+    test('is quarantined in its title, in a group @quarantine', async () => {})
   },
 )

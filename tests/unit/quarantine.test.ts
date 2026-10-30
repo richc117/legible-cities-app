@@ -153,9 +153,12 @@ describe('the scan', () => {
 
   it('refuses the tag in a title and on a describe', () => {
     const found = quarantined(join(fixtures, 'title-form'))
-    expect(found.map((f) => f.problems.length)).toEqual([1, 1])
+    expect(found.map((f) => f.problems.length)).toEqual([1, 1, 1])
     expect(found[0].problems[0]).toContain('is not in a test')
     expect(found[1].problems[0]).toContain('describe')
+    // In a group the title has an object around it, the group's callback,
+    // which is not a test's details.
+    expect(found[2].problems[0]).toContain('is not in a test')
   })
 
   it('scans every file under the folder, not only *.spec.ts', () => {
