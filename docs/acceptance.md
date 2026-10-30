@@ -772,6 +772,9 @@ Result: ____
   the choices above are unavailable while it runs, with "The choices wait
   until the export that is going has finished: it was planned from them."
 - It ends with "Exported la-metro-rail-instagram-reel.mp4." and **Reveal**.
+  Above **Export** a line reads "Exporting replaces
+  la-metro-rail-instagram-reel.mp4, made `<moment>`. A filename tag keeps
+  both.", the file just written being the one the next export would write.
   The cell's footer says **Exported** `la-metro-rail-instagram-reel.mp4`
   and "The engine wrote a sidecar beside it: what the file is, the caveats
   of the network it shows, and its alt text." No folder path is shown

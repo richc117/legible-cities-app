@@ -27,7 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
-import { replacesWords } from '../../src/renderer/src/notebook/outputWords'
+import { KEEP_BOTH } from '../../src/renderer/src/notebook/outputWords'
 import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
@@ -269,14 +269,14 @@ test('a second export of one preset says, before the press, what it replaces', a
     await openCell(page, 'export')
     await expect(exportButton(page)).toBeVisible({ timeout: 20_000 })
 
-    const said = replacesWords({
-      file: REEL,
-      preset: 'instagram-reel',
-      made: long.toISOString(),
-      present: true,
-    })
-    await expect(replaces).toHaveText(said, { timeout: 20_000 })
-    await expect(exportButton(page)).toHaveAccessibleDescription(said)
+    // The moment is written in the machine's own locale and zone, so the
+    // words around it are asserted and the moment by its exact value.
+    await expect(replaces).toContainText(`Exporting replaces ${REEL}, made `, { timeout: 20_000 })
+    await expect(replaces).toContainText(KEEP_BOTH)
+    await expect(replaces.locator('time')).toHaveAttribute('datetime', long.toISOString())
+    await expect(exportButton(page)).toHaveAccessibleDescription(
+      new RegExp(`^Exporting replaces ${REEL.replace(/\./g, '\\.')}, made .+\\. ${KEEP_BOTH}$`),
+    )
 
     // A file that has gone is replaced by nothing, and the line goes with it.
     rmSync(deliverable(h))
