@@ -4,10 +4,13 @@
 // alike, nothing is opened, and a frame that is not the interface's own top
 // frame is refused before anything is read.
 
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it } from 'vitest'
 import { INSTALL_GUIDE_URL } from '../../src/main/first-run-ipc'
 import { HELP_PAGES, registerHelpHandlers, UNKNOWN_HELP_PAGE } from '../../src/main/help-ipc'
+import { MENU_HELP_PAGES } from '../../src/main/menu'
 import { CHANNELS } from '../../src/shared/api'
 import { HELP_PAGE_KEYS } from '../../src/shared/menu'
 
@@ -55,6 +58,18 @@ describe('the Help pages', () => {
     }
     expect(HELP_PAGES.install).toBe(INSTALL_GUIDE_URL)
     expect(HELP_PAGES.report).toMatch(/\/issues\/new\?template=bug\.yml$/)
+  })
+
+  it('offers from the menu only documents that are in the checkout', () => {
+    // A page the menu offers on the default branch is a file here: an item
+    // whose document has not landed would send a person to a 404.
+    const repository = new URL(INSTALL_GUIDE_URL).pathname.split('/').slice(0, 3).join('/')
+    const documents = MENU_HELP_PAGES.map((page) => new URL(HELP_PAGES[page]).pathname)
+      .filter((path) => path.startsWith(`${repository}/blob/main/`))
+      .map((path) => decodeURIComponent(path.slice(`${repository}/blob/main/`.length)))
+    expect(documents).toContain('docs/install.md')
+    for (const document of documents)
+      expect(existsSync(resolve(__dirname, '../..', document)), document).toBe(true)
   })
 
   it.each([

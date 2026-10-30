@@ -165,12 +165,16 @@ const api: Api = {
   },
   // The app's own menu (issue 554). Only a command from the closed set
   // reaches the page's listener; a help page crosses as a name, and main
-  // holds the address.
+  // holds the address. Main is told the page listens once the listener is
+  // on, and sends what it held on the same channel, so it is heard.
   app: {
-    onMenuCommand: (listener) =>
-      subscribe<unknown>(CHANNELS.menuCommand, (command) => {
+    onMenuCommand: (listener) => {
+      const off = subscribe<unknown>(CHANNELS.menuCommand, (command) => {
         if (isMenuCommand(command)) listener(command)
-      }),
+      })
+      ipcRenderer.send(CHANNELS.menuListening)
+      return off
+    },
   },
   help: {
     open: (page) => invoke(CHANNELS.helpOpen, page),

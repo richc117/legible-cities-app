@@ -402,7 +402,9 @@ export interface Api {
     /**
      * A menu item the interface answers: New project, Settings, Copy
      * diagnostics, and About on Windows and Linux. One of a closed set;
-     * the page ignores a command while a modal dialog is open.
+     * the page ignores a command while a modal dialog is open. Subscribing
+     * tells main the page listens, and a command main held until then
+     * arrives first.
      */
     onMenuCommand(listener: (command: MenuCommand) => void): () => void
   }
@@ -484,5 +486,6 @@ export const CHANNELS = {
   licencesOpenChromium: 'licences:open-chromium',
   // The app's own menu (issue 554).
   menuCommand: 'app:menu-command',
+  menuListening: 'app:menu-listening',
   helpOpen: 'help:open',
 } as const

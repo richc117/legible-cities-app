@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/main/menu-ipc.ts",
+    "find": "    if (pending !== null) this.#send(pending)\n",
+    "replace": "",
+    "test": "tests/unit/menu-ipc.test.ts",
+    "title": "holds a command chosen before the page listens",
+    "why": "The held command never sent: a command chosen with no window open, or before the page subscribed, would be lost."
+  }
+]

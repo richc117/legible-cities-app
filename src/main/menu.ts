@@ -75,14 +75,23 @@ export interface MenuOptions {
 
 const SEPARATOR: MenuItemTemplate = { type: 'separator' }
 
+/**
+ * The Help pages the menu offers, in its order. "Finding a feed" is not one
+ * yet: its page, `docs/feeds.md`, comes with issue 555, which adds the item
+ * with it, so the menu never opens a page that is not there.
+ */
+export const MENU_HELP_PAGES: readonly HelpPage[] = ['guide', 'install', 'report']
+
 /** The whole menu bar for one platform. */
 export function menuTemplate(options: MenuOptions): MenuItemTemplate[] {
   const { name, packaged } = options
   const act = options.act ?? (() => undefined)
   const mac = options.platform === 'darwin'
-  // A top-level label gets its access key on Windows and Linux (Alt and the
-  // letter); macOS has none and would show the ampersand.
-  const top = (label: string): string => (mac ? label : `&${label}`)
+  // A label gets its access key on Windows and Linux (Alt and the letter, or
+  // the letter in an open menu); macOS has none and would show the
+  // ampersand. A top-level label takes its first letter.
+  const key = (label: string): string => (mac ? label.replace('&', '') : label)
+  const top = (label: string): string => key(`&${label}`)
   const command = (id: MenuCommand, label: string, accelerator?: string): MenuItemTemplate => ({
     id,
     label,
@@ -101,17 +110,18 @@ export function menuTemplate(options: MenuOptions): MenuItemTemplate[] {
     label: top('View'),
     submenu: [
       { label: 'Actual size', role: 'resetZoom' },
-      { label: 'Zoom in', role: 'zoomIn' },
+      // The two zooms share a first letter, so each takes its second word's.
+      { label: key('Zoom &in'), role: 'zoomIn' },
       // The role's own accelerator is Plus, which takes Shift on most
       // keyboards; the key beside it, unshifted, zooms in too.
       {
-        label: 'Zoom in',
+        label: key('Zoom &in'),
         role: 'zoomIn',
         accelerator: 'CmdOrCtrl+=',
         visible: false,
         acceleratorWorksWhenHidden: true,
       },
-      { label: 'Zoom out', role: 'zoomOut' },
+      { label: key('Zoom &out'), role: 'zoomOut' },
       SEPARATOR,
       { label: 'Full screen', role: 'togglefullscreen' },
       ...(packaged
@@ -126,7 +136,6 @@ export function menuTemplate(options: MenuOptions): MenuItemTemplate[] {
   }
   const helpItems: MenuItemTemplate[] = [
     help('guide', `${name} guide`),
-    help('feeds', 'Finding a feed'),
     help('install', 'Install and troubleshooting guide'),
     SEPARATOR,
     help('report', 'Report a problem'),

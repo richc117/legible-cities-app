@@ -35,6 +35,7 @@ import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { openHelpPage, registerHelpHandlers, type HelpIpcDeps } from './help-ipc'
 import { menuTemplate } from './menu'
+import { MenuCommands, registerMenuHandlers } from './menu-ipc'
 import { LicencesService, registerLicencesHandlers } from './licences-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './export'
@@ -327,8 +328,15 @@ function createWindow(): BrowserWindow {
   window.on('closed', () => {
     if (mainWindow !== window) return
     mainWindow = null
+    menuCommands.gone()
     quitWithTheWindow()
   })
+  // A page that goes stops hearing the menu until the next one says it
+  // listens (src/main/menu-ipc.ts): a reload, or a renderer that died.
+  window.webContents.on('did-start-navigation', (details) => {
+    if (details.isMainFrame && !details.isSameDocument) menuCommands.gone()
+  })
+  window.webContents.on('render-process-gone', () => menuCommands.gone())
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
     if (sidecar !== null) window.webContents.send(CHANNELS.engineStateChanged, sidecar.state)
@@ -425,11 +433,25 @@ function createSidecar(config: Config): Sidecar {
 }
 
 /**
+ * The menu's commands for the page, held until it listens (issue 554). The
+ * window is brought up first - restored if minimised, and focused - so the
+ * screen the command opens is seen.
+ */
+const menuCommands = new MenuCommands((command) => {
+  const window = mainWindow
+  if (window === null || window.isDestroyed()) return
+  if (window.isMinimized()) window.restore()
+  window.show()
+  window.focus()
+  window.webContents.send(CHANNELS.menuCommand, command)
+})
+
+/**
  * The app's own menu, in place of Electron's default (issue 554,
  * src/main/menu.ts). Set before the first window, so no window ever shows
  * the default. The page's commands go to the app's window; with none open,
  * which only macOS allows, the command opens one, as the Dock icon does, and
- * goes no further: the page that would answer it has not been drawn yet.
+ * is held until the new page listens.
  */
 function setAppMenu(help: HelpIpcDeps): void {
   if (process.platform === 'darwin') {
@@ -450,11 +472,8 @@ function setAppMenu(help: HelpIpcDeps): void {
         )
         return
       }
-      if (mainWindow === null || mainWindow.isDestroyed()) {
-        mainWindow = createWindow()
-        return
-      }
-      mainWindow.webContents.send(CHANNELS.menuCommand, action.command)
+      if (mainWindow === null || mainWindow.isDestroyed()) mainWindow = createWindow()
+      menuCommands.command(action.command)
     },
   })
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
@@ -894,6 +913,11 @@ if (!hasLock) {
       log: (message) => log.info('help', message),
     }
     registerHelpHandlers(ipcMain, helpDeps, isTopFrame)
+    registerMenuHandlers(
+      ipcMain,
+      menuCommands,
+      (event) => mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame,
+    )
     setAppMenu(helpDeps)
     mainWindow = createWindow()
 

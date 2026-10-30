@@ -5,9 +5,15 @@
 // label is in the app's sentence case; and each of the app's own items does
 // what its name says.
 
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { menuTemplate, type MenuAction, type MenuItemTemplate } from '../../src/main/menu'
-import { HELP_PAGE_KEYS } from '../../src/shared/menu'
+import {
+  MENU_HELP_PAGES,
+  menuTemplate,
+  type MenuAction,
+  type MenuItemTemplate,
+} from '../../src/main/menu'
 
 const NAME = 'Legible Cities'
 const PLATFORMS = ['darwin', 'win32', 'linux'] as const
@@ -153,7 +159,7 @@ describe('the app’s own items', () => {
         { kind: 'command', command: 'new-project' },
         { kind: 'command', command: 'settings' },
         { kind: 'command', command: 'copy-diagnostics' },
-        ...HELP_PAGE_KEYS.map((page) => ({ kind: 'help', page })),
+        ...MENU_HELP_PAGES.map((page) => ({ kind: 'help', page })),
       ]),
     )
     // About is the page's only where the system has no About of its own.
@@ -169,11 +175,49 @@ describe('the app’s own items', () => {
     const help = menu(menuTemplate({ platform, packaged: true, name: NAME }), 'Help')
     expect((help.submenu ?? []).filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual([
       `${NAME} guide`,
-      'Finding a feed',
       'Install and troubleshooting guide',
       'Report a problem',
       'Copy diagnostics',
       ...(platform === 'darwin' ? [] : [`About ${NAME}`]),
     ])
+  })
+})
+
+describe('the access keys on Windows and Linux', () => {
+  it.each(['win32', 'linux'])('give each item of View its own on %s', (platform) => {
+    const view = menu(menuTemplate({ platform, packaged: true, name: NAME }), 'View')
+    const keys = (view.submenu ?? [])
+      .filter((i) => i.type !== 'separator' && i.visible !== false && i.label?.includes('&'))
+      .map((i) => i.label?.[i.label.indexOf('&') + 1]?.toLowerCase())
+    expect(keys).toEqual(['i', 'o'])
+  })
+
+  it('show no ampersand on macOS', () => {
+    const labels = walk(menuTemplate({ platform: 'darwin', packaged: false, name: NAME })).map(
+      (i) => i.label ?? '',
+    )
+    expect(labels.filter((label) => label.includes('&'))).toEqual([])
+  })
+})
+
+describe('what index.ts hands the menu and the window', () => {
+  // The flag is read in index.ts, where Electron is; the source is read as
+  // the interpreter's test reads it, since nothing there can run here.
+  const source = readFileSync(resolve(__dirname, '../../src/main/index.ts'), 'utf8')
+
+  it('builds the template for the app as packaged', () => {
+    const call = source.slice(source.indexOf('menuTemplate({'))
+    expect(call.slice(0, call.indexOf('})'))).toMatch(/^\s*packaged: app\.isPackaged,$/m)
+  })
+
+  it('gives the app’s window developer tools only in development', () => {
+    expect(source.match(/^\s*devTools: !app\.isPackaged,$/gm)).toHaveLength(1)
+  })
+
+  it('sets the menu before the first window', () => {
+    expect(source.indexOf('setAppMenu(helpDeps)')).toBeGreaterThan(0)
+    expect(source.indexOf('setAppMenu(helpDeps)')).toBeLessThan(
+      source.indexOf('mainWindow = createWindow()\n\n    // The app'),
+    )
   })
 })
