@@ -159,3 +159,24 @@ holds the manifest to the engine's lock and the runtime to the manifest on
 each target; the packaging hook holds the packaged runtime to both again.
 Only a tag proves the attest job and `gh attestation verify` against a real
 Release.
+
+(Amended 2026-10-29, issue 557: the tag came, `v1.0.0-rc.1`, and `build.yml`
+run 40617381664 was green in every job, the attest job among them. Checked
+by hand against the draft: `gh attestation verify` over `SHA256SUMS.txt`
+with `--repo`, `--signer-workflow` naming `build.yml` and `--source-ref
+refs/tags/v1.0.0-rc.1` passed, its certificate naming that workflow at that
+tag, a GitHub-hosted runner and the tag's commit; the same file with
+`--source-ref refs/tags/v0.1.0` failed. So the wrong ref is refused, which
+is what makes the check worth running. Nothing ran it, though, so the
+attest job was proved to sign and not to be verifiable. A `verify
+(attestations)` job now follows it, `needs: attest`, with `contents: read`
+and `attestations: read` and no `id-token`, so the rule on who can sign
+stands: it downloads the same artefact and runs `gh attestation verify` over
+each installer and `SHA256SUMS.txt` with `--repo`, `--signer-workflow`,
+`--source-ref "$GITHUB_REF"`, `--source-digest "$GITHUB_SHA"` and
+`--deny-self-hosted-runners`. The draft is published by hand only after both
+are green. The acceptance run's step 1 makes the same check, with the tag as
+`--source-ref`, over the published Release's own download, and records a tag
+from before this decision as not attested. The claim stays what GitHub says
+of artifact attestations by themselves, SLSA Build Level 2 in its words, and
+this project claims no level.)
