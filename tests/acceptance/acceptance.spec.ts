@@ -66,6 +66,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { dayWords } from '../../src/renderer/src/dates'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import {
   cell,
@@ -104,6 +105,8 @@ const CALTRAIN_URL = 'https://data.trilliumtransit.com/gtfs/caltrain-ca-us/caltr
 
 /** The sample city step 4 opens, and the project it makes, by the name the card gives it. */
 const LA = 'LA Metro Rail'
+/** A day as the interface writes one, "17 September 2026" (`dates.ts`, issue 559). */
+const DAY_IN_WORDS = '\\d{1,2} [A-Z][a-z]+ \\d{4}'
 /** What the checklist has typed into cell 06 in step 12 (issue 352), and the two files it names in step 13. */
 const CAPTION = 'Rush hour on the Red Line'
 const ALT = 'A schematic of the Los Angeles rail lines.'
@@ -611,6 +614,7 @@ interface Session {
   userData: string
   /** What earlier steps learned, for later ones. */
   caltrainFeed: string | null
+  /** The day the map was drawn for, in the interface's words. */
   laDay: string | null
   /** The layout's eight characters, as cell 02's strip shows them. */
   laLayout: string | null
@@ -1209,7 +1213,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       // (issue 209), under cells 03 and 02.
       await log.soft('the day and the layout, in the strips', async () => {
         await expect(definition(cellStrip(window, 'frame'), 'Service day')).toHaveText(
-          /^\d{4}-\d{2}-\d{2}$/,
+          new RegExp(`^${DAY_IN_WORDS}$`),
         )
         await expect(definition(cellStrip(window, 'process'), 'Layout')).toHaveText(/^[0-9a-f]{8}$/)
         await expect(definition(cellStrip(window, 'process'), 'Made')).toHaveText(/\S/)
@@ -1313,7 +1317,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           expect(await text(definition(fields, term)), term).not.toBe('')
         }
         expect(await text(definition(fields, 'Service'))).toMatch(
-          /^\S+ to \S+; the engine would draw \S+$/,
+          new RegExp(`^${DAY_IN_WORDS} to ${DAY_IN_WORDS}; the engine would draw ${DAY_IN_WORDS}$`),
         )
       })
       await log.soft('the route types', async () => {
@@ -1649,12 +1653,17 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await openProject(window, LA)
       const section = window.getByRole('region', { name: 'Service day' })
       const sentence = await text(section.locator('p.prose[role="status"]'))
-      const parsed =
-        /^Drawn for (\d{4}-\d{2}-\d{2})\. The feed covers (\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2}); the busiest weekday, counted from (\d{4}-\d{2}-\d{2}), is (\d{4}-\d{2}-\d{2})\.$/.exec(
-          sentence,
-        )
-      if (parsed === null) throw new Error(`the section says "${sentence}"`)
-      const [, drawn, startDay, endDay, anchor, busiest] = parsed
+      // The section writes its days in words (issue 559), so the days are
+      // read from the record and the sentence is held to them: the control
+      // below is given a day in the record's own form.
+      const atStart = await recordOf(window, LA)
+      if (atStart.date === null || atStart.service === null)
+        throw new Error(`the record has no day or no window; the section says "${sentence}"`)
+      const drawn = atStart.date
+      const { start: startDay, end: endDay, anchor, busiest } = atStart.service
+      const expected = `Drawn for ${dayWords(drawn)}. The feed covers ${dayWords(startDay)} to ${dayWords(endDay)}; the busiest weekday, counted from ${dayWords(anchor)}, is ${dayWords(busiest)}.`
+      if (sentence !== expected)
+        throw new Error(`the section says "${sentence}", not "${expected}"`)
       log.note(`"${sentence}"`)
       const control = section.getByLabel('Draw for another day')
       await log.soft('the calendar is bounded by the window', async () => {
@@ -1670,14 +1679,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await section.getByRole('button', { name: 'Draw for this day' }).click()
         const end = await runToEnd(
           run,
-          new RegExp(`^Drawn for ${day} from the stored layout\\. The stations have not moved\\.$`),
+          new RegExp(
+            `^Drawn for ${dayWords(day)} from the stored layout\\. The stations have not moved\\.$`,
+          ),
           REBUILD_MS,
           before,
         )
         if (!end.ok)
           throw new Error(`the rebuild for ${day} stopped: "${end.sentence}" "${end.message}"`)
         log.note(`Drawn for ${day} in ${end.seconds} s.`)
-        await expect(definition(cellStrip(window, 'frame'), 'Service day')).toHaveText(day)
+        await expect(definition(cellStrip(window, 'frame'), 'Service day')).toHaveText(
+          dayWords(day),
+        )
         await log.soft(`the Layout after ${day}`, async () => {
           await expect(definition(cellStrip(window, 'process'), 'Layout')).toHaveText(layoutBefore)
           await expect(definition(cellStrip(window, 'process'), 'Made')).toHaveText(
@@ -1706,7 +1719,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         })
         await log.soft('and the section says the map still shows the drawn day', () =>
           expect(section.locator('p.prose[role="status"]')).toHaveText(
-            new RegExp(`^${other} is chosen; the map still shows ${drawn}\\. The feed covers `),
+            new RegExp(
+              `^${dayWords(other)} is chosen; the map still shows ${dayWords(drawn)}\\. The feed covers `,
+            ),
           ),
         )
         await log.soft('and nothing ran for the choice', () =>
@@ -1729,7 +1744,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await log.soft("cell 03's collapsed row", async () => {
           await closeCell(window, 'frame')
           await expect(cellHeading(window, 'frame').locator('.cell-summary')).toHaveText(
-            `${other}, not drawn yet`,
+            `${dayWords(other)}, not drawn yet`,
           )
           await openCell(window, 'frame')
         })
@@ -1750,7 +1765,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await section.getByRole('button', { name: 'Draw for this day' }).click()
       await log.soft('a day outside is refused', () =>
         expect(
-          section.getByText(`The feed covers ${startDay} to ${endDay}.`, { exact: true }),
+          section.getByText(`The feed covers ${dayWords(startDay)} to ${dayWords(endDay)}.`, {
+            exact: true,
+          }),
         ).toBeVisible(),
       )
       await log.soft('and nothing runs', async () => {
@@ -1760,7 +1777,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect((await recordOf(window, LA)).date).toBe(busiest)
       })
       await control.fill(busiest)
-      session.laDay = busiest
+      session.laDay = dayWords(busiest)
       log.note(`Ended on the busiest weekday, ${busiest}, counted from ${anchor}.`)
 
       const transport = window.getByRole('region', { name: 'Transport' })

@@ -76,7 +76,7 @@ describe('the control follows the record’s day', () => {
 
     type('2027-03-01')
     expect(dayField().value, 'a day outside the window, typed').toBe('2027-03-01')
-    expect(dayMessage()).toBe('The feed covers 2026-01-01 to 2026-12-31.')
+    expect(dayMessage()).toBe('The feed covers 1 January 2026 to 31 December 2026.')
 
     view.rerender({ project: project({ date: '2026-10-01' }) })
     expect(dayField().value, 'the record’s new day').toBe('2026-10-01')

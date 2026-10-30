@@ -7,6 +7,7 @@
 // fails here rather than vanishing from the screen.
 
 import { describe, expect, it } from 'vitest'
+import { momentWords } from '../../src/renderer/src/dates'
 import { waiting } from '../../src/renderer/src/LayoutRun'
 import { processSummary } from '../../src/renderer/src/notebook/cells/ProcessCell'
 import type { Stage } from '../../src/renderer/src/ProgressLine'
@@ -122,10 +123,14 @@ describe('what cell 02 says while it is collapsed', () => {
     expect(processSummary(project({ layout: 'a'.repeat(64) }))).toBe('laid out')
   })
 
-  it("names when the engine made it, in the reader's own locale", () => {
+  it('names when the engine made it, in the interface’s words for a moment', () => {
     const made = '2026-09-12T10:03:00.000Z'
     expect(processSummary(project({ layout: 'b'.repeat(64), made }))).toBe(
-      `laid out ${new Date(made).toLocaleString()}`,
+      `laid out ${momentWords(made)}`,
+    )
+    // No seconds, and the month in words, whatever the machine's zone.
+    expect(processSummary(project({ layout: 'b'.repeat(64), made }))).toMatch(
+      /^laid out 1[23] September 2026 at \d{1,2}:\d{2}(\s[AP]M)?$/,
     )
   })
 

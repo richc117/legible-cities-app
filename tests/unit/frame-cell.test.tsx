@@ -7,7 +7,7 @@
 // row is "Service day: 2026-09-12". The field is gone.
 //
 // Rendered to static markup and drawn **open**, as `process-cell.test.tsx`
-// is. `ServiceDay`'s own sentence, "Drawn for 2026-09-12. The feed covers
+// is. `ServiceDay`'s own sentence, "Drawn for 12 September 2026. The feed covers
 // ...", names the day above the strip and stays: the strip carries the
 // facts and the panel carries the sentences. So what is asserted above the
 // strip is that no term and value are drawn, not that the day is absent.
@@ -130,7 +130,7 @@ const count = (html: string, needle: string): number => html.split(needle).lengt
  * The day said in a sentence, as it is drawn: what a read-only project is
  * told where it has a day and no strip to say it.
  */
-const THE_DAY = '<p class="prose">The service day is 2026-09-12.</p>'
+const THE_DAY = '<p class="prose">The service day is 12 September 2026.</p>'
 
 /** What a read-only project is told instead of being offered the control, as it is drawn. */
 const READ_ONLY =
@@ -139,7 +139,7 @@ const READ_ONLY =
 describe('cell 03, Frame and service day, open', () => {
   it('states the service day once as a field, in the strip and not above it', () => {
     const { above, strip } = draw(record)
-    expect(strip).toContain('<dt>Service day</dt><dd>2026-09-12</dd>')
+    expect(strip).toContain('<dt>Service day</dt><dd>12 September 2026</dd>')
     // The halves are checked to be what they are called, so that an empty
     // `above` cannot pass for a clean one: the day's own form is in it.
     expect(above).toContain('<div class="cell-body">')
@@ -148,7 +148,9 @@ describe('cell 03, Frame and service day, open', () => {
     expect(above).not.toContain('<dt>')
     expect(count(above + strip, '<dt>Service day</dt>')).toBe(1)
     // The panel's sentence is the panel's, and stays where it was.
-    expect(above).toContain('Drawn for 2026-09-12. The feed covers 2026-01-01 to 2026-12-31')
+    expect(above).toContain(
+      'Drawn for 12 September 2026. The feed covers 1 January 2026 to 31 December 2026',
+    )
   })
 
   it('draws no field and no strip before a layout, and says whose choice the day is', () => {
@@ -169,7 +171,7 @@ describe('cell 03, Frame and service day, open', () => {
     const { above, strip } = draw({ ...record, service: null })
     expect(strip).toBe('')
     expect(above).not.toContain('<dl')
-    expect(above).toContain('Drawn for 2026-09-12. Lay the project out again')
+    expect(above).toContain('Drawn for 12 September 2026. Lay the project out again')
   })
 
   it('draws no field for a project this version may not write', () => {
@@ -178,7 +180,7 @@ describe('cell 03, Frame and service day, open', () => {
     expect(above).not.toContain('<dl')
     expect(above).not.toContain('<dt>')
     // Its day is the strip's to say, as any project's is.
-    expect(strip).toContain('<dt>Service day</dt><dd>2026-09-12</dd>')
+    expect(strip).toContain('<dt>Service day</dt><dd>12 September 2026</dd>')
     expect(count(above + strip, '<dt>Service day</dt>')).toBe(1)
   })
 })
@@ -209,8 +211,8 @@ describe('cell 03, open, for a read-only project with a day and no strip', () =>
     // The same record with its window: the strip's first row says the day,
     // and a fact the strip states is not stated again above it.
     const { above, strip } = draw(record, { readOnly: true })
-    expect(strip).toContain('<dt>Service day</dt><dd>2026-09-12</dd>')
-    expect(above).not.toContain('The service day is 2026-09-12')
+    expect(strip).toContain('<dt>Service day</dt><dd>12 September 2026</dd>')
+    expect(above).not.toContain('The service day is 12 September 2026')
     expect(count(above, READ_ONLY)).toBe(1)
   })
 
@@ -236,11 +238,11 @@ describe('cell 03, open, for a read-only project with a day and no strip', () =>
     ]
     for (const [name, project] of writable) {
       const { above, strip } = draw(project)
-      expect(above + strip, name).not.toContain('The service day is 2026-09-12')
+      expect(above + strip, name).not.toContain('The service day is 12 September 2026')
       expect(above + strip, name).not.toContain('made by a newer version')
     }
     // And the first of them does say its day, in the control's own words.
-    expect(draw(noWindow).above).toContain('Drawn for 2026-09-12. Lay the project out again')
+    expect(draw(noWindow).above).toContain('Drawn for 12 September 2026. Lay the project out again')
   })
 })
 
@@ -310,7 +312,7 @@ describe('cell 03, open, after a rebuild of its own failed', () => {
     for (const redrawAsked of [null, 'job-0']) {
       const { above } = draw(record, { run: failed, redrawAsked, openedSeams: OLDEST })
       expect(above, String(redrawAsked)).toContain(
-        `<div class="cell-body"><p class="message error">The rebuild for 2026-09-12 did not finish. ${REASON}</p>`,
+        `<div class="cell-body"><p class="message error">The rebuild for 12 September 2026 did not finish. ${REASON}</p>`,
       )
       expect(above, String(redrawAsked)).not.toContain(OPENING_REDRAW_FAILED)
       expect(above, String(redrawAsked)).not.toContain(ON_SCREEN_AS_IT_WAS)

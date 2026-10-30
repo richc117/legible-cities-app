@@ -2,6 +2,7 @@ import { useRef, useState, type JSX, type ReactNode } from 'react'
 import Button from './kit/Button'
 import Icon from './icons/Icon'
 import ConfirmDialog from './ConfirmDialog'
+import { dayWords } from './dates'
 import { useFocusHandback } from './focusHandback'
 import ProgressLine, { type Stage } from './ProgressLine'
 import { inWords } from './stages'
@@ -176,7 +177,7 @@ export default function LayoutRun({
                 which may be a day chosen and not yet drawn (A5.5-15):
                 this sentence is about the picture, and cell 03 says a few
                 lines below it that the choice has moved. */}
-              {drawn === null ? '' : ` for ${drawn}`}.
+              {drawn === null ? '' : ` for ${dayWords(drawn)}`}.
             </p>
           )}
           {movedNotice}
@@ -349,7 +350,7 @@ export function describeInputs(inputs: { mode: string; agency: string | null } |
 export function drawnSentence(day: string | null): string {
   return day === null
     ? 'Drawn from the stored layout.'
-    : `Drawn for ${day} from the stored layout. The stations have not moved.`
+    : `Drawn for ${dayWords(day)} from the stored layout. The stations have not moved.`
 }
 
 /** What a redraw for chosen colours says when the map has been drawn. */

@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { composeJobLog, describeJobState, jobSubject, type Job } from '../../shared/jobs'
 import { messageOf } from '../../shared/errors'
+import { timeWords } from './dates'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import ProgressLine from './ProgressLine'
@@ -210,8 +211,8 @@ export function handOff(place: FocusPlace, running: boolean): { focus: boolean; 
   return { focus: place === 'lost', keep: running }
 }
 
-/** The time a job started, in the reader's own locale. */
-const startedAt = (ms: number): string => new Date(ms).toLocaleTimeString()
+/** The time a job started, in the reader's own hour cycle, with no seconds (issue 559). */
+const startedAt = (ms: number): string => timeWords(ms)
 
 interface ItemProps {
   job: Job

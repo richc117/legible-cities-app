@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/dates.ts",
+    "find": "new Intl.DateTimeFormat('en-GB', { ...dayParts, timeZone: 'UTC' })",
+    "replace": "new Intl.DateTimeFormat('en-GB', dayParts)",
+    "test": "tests/unit/dates.test.ts",
+    "title": "writes a day as the export’s title does, on the day it is",
+    "why": "A day read in the person's zone instead of UTC: west of Greenwich the record's UTC midnight is the evening before, so a map drawn for 17 September says the 16th."
+  }
+]

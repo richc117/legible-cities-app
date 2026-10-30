@@ -376,7 +376,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await day.getByLabel('Draw for another day').fill('2026-06-17')
     await pressWithKeyboard(day.getByRole('button', { name: 'Draw for this day' }))
     await expect(cellHandback(page, 'frame')).toBeFocused()
-    await expect(page.getByText(/^Drawn for 2026-06-17 from the stored layout/)).toBeVisible({
+    await expect(page.getByText(/^Drawn for 17 June 2026 from the stored layout/)).toBeVisible({
       timeout: 30_000,
     })
 

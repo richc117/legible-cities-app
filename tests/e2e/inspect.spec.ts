@@ -99,7 +99,7 @@ test('shows what is in the feed, sorts the routes, and marks what the mode keeps
     const inspect = cell(page, 'data')
     await expect(inspect).toContainText('Los Angeles County MTA')
     await expect(inspect).toContainText((1160).toLocaleString())
-    await expect(inspect).toContainText('the engine would draw 2026-06-16')
+    await expect(inspect).toContainText('the engine would draw 16 June 2026')
     await expect(inspect.getByRole('list', { name: 'Warnings' }).getByRole('listitem')).toHaveCount(
       1,
     )

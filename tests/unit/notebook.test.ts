@@ -139,27 +139,27 @@ describe("cell 03's summary", () => {
   })
 
   it("says the day alone, and leaves the engine's busiest weekday to the open cell", () => {
-    expect(frameSummary(project())).toBe('2026-09-15')
+    expect(frameSummary(project())).toBe('15 September 2026')
   })
 
   it('says the map does not show a day that has been chosen and not drawn', () => {
-    expect(frameSummary(project({ date: '2026-09-12' }))).toBe('2026-09-12, not drawn yet')
+    expect(frameSummary(project({ date: '2026-09-12' }))).toBe('12 September 2026, not drawn yet')
   })
 
   it('has only the day when there is no window to put beside it', () => {
     expect(frameSummary(project({ service: null, date: '2026-09-12' }))).toBe(
-      '2026-09-12, not drawn yet',
+      '12 September 2026, not drawn yet',
     )
   })
 
   it('says nothing about a map it cannot prove is behind', () => {
     // A record from before `drawn` existed: unknown is not stale.
-    expect(frameSummary(project({ date: '2026-09-12', drawn: null }))).toBe('2026-09-12')
+    expect(frameSummary(project({ date: '2026-09-12', drawn: null }))).toBe('12 September 2026')
   })
 
   it("is the drawn day's own sentence once the rebuild has answered", () => {
     expect(frameSummary(project({ date: '2026-09-12', drawn: drawn('2026-09-12') }))).toBe(
-      '2026-09-12',
+      '12 September 2026',
     )
   })
 
@@ -177,7 +177,7 @@ describe("cell 03's summary", () => {
       drawn: drawn('2026-09-15'),
     })
     const said = frameSummary(engines) as string
-    expect(said).toBe('2026-09-15')
+    expect(said).toBe('15 September 2026')
     // Asserted as the whole sentence above, and again as the claim itself:
     // no wording of this row may assert whose choice the day was, in
     // either direction.

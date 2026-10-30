@@ -597,7 +597,9 @@ describe('a rebuild for a chosen day', () => {
     })
     expect(complete, 'the layout record is not rewritten').not.toHaveBeenCalled()
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, changed: false })
-    expect(drawnSentence('2026-09-12')).toMatch(/Drawn for 2026-09-12 from the stored layout/)
+    expect(drawnSentence('2026-09-12')).toMatch(
+      /Drawn for 12 September 2026 from the stored layout/,
+    )
   })
 
   it('refuses a project without a layout and calls nothing', () => {

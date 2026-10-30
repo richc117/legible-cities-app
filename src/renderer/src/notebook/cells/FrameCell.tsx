@@ -1,5 +1,6 @@
 import { useRef, type JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project/types'
+import { dayWords } from '../../dates'
 import ServiceDay, { dayUndrawn } from '../../ServiceDay'
 import Transport from '../../Transport'
 import Trip from '../../Trip'
@@ -96,7 +97,7 @@ export function frameSummary(
   if (project === null || project.date === null) return null
   const undrawn = dayUndrawn(project) ? ', not drawn yet' : ''
   // The busiest weekday is the open cell's button, not the row's sentence.
-  return `${project.date}${undrawn}`
+  return `${dayWords(project.date)}${undrawn}`
 }
 
 export default function FrameCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {
@@ -180,7 +181,7 @@ export default function FrameCell({ cell, state, open, onToggle }: CellViewProps
                   The record's day and not `drawnDate`, as the strip's row
                   is: what the project is set to. */}
               {!hasStrip && project.date !== null && (
-                <p className="prose">The service day is {project.date}.</p>
+                <p className="prose">The service day is {dayWords(project.date)}.</p>
               )}
               {/* A cell with nothing to offer says so in one sentence and
                   offers no disabled stand-in, as cells 04 and 05 do

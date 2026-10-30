@@ -2,6 +2,7 @@ import { Fragment, type JSX } from 'react'
 import { withoutPaths, type EngineState } from '../../../shared/engine'
 import { shortLayoutId } from '../../../shared/layout'
 import type { ProjectRecord } from '../../../shared/project/types'
+import { dayWords } from '../dates'
 import type { ExportSnapshot } from '../engine/exportRun'
 import { describeInputs } from '../LayoutRun'
 import Time from './Time'
@@ -238,16 +239,16 @@ export function frameFacts(project: Pick<ProjectRecord, 'date' | 'service'>): Fa
   const { service, date } = project
   if (service === null || date === null) return []
   return [
-    { term: 'Service day', value: date },
+    { term: 'Service day', value: dayWords(date) },
     {
       term: 'The feed covers',
       value:
         service.start === service.end
-          ? `one day, ${service.start}`
-          : `${service.start} to ${service.end}`,
+          ? `one day, ${dayWords(service.start)}`
+          : `${dayWords(service.start)} to ${dayWords(service.end)}`,
     },
-    { term: 'The engine’s busiest weekday', value: service.busiest },
-    { term: 'Counted from', value: service.anchor },
+    { term: 'The engine’s busiest weekday', value: dayWords(service.busiest) },
+    { term: 'Counted from', value: dayWords(service.anchor) },
   ]
 }
 

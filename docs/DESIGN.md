@@ -609,6 +609,13 @@ carry units and align in tables. Spelling follows the code base's British
 conventions ("licence", "colour"). A screen says what the person can do
 next before it says what went wrong.
 
+A day is written as the export's title writes it, "17 September 2026",
+and a moment adds the time in the person's own hour cycle with no seconds,
+"29 September 2026 at 7:16 PM" (issue 559). `src/renderer/src/dates.ts`
+is the only place either is made. The record's form, "2026-09-17", stays
+in a date control's value, in a copied log and in a sentence of the
+engine's shown as written, and nowhere else on screen.
+
 ## 12. Accessibility, made concrete
 
 The standard is WCAG 2.2 AA. Which of its criteria the app meets, and by what

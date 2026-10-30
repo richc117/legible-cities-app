@@ -12,6 +12,7 @@ import { messageOf } from '../../shared/errors'
 import type { Inspection, Route, RouteType } from '../../shared/protocol'
 import type { ProjectInputs, ProjectRecord } from '../../shared/project/types'
 import { validateAgency, validateMode } from '../../shared/project/validate'
+import { dayWords } from './dates'
 import { inspectionFailure } from './engine/inspections'
 import { EVERY_OPERATOR } from './record'
 import Button from './kit/Button'
@@ -369,7 +370,7 @@ export default function Inspect({
             <dd>
               {inspection.service === null
                 ? 'no calendar'
-                : `${inspection.service.start} to ${inspection.service.end}; the engine would draw ${inspection.service.busiest_weekday}`}
+                : `${dayWords(inspection.service.start)} to ${dayWords(inspection.service.end)}; the engine would draw ${dayWords(inspection.service.busiest_weekday)}`}
             </dd>
           </dl>
           {inspection.warnings.length > 0 && (
