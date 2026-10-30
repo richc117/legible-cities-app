@@ -53,11 +53,13 @@ version number.** An earlier version keeps a setting it has no name for, but
 it cannot keep a choice it has no name for in a setting it does know: a
 preset, a storyboard or a map theme that it does not offer, for example. It
 would read that setting as unset and write it back that way, and for the
-export that means the whole export choice. So a later 1.x that lets a person
+export that can mean the whole export choice (the fields of an opening are
+read one by one, and are lost one by one). So a later 1.x that lets a person
 choose something new, or widens a range, in a setting the earlier version has
 raises the version number, and the earlier version opens that project
 read-only instead. A test holds this: it lists the choices a record can hold
-today, and fails when one of them grows until the number moves.
+today, and the shapes its values must have, and fails when one of them grows
+until the number moves.
 
 **The version number may move within 1.x.** That is allowed, because an
 earlier 1.x then opens the project read-only and cannot damage it. It is the
@@ -85,8 +87,8 @@ setting at its default.
 
 A version also keeps only the settings it knows, and only the values it knows
 for them. When an earlier version saves its settings, which it does when you
-change one, when you move or resize its window and when you close it, it
-writes what it knows and leaves the rest out. A setting that only a later
+change one, when you move or resize its window and when you close it, if it
+has moved, it writes what it knows and leaves the rest out. A setting that only a later
 version has is therefore reset to its default the next time that later
 version reads the file, and so is a value that only a later version has for a
 setting both have, such as a new theme. If you go back and forth between
@@ -99,9 +101,11 @@ They go into your export folder, or into the folder you gave a project of
 its own, and there into a folder named for the project. No update removes or
 changes them. Deleting a project does not remove its exports, and neither
 does **Reset engine data**, which refuses to run while a folder you export to
-is in its way. The folder is named for the project's name, so two projects
-with the same name share one, and an export whose file is already there
-replaces it.
+is in its way. The folder is named for the project's name, cleaned to make a
+folder name: a character a filesystem refuses becomes a hyphen, and a name
+past 80 characters is cut. Two projects with the same name share a folder,
+and so do two whose names differ only in what the cleaning removes. An export
+whose file is already there replaces it.
 
 What is not promised is what the files are called, and the small `.json`
 file that is written beside each export. The engine writes both, so they can

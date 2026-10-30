@@ -62,5 +62,61 @@
     "test": "tests/unit/compatibility.test.ts",
     "title": "still states the rules this file holds",
     "why": "The document's value-set rule changed while the snapshot test stays: the document would promise what the code does not do."
+  },
+  {
+    "file": "src/shared/project/types.ts",
+    "find": "  gridSize: 100,\n  deg45: 2,",
+    "replace": "  gridSize: 120,\n  deg45: 2,",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "has not widened or changed a set without moving RECORD_VERSION",
+    "why": "LOOM's default grid size moved: a stored 100 would now be a choice, and an earlier 1.x would drop or keep it differently from this build."
+  },
+  {
+    "file": "src/shared/project/types.ts",
+    "find": "{ width: 1, casingWidth: 0, dash: 'solid' } as const",
+    "replace": "{ width: 1, casingWidth: 0, dash: 'dashed' } as const",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "has not widened or changed a set without moving RECORD_VERSION",
+    "why": "The line default moved: a stored solid dash would now be a choice an earlier 1.x does not read as one."
+  },
+  {
+    "file": "src/shared/layout.ts",
+    "find": "/^[0-9a-f]{64}$/",
+    "replace": "/^[0-9a-f]{64,}$/",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "has not widened or changed a set without moving RECORD_VERSION",
+    "why": "A longer layout id accepted: an earlier 1.x would read a record that holds one as having no layout."
+  },
+  {
+    "file": "src/shared/project/validate.ts",
+    "find": "/^[a-z0-9][a-z0-9-]{0,63}$/",
+    "replace": "/^[a-z0-9][a-z0-9-]{0,127}$/",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "has not widened or changed a set without moving RECORD_VERSION",
+    "why": "A longer feed key accepted: every earlier 1.x would skip the project outright, with no read-only to fall back on."
+  },
+  {
+    "file": "src/shared/project/validate.ts",
+    "find": "/^#[0-9a-fA-F]{6}$/",
+    "replace": "/^#[0-9a-fA-F]{3,6}$/",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "reads a colour that is not #rrggbb as the default, and drops it from the palette",
+    "why": "Short colours accepted by the reader: a palette written by a later 1.x would be dropped by an earlier one, and the table's '#fff' would be read."
+  },
+  {
+    "file": "src/shared/export.ts",
+    "find": "if (minutes > 59 ||",
+    "replace": "if (minutes > 60 ||",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "gives up the whole export choice for a start time past the hour",
+    "why": "The start time's minutes allowed to reach 60: a rule inside a validator widened with no constant to show it."
+  },
+  {
+    "file": "src/shared/settings.ts",
+    "find": "export const ABSOLUTE = /^(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\/])/",
+    "replace": "export const ABSOLUTE = /(?:\\/|[A-Za-z]:[\\\\/]|\\\\\\\\[^\\\\/])/",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "reads a destination that is not an absolute folder as the app’s own",
+    "why": "The absolute-path test no longer anchored: a relative destination would be stored."
   }
 ]
