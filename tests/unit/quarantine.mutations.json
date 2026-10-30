@@ -46,5 +46,21 @@
     "test": "tests/unit/quarantine.test.ts",
     "title": "counts every tag, so that the cap can bite",
     "why": "A tag the scan does not count lets the quarantine grow past the cap without a test going red."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "      - name: Install\n        if: steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'\n",
+    "replace": "      - name: Install\n        if: steps.decide.outputs.run != 'false'\n",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "ends the quarantine job at its first step where nothing is tagged",
+    "why": "With the install ungated, every pull request pays for a full install in the quarantine job on each system although nothing is quarantined (and, the decision step being skipped, its answer is empty, which is not 'false')."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": " | grep -vE '^[[:space:]]*(//|/?\\*)' > /dev/null; then",
+    "replace": " > /dev/null; then",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "does not take a comment for a use of the tag, as the scan does not",
+    "why": "A comment that names the tag, as this repository's own do, would start the whole quarantine job, which is the cost the first step is there to save."
   }
 ]

@@ -1,6 +1,8 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join, relative, resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 // The flaky-test policy's mechanical half (CONTRIBUTING.md, "Flaky tests";
 // issue 553). A flaky end-to-end test is quarantined by a tag, not with
@@ -174,5 +176,69 @@ describe('ci.yml keeps the quarantine apart from the required suite', () => {
     expect(suiteRuns(block)).toEqual([`npm run test:e2e -- --grep ${TAG} --pass-with-no-tests`])
     expect(block).toMatch(/^ {4}continue-on-error: true$/m)
     expect(block).toMatch(/^ {4}timeout-minutes: \d+$/m)
+  })
+
+  it('ends the quarantine job at its first step where nothing is tagged, and gates every later one on it', () => {
+    const steps = job(ci, 'e2e-quarantine')
+      .split(/^ {6}- /m)
+      .slice(1)
+    const look = steps.findIndex((step) => /^name: Look for quarantined tests$/m.test(step))
+    expect(look).toBeGreaterThan(0)
+    // Everything after the step is gated on its answer, the evidence upload
+    // too; the checkout before it is not.
+    const gate = "steps.look.outputs.tagged == 'true'"
+    const ungated = steps.slice(look + 1).filter((step) => !step.includes(gate))
+    expect(ungated.map((step) => step.split('\n')[0])).toEqual([])
+    // The documentation-only gate stays beside it on the steps that read it.
+    const install = steps.find((step) => /^name: Install$/m.test(step))
+    expect(install).toContain("steps.decide.outputs.run != 'false'")
+  })
+})
+
+describe('the quarantine job’s first step', () => {
+  const ci = readFileSync(join(repo, '.github', 'workflows', 'ci.yml'), 'utf8')
+  const step = job(ci, 'e2e-quarantine')
+    .split(/^ {6}- /m)
+    .find((s) => /^name: Look for/m.test(s))
+  // The step's script, as the runner is handed it: the `run: |` block, dedented.
+  const script = /^ {8}run: \|\n((?: {10}.*\n?)+)/m.exec(step ?? '')?.[1].replace(/^ {10}/gm, '')
+  const dirs: string[] = []
+  afterEach(() => {
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  /** What the step writes as its output, over a checkout holding one spec. */
+  function answer(spec: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'quarantine-look-'))
+    dirs.push(dir)
+    mkdirSync(join(dir, 'tests', 'e2e'), { recursive: true })
+    writeFileSync(join(dir, 'tests', 'e2e', 'a.spec.ts'), spec)
+    const output = join(dir, 'output')
+    writeFileSync(output, '')
+    const run = spawnSync('bash', ['-c', script ?? 'exit 99'], {
+      cwd: dir,
+      env: { ...process.env, GITHUB_OUTPUT: output },
+      encoding: 'utf8',
+    })
+    expect(run.status, run.stderr).toBe(0)
+    return readFileSync(output, 'utf8').trim()
+  }
+
+  // The runners use Git Bash on Windows; the script is tried where bash is
+  // the shell the suite already runs on.
+  const posix = process.platform === 'win32' ? it.skip : it
+
+  posix('says a test is tagged where a line uses the tag', () => {
+    expect(answer("test('a', { tag: '@quarantine' }, async () => {})\n")).toBe('tagged=true')
+  })
+
+  posix('says nothing is tagged where no line has the tag', () => {
+    expect(answer("test('a', async () => {})\n")).toBe('tagged=false')
+  })
+
+  posix('does not take a comment for a use of the tag, as the scan does not', () => {
+    const comments =
+      "// A test tagged '@quarantine' is left out.\n  /* @quarantine\n   * @quarantine\n   */\n"
+    expect(answer(comments)).toBe('tagged=false')
   })
 })

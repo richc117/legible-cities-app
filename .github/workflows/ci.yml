@@ -191,8 +191,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Not a required check, and a red run is a record, not a block: the
     # tests tagged `@quarantine` are the ones the required job leaves out
-    # (CONTRIBUTING.md, "Flaky tests"). With no test tagged, the suite finds
-    # nothing and passes in a minute or two.
+    # (CONTRIBUTING.md, "Flaky tests"). Its first step looks for a tagged
+    # test and, with none, every later step is skipped, so the job ends in
+    # seconds and costs no install or build for a state that is the usual one.
+    # A job that is set to continue on error reads as passed in the checks
+    # list: its log, or the artifact it keeps, says whether a test failed.
     continue-on-error: true
     timeout-minutes: 30
     strategy:
@@ -201,19 +204,37 @@ jobs:
         os: [macos-15, windows-latest]
     steps:
       # The same steps as `e2e`, so that a documentation-only pull request
-      # skips this job's suite by the same rule.
+      # skips this job's suite by the same rule, with a first step of its
+      # own. Every step after it needs both answers.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      # A line that only comments on the tag is not a use of it, which is the
+      # rule tests/unit/quarantine.test.ts scans by; a line with the tag
+      # after code on it is counted, as there.
+      - name: Look for quarantined tests
+        id: look
+        shell: bash
+        run: |
+          if grep -rh --include='*.spec.ts' '@quarantine' tests/e2e | grep -vE '^[[:space:]]*(//|/?\*)' > /dev/null; then
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+            echo "A test is tagged @quarantine; the suite runs."
+          else
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+            echo "No test is tagged @quarantine; there is nothing to run."
+          fi
+
+      - if: steps.look.outputs.tagged == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
 
       - name: Decide whether the suite runs
         id: decide
+        if: steps.look.outputs.tagged == 'true'
         shell: bash
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -222,27 +243,28 @@ jobs:
         run: node scripts/ci-decide.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
 
       - name: Install
-        if: steps.decide.outputs.run != 'false'
+        if: steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'
         run: npm ci
 
       - name: Fetch the Electron binary
-        if: steps.decide.outputs.run != 'false'
+        if: steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'
         run: npx install-electron --no
 
       - name: Build
-        if: steps.decide.outputs.run != 'false'
+        if: steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'
         run: npm run build
 
       # `--pass-with-no-tests`: Playwright exits with an error when a filter
-      # matches nothing, and nothing tagged is the usual state.
+      # matches nothing. The first step has already ended the job where no
+      # test is tagged; this is for a tag it counts that Playwright does not.
       - name: Quarantined end-to-end tests
-        if: steps.decide.outputs.run != 'false'
+        if: steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'
         run: npm run test:e2e -- --grep @quarantine --pass-with-no-tests
         env:
           CI: 'true'
 
       - name: Keep the failure evidence
-        if: failure() && steps.decide.outputs.run != 'false'
+        if: failure() && steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quarantine-results-${{ matrix.os }}

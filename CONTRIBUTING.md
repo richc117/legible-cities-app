@@ -317,8 +317,11 @@ ones in place.
 
   The required `e2e (<os>)` jobs run with `--grep-invert @quarantine`, and
   the `e2e-quarantine (<os>)` jobs run only the tagged tests, are not
-  required checks and never fail the run. A quarantined test therefore stays
-  measured, which `test.fixme` and `test.skip` would not do: a test that
+  required checks and never fail the run. Because of that, the quarantine
+  job's result reads as passed in the checks list whatever happened: read
+  its log, or the `quarantine-results-<os>` artifact, to see whether a
+  quarantined test still fails. With no test tagged it ends in seconds. A
+  quarantined test therefore stays measured, which `test.fixme` and `test.skip` would not do: a test that
   does not run cannot be seen to recover, and one that is ignored is useless
   as a regression test.
 - **A unit test** has no tag here, and a Vitest test cannot be quarantined
