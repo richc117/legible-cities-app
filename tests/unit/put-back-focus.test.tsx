@@ -206,6 +206,14 @@ describe('Reset to LOOM’s defaults', () => {
     act(() => byName('button', 'Layout tuning tuned').click())
     return (tuning) => panel.rerender(drawn(tuning))
   }
+  const offered = (name: string): boolean => {
+    try {
+      byName('button', name)
+      return true
+    } catch {
+      return false
+    }
+  }
   const line = (): string | null =>
     document.querySelector('.layout-tuning p.message[role="status"]')?.textContent ?? null
 
@@ -241,6 +249,35 @@ describe('Reset to LOOM’s defaults', () => {
     expect(focused()).toBe(RESET_LABEL)
     await answered()
     expect(focused()).toBe(PUT_BACK_TUNING)
+  })
+
+  it('says nothing of a reset made on another project', async () => {
+    // The section handed another project, whose tuning is LOOM's own over a
+    // tuned layout too. Mutation (`put-back-focus.mutations.json`): the line
+    // said for whichever project the section holds - a reset said of a
+    // project nobody reset.
+    const drawn = (id: string, tuning?: ProjectTuning): JSX.Element => (
+      <LayoutTuning
+        project={
+          {
+            ...BASE,
+            id,
+            layout: LAYOUT,
+            laidOutWith: { grid: 'hexalinear' },
+            ...(tuning === undefined ? {} : { tuning }),
+          } as ProjectRecord
+        }
+        onChange={async () => {}}
+      />
+    )
+    const panel = renderPanel(drawn('kq7x2mzp4dna', { grid: 'hexalinear', deg90: 4 }))
+    act(() => byName('button', 'Layout tuning tuned').click())
+    pressFocused(RESET_LABEL)
+    await answered()
+    expect(line()).toBe(TUNING_RESET_SAID)
+    panel.rerender(drawn('kq7x2mzp4dnb'))
+    expect(offered(PUT_BACK_TUNING), 'the other project has a tuning to put back').toBe(true)
+    expect(line(), 'and no reset to speak of').toBe('')
   })
 
   it('says its line from Reset’s press, and any other write takes it away', async () => {

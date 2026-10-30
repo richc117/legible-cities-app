@@ -9,8 +9,8 @@
   },
   {
     "file": "src/renderer/src/notebook/useCheapEdit.ts",
-    "find": "    const keep = drawn !== null && !facts.same(drawn, next)\n",
-    "replace": "    const keep = false\n",
+    "find": "    if (drawn !== null && !facts.same(drawn, next)) {\n      setKept({ id, value: drawn, going: false })\n      return\n    }\n",
+    "replace": "",
     "test": "tests/unit/cheap-edit.test.tsx",
     "title": "puts back what the map was drawn from, in one redraw",
     "why": "The reset keeping nothing: the values the map was drawn from are gone from the record and the screen at the first press, as they were before issue 561."
@@ -49,10 +49,26 @@
   },
   {
     "file": "src/renderer/src/notebook/useCheapEdit.ts",
-    "find": "    if (restoring.current === null) return forget()\n",
+    "find": "    if (restored === null || facts.same(facts.stored(facts.project), restored)) return forget()\n",
     "replace": "    return forget()\n",
     "test": "tests/unit/cheap-edit.test.tsx",
     "title": "stays offered when Put back’s own redraw stops",
     "why": "A stop of Put back's own redraw forgetting the slot: a cancelled or failed Put back loses the values before the reset for good."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    setKept((was) => (was !== null && was.id === id ? { ...was, going: false } : null))\n",
+    "replace": "    setKept(null)\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "Put back pressed, Reset again before Put back is drawn",
+    "why": "The press clearing the slot when drawn is already the reset's own: Reset, Put back and Reset again before Put back is drawn loses the values the first reset kept."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (restored === null || facts.same(facts.stored(facts.project), restored)) return forget()\n",
+    "replace": "    if (restored === null) return forget()\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "offers nothing when the reset’s redraw stops with Put back waiting",
+    "why": "A stop offering Put back again whatever the record holds: the reset was never drawn, the record still holds the values, and Put back is offered for nothing."
   }
 ]

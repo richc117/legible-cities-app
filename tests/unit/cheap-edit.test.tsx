@@ -1174,6 +1174,38 @@ describe.each([COLOURS_RESET, SIZES_RESET])('$name: Put back', (reset) => {
     expect(offered(reset.putBack), 'drawn: one step, and nothing left').toBe(false)
   })
 
+  it('Put back pressed, Reset again before Put back is drawn: still offered, with the same values', async () => {
+    // Put back is held (an export reads the page), so the second reset meets
+    // a `drawn` that is the reset's own. Mutation (`cheap-edit.mutations.json`):
+    // the press clearing the slot then - Put back and the values are gone.
+    await openDrawn(reset)
+    press(reset.reset)
+    firstTry(reset.panel)
+    drawnNow(reset, reset.after)
+    exporting(true)
+    press(reset.putBack)
+    press(reset.reset)
+    expect(offered(reset.putBack), 'offered again at once').toBe(true)
+    exporting(false)
+    wait(REDRAW_DELAY * 2)
+    expect(reset.sent(), 'nothing new: the record holds the reset').toEqual([reset.resetValue])
+    press(reset.putBack)
+    firstTry(reset.panel)
+    expect(reset.sent().at(-1)).toEqual(reset.beforeValue)
+  })
+
+  it('offers nothing when the reset’s redraw stops with Put back waiting, the record holding its values', async () => {
+    // Mutation (`cheap-edit.mutations.json`): a stop offering Put back again
+    // whatever the record holds - a Put back for nothing.
+    await openDrawn(reset)
+    press(reset.reset)
+    firstTry(reset.panel)
+    expect(run.snapshot.state).toBe('running')
+    press(reset.putBack)
+    moved(snap('cancelled', reset.panel.own))
+    expect(offered(reset.putBack)).toBe(false)
+  })
+
   it('goes when the reset’s own redraw stops, the record still holding what it had', async () => {
     await openDrawn(reset)
     press(reset.reset)

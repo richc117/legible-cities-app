@@ -57,10 +57,18 @@
   },
   {
     "file": "src/renderer/src/LayoutTuning.tsx",
-    "find": "{resetSaid && laid !== null ? TUNING_RESET_SAID : ''}",
+    "find": "{resetSaid === project.id && laid !== null ? TUNING_RESET_SAID : ''}",
     "replace": "{laid !== null ? TUNING_RESET_SAID : ''}",
     "test": "tests/unit/put-back-focus.test.tsx",
     "title": "says its line from Reset’s press",
     "why": "The tuning's line said whenever Put back is offered: it fills on a section opened after a reset, or when one field moves away from the layout's tuning, saying a reset happened that did not."
+  },
+  {
+    "file": "src/renderer/src/LayoutTuning.tsx",
+    "find": "{resetSaid === project.id && laid !== null ? TUNING_RESET_SAID : ''}",
+    "replace": "{resetSaid !== null && laid !== null ? TUNING_RESET_SAID : ''}",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "says nothing of a reset made on another project",
+    "why": "The tuning's line not tied to the project it was said for: a section handed another project says that project was reset."
   }
 ]

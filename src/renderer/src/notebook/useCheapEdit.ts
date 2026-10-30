@@ -165,10 +165,10 @@ export interface CheapEdit<V> {
   waiting: boolean
   /**
    * The panel's reset, made as a change is, with what the map was drawn from
-   * kept for Put back. True when something was kept, so the panel knows
-   * Put back is coming and can hand it the focus the reset is about to drop.
+   * kept for Put back, so Put back is there at once to take the focus the
+   * reset is about to drop.
    */
-  reset: (next: V) => boolean
+  reset: (next: V) => void
   /**
    * What Put back offers: the section as the map was drawn from it when the
    * reset was pressed, until the section's next edit or until Put back is
@@ -511,12 +511,20 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
     restoring.current = null
     setKept(null)
   }
-  const keepFor = (next: V): boolean => {
+  // At a reset's press: what the map was drawn from, where it is something
+  // to put back. Where it is not - `drawn` is the reset's own already,
+  // because Put back was pressed and not yet drawn - a slot this project
+  // holds stays, offered again: the rule `drawing` follows below, replace
+  // and never clear (the coordinator's review of issue 561).
+  const keepFor = (next: V): void => {
     const facts = latest.current
+    const id = facts.project.id
     const drawn = facts.drawnOf?.(facts.project) ?? null
-    const keep = drawn !== null && !facts.same(drawn, next)
-    setKept(keep ? { id: facts.project.id, value: drawn, going: false } : null)
-    return keep
+    if (drawn !== null && !facts.same(drawn, next)) {
+      setKept({ id, value: drawn, going: false })
+      return
+    }
+    setKept((was) => (was !== null && was.id === id ? { ...was, going: false } : null))
   }
   // A change is about to be compared and drawn. For a reset, the slot is
   // taken again from the record as it stands - but only replaced, never
@@ -534,8 +542,13 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
   // The panel's own redraw stopped, or its start was refused. A reset's:
   // nothing was reset, so nothing is left to put back. Put back's: the
   // values are still to be put back, and Put back is offered again.
+  // Put back's values are offered again only while the record does not
+  // hold them already: a stop of the reset's redraw before Put back was
+  // drawn leaves them on the record, and there is nothing to put back.
   const stopped = (): void => {
-    if (restoring.current === null) return forget()
+    const restored = restoring.current
+    const facts = latest.current
+    if (restored === null || facts.same(facts.stored(facts.project), restored)) return forget()
     restoring.current = null
     resetting.current = null
     setKept((was) => (was === null ? null : { ...was, going: false }))
@@ -563,12 +576,11 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
     // drops, and kept again from the record when the reset is drawn. Kept
     // first and drawn second, so a start refused at once - which puts the
     // control back and drops the slot - has the last word.
-    reset: (next: V): boolean => {
-      const keep = keepFor(next)
+    reset: (next: V): void => {
+      keepFor(next)
       resetting.current = next
       restoring.current = null
       edit.change(next)
-      return keep
     },
     // Put back: the kept values through the same cheap edit as any change.
     // The slot stays, hidden, until the map carries them (below), so a stop

@@ -78,7 +78,9 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   // 561): what the section's polite line says, set by Reset alone and
   // cleared by every other write and by a refusal, so the line is empty
   // as the section opens and does not fill because a run ended.
-  const [resetSaid, setResetSaid] = useState(false)
+  // By the project it was said for, so a section handed another project
+  // says nothing of this one's reset.
+  const [resetSaid, setResetSaid] = useState<string | null>(null)
 
   // The tuning the last write asked for, and that write while its answer has
   // not come. The answers come back in the order the writes were sent (spec
@@ -106,14 +108,14 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const write = (next: ProjectTuning): void => {
     asked.current = next
     setUnsaved(null)
-    setResetSaid(false)
+    setResetSaid(null)
     const mine = onChange(next)
       .catch((reason: unknown) => {
         // Nothing was kept, so the fields go back to the record and say why.
         asked.current = stored.current ?? {}
         setView(tuningViewOf(stored.current))
         setUnsaved(notSaved(reason))
-        setResetSaid(false)
+        setResetSaid(null)
       })
       .finally(() => {
         if (latest.current === mine) latest.current = null
@@ -156,7 +158,7 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   )
   const reset = (): void => {
     show(tuningViewOf({}))
-    setResetSaid(putBackTuning(project, {}) !== null)
+    setResetSaid(putBackTuning(project, {}) !== null ? project.id : null)
   }
   // Written as any choice is, at once, and the cells below read as drawn
   // again because the tuning and the layout agree, not because anything ran.
@@ -249,7 +251,7 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
             sentence from Reset's press while there is a tuning to put
             back, and nothing otherwise. */}
         <p className="message" role="status" aria-live="polite">
-          {resetSaid && laid !== null ? TUNING_RESET_SAID : ''}
+          {resetSaid === project.id && laid !== null ? TUNING_RESET_SAID : ''}
         </p>
         <div className="toolbar">
           <Button ref={resetRef} disabled={!resettable(view)} onClick={reset}>

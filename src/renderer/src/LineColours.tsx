@@ -212,9 +212,11 @@ export default function LineColours({
   // light-dismissed it already, and one from the keyboard moved focus to the
   // button, which a panel closes on (`ColourChip.tsx`, issue 436); but a
   // press that moves no focus, a screen reader's activation in browse mode,
-  // can reach the button with a panel open, and the handback to the cell's
-  // heading that follows moves no focus either when the heading already holds
-  // it, as it does after an earlier reset. So the reset closes them itself.
+  // can reach the button with a panel open, and the section's hand-back
+  // (below) moves focus only off a control of the section that can no
+  // longer hold it - not off a chip the person is on, nor off the cell's
+  // heading - so nothing that follows closes the panel. So the reset
+  // closes them itself.
   const closePanels = (): void => {
     section.current
       ?.querySelectorAll<HTMLElement>('.colour-popover:popover-open')
