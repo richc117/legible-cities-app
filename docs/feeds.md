@@ -3,7 +3,8 @@
 Legible Cities draws a map from a transit agency's timetable. This page says
 what that timetable is, where agencies publish it, and how to give it to the
 app. You do not need it for the sample cities: they are in the Library
-already, and pressing one starts a project.
+already, and pressing one starts a project. The app downloads a sample city's
+feed from its agency the first time you use it.
 
 - [What a feed is](#what-a-feed-is)
 - [Where to find one](#where-to-find-one)
@@ -19,15 +20,14 @@ usually one zip file of plain text tables, and an agency usually publishes it
 on its open-data page, or on the page of the city or region that pays for the
 service.
 
-The app draws from the feed alone. It does not need an account, and it does
-not look anything else up.
+The app draws from the feed alone, and needs no account.
 
 ## Where to find one
 
-Start with the agency. Search the web for the agency's name and "open data" or
-"developers", or look for a link called "GTFS" near the bottom of its website.
-The page usually offers one zip, and sometimes also an address that always
-serves the current one.
+Start with the agency's own site. Look for a page called "open data" or
+"developers", or a link called "GTFS", often near the bottom of the page. It
+usually offers one zip, and sometimes also an address that always serves the
+current one.
 
 If you cannot find it that way, two sites may help:
 
@@ -53,17 +53,18 @@ three answers:
   It must start with `http://` or `https://`, and it should be the address of
   the zip itself, the one your browser would start downloading.
 
-For a zip or an address, press **Add the feed**. The app downloads it and
-checks its tables, and when the feed is in, **Name** is filled in and the
-button reads **Create**. A feed you add stays in the Library under **Your
+For a zip or an address, press **Add the feed**. The app reads the zip, or
+downloads the feed from its address, and checks its tables. When the feed is
+in, **Name** is filled in with the feed's own name unless you have typed one,
+and the button reads **Create**. A feed you add stays in the Library under **Your
 feeds**, even if you cancel before creating the project.
 
 ## If a feed will not load
 
 The app says why in its own words, under the field that caused it. The
-[install guide](install.md#a-feed-will-not-download) lists those sentences
-and what each one means, and what to try when the address is right and the
-download still stops.
+[install guide](install.md#a-feed-will-not-download) quotes two of those
+sentences and says what each one means, and what to try when the address is
+right and the download still stops.
 
 A feed that downloads and is then refused is usually not a GTFS zip: the file
 you saved may be a web page, or a zip of something else. Download it again
