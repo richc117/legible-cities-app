@@ -3,7 +3,7 @@ import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
 import { exportable } from '../runGraph'
-import { useProjectExport, useProjectRecord } from './context'
+import { useProjectOutputs, useProjectRecord } from './context'
 import Time from './Time'
 import { EXPORT_ONE, GONE, NOTHING_YET, outputName } from './outputWords'
 
@@ -68,7 +68,7 @@ export default function Outputs({ onExport }: { onExport: () => void }): JSX.Ele
   // for both.
   const {
     outputs: { rows, read },
-  } = useProjectExport()
+  } = useProjectOutputs()
   const id = project?.id ?? null
   const sectionRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
