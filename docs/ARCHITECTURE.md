@@ -2595,8 +2595,12 @@ artefact, and a last job, `attest`, the only one with `id-token: write`
 and with nothing else that writes, holds each file to its line in
 `SHA256SUMS.txt` and attests the installers and `SHA256SUMS.txt` with
 Sigstore through `actions/attest-build-provenance` (issue 434, ADR-057).
-Nothing is published: the maintainer reads the draft and publishes it by
-hand, only after the attest job is green. If `vendor / electron ffmpeg
+A `verify (attestations)` job after it, with `contents: read` and
+`attestations: read` and no `id-token`, runs `gh attestation verify` over the
+same files, asking for this repository, `build.yml`, the run's ref and
+commit and no self-hosted runner (issue 557). Nothing is published: the
+maintainer reads the draft and publishes it by hand, only after the attest
+and verify jobs are green. If `vendor / electron ffmpeg
 (source)` fails on a tag's run, re-run the failed jobs before anything
 else (`gh run rerun <id> --failed`): its fetch from Chromium's mirror can
 stall on every attempt, and the packaging jobs, and so the release job,
@@ -2612,7 +2616,9 @@ first-run dialog's "How to install" opens it on `main`.
 A published Release is accepted by `.github/workflows/acceptance.yml`, on
 request with its tag (A6-04): on `macos-15` and `windows-latest` it
 downloads the Release's installer and `SHA256SUMS.txt` with a read-only
-token and checks the one against the other, installs (the dmg mounted
+token, checks the one against the other and verifies both files'
+attestations against the tag and the commit it points at (a tag from before
+ADR-057 is recorded as not attested), installs (the dmg mounted
 read-only and the app copied out; the NSIS installer run silently into
 `%LOCALAPPDATA%\Programs\<package name>`), drives the installed app through
 `docs/acceptance.md`'s steps 3 to 20 with

@@ -495,7 +495,7 @@ jobs:
           {
             echo "### Draft: $NAME"
             echo
-            echo "Not published. Read it on the repository's Releases page and, once this run's attest job is green, publish it by hand."
+            echo "Not published. Read it on the repository's Releases page and, once this run's attest and verify jobs are green, publish it by hand."
             echo
             echo '~~~'
             cat release-assets/SHA256SUMS.txt
@@ -563,3 +563,51 @@ jobs:
             release-assets/*.dmg
             release-assets/*.exe
             release-assets/SHA256SUMS.txt
+
+  # What the attest job signed, checked the way a person would check a
+  # download (issue 557, ADR-057): `gh attestation verify` over every
+  # subject, asking for this repository, this workflow file, this tag and
+  # this commit, and refusing a self-hosted runner. Signing proves nothing
+  # until something verifies it, and this is the first thing that does.
+  #
+  # A job of its own, after attest, so that checking never shares a job with
+  # the token that signs: it holds contents: read and attestations: read,
+  # which the attestations API needs to answer, and no id-token, so it cannot
+  # sign. It reads the same release-assets artefact as attest, never the
+  # draft. The draft is published by hand only after this job and attest are
+  # both green.
+  verify:
+    name: verify (attestations)
+    needs: attest
+    if: ${{ !cancelled() && needs.attest.result == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      attestations: read
+    steps:
+      - name: Download the assets the release job drafted
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-assets
+          path: release-assets
+
+      # The subjects are the attest job's own, in the same patterns. A pattern
+      # that matches nothing is left as typed, and gh refuses a file that is
+      # not there, so a missing installer fails here and is never skipped.
+      - name: Verify the attestation of every installer and of SHA256SUMS.txt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for subject in release-assets/*.dmg release-assets/*.exe release-assets/SHA256SUMS.txt; do
+            echo "verifying $subject"
+            gh attestation verify "$subject" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+              --source-ref "$GITHUB_REF" \
+              --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners
+          done
+          echo "every installer and SHA256SUMS.txt is attested as built here from $GITHUB_REF at $GITHUB_SHA"

@@ -1,0 +1,106 @@
+[
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --source-ref \"$GITHUB_REF\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "asks for this repository, this workflow file, this ref and commit, and no self-hosted runner",
+    "why": "The verify without --source-ref: an attestation made for any ref of this repository, a branch build or v0.1.0's tag among them, would verify, and the check would pass a Release built from the wrong place."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --source-ref \"$GITHUB_REF\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies each installer and SHA256SUMS.txt, each against this repository, workflow, ref and commit",
+    "why": "The same deletion, caught by running the job's script with a stand-in gh: the call it makes no longer names the ref."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    permissions:\n      contents: read\n      attestations: read\n",
+    "replace": "    permissions:\n      contents: read\n      attestations: read\n      id-token: write\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "reads contents and attestations and cannot mint a token",
+    "why": "The verify job able to mint an OIDC token: checking would share a job with signing, which ADR-057 keeps apart."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " release-assets/SHA256SUMS.txt; do\n            echo \"verifying",
+    "replace": "; do\n            echo \"verifying",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies every subject the attest job signs, and nothing it does not",
+    "why": "SHA256SUMS.txt left out of the verify: the file that names every source archive would be signed and never checked."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --deny-self-hosted-runners\n          done\n",
+    "replace": "              --deny-self-hosted-runners || true\n          done\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "fails when one subject is refused, rather than going on",
+    "why": "A refused verify swallowed by || true: with -e on, as a runner has it, this is what really fails open, and the job would end green over a subject that did not verify."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    needs: attest\n    if: ${{ !cancelled() && needs.attest.result == 'success' }}\n",
+    "replace": "    needs: release\n    if: ${{ !cancelled() && needs.release.result == 'success' }}\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "is a job of its own, after the attest job and only where that succeeded",
+    "why": "The verify running beside the attest job, not after it: it could look for an attestation that is not yet made and fail, or pass a run whose attest job failed."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "                if ! gh attestation verify \"$subject\" \\\n",
+    "replace": "                if ! true \"$subject\" \\\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched",
+    "why": "The acceptance run's verify call dropped: step 1 would record the attestation as verified without asking."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "                    --source-ref \"refs/tags/$TAG\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched",
+    "why": "The acceptance verify without the tag: a download attested for some other ref of this repository would be recorded as verified."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --source-digest \"$GITHUB_SHA\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "asks for this repository, this workflow file, this ref and commit, and no self-hosted runner",
+    "why": "The verify without --source-digest: an attestation for this tag's name but another commit (a tag moved after the build) would verify."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "                    --source-digest \"$digest\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies a tag the attest job's commit is in, by name and by commit, and records it",
+    "why": "The acceptance verify bound to the tag's name and not its commit: a download attested for another commit under the same tag name would be recorded as verified."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          case \"$contains\" in\n",
+    "replace": "          case \"$((1 - contains))\" in\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "records a tag from before the attest job as not attested, and asks gh for nothing",
+    "why": "The branches for a tag with and without the attest job swapped: a tag from before attestations would be asked for one and fail, and a current tag would be recorded as not attested and never verified."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "digest=$(git rev-parse --verify --quiet \"refs/tags/$TAG^{commit}\")",
+    "replace": "digest=$(git rev-parse --verify --quiet \"refs/tags/$TAG\")",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies a tag the attest job's commit is in, by name and by commit, and records it",
+    "why": "The digest read from the tag object and not its commit: for an annotated tag, which a maintainer's may be, --source-digest would name the tag's own hash and no attestation would match it."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "for subject in \"$DOWNLOAD/$ASSET\" \"$DOWNLOAD/SHA256SUMS.txt\"; do",
+    "replace": "for subject in \"$DOWNLOAD/$ASSET\"; do",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "fails the step, and records no, when gh refuses SHA256SUMS.txt alone",
+    "why": "The checksum file left out of the acceptance verify: the file that names every source archive would be recorded as verified without being asked about."
+  }
+]

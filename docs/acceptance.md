@@ -101,6 +101,11 @@ What it cannot do stays a person's, and the record says so step by step
   the warning in `install.md` is not exercised. The Mac app is copied from
   the disk image rather than dragged to Applications; the Windows installer
   runs silently and so does not open the app.
+- **Attestations of older tags**: step 1 verifies the installer's and
+  `SHA256SUMS.txt`'s attestations, with `--source-ref` the tag. A tag that
+  does not contain the commit that brought the attest job has none, so the
+  record says "not attested (before 1.0)" and the step "pass, part not
+  automated" rather than a failure.
 - **Judgement**: whether a map, a colour, a theme or a GIF looks right,
   whether the page's rows follow a line order (step 10's two checks),
   whether a drag feels right (the spec drags the picker with the mouse and
@@ -127,7 +132,12 @@ What it cannot do stays a person's, and the record says so step by step
 **Do.** Open the Release draft (or the published release) and download the
 file for this machine, as [Which file to download](install.md#which-file-to-download)
 says, and `SHA256SUMS.txt`. Compute the file's SHA-256 as
-[Check the download](install.md#check-the-download-optional) says.
+[Check the download](install.md#check-the-download-optional) says. Then check
+who built it, as [Check who built it](install.md#check-who-built-it-optional)
+says, for the installer and for `SHA256SUMS.txt`, and add
+`--signer-workflow richc117/legible-cities-app/.github/workflows/build.yml`
+and `--source-ref refs/tags/<tag>` to ask that this repository's build
+workflow made it, from this release's tag.
 
 **See.**
 - The installer's name is one of `Legible-Cities-<version>-mac-arm64.dmg`,
@@ -136,6 +146,10 @@ says, and `SHA256SUMS.txt`. Compute the file's SHA-256 as
   (`scripts/release.mjs`), and `<version>` is the release's.
 - Its checksum matches its line in `SHA256SUMS.txt`. Write both the file
   name and the checksum into the run's issue.
+- `gh attestation verify` succeeds for the installer and for
+  `SHA256SUMS.txt` with those two options. A release tagged before
+  attestations were added (v0.1.0 is one) has none: write "not attested
+  (before 1.0)" in the results template and say which tag in the notes.
 
 Result: ____
 
@@ -1100,6 +1114,7 @@ Copy everything in the block below into a new issue titled
 | Installer file name | |
 | Its SHA-256 | |
 | Matches SHA256SUMS.txt? | yes / no |
+| Attestation verified? | yes / no / not attested (before 1.0) |
 | Started, finished | |
 | Time taken | |
 

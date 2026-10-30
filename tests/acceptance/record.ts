@@ -56,6 +56,7 @@ export const FIELDS = [
   'Installer file name',
   'Its SHA-256',
   'Matches SHA256SUMS.txt?',
+  'Attestation verified?',
   'Started, finished',
   'Time taken',
 ] as const

@@ -968,7 +968,7 @@ describe('formatOutputs', () => {
 describe('build.yml', () => {
   const workflow = readFileSync(join(repo, '.github', 'workflows', 'build.yml'), 'utf8')
   const jobs = workflow.slice(workflow.indexOf('\njobs:\n'))
-  const release = jobs.slice(jobs.indexOf('\n  release:\n'))
+  const release = jobs.slice(jobs.indexOf('\n  release:\n'), jobs.indexOf('\n  attest:\n'))
 
   it('runs on a v tag and still on branches', () => {
     expect(workflow).toMatch(/\n {2}push:\n {4}branches: \['\*\*'\]\n {4}tags: \['v\*'\]\n/)

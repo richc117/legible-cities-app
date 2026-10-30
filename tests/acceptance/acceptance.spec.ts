@@ -661,6 +661,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     'Installer file name',
     'Its SHA-256',
     'Matches SHA256SUMS.txt?',
+    'Attestation verified?',
   ] as const) {
     record.fieldUnlessSet(name, 'set by the acceptance workflow; not known to a local run')
   }

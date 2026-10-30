@@ -17,7 +17,7 @@ import {
   tagContains,
   writtenSince,
 } from '../acceptance/pure.mjs'
-import { RunRecord, STEP_TITLES } from '../acceptance/record'
+import { FIELDS, RunRecord, STEP_TITLES } from '../acceptance/record'
 
 const made: string[] = []
 afterEach(() => {
@@ -200,5 +200,22 @@ describe('STEP_TITLES', () => {
         title.replace(/ \(.*___.*\)$/, ''),
       ]),
     )
+  })
+})
+
+describe('FIELDS', () => {
+  // record.ts drops a field it does not list (applyPrior takes only FIELDS),
+  // so a row added to the template and not here is a value the workflow
+  // computed and the record never shows.
+  const checklist = readFileSync(resolve(__dirname, '../../docs/acceptance.md'), 'utf8')
+
+  it("is the results template's run table, row for row", () => {
+    const table = /\n## Acceptance run\n\n\| \| \|\n\|---\|---\|\n((?:\| .*\|\n)+)/.exec(checklist)
+    expect(table, 'the results template opens with its run table').not.toBeNull()
+    const names = (table as RegExpExecArray)[1]
+      .trim()
+      .split('\n')
+      .map((row) => row.split('|')[1].trim())
+    expect(names).toEqual([...FIELDS])
   })
 })
