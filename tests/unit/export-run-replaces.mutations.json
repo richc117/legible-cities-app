@@ -38,5 +38,13 @@
     "test": "tests/unit/export-run-replaces.test.tsx",
     "title": "reads when the project opens, when a run changes state, and when the project is renamed",
     "why": "The folder key dropped from the read's dependencies: a renamed project is read from the folder it no longer exports to."
+  },
+  {
+    "file": "src/renderer/src/notebook/useOutputs.ts",
+    "find": "        if (mine === latest.current) setRows(list)\n",
+    "replace": "        setRows(list)\n",
+    "test": "tests/unit/export-run-replaces.test.tsx",
+    "title": "keeps the answer of the latest read when an older one arrives last",
+    "why": "The guard dropped: an older read answering last puts the rows of the folder as it was, and the line beside Export describes a file that is no longer there or misses one that is."
   }
 ]

@@ -36,15 +36,25 @@ export function useOutputs(
   folderKey = '',
 ): OutputsState {
   const [rows, setRows] = useState<ExportOutput[] | null>(null)
+  // The latest read's number. Reads overlap - a run ends as a folder is
+  // chosen - and the folder is not read in the order it is asked, so an
+  // answer is kept only if no read was asked after it: an older answer,
+  // arriving last, would put the rows of the folder as it was.
+  const latest = useRef(0)
 
   const read = useCallback((): void => {
     if (projectId === null) return
+    const mine = ++latest.current
     window.api.export.outputs(projectId).then(
-      (list) => setRows(list),
+      (list) => {
+        if (mine === latest.current) setRows(list)
+      },
       // A folder that cannot be read is a list with nothing in it rather
       // than a sentence in the corner of a screen about a step a person did
       // not take. The main process has already logged the reason.
-      () => setRows([]),
+      () => {
+        if (mine === latest.current) setRows([])
+      },
     )
   }, [projectId])
 

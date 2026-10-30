@@ -158,4 +158,26 @@ describe('the screen’s read of the folder', () => {
     await answered()
     expect(calls, 'again when the project is renamed').toBe(3)
   })
+
+  it('keeps the answer of the latest read when an older one arrives last', async () => {
+    // Reads overlap: a run ends as a folder is chosen. Mutation: the
+    // `latest` guard dropped from `useOutputs` - the older answer, arriving
+    // last, puts the rows of the folder as it was.
+    const answers: ((rows: ExportOutput[]) => void)[] = []
+    const view = renderPanel(<Reader state="idle" name="Los Angeles" />, {
+      api: {
+        export: {
+          outputs: () => new Promise<ExportOutput[]>((resolve) => answers.push(resolve)),
+        },
+      },
+    })
+    view.rerender(<Reader state="running" name="Los Angeles" />)
+    await answered()
+    expect(answers, 'two reads are out').toHaveLength(2)
+    answers[1]([row({ file: 'new.mp4' })])
+    await answered()
+    answers[0]([row({ file: 'old.mp4' })])
+    await answered()
+    expect(view.host.querySelector('#rows')?.textContent).toBe('new.mp4')
+  })
 })
