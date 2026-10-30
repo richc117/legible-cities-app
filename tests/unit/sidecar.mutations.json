@@ -38,5 +38,13 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "is refused while the engine it gave up on is still being ended",
     "why": "A retry let through while the engine given up on is still being ended (issue 562): a second engine starts on the same home beside one that has not yet gone."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (unended !== null && unended.exitCode === null && unended.signalCode === null)\n      return RETRY_REFUSALS.stillStopping\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "is refused while that child lives",
+    "why": "A retry let through beside an engine that outlived the last wait after SIGKILL (issue 562): a second engine starts on the same home while the first is still there."
   }
 ]

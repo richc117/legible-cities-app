@@ -83,6 +83,13 @@ export interface SidecarOptions {
    * to name (issue 547).
    */
   bundledInterpreter?: boolean
+  /**
+   * How the engine is started: Node's own `spawn` unless a test hands in a
+   * stand-in, for what a real child cannot be made to do on cue - outlive
+   * the last wait after SIGKILL (issue 562). Called as `spawn` is, with the
+   * same argument array and options; nothing else is started through it.
+   */
+  spawn?: typeof spawn
 }
 
 const STDERR_TAIL = 20
@@ -204,6 +211,13 @@ export class Sidecar {
   private stableTimer: NodeJS.Timeout | null = null
   /** An endChild() in progress, so stop() waits for it rather than passing it. */
   private ending: Promise<void> | null = null
+  /**
+   * A child that had not exited when the last wait after SIGKILL lapsed,
+   * until its exit is seen: one in uninterruptible sleep, say, on a disk
+   * that has stopped answering. A retry while it lives would start a second
+   * engine beside it on the same home (issue 562).
+   */
+  private unended: ChildProcess | null = null
   private stopped: Promise<void> | null = null
 
   constructor(private readonly options: SidecarOptions) {
@@ -297,8 +311,9 @@ export class Sidecar {
    * ended: `failed()` says `stopped` before it ends a live child (a handshake
    * that timed out, a stray line on stdout), and that can take
    * `shutdownMs` and two `terminateMs`, so a retry then would start a second
-   * engine on the same home beside the first. `start()` is no way back in:
-   * it returns once it has run.
+   * engine on the same home beside the first; and while an engine that
+   * outlived the last wait after SIGKILL is still there (`unended`).
+   * `start()` is no way back in: it returns once it has run.
    */
   retry(): string | null {
     if (this.stopping) return RETRY_REFUSALS.quitting
@@ -308,6 +323,9 @@ export class Sidecar {
     if ((state.state !== 'stopped' && state.state !== 'unavailable') || !state.retryable)
       return RETRY_REFUSALS.notDown
     if (this.ending !== null) return RETRY_REFUSALS.stillStopping
+    const unended = this.unended
+    if (unended !== null && unended.exitCode === null && unended.signalCode === null)
+      return RETRY_REFUSALS.stillStopping
     this.log('trying again, as a person asked')
     // The failures that ended in giving up are forgiven: a retry that fails
     // at once is restarted as a first start's failure is, not given up on.
@@ -469,7 +487,7 @@ export class Sidecar {
     // engine can answer (issue 529).
     const spawnedAt = performance.now()
     try {
-      child = spawn(command[0], command.slice(1), {
+      child = (this.options.spawn ?? spawn)(command[0], command.slice(1), {
         env: this.options.env,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
@@ -481,6 +499,9 @@ export class Sidecar {
       return
     }
     this.child = child
+    child.once('exit', () => {
+      if (this.unended === child) this.unended = null
+    })
     let exitedResolve: () => void = () => {}
     this.exited = new Promise<void>((resolve) => {
       exitedResolve = resolve
@@ -832,7 +853,13 @@ export class Sidecar {
     }
     this.log(`did not end on terminate within ${this.bounds.terminateMs} ms; killing`)
     this.kill(child)
-    await this.waitFor(exited, this.bounds.terminateMs)
+    if (!(await this.waitFor(exited, this.bounds.terminateMs))) {
+      // Its exit clears this, whenever it comes (`launch`).
+      if (child.exitCode === null && child.signalCode === null) {
+        this.log(`did not end on kill within ${this.bounds.terminateMs} ms; it is still there`)
+        this.unended = child
+      }
+    }
     client?.dispose(stopped)
   }
 
