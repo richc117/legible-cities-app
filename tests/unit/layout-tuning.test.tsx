@@ -110,15 +110,15 @@ describe('what a field says', () => {
   it('is described by its range, with its unit, and LOOM’s own number', () => {
     // Mutation: the default read from TUNING_RANGES' high in place of
     // DEFAULT_TUNING - every sentence then names the top of the range.
-    expect(describeTuningField('mergeDistance')).toBe('5 to 500 metres. LOOM’s own is 50.')
+    expect(describeTuningField('mergeDistance')).toBe('5 to 500 metres. The default is 50.')
     expect(describeTuningField('gridSize')).toBe(
-      '25 to 400 percent of the distance between adjacent stations. LOOM’s own is 100.',
+      '25 to 400 percent of the distance between adjacent stations. The default is 100.',
     )
-    expect(describeTuningField('deg45')).toBe('0 to 10. LOOM’s own is 2.')
-    expect(describeTuningField('deg90')).toBe('0 to 10. LOOM’s own is 1.5.')
-    expect(describeTuningField('deg135')).toBe('0 to 10. LOOM’s own is 1.')
-    expect(describeTuningField('deg180')).toBe('0 to 10. LOOM’s own is 0.')
-    expect(describeTuningField('diagonal')).toBe('0 to 10. LOOM’s own is 0.5.')
+    expect(describeTuningField('deg45')).toBe('0 to 10. The default is 2.')
+    expect(describeTuningField('deg90')).toBe('0 to 10. The default is 1.5.')
+    expect(describeTuningField('deg135')).toBe('0 to 10. The default is 1.')
+    expect(describeTuningField('deg180')).toBe('0 to 10. The default is 0.')
+    expect(describeTuningField('diagonal')).toBe('0 to 10. The default is 0.5.')
   })
 
   it('shows the record’s number, else LOOM’s own', () => {
@@ -230,21 +230,21 @@ describe('Reset, and what the row says', () => {
     expect(resettable(commitTuningField(typed(view(), 'deg45', '99'), 'deg45'))).toBe(true)
   })
 
-  it('says LOOM’s defaults until something is chosen, and tuned after', () => {
+  it('says the defaults until something is chosen, and tuned after', () => {
     // Mutation: `tuningWord` answers from `tuning !== undefined` - a record
     // holding `{}` then reads tuned.
-    expect(tuningWord(undefined)).toBe('LOOM’s defaults')
-    expect(tuningWord({})).toBe('LOOM’s defaults')
-    expect(tuningWord({ ...DEFAULT_TUNING })).toBe('LOOM’s defaults')
+    expect(tuningWord(undefined)).toBe('the defaults')
+    expect(tuningWord({})).toBe('the defaults')
+    expect(tuningWord({ ...DEFAULT_TUNING })).toBe('the defaults')
     expect(tuningWord({ gridSize: 50 })).toBe('tuned')
   })
 
-  it('offers the engine’s four grids, each with its gloss, LOOM’s own marked', () => {
+  it('offers the engine’s four grids in plain words, the engine’s word and the default bracketed', () => {
     expect(gridOptions()).toEqual([
-      { grid: 'octilinear', label: 'octilinear (eight directions; LOOM’s own)' },
-      { grid: 'ortholinear', label: 'ortholinear (four directions)' },
-      { grid: 'orthoradial', label: 'orthoradial (rings and spokes)' },
-      { grid: 'hexalinear', label: 'hexalinear (six directions)' },
+      { grid: 'octilinear', label: 'Eight directions (octilinear; the default)' },
+      { grid: 'ortholinear', label: 'Four directions (ortholinear)' },
+      { grid: 'orthoradial', label: 'Rings and spokes (orthoradial)' },
+      { grid: 'hexalinear', label: 'Six directions (hexalinear)' },
     ])
   })
 
@@ -263,13 +263,13 @@ describe('what cell 02 says of a layout of another tuning', () => {
     // Mutation: `tuningNotice` compares the two by reference - a record whose
     // `tuning` and `laidOutWith` agree as values then reads stale.
     expect(tuningNotice({ layout: LAYOUT, tuning: { grid: 'orthoradial' } })).toBe(
-      'Lay out again to use this tuning: the map on screen was laid out with LOOM’s defaults.',
+      'Lay out again to use this tuning: the map on screen was laid out with the defaults.',
     )
     expect(
       tuningNotice({ layout: LAYOUT, tuning: { gridSize: 50 }, laidOutWith: { gridSize: 200 } }),
     ).toBe('Lay out again to use this tuning: the map on screen was laid out with another tuning.')
     expect(tuningNotice({ layout: LAYOUT, laidOutWith: { deg45: 3 } })).toBe(
-      'Lay out again to use LOOM’s defaults: the map on screen was laid out with another tuning.',
+      'Lay out again to use the defaults: the map on screen was laid out with another tuning.',
     )
   })
 
@@ -305,10 +305,10 @@ describe('the section as it is drawn', () => {
     expect(html).toMatch(/<div id="[^"]+" role="group" aria-label="Layout tuning" hidden=""/)
   })
 
-  it('says LOOM’s defaults on its row for a record that holds no tuning, and tuned for one that does', () => {
-    // The span, not the word: the grid's option says "LOOM’s own" too.
+  it('says the defaults on its row for a record that holds no tuning, and tuned for one that does', () => {
+    // The span, not the word: the grid's option says "the default" too.
     expect(drawn()).toContain(
-      'Layout tuning <span class="layout-tuning-word">LOOM’s defaults</span></button></h3>',
+      'Layout tuning <span class="layout-tuning-word">the defaults</span></button></h3>',
     )
     expect(drawn({ grid: 'hexalinear' })).toContain(
       'Layout tuning <span class="layout-tuning-word">tuned</span></button></h3>',
@@ -324,7 +324,7 @@ describe('the section as it is drawn', () => {
     expect(options).toEqual(gridOptions().map(({ grid, label }) => [grid, label]))
   })
 
-  it('names every number by its label and describes it by its range and LOOM’s own', () => {
+  it('names every number by its label and describes it by its range and the default', () => {
     // Mutation: a field's `aria-describedby` dropped - its range is then
     // drawn but not said with the field.
     const html = drawn()
@@ -332,7 +332,7 @@ describe('the section as it is drawn', () => {
     expect(labels.map((found) => found[2])).toEqual(TUNING_KEYS.map((key) => TUNING_LABELS[key]))
     for (const [, id] of labels) {
       expect(html).toContain(`<fig-input-text aria-describedby="${id}-range">`)
-      expect(html).toMatch(new RegExp(`<p id="${id}-range" class="message">[^<]+LOOM’s own is`))
+      expect(html).toMatch(new RegExp(`<p id="${id}-range" class="message">[^<]+The default is`))
     }
   })
 
@@ -356,7 +356,7 @@ describe('the section as it is drawn', () => {
     expect([...html.matchAll(/<fig-button[^>]*>([^<]*)<\/fig-button>/g)].map((m) => m[1])).toEqual([
       RESET_LABEL,
     ])
-    expect(RESET_LABEL).toBe('Reset to LOOM’s defaults')
+    expect(RESET_LABEL).toBe('Reset to the defaults')
     expect(html).not.toMatch(/type="range"|fig-slider/)
   })
 })
@@ -380,7 +380,7 @@ describe('Put back the tuning this layout was made with', () => {
     expect(putBackTuning(laidOut, { grid: 'hexalinear', deg90: 4, deg45: 2 })).toBeNull()
   })
 
-  it('is never offered for a layout made with LOOM’s defaults, or before there is a layout', () => {
+  it('is never offered for a layout made with the defaults, or before there is a layout', () => {
     // A tuning that was never laid out cannot be put back: nothing kept it.
     expect(putBackTuning({ layout: LAYOUT }, { grid: 'orthoradial' })).toBeNull()
     expect(putBackTuning({ layout: LAYOUT, laidOutWith: {} }, { grid: 'orthoradial' })).toBeNull()

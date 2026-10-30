@@ -194,7 +194,7 @@ describe('create', () => {
       'feed key must be lowercase letters, digits and hyphens',
     )
     await expect(store.create({ name: 'LA', feed: 'la', mode: 'Rail' })).rejects.toThrow(
-      'mode must be one or more of the modes LOOM knows',
+      'mode must be one or more of the modes the engine knows',
     )
     await expect(store.create({ name: 'LA', feed: 'la', agency: 'x'.repeat(65) })).rejects.toThrow(
       'agency is too long',

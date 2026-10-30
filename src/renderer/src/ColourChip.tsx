@@ -24,24 +24,52 @@ function scrollerOf(el: HTMLElement): Element {
   return document.scrollingElement ?? document.documentElement
 }
 
+/** A box's top and bottom in the window, as `getBoundingClientRect` gives them. */
+export interface Span {
+  top: number
+  bottom: number
+}
+
+/**
+ * How far to scroll the chip's scroller so that the chip and its panel are
+ * in the window together (issue 436): positive moves the page up, negative
+ * down, 0 leaves it. `header` is the bottom of the sticky header and
+ * `height` the window's.
+ *
+ * The least that fits both, and never at the chip's cost. Run past the
+ * bottom, the page moves up, but never so far that the chip goes under the
+ * header. Run under the header - a panel the platform placed above its
+ * chip, because the window had room above it - the page moves down, but
+ * never so far that the chip goes past the bottom of the window: the panel
+ * is in the top layer and is drawn over the header, while a chip pushed
+ * out of the window is a panel whose control cannot be seen. So the panel's
+ * wish is clamped to the chip's own room, whichever way the panel overruns:
+ * with a chip already a little past the foot and its panel flipped above
+ * it, both overruns hold at once, and the chip's room decides.
+ */
+export function fitShift(chip: Span, panel: Span, header: number, height: number): number {
+  const top = Math.min(chip.top, panel.top)
+  const bottom = Math.max(chip.bottom, panel.bottom)
+  const want = bottom > height ? bottom - height : top < header ? top - header : 0
+  return Math.min(Math.max(want, chip.bottom - height), chip.top - header)
+}
+
 /**
  * Bring the chip and the panel it opened into the window together (issue
  * 436). The panel is in the top layer, placed by the platform against the
  * chip below it or, where that does not fit, above it; where neither fits it
  * stays below and runs past the window, with the controls inside it out of
  * sight while focus is on them. A fixed box is never scrolled into view, so
- * it is the chip's scroller that moves, by the least that fits both, never
- * smoothly and never so far that the chip goes under the header.
+ * it is the chip's scroller that moves, by `fitShift`, never smoothly.
  */
 function keepInWindow(chip: HTMLElement, panel: HTMLElement): void {
-  const c = chip.getBoundingClientRect()
-  const p = panel.getBoundingClientRect()
-  const top = Math.min(c.top, p.top)
-  const bottom = Math.max(c.bottom, p.bottom)
   const header = document.querySelector('.app-header')?.getBoundingClientRect().bottom ?? 0
-  let by = 0
-  if (bottom > window.innerHeight) by = Math.min(bottom - window.innerHeight, top - header)
-  else if (top < header) by = top - header
+  const by = fitShift(
+    chip.getBoundingClientRect(),
+    panel.getBoundingClientRect(),
+    header,
+    window.innerHeight,
+  )
   if (by === 0 || Number.isNaN(by)) return
   scrollerOf(chip).scrollBy({ top: by, behavior: 'instant' })
 }

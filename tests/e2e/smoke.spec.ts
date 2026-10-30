@@ -309,7 +309,20 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     const heading = window.getByRole('heading', { level: 1 })
     await expect(heading).toHaveText('Los Angeles')
     await expect(definition(window, 'Feed')).toHaveText('la-metro-rail')
-    await expect(definition(window, 'Mode')).toHaveText('all')
+    // The mode is said once (issue 560): by its picker once an engine has
+    // read the feed, and by the field list's row while none has, as here
+    // where no engine checkout is named (CI). Picker and row change in one
+    // render, so whichever is drawn says "all" and the other is not there.
+    const modePicker = window.getByRole('combobox', { name: 'Mode' })
+    const modeTerm = window.locator('dl dt', { hasText: /^Mode$/ })
+    await expect(modePicker.or(modeTerm)).toHaveCount(1)
+    await expect
+      .poll(async () =>
+        (await modePicker.count()) > 0
+          ? `picker ${await modePicker.inputValue()}`
+          : `row ${await definition(window, 'Mode').textContent()}`,
+      )
+      .toMatch(/^(picker|row) all$/)
     // Cells 02 and 03 say what they hold in a sentence each until there is
     // a layout. Neither has a field list (issue 209: a fact the footer
     // strip states is not stated again above it), and neither has a strip

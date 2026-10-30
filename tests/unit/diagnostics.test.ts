@@ -170,15 +170,15 @@ describe('the rows say what the engine measured', () => {
 describe('the caveats line, and what "Copy as text" hands over', () => {
   it('says there are none and that the score is 0 for a clean network', () => {
     expect(caveatsSentence(report({ caveats: [], issues: 0 }))).toBe(
-      'No caveats: nothing was fudged, and the issues score is 0.',
+      'No caveats: the layout compromised on nothing, and its issues score is 0.',
     )
   })
 
   it('counts the caveats and gives the score beside them', () => {
     expect(caveatsSentence(report())).toBe(
-      '1 caveat, and an issues score of 0.2137, where 0 is clean.',
+      '1 caveat. The layout’s issues score is 0.2137, where 0 means it compromised on nothing.',
     )
-    expect(caveatsSentence(report({ caveats: ['a', 'b'] }))).toMatch(/^2 caveats,/)
+    expect(caveatsSentence(report({ caveats: ['a', 'b'] }))).toMatch(/^2 caveats\. /)
   })
 
   it('copies the project, the day, every row, the sentences and the score', () => {

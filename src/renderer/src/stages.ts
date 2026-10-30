@@ -28,12 +28,21 @@ import type { Stage } from './ProgressLine'
 // labels would be worse than either vocabulary.
 //
 // **A stage is named for the first thing it does.** Nothing in the
-// wireframes covers `animate` or `write`, and both are plain English as the
-// engine has them, so they stand. `render` is the one place the wireframes
-// offer a word and it is not taken: the engine's own docstring for it is
-// "Draw the graph", and the labels are placed in the room that is left, so
-// the wireframes' "labels" names the part that happens last and may not
-// happen at all (`labels_dropped` is a diagnostic for exactly that).
+// wireframes covers `animate`, and it is plain English as the engine has
+// it, so it stands. `render` is the one place the wireframes offer a word
+// and it is not taken: the engine's own docstring for it is "Draw the
+// graph", and the labels are placed in the room that is left, so the
+// wireframes' "labels" names the part that happens last and may not happen
+// at all (`labels_dropped` is a diagnostic for exactly that).
+//
+// **The words are plain English, not the pipeline's** (issue 560). The
+// wireframes' parse, collapse and octilinear are the tools' vocabulary, and
+// a person watching a run has met none of them: read, simplify and
+// straighten say what happens to the network, sort says what happens to
+// the lines, and save is what the last stage does with the map. None of
+// them is bracketed with the engine's word, because the log a person might
+// compare them with prints the tools' own names (`topo`, `octi`), which no
+// bracket here would match.
 //
 // The mapping is deliberately not in `src/shared/layout.ts`: those are the
 // engine's names in the engine's order, asserted against the real engine by
@@ -59,13 +68,13 @@ import type { Stage } from './ProgressLine'
 export const STAGE_WORDS: Record<LayoutStage, string> = {
   // Reads the feed, keeps the chosen mode and operator, and makes the first
   // graph: the wireframes' parse, filter and graph in one engine report.
-  gtfs2graph: 'parse',
-  // Collapses the graph to its topology.
-  topo: 'collapse',
+  gtfs2graph: 'read',
+  // Collapses the graph to its topology: the wireframes' collapse.
+  topo: 'simplify',
   // Orders the lines along each edge, which is what LOOM is for.
-  loom: 'order',
-  // Pulls the geometry onto eight directions.
-  octi: 'octilinear',
+  loom: 'sort',
+  // Pulls the geometry onto eight directions: the wireframes' octilinear.
+  octi: 'straighten',
   // Reads the timetable into the trips the map will run.
   schedule: 'trips',
   // Draws the graph - the engine's own first sentence for it - and places
@@ -75,8 +84,9 @@ export const STAGE_WORDS: Record<LayoutStage, string> = {
   render: 'draw',
   // The engine's own word: the wireframes name no step for it.
   animate: 'animate',
-  // The engine's own word again; its sentence is "Wrote the map and its page."
-  write: 'write',
+  // What the stage does with the map; the engine's sentence is "Wrote the
+  // map and its page."
+  write: 'save',
 }
 
 /**
@@ -94,6 +104,18 @@ export const STAGE_WORDS: Record<LayoutStage, string> = {
  */
 export function stageWord(id: string): string {
   return Object.prototype.hasOwnProperty.call(STAGE_WORDS, id) ? STAGE_WORDS[id as LayoutStage] : id
+}
+
+/**
+ * Where a run is among its stages, for the line that says it: "stage 2 of
+ * 8, simplify". The place comes first and the word after it (issue 560),
+ * so the sentence reads as a step in a count before it names a step a
+ * person may not know, and "running" or "failed at" before it reads as
+ * plain English whichever word follows. The jobs inspector and cell 02's
+ * row both say it, so it is written once.
+ */
+export function stagePlace(stages: Stage[], at: number): string {
+  return `stage ${at + 1} of ${stages.length}, ${stages[at].label}`
 }
 
 /**

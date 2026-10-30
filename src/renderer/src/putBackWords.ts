@@ -1,4 +1,4 @@
-import { LOOM_DEFAULTS } from './tuningRules'
+import { TUNING_DEFAULTS } from './tuningRules'
 
 // What Put back says (issue 561, ADR-061): the three one-press resets'
 // way back, and the line each section says once at the reset. In a module
@@ -28,7 +28,7 @@ export const PUT_BACK_TUNING = 'Put back the tuning this layout was made with'
 
 /**
  * Said once, politely, after Reset when the layout was made with a tuning:
- * in the section's own word for an untuned layout (`LOOM_DEFAULTS`), the
+ * in the section's own word for an untuned layout (`TUNING_DEFAULTS`), the
  * one its row and Reset say.
  */
-export const TUNING_RESET_SAID = `The tuning is back to ${LOOM_DEFAULTS}. ${PUT_BACK_TUNING} to undo it.`
+export const TUNING_RESET_SAID = `The tuning is back to ${TUNING_DEFAULTS}. ${PUT_BACK_TUNING} to undo it.`

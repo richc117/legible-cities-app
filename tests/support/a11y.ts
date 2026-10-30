@@ -1294,7 +1294,18 @@ export async function expectPopoverClear(
         if (c === null || p === null) return 'a box could not be read'
         seen = JSON.stringify({ chip: c, popover: p, window: win })
         const problems: string[] = []
-        if (p.x < 0 || p.y < 0 || p.x + p.width > win.w || p.y + p.height > win.h)
+        // Layout lands on fractions of a pixel, and a box Playwright scrolled
+        // to the window's foot can sit a few hundredths past it (a chip at
+        // 688.15 in a 688-pixel window, issue 560's shorter cells): wholly
+        // visible. Half a pixel is not a box out of sight; one the page moved
+        // away is.
+        const edge = 0.5
+        if (
+          p.x < -edge ||
+          p.y < -edge ||
+          p.x + p.width > win.w + edge ||
+          p.y + p.height > win.h + edge
+        )
           problems.push('the popover is not wholly inside the window')
         const apart =
           p.y >= c.y + c.height ||
@@ -1302,7 +1313,8 @@ export async function expectPopoverClear(
           p.x >= c.x + c.width ||
           p.x + p.width <= c.x
         if (!apart) problems.push('the popover intersects its chip')
-        if (c.y < 0 || c.y + c.height > win.h) problems.push('the chip is not inside the window')
+        if (c.y < -edge || c.y + c.height > win.h + edge)
+          problems.push('the chip is not inside the window')
         return problems.join('; ')
       },
       { message: `${where}: the popover, its chip and the window`, timeout: 5_000 },

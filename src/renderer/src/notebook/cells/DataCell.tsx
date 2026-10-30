@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { Inspection } from '../../../../shared/protocol'
 import { revealOf } from '../../engine/stages'
-import Inspect from '../../Inspect'
+import Inspect, { offersOperator } from '../../Inspect'
 import StageView from '../../StageView'
 import DownloadLine from '../../DownloadLine'
 import Cell from '../Cell'
@@ -16,7 +16,9 @@ import { EVERY_OPERATOR } from '../../record'
 // Inspect view that chooses the last two (A2-02), and the geographic view
 // of the stages the engine ran (A2-03). The three fields come from the
 // `<dl class="fields">` the project screen carried whole; it is split at
-// placement rather than left for three branches to share.
+// placement rather than left for three branches to share. The mode and the
+// operator are listed only where Inspect does not draw their pickers below,
+// since a picker shows its value and one fact is said once (issue 560).
 //
 // Nothing here is re-authored: `Inspect` and `StageView` are the panels
 // that were on the screen before, with the props they had.
@@ -39,27 +41,82 @@ import { EVERY_OPERATOR } from '../../record'
 // would have to know what every cell is made of, and each new one would
 // edit the file all six share (A5.5-09).
 
+/** Which of the mode's and the operator's pickers `Inspect` draws below the field list. */
+export interface Pickers {
+  mode: boolean
+  operator: boolean
+}
+
+const NO_PICKERS: Pickers = { mode: false, operator: false }
+
+/** What decides which pickers `Inspect` draws, as cell 01 knows it. */
+export interface PickerFacts {
+  readOnly: boolean
+  ready: boolean
+  /** The feed as read, or null before it is read, once it is refused and while the engine is away. */
+  inspection: Inspection | null
+  /** The record's operator. */
+  agency: string | null
+  /** Whether `Inspect` is showing a refused choice's sentence (`onRefused`). */
+  refused: boolean
+}
+
 /**
- * The cell's field list: the feed, the mode and the operator the project
- * is drawn from. The row is called Operator, as the picker below it is.
+ * Which pickers `Inspect` draws, by its own rules: none for a read-only
+ * project, which has no `Inspect`, or before the feed has been read with
+ * the engine ready, which is when the panel draws its controls; then the
+ * mode always, and the operator where `offersOperator` says. Derived from
+ * the same inspection the panel is answered with (one request per feed,
+ * `engine/inspections.ts`), so the row and the picker change in one render.
+ *
+ * And none while the panel says a choice was refused: the picker then
+ * shows what was chosen and not what is stored, so the rows say what the
+ * record holds until the sentence goes. Whatever happens, the stored mode
+ * and operator are said somewhere.
+ */
+export function pickersDrawn({
+  readOnly,
+  ready,
+  inspection,
+  agency,
+  refused,
+}: PickerFacts): Pickers {
+  if (readOnly || !ready || inspection === null || refused) return NO_PICKERS
+  return { mode: true, operator: offersOperator(inspection, agency) }
+}
+
+/**
+ * The cell's field list: the feed, and the mode and the operator the
+ * project is drawn from where no picker below says them (issue 560). The
+ * row is called Operator, as the picker below it is.
  */
 export function DataFields({
   feed,
   mode,
   agency,
+  pickers = NO_PICKERS,
 }: {
   feed: string
   mode: string
   agency: string | null
+  pickers?: Pickers
 }): JSX.Element {
   return (
     <dl className="fields">
       <dt>Feed</dt>
       <dd>{feed}</dd>
-      <dt>Mode</dt>
-      <dd>{mode}</dd>
-      <dt>Operator</dt>
-      <dd>{agency ?? EVERY_OPERATOR}</dd>
+      {!pickers.mode && (
+        <>
+          <dt>Mode</dt>
+          <dd>{mode}</dd>
+        </>
+      )}
+      {!pickers.operator && (
+        <>
+          <dt>Operator</dt>
+          <dd>{agency ?? EVERY_OPERATOR}</dd>
+        </>
+      )}
     </dl>
   )
 }
@@ -74,7 +131,8 @@ export function DataFields({
  * known, and a cell with nothing true to say says nothing rather than a
  * sentence with a hole in it (DESIGN.md 8.2). A refused inspection is the
  * same case: `Inspect` says why in the open cell, and the row does not
- * repeat a failure as a description.
+ * repeat a failure as a description. So is an engine that has gone, which
+ * takes its inspection with it, as `Inspect`'s does.
  *
  * The figure is the engine's. It is the feed's own total, which is what
  * `feeds.inspect` answers: the engine counts stops per feed and not per
@@ -98,6 +156,12 @@ export function dataSummary(inspection: Inspection | null): string | null {
  * engine nothing (`engine/inspections.ts`). Holding it here rather than
  * taking it from `Inspect` keeps the panel's props as A2-02 wrote them, and
  * keeps the cell's own sentence in the cell's own file.
+ *
+ * It holds what `Inspect` holds, so the field list and the pickers agree
+ * (issue 560): nothing while the engine is away, reset in the render that
+ * sees it go, as `Inspect` resets its own, and nothing once a read is
+ * refused. A reading kept through either would leave the rows out for
+ * pickers that are not drawn, and the mode and the operator said nowhere.
  */
 function useInspection(
   feed: string | null,
@@ -105,6 +169,7 @@ function useInspection(
   inspect: (key: string) => Promise<Inspection>,
 ): Inspection | null {
   const [inspection, setInspection] = useState<Inspection | null>(null)
+  if (!ready && inspection !== null) setInspection(null)
   useEffect(() => {
     if (feed === null || !ready) return
     let left = false
@@ -112,8 +177,11 @@ function useInspection(
       (answer) => {
         if (!left) setInspection(answer)
       },
-      // A refusal is `Inspect`'s to say, in the open cell and once.
-      () => undefined,
+      // A refusal is `Inspect`'s to say, in the open cell and once; the
+      // reading before it goes.
+      () => {
+        if (!left) setInspection(null)
+      },
     )
     return () => {
       left = true
@@ -126,7 +194,11 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
   const { project, engine, registry } = useProjectRecord()
   const { inspect, setInputs, readStage } = useProjectActions()
   const { layingOut, exporting, run, runSnapshot, settling } = useProjectRuns()
-  const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
+  const ready = engine?.state === 'ready'
+  const inspection = useInspection(project?.feed ?? null, ready, inspect)
+  // Whether the panel is saying a choice was refused, which keeps the
+  // stored mode and operator in the field list while it does.
+  const [refused, setRefused] = useState(false)
   const heading = useRef<HTMLHeadingElement>(null)
   // The run's job id is its identity for the drawings it asks for, one per
   // attempt; `revealOf` says whether it is a layout run with a layout named.
@@ -144,7 +216,18 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
     >
       {project !== null && (
         <>
-          <DataFields feed={project.feed} mode={project.mode} agency={project.agency} />
+          <DataFields
+            feed={project.feed}
+            mode={project.mode}
+            agency={project.agency}
+            pickers={pickersDrawn({
+              readOnly: project.readOnly,
+              ready,
+              inspection,
+              agency: project.agency,
+              refused,
+            })}
+          />
           {/* The feed's download, when the layout run is fetching it
               (issue 178): here, with the feed, not in cell 02. */}
           <DownloadLine run={run} />
@@ -157,6 +240,7 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
               registry={registry}
               disabled={layingOut || exporting}
               handback={heading}
+              onRefused={setRefused}
             />
           )}
           {(project.layout !== null || reveal !== null) && (

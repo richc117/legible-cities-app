@@ -87,7 +87,7 @@ export function validateFeedKey(feed: string): string | null {
 
 export function validateMode(mode: string): string | null {
   if (mode.length > 64 || !MODE_PATTERN.test(mode))
-    return 'mode must be one or more of the modes LOOM knows, such as tram or subway, comma-joined'
+    return 'mode must be one or more of the modes the engine knows, such as tram or subway, comma-joined'
   return null
 }
 

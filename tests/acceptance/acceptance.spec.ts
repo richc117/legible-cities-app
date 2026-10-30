@@ -158,16 +158,7 @@ const SHORT_MS = 30 * SECOND
  * geographic view's two buttons are still in them, because those are what a
  * person quotes at the engine.
  */
-const STAGE_WORDS = [
-  'parse',
-  'collapse',
-  'order',
-  'octilinear',
-  'trips',
-  'draw',
-  'animate',
-  'write',
-]
+const STAGE_WORDS = ['read', 'simplify', 'sort', 'straighten', 'trips', 'draw', 'animate', 'save']
 const LOG_FILES = ['main.log', 'main.old.log', 'engine.log', 'engine.old.log']
 
 /**
@@ -531,6 +522,26 @@ const text = async (locator: Locator): Promise<string> =>
  */
 const cellFields = (page: Page, id: CellId): Locator =>
   page.locator(`section.cell[data-cell="0${CELL_IDS.indexOf(id) + 1}"] .cell-body > dl.fields`)
+
+/**
+ * Cell 01's mode or operator as a person reads it: from the picker "In the
+ * feed" draws once the feed has been read, where the field list leaves that
+ * row out (issue 560: one fact, said once), else from the field list. It
+ * waits for the feed to be read, or refused, first, so what it reads is the
+ * settled screen; the picker's value, so "every operator" is its option's
+ * empty value.
+ */
+async function dataChoice(page: Page, term: 'Mode' | 'Operator'): Promise<string> {
+  const inFeed = page.getByRole('region', { name: 'In the feed' })
+  await expect(inFeed.locator('dl.fields').or(inFeed.getByRole('alert')).first()).toBeVisible({
+    timeout: FEED_READ_MS,
+  })
+  const picker = inFeed.getByRole('combobox', { name: term })
+  if ((await picker.count()) === 0) return text(definition(cellFields(page, 'data'), term))
+  await expect(definition(cellFields(page, 'data'), term)).toHaveCount(0)
+  const value = await picker.inputValue({ timeout: SHORT_MS })
+  return term === 'Operator' && value === '' ? 'every operator' : value
+}
 
 /**
  * A cell's provenance strip, the definition list in its footer: where the
@@ -1309,8 +1320,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft('the fields', async () => {
         const record = await recordOf(window, LA)
         await expect(definition(cellFields(window, 'data'), 'Feed')).toHaveText('la-metro-rail')
-        await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
-        const agency = await text(definition(cellFields(window, 'data'), 'Operator'))
+        expect(await dataChoice(window, 'Mode')).toBe(record.mode)
+        const agency = await dataChoice(window, 'Operator')
         log.note(`Mode ${record.mode}, Operator ${agency}.`)
       })
       // The day, the layout and when it was made are the strips' to say
@@ -1408,10 +1419,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const record = await recordOf(window, LA)
       await log.soft('the fields', async () => {
         await expect(definition(cellFields(window, 'data'), 'Feed')).toHaveText('la-metro-rail')
-        await expect(definition(cellFields(window, 'data'), 'Mode')).toHaveText(record.mode)
-        await expect(definition(cellFields(window, 'data'), 'Operator')).toHaveText(
-          record.agency ?? 'every operator',
-        )
+        expect(await dataChoice(window, 'Mode')).toBe(record.mode)
+        expect(await dataChoice(window, 'Operator')).toBe(record.agency ?? 'every operator')
       })
       const inFeed = window.getByRole('region', { name: 'In the feed' })
       const fields = inFeed.locator('dl.fields')
@@ -1601,7 +1610,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const toggle = processCell.getByRole('button', { name: /^Layout tuning\b/ })
           const section = processCell.getByRole('group', { name: 'Layout tuning', exact: true })
           await expect(toggle).toHaveAttribute('aria-expanded', 'false')
-          await expect(toggle).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+          await expect(toggle).toHaveAccessibleName('Layout tuning the defaults')
           const states = (): Promise<(string | null)[]> =>
             Promise.all(
               ['03', '04', '05', '06'].map((n) =>
@@ -1613,15 +1622,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await toggle.click()
           await expect(section).toBeVisible()
           await expect(section).toContainText(
-            'LOOM’s own settings for laying this project out. A tuned layout is a layout of its own: the map keeps the layout it has until you lay out again.',
+            'The settings LOOM, the layout engine, lays this project out with. A tuned layout is a layout of its own: the map keeps the layout it has until you lay out again.',
           )
           const grid = section.getByRole('combobox', { name: 'Grid' })
           await expect(grid).toHaveValue('octilinear')
           expect(await grid.locator('option').allTextContents()).toEqual([
-            'octilinear (eight directions; LOOM’s own)',
-            'ortholinear (four directions)',
-            'orthoradial (rings and spokes)',
-            'hexalinear (six directions)',
+            'Eight directions (octilinear; the default)',
+            'Four directions (ortholinear)',
+            'Rings and spokes (orthoradial)',
+            'Six directions (hexalinear)',
           ])
           for (const [name, value] of [
             ['Merge distance', '50'],
@@ -1634,11 +1643,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
           ] as const)
             await expect(section.getByLabel(name, { exact: true }), name).toHaveValue(value)
           const merge = section.getByLabel('Merge distance', { exact: true })
-          await expect(merge).toHaveAccessibleDescription('5 to 500 metres. LOOM’s own is 50.')
+          await expect(merge).toHaveAccessibleDescription('5 to 500 metres. The default is 50.')
           await expect(section.getByRole('group', { name: 'Bend penalties' })).toBeVisible()
           await expect(section.getByRole('slider')).toHaveCount(0)
           await expect(
-            section.getByRole('button', { name: 'Reset to LOOM’s defaults', exact: true }),
+            section.getByRole('button', { name: 'Reset to the defaults', exact: true }),
           ).toBeDisabled()
 
           await merge.fill('600')
@@ -1648,7 +1657,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           ).toHaveText('tuning.merge_distance must be from 5 to 500, in metres')
           await expect(merge, 'left as typed').toHaveValue('600')
           await expect(merge).toHaveAttribute('aria-invalid', 'true')
-          await expect(toggle).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+          await expect(toggle).toHaveAccessibleName('Layout tuning the defaults')
           expect((await recordOf(window, LA)).tuning, 'nothing was written').toBeUndefined()
           expect(await states(), 'no cell changed its state').toEqual(before)
           await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
@@ -1706,12 +1715,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
         log.note(`Copy log said "${await text(status)}".`)
       })
 
-      const diagnostics = window.getByRole('region', { name: 'What the build had to fudge' })
+      const diagnostics = window.getByRole('region', {
+        name: 'What the layout had to compromise on',
+      })
       await log.soft('the diagnostics', async () => {
         await expect(diagnostics).toBeVisible()
         const sentence = await text(diagnostics.getByRole('status').first())
         expect(sentence).toMatch(
-          /^(No caveats: nothing was fudged, and the issues score is [\d.]+\.|\S+ caveats?, and an issues score of [\d.]+, where 0 is clean\.)$/,
+          /^(No caveats: the layout compromised on nothing, and its issues score is [\d.]+\.|\S+ caveats?\. The layout’s issues score is [\d.]+, where 0 means it compromised on nothing\.)$/,
         )
         log.note(`"${sentence}"`)
         await expect(diagnostics.locator('caption')).toHaveText(
@@ -2321,7 +2332,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(picker).toBeHidden()
       })
       await log.soft('the row says your colour', () =>
-        expect(source).toHaveText(/^your colour, #[0-9a-f]{6}$/),
+        expect(source).toHaveText(
+          /^your colour, #[0-9a-f]{6}; the feed(’s is #[0-9a-f]{6}| has none)$/,
+        ),
       )
       await until(
         async () => ((await recordOf(window, LA)).colors[line] !== undefined ? true : undefined),
@@ -3322,8 +3335,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await create.getByRole('button', { name: 'Create', exact: true }).click()
       await expect(create).toBeHidden()
       await openProject(window, name)
-      await log.soft('Operator METRO', () =>
-        expect(definition(cellFields(window, 'data'), 'Operator')).toHaveText('METRO'),
+      await log.soft('Operator METRO', async () =>
+        expect(await dataChoice(window, 'Operator')).toBe('METRO'),
       )
       const cdmx = window.getByRole('region', { name: 'In the feed' })
       await expect(cdmx.locator('dl.fields').or(cdmx.getByRole('alert')).first()).toBeVisible({
@@ -3531,7 +3544,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         await expect(reopened.getByRole('region', { name: 'Layout run' })).toHaveCount(0)
         await expect(
-          reopened.getByRole('region', { name: 'What the build had to fudge' }),
+          reopened.getByRole('region', { name: 'What the layout had to compromise on' }),
         ).toHaveCount(0)
         const now = await recordOf(reopened, LA)
         expect({

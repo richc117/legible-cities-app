@@ -212,9 +212,9 @@ export interface RunReport {
   date: string
   /** The build's numbers, exactly as the engine sent them. */
   diagnostics: Diagnostics
-  /** What the build had to fudge, in the engine's own sentences. */
+  /** What the layout had to compromise on, in the engine's own sentences. */
   caveats: string[]
-  /** The engine's weighted proportion of the network it fudged; 0 is clean. */
+  /** The engine's weighted proportion of the network it compromised on; 0 is clean. */
   issues: number
 }
 

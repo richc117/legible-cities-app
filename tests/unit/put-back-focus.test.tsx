@@ -182,7 +182,7 @@ describe.each(CELLS)('$name', ({ name, cell, putBack, before, after, own, delay 
   })
 })
 
-describe('Reset to LOOM’s defaults', () => {
+describe('Reset to the defaults', () => {
   const LAYOUT = 'a'.repeat(64)
   /** The section drawn for a record, open; what it returns draws it again for another tuning. */
   const section = (
@@ -226,7 +226,7 @@ describe('Reset to LOOM’s defaults', () => {
     expect(focused()).toBe(RESET_LABEL)
   })
 
-  it('hands focus to the section’s heading for a layout made with LOOM’s defaults', () => {
+  it('hands focus to the section’s heading for a layout made with the defaults', () => {
     section(undefined)
     pressFocused(RESET_LABEL)
     expect(focused()).toBe('h3')

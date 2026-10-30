@@ -648,7 +648,7 @@ test('a run never opens its cell or moves the page, and its row says what it is 
 
     await page.getByRole('button', { name: 'Run all' }).click()
     // The row says the stage and its place, in the progress line's words.
-    await expect(row).toContainText(/running [a-z]+, \d of 8/, { timeout: 30_000 })
+    await expect(row).toContainText(/running stage \d of 8, [a-z]+/, { timeout: 30_000 })
     await expect(row).toHaveAttribute('aria-expanded', 'false')
     expect(await page.evaluate(() => window.scrollY), 'the page did not move').toBe(0)
     expect(
@@ -657,7 +657,7 @@ test('a run never opens its cell or moves the page, and its row says what it is 
     ).toBeNull()
 
     // And where it failed, in the row and in the header, still collapsed.
-    await expect(row).toContainText(/failed at [a-z]+, \d of 8/, { timeout: 60_000 })
+    await expect(row).toContainText(/failed at stage \d of 8, [a-z]+/, { timeout: 60_000 })
     await expect(page.locator('.project-run-state')).toHaveText('02 Process failed.')
     await expect(row).toHaveAttribute('aria-expanded', 'false')
     expect(await page.evaluate(() => window.scrollY)).toBe(0)

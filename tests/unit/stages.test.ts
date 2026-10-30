@@ -33,19 +33,19 @@ describe('the stage table', () => {
     expect(new Set(words).size, 'two stages sharing a word would read as one').toBe(words.length)
   })
 
-  it("draws the wireframes' words where the engine reports the work", () => {
+  it('draws plain words where the engine reports the work', () => {
     // The words are a presentation choice, so they are written down once:
     // a change to any of them is a change to what a person reads and shows
     // up here rather than in a screenshot.
     expect(STAGE_WORDS).toEqual({
-      gtfs2graph: 'parse',
-      topo: 'collapse',
-      loom: 'order',
-      octi: 'octilinear',
+      gtfs2graph: 'read',
+      topo: 'simplify',
+      loom: 'sort',
+      octi: 'straighten',
       schedule: 'trips',
       render: 'draw',
       animate: 'animate',
-      write: 'write',
+      write: 'save',
     })
   })
 
@@ -55,7 +55,7 @@ describe('the stage table', () => {
     // cannot get this far in the app as it stands. What is asserted is that
     // the lookup is total - it answers a string for any input - because the
     // alternative is a station drawn with no name at all.
-    expect(stageWord('gtfs2graph')).toBe('parse')
+    expect(stageWord('gtfs2graph')).toBe('read')
     expect(stageWord('quantise')).toBe('quantise')
   })
 
@@ -76,9 +76,9 @@ describe("a run's stages in those words", () => {
 
   it('renames the labels and moves nothing else', () => {
     expect(inWords(stages)).toEqual([
-      { id: 'gtfs2graph', label: 'parse', state: 'done' },
-      { id: 'topo', label: 'collapse', state: 'running', message: 'topo: 111 nodes, 113 edges' },
-      { id: 'loom', label: 'order', state: 'pending' },
+      { id: 'gtfs2graph', label: 'read', state: 'done' },
+      { id: 'topo', label: 'simplify', state: 'running', message: 'topo: 111 nodes, 113 edges' },
+      { id: 'loom', label: 'sort', state: 'pending' },
     ])
   })
 

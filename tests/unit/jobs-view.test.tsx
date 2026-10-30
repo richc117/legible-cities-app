@@ -68,7 +68,7 @@ describe('a job', () => {
     const html = renderToStaticMarkup(<JobItem job={job()} onCancel={noop} onCopy={copied} />)
     expect(html).toContain('Los Angeles')
     expect(html).toContain('Layout run')
-    expect(html).toContain('aria-label="Running collapse."')
+    expect(html).toContain('aria-label="Running stage 2 of 3, simplify."')
     expect(html).toContain('gtfs2graph: 3 nodes, 2 edges')
     expect(html).toContain('aria-label="Cancel: Layout run, Los Angeles"')
     expect(html).toContain('aria-label="Copy log: Layout run, Los Angeles"')
@@ -78,7 +78,7 @@ describe('a job', () => {
   it('draws the compact line and names the stage in words beside it (issue 278)', () => {
     const running = renderToStaticMarkup(<JobItem job={job()} onCancel={noop} onCopy={copied} />)
     expect(running).not.toContain('<text')
-    expect(running).toMatch(/running collapse, 2 of 3, started /)
+    expect(running).toMatch(/running stage 2 of 3, simplify, started /)
     const failed = renderToStaticMarkup(
       <JobItem
         job={job({
@@ -93,7 +93,7 @@ describe('a job', () => {
         onCopy={copied}
       />,
     )
-    expect(failed).toMatch(/failed at collapse, 2 of 3, started /)
+    expect(failed).toMatch(/failed at stage 2 of 3, simplify, started /)
   })
 
   it("shows the engine's hint when it failed, and its detail behind a closed disclosure", () => {
@@ -183,7 +183,7 @@ describe('a job', () => {
 
 describe('describeJob', () => {
   it('says the running stage, or how the job ended', () => {
-    expect(describeJob(job())).toBe('Running collapse.')
+    expect(describeJob(job())).toBe('Running stage 2 of 3, simplify.')
     expect(describeJob(job({ stages: [] }))).toBe('Layout run is running.')
     expect(describeJob(job({ state: 'cancelled' }))).toBe('Layout run cancelled.')
   })

@@ -136,17 +136,14 @@
   font-variant-numeric: var(--numerals);
 }
 
-/* What the feed publishes, and what the line is drawn in: the quiet half of
-   the row, and the last to be pushed out when the window is narrow. */
-.line-feed,
+/* What the line is drawn in and what the feed publishes, in one clause each
+   (issue 560): the quiet half of the row, and the last to be pushed out
+   when the window is narrow. */
 .line-source {
+  margin-left: auto;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   font-variant-numeric: var(--numerals);
-}
-
-.line-source {
-  margin-left: auto;
 }
 
 .colour-picker {
@@ -279,7 +276,6 @@
    cell's ground, which the contrast test holds), its chip its own colour,
    and "Hidden" in its summary, so the dimming is never the only sign. */
 .line-row-group[data-hidden] .line-name,
-.line-row-group[data-hidden] .line-feed,
 .line-row-group[data-hidden] .line-source {
   color: var(--text-faint);
 }
@@ -1091,7 +1087,7 @@ th .sort:focus-visible {
    run's controls. Its toggle sits in an h3 and takes the heading's own type
    (the cell's rule for a heading inside it), not a form control's height,
    with the cell row's chevron turned a quarter when open; the row's word,
-   "LOOM's defaults" or "tuned", is quiet beside the name, --text-muted on
+   "the defaults" or "tuned", is quiet beside the name, --text-muted on
    the cell's ground as the cell's own summary is, a pair the contrast test
    holds. The fields take cell 04's rows (`.style-field`, notebook.css), the
    grid's name drawn as their labels are, and the penalties are a fieldset

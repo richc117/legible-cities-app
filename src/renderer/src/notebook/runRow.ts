@@ -1,6 +1,6 @@
 import { cellOfRun, type CellId, type RunFacts } from '../runGraph'
 import type { RunSnapshot } from '../engine/layoutRun'
-import { inWords } from '../stages'
+import { inWords, stagePlace } from '../stages'
 
 // What a cell's collapsed row says while the run it owns is going, or once
 // it has failed (ADR-046, specs/029 FR-017).
@@ -10,8 +10,8 @@ import { inWords } from '../stages'
 // would push the map down under the person looking at it. So the row says
 // what the run is doing instead - the stage and its place among the stages,
 // in the words the progress line and the jobs inspector use for them
-// ("running collapse, 2 of 8") - and a failure says where it stopped
-// ("failed at octilinear, 4 of 8") without opening the cell either. The
+// ("running stage 2 of 8, simplify") - and a failure says where it stopped
+// ("failed at stage 4 of 8, straighten") without opening the cell either. The
 // header's status line says the same of the notebook as a whole
 // (`notebookSentence` in `runAll.ts`).
 //
@@ -27,12 +27,12 @@ export function runRowStatus(
   // Only a layout run has stages of its own to name. A rebuild or a redraw
   // is a single step, and the run's stage list is still the last layout's:
   // a rebuild that fails after a layout that failed would otherwise say
-  // "failed at octilinear" on the day's row.
+  // "failed at stage 4 of 8, straighten" on the day's row.
   const stages = cell === 'process' ? inWords(run.stages) : []
   if (run.state === 'running') {
     const at = stages.findIndex((s) => s.state === 'running')
-    return at === -1 ? 'running' : `running ${stages[at].label}, ${at + 1} of ${stages.length}`
+    return at === -1 ? 'running' : `running ${stagePlace(stages, at)}`
   }
   const at = stages.findIndex((s) => s.state === 'failed')
-  return at === -1 ? 'failed' : `failed at ${stages[at].label}, ${at + 1} of ${stages.length}`
+  return at === -1 ? 'failed' : `failed at ${stagePlace(stages, at)}`
 }

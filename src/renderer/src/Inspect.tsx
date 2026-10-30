@@ -68,6 +68,16 @@ export function routesOf(routes: Route[], agency: string | null): Route[] {
   return agency === null ? routes : routes.filter((r) => r.agency_id === agency)
 }
 
+/**
+ * Whether the panel offers the Operator picker: once the feed has been read,
+ * for a feed of more than one operator, or for a project that names one, so
+ * a stored operator can always be cleared. Exported because cell 01's field
+ * list leaves out its Operator row where this picker says it (issue 560).
+ */
+export function offersOperator(inspection: Inspection | null, agency: string | null): boolean {
+  return agency !== null || (inspection !== null && inspection.agencies.length > 1)
+}
+
 /** What the handback reads of a control: whether it holds the element that has focus. */
 export interface Holds<E> {
   contains(element: E): boolean
@@ -127,6 +137,13 @@ interface Props {
    * this exists to keep, and the type refuses the omission.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * Told whether the panel is showing a refused choice's sentence, each
+   * time that changes. While it is, the pickers show what was chosen and
+   * not what the record holds, so cell 01's field list says the stored
+   * mode and operator again (issue 560).
+   */
+  onRefused?: (refused: boolean) => void
 }
 
 type State =
@@ -144,6 +161,7 @@ export default function Inspect({
   registry = null,
   disabled = false,
   handback,
+  onRefused,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const [state, setState] = useState<State>(WAITING)
@@ -159,6 +177,10 @@ export default function Inspect({
   const [custom, setCustom] = useState(false)
   const [agency, setAgency] = useState<string | null>(project.agency)
   const [message, setMessage] = useState<string | null>(null)
+  const refused = message !== null
+  useEffect(() => {
+    onRefused?.(refused)
+  }, [refused, onRefused])
   const modeRef = useRef<HTMLElement>(null)
   const typedRef = useRef<HTMLElement>(null)
   const operatorRef = useRef<HTMLElement>(null)
@@ -299,7 +321,7 @@ export default function Inspect({
   const agencyOptions = [...(inspection?.agencies ?? [])]
   if (agency !== null && !agencyOptions.some((a) => a.agency_id === agency))
     agencyOptions.push({ agency_id: agency, agency_name: `${agency} (not in this feed)` })
-  const offerOperator = agency !== null || (inspection !== null && inspection.agencies.length > 1)
+  const offerOperator = offersOperator(inspection, agency)
 
   const heading = (key: SortKey, label: string): JSX.Element => {
     const active = sort.key === key

@@ -127,7 +127,7 @@ describe('validateMode', () => {
   it('refuses the rest', () => {
     for (const mode of ['', 'Rail', 'a'.repeat(65), 'a b', 'tram,', ',tram', 'tram,,rail']) {
       expect(validateMode(mode), JSON.stringify(mode)).toBe(
-        'mode must be one or more of the modes LOOM knows, such as tram or subway, comma-joined',
+        'mode must be one or more of the modes the engine knows, such as tram or subway, comma-joined',
       )
     }
   })

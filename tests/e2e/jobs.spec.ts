@@ -153,11 +153,13 @@ test('an export started in a project is followed from Settings, to its end', asy
 
     const job = jobNamed(page, 'Los Angeles Export as Instagram reel')
     await expect(job).toBeVisible()
-    await expect(job.getByRole('img')).toHaveAccessibleName(/^Running (plan|capture|encode)\.$/)
+    await expect(job.getByRole('img')).toHaveAccessibleName(
+      /^Running stage [123] of 3, (plan|capture|encode)\.$/,
+    )
     // The inspector's line has no labels (issue 278): the stage is said in
     // the words under the title, with its place among the three.
     await expect(job.locator('.job-meta')).toHaveText(
-      /^running (plan|capture|encode), [123] of 3, started /,
+      /^running stage [123] of 3, (plan|capture|encode), started /,
     )
     await expect(
       job.getByRole('button', { name: /^Cancel: Export as Instagram reel/ }),
@@ -224,11 +226,11 @@ test('an eight-stage job fits the inspector: one left edge, no sideways scroll, 
     await openInspector(page)
 
     const job = jobNamed(page, 'Los Angeles Layout run')
-    await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running stage 4 of 8, straighten.', {
       timeout: 20_000,
     })
     // The compact line has no labels, so the words beside it name the stage.
-    await expect(job.locator('.job-meta')).toHaveText(/^running octilinear, 4 of 8, started /)
+    await expect(job.locator('.job-meta')).toHaveText(/^running stage 4 of 8, straighten, started /)
     await expect(job.locator('.progress text')).toHaveCount(0)
 
     // Beside the main region, and over it below 900px.
@@ -303,7 +305,7 @@ test('Cancel in the inspector during octi cancels the run and ends the layout to
     await openInspector(page)
 
     const job = jobNamed(page, 'Los Angeles Layout run')
-    await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running stage 4 of 8, straighten.', {
       timeout: 20_000,
     })
     const pidFile = join(h.engineHome, 'fake-engine.octi.pid')
@@ -551,7 +553,7 @@ test('focus a person moved away from a Cancel is not taken back when the job end
     await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await openInspector(page)
     const job = jobNamed(page, 'Los Angeles Layout run')
-    await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
+    await expect(job.getByRole('img')).toHaveAccessibleName('Running stage 4 of 8, straighten.', {
       timeout: 20_000,
     })
 

@@ -168,7 +168,8 @@ Everything, with the clock time beside it. In particular:
 - **The unsigned-app warning**: how long it took them to get past it, and
   whether the install guide's instructions matched what they saw.
 - **Words they did not know**, or read differently from what the app means
-  (feed, layout, cell, preset, storyboard, schematic, caption, alt text). A
+  (feed, layout, cell, preset, storyboard, schematic, caption, alt text,
+  caveat, issues score, LOOM). A
   caption is the line of words the export draws under its title, such as the
   place and the hour; the reel does not need one, so it is not part of the
   task and nobody tells the person it is there. Write down whether they
