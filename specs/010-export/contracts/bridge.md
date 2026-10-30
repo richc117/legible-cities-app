@@ -22,7 +22,7 @@ export: {
 |---|---|
 | `OfferedPreset` | one of `OFFERED_PRESETS`, each checked against the engine's `PresetName` at build time: the thirteen social presets since A5-01 (`instagram-reel` alone before) |
 | `ExportChoice` | `{ preset: OfferedPreset, storyboard?: StoryboardName, options: ExportChoiceOptions, alt?: string }`; the options are the engine's `ExportOptions` without `theme`, `safe`, `storyboard` and `fade` (so they include `caption` and `clock_corner` since issue 352), and a field absent is the engine's default (specs/022-export-tab). `alt` is the sidecar's alt text in the person's own words, 1 to 1,000 characters once trimmed: it is not a plan option and goes to `export.encode`'s provenance (issue 352) |
-| `ExportPreview` | `{ ok: true, url, width, height, notes }` or `{ ok: false, error: { code, message, data? } }` |
+| `ExportPreview` | `{ ok: true, url, width, height, notes, file }` (`file` the bare name an export of the choice would write, checked as an export checks it: issue 563) or `{ ok: false, error: { code, message, data? } }` |
 | `ExportProgress` | `id` (the token), `stage` (`plan`, `capture` or `encode`), `fraction` (0 to 1 within the stage), `message` (a sentence, never a path) |
 | `ExportResult` | `file` (the name, never the path), `bytes`, `frames` |
 | `ExportSettled` | `{ id, ok: true, result }` or `{ id, ok: false, error: { code, message, data? } }` |

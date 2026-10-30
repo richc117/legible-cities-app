@@ -83,7 +83,14 @@ async function draw(
   const project = over.project ?? PROJECT
   const preview = vi.fn(
     async (): Promise<ExportPreview> =>
-      over.preview ?? { ok: true, url: 'app://local/p', width: 540, height: 960, notes: [] },
+      over.preview ?? {
+        ok: true,
+        url: 'app://local/p',
+        width: 540,
+        height: 960,
+        notes: [],
+        file: 'la-metro-rail-instagram-reel.mp4',
+      },
   )
   const onChoice = vi.fn<(choice: ExportChoice) => Promise<void>>(async () => undefined)
   function Cell({ engine = over.engine === undefined ? READY : over.engine }): JSX.Element {

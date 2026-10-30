@@ -65,12 +65,17 @@ const HIGH: ExportChoice = { preset: 'instagram-reel', options: { quality: 'high
 
 type Given = Parameters<typeof useExportPreview>[0]
 
-const ok = (url: string, notes: string[] = []): ExportPreview => ({
+const ok = (
+  url: string,
+  notes: string[] = [],
+  file = 'la-metro-rail-instagram-reel.mp4',
+): ExportPreview => ({
   ok: true,
   url,
   width: 540,
   height: 960,
   notes,
+  file,
 })
 
 beforeEach(() => {

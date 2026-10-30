@@ -528,7 +528,14 @@ describe('the preview planner', () => {
     )
     return { planner, asked, answers }
   }
-  const ok = (url: string): ExportPreview => ({ ok: true, url, width: 9, height: 16, notes: [] })
+  const ok = (url: string): ExportPreview => ({
+    ok: true,
+    url,
+    width: 9,
+    height: 16,
+    notes: [],
+    file: 'x.mp4',
+  })
 
   it('plans once when the changes stop', async () => {
     const { planner, asked } = deferred()
