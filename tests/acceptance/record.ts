@@ -1,8 +1,9 @@
 // The acceptance run's record, in the shape of the results template at the
-// end of docs/acceptance.md: a table of the run, a table of the twenty-one
+// end of docs/acceptance.md: a table of the run, a table of the twenty-two
 // steps, the six versions from Settings, and anything else. The spec fills
 // what it drives; the workflow fills steps 1, 2 and 21 through
-// tests/acceptance/record-cli.mjs, which edits the same rows.
+// tests/acceptance/record-cli.mjs, which edits the same rows; step 22, the
+// update over 0.1.0, is a person's.
 //
 // The record is pasted into a public issue, so every note goes through
 // `redact` first (tests/acceptance/pure.mjs, shared with the CLI): the home
@@ -42,6 +43,7 @@ export const STEP_TITLES: Record<number, string> = {
   19: 'Licences',
   20: 'Reset engine data',
   21: 'Uninstall, and what is left',
+  22: 'Update over 0.1.0',
 }
 
 /** The run table's rows, in the template's order. */
@@ -51,6 +53,7 @@ export const FIELDS = [
   'OS and version',
   'Machine',
   'Clean machine?',
+  'Previous version installed',
   'Date',
   'Run by',
   'Installer file name',

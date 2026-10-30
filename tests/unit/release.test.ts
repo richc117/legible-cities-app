@@ -124,7 +124,13 @@ interface Module {
     pins: unknown
     pkg: unknown
     repository: string
+    changelog: string
   }): Record<string, string>
+  changelogSection(text: string, version: string, options: { final: boolean }): string
+  changelogParts(
+    section: string,
+    version: string,
+  ): { changes: string; knownIssues: string; security: string | null }
   fillNotes(template: string, values: Record<string, string>): { text: string; problems: string[] }
   parseReleases(text: string): Release[]
   releaseAction(releases: Release[], tag: string, names: string[]): Action
@@ -135,6 +141,8 @@ interface Module {
   ): { problems: string[]; unverified: string[] }
   formatOutputs(values: Record<string, string | boolean>): string
   NOTES_TEMPLATE: string
+  CHANGELOG: string
+  NO_KNOWN_VULNERABILITY: string
   SUMS: string
 }
 // A URL built at run time, so the type checker does not look for
@@ -158,6 +166,53 @@ const sha = (content: string | Buffer): string => createHash('sha256').update(co
 
 /** A run whose tag still names the commit it built. */
 const HERE = { run: 'c'.repeat(40), remote: 'c'.repeat(40) }
+
+/**
+ * A changelog in the committed one's form (Keep a Changelog 1.1.0): an
+ * Unreleased section, a candidate's undated one and a released one with its
+ * Security, then the link references, which belong to no section.
+ */
+const CHANGES = [
+  '# Changelog',
+  '',
+  '## [Unreleased]',
+  '',
+  '### Added',
+  '',
+  '- Not released yet.',
+  '',
+  '## [0.2.0]',
+  '',
+  '### Added',
+  '',
+  '- A second cell.',
+  '',
+  '### Fixed',
+  '',
+  '- A first fault.',
+  '',
+  '### Known issues',
+  '',
+  '- Unsigned.',
+  '',
+  '## [0.1.0] - 2026-10-08',
+  '',
+  '### Added',
+  '',
+  '- The first release.',
+  '',
+  '### Security',
+  '',
+  'None.',
+  '',
+  '### Known issues',
+  '',
+  '- No update.',
+  '',
+  '[Unreleased]: https://example.invalid/compare/v0.1.0...HEAD',
+  '[0.1.0]: https://example.invalid/releases/tag/v0.1.0',
+  '',
+].join('\n')
 
 describe('parseTag', () => {
   it('reads a final tag and a release-candidate tag', async () => {
@@ -769,7 +824,13 @@ describe('the notes', () => {
   it('fill the committed template completely, from the pins and the tag', async () => {
     const { notesValues, fillNotes, assetNames, NOTES_TEMPLATE } = await load()
     expect(NOTES_TEMPLATE).toBe(join(repo, '.github', 'release-notes.md'))
-    const values = notesValues({ tag: 'v0.1.0', pins: PINS, pkg: PKG, repository: 'owner/app' })
+    const values = notesValues({
+      tag: 'v0.1.0',
+      pins: PINS,
+      pkg: PKG,
+      repository: 'owner/app',
+      changelog: CHANGES,
+    })
     const { text, problems } = fillNotes(template(), values)
     expect(problems).toEqual([])
     expect(text).not.toMatch(/\{\{|\}\}/)
@@ -799,16 +860,159 @@ describe('the notes', () => {
 
   it('say a release candidate is one', async () => {
     const { notesValues, fillNotes } = await load()
-    const values = notesValues({ tag: 'v0.1.0-rc.2', pins: PINS, pkg: PKG, repository: 'o/a' })
+    const values = notesValues({
+      tag: 'v0.1.0-rc.2',
+      pins: PINS,
+      pkg: PKG,
+      repository: 'o/a',
+      changelog: CHANGES,
+    })
     const { text, problems } = fillNotes(template(), values)
     expect(problems).toEqual([])
     expect(text.startsWith('> **A release candidate.**')).toBe(true)
     expect(text).toContain('Legible-Cities-0.1.0-rc.2-mac-arm64.dmg')
   })
 
+  it("fill What changed and Known issues from the tag's section, under their headings", async () => {
+    // Mutation: Known issues left among the changes, so it is said twice.
+    const { notesValues, fillNotes } = await load()
+    const values = notesValues({
+      tag: 'v0.2.0-rc.1',
+      pins: PINS,
+      pkg: PKG,
+      repository: 'o/a',
+      changelog: CHANGES,
+    })
+    const { text, problems } = fillNotes(template(), values)
+    expect(problems).toEqual([])
+    expect(text).toContain(
+      [
+        '## What changed',
+        '',
+        '### Added',
+        '',
+        '- A second cell.',
+        '',
+        '### Fixed',
+        '',
+        '- A first fault.',
+        '',
+        '## Known issues',
+        '',
+        '- Unsigned.',
+        '',
+        '## Which file to download',
+      ].join('\n'),
+    )
+    expect(text).not.toContain('Not released yet')
+  })
+
+  it("carry a final's Security, and say none is fixed where it says None.", async () => {
+    // Mutation: "None." copied as it is, which says nothing a reader can
+    // take as "no publicly known vulnerability is fixed".
+    const { notesValues, fillNotes, NO_KNOWN_VULNERABILITY } = await load()
+    const fill = (changelog: string, tag: string): string => {
+      const values = notesValues({ tag, pins: PINS, pkg: PKG, repository: 'o/a', changelog })
+      const { text, problems } = fillNotes(template(), values)
+      expect(problems).toEqual([])
+      return text
+    }
+    expect(NO_KNOWN_VULNERABILITY).toBe('No publicly known vulnerability is fixed in this release.')
+    expect(fill(CHANGES, 'v0.1.0')).toContain(
+      `- The first release.\n\n## Security\n\n${NO_KNOWN_VULNERABILITY}\n\n## Known issues\n\n- No update.\n`,
+    )
+    const fixed = CHANGES.replace('\nNone.\n', '\n- A feed could reach a local address.\n')
+    const text = fill(fixed, 'v0.1.0')
+    expect(text).toContain(
+      '## Security\n\n- A feed could reach a local address.\n\n## Known issues',
+    )
+    expect(text).not.toContain(NO_KNOWN_VULNERABILITY)
+  })
+
+  it("make the changelog's relative links absolute, at the tag", async () => {
+    // Mutation: the links copied as they are, which lead nowhere from the
+    // Releases page.
+    const { notesValues, fillNotes } = await load()
+    const linked = CHANGES.replace(
+      '- A second cell.',
+      '- A second cell ([the guide](docs/install.md#updating), [here](#top), [away](https://a.example/b)).',
+    ).replace('- Unsigned.', '- Unsigned ([support](SUPPORT.md)).')
+    const values = notesValues({
+      tag: 'v0.2.0-rc.1',
+      pins: PINS,
+      pkg: PKG,
+      repository: 'o/a',
+      changelog: linked,
+    })
+    const { text } = fillNotes(template(), values)
+    expect(text).toContain(
+      '- A second cell ([the guide](https://github.com/o/a/blob/v0.2.0-rc.1/docs/install.md#updating), [here](#top), [away](https://a.example/b)).',
+    )
+    expect(text).toContain(
+      '- Unsigned ([support](https://github.com/o/a/blob/v0.2.0-rc.1/SUPPORT.md)).',
+    )
+  })
+
+  it('refuse a section that names no change, or says nothing of its known issues', async () => {
+    // Mutation: the Known issues rule dropped, so the heading in the notes is empty.
+    const { changelogParts } = await load()
+    expect(() => changelogParts('### Known issues\n\n- One.', '9.9.9')).toThrow(
+      'says nothing about what changed',
+    )
+    expect(() => changelogParts('### Added\n\n- One.', '9.9.9')).toThrow('### Known issues')
+    expect(() => changelogParts('### Added\n\n- One.\n\n### Known issues\n', '9.9.9')).toThrow(
+      '### Known issues',
+    )
+    expect(changelogParts('### Added\n\n- One.\n\n### Known issues\n\nNone.', '9.9.9')).toEqual({
+      changes: '### Added\n\n- One.',
+      knownIssues: 'None.',
+      security: null,
+    })
+  })
+
+  it('count a change heading with nothing under it as no change, and leave it out', async () => {
+    // Mutation: a heading alone counted as a change, so "What changed" can
+    // hold nothing but "### Added".
+    const { changelogParts } = await load()
+    expect(() => changelogParts('### Added\n\n### Known issues\n\nNone.', '9.9.9')).toThrow(
+      'says nothing about what changed',
+    )
+    expect(
+      changelogParts('### Added\n\n### Fixed\n\n- One.\n\n### Known issues\n\nNone.', '9.9.9')
+        .changes,
+    ).toBe('### Fixed\n\n- One.')
+  })
+
+  it("name the changelog's three keys once each, under their headings and before the downloads", async () => {
+    // Mutation: {{known_issues}} gone from the template, its heading left empty.
+    const { notesValues } = await load()
+    const text = template()
+    const keys = [...text.matchAll(/\{\{\s*([A-Za-z0-9_]+)\s*\}\}/g)].map((match) => match[1])
+    for (const key of ['changes', 'security', 'known_issues']) {
+      expect(
+        keys.filter((named) => named === key),
+        key,
+      ).toHaveLength(1)
+    }
+    expect(text).toContain(
+      '## What changed\n\n{{changes}}\n\n{{security}}## Known issues\n\n{{known_issues}}\n\n## Which file to download\n',
+    )
+    const values = notesValues({
+      tag: 'v0.1.0',
+      pins: PINS,
+      pkg: PKG,
+      repository: 'o/a',
+      changelog: CHANGES,
+    })
+    expect(keys.filter((key) => !Object.hasOwn(values, key))).toEqual([])
+  })
+
   it('from the command line, write the filled notes to the file named', () => {
+    // The committed CHANGELOG.md, so the next candidate of package.json's
+    // version can be drafted.
+    const tag = `v${PKG.version}-rc.1`
     const out = join(scratch(), 'notes.md')
-    const result = spawnSync(process.execPath, [SCRIPT, 'notes', 'v0.1.0-rc.1', out], {
+    const result = spawnSync(process.execPath, [SCRIPT, 'notes', tag, out], {
       encoding: 'utf8',
       timeout: 30_000,
       env: { ...process.env, GITHUB_REPOSITORY: 'owner/app' },
@@ -817,7 +1021,8 @@ describe('the notes', () => {
     expect(result.status).toBe(0)
     const text = readFileSync(out, 'utf8')
     expect(text).toBe(result.stdout)
-    expect(text).toContain('https://github.com/owner/app/blob/v0.1.0-rc.1/docs/install.md')
+    expect(text).toContain(`https://github.com/owner/app/blob/${tag}/docs/install.md`)
+    expect(text).toContain('## What changed\n\n### ')
     expect(text).not.toMatch(/\{\{|\}\}/)
 
     const bad = join(scratch(), 'bad.md')
@@ -827,6 +1032,15 @@ describe('the notes', () => {
     })
     expect(refused.status).toBe(1)
     expect(refused.stderr).toContain('not a release tag')
+    expect(existsSync(bad)).toBe(false)
+
+    const missing = spawnSync(process.execPath, [SCRIPT, 'notes', 'v99.0.0-rc.1', bad], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    })
+    expect(missing.status).toBe(1)
+    expect(missing.stderr).toContain('CHANGELOG.md has no section for 99.0.0')
+    expect(missing.stderr).toContain('No notes were written.')
     expect(existsSync(bad)).toBe(false)
   })
 
@@ -839,6 +1053,72 @@ describe('the notes', () => {
     expect(fillNotes('a {{ bad-key }}', {}).problems).toEqual([
       expect.stringContaining('brace pair'),
     ])
+  })
+})
+
+describe('changelogSection', () => {
+  it("reads a candidate's section, dated or not, up to the next version or the links", async () => {
+    // Mutation: the section runs on into the link references at the foot.
+    const { changelogSection } = await load()
+    expect(changelogSection(CHANGES, '0.2.0', { final: false })).toBe(
+      '### Added\n\n- A second cell.\n\n### Fixed\n\n- A first fault.\n\n### Known issues\n\n- Unsigned.',
+    )
+    const dated = changelogSection(CHANGES, '0.1.0', { final: false })
+    expect(dated.startsWith('### Added\n\n- The first release.')).toBe(true)
+    expect(dated.endsWith('- No update.')).toBe(true)
+    expect(changelogSection(CHANGES.replaceAll('\n', '\r\n'), '0.2.0', { final: false })).toBe(
+      changelogSection(CHANGES, '0.2.0', { final: false }),
+    )
+  })
+
+  it('refuses a version with no section, naming the heading to add', async () => {
+    // Mutation: an empty section answered for a missing one.
+    const { changelogSection } = await load()
+    expect(() => changelogSection(CHANGES, '0.3.0', { final: false })).toThrow(
+      'CHANGELOG.md has no section for 0.3.0: add "## [0.3.0]"',
+    )
+    expect(() => changelogSection(CHANGES, '0.1', { final: false })).toThrow('no section for 0.1')
+  })
+
+  it('refuses a final whose section is not dated, and a heading in neither form', async () => {
+    // Mutation: the date rule dropped, so a final's notes come from a
+    // section that does not say when it was released.
+    const { changelogSection } = await load()
+    expect(() => changelogSection(CHANGES, '0.2.0', { final: true })).toThrow(
+      "is not dated, and a final release's is",
+    )
+    const soon = CHANGES.replace('## [0.2.0]', '## [0.2.0] - soon')
+    expect(() => changelogSection(soon, '0.2.0', { final: false })).toThrow(
+      'is neither "## [0.2.0]" nor "## [0.2.0] - YYYY-MM-DD"',
+    )
+    const yanked = CHANGES.replace('## [0.1.0] - 2026-10-08', '## [0.1.0] - 2026-10-08 [YANKED]')
+    expect(changelogSection(yanked, '0.1.0', { final: true })).toBe(
+      changelogSection(CHANGES, '0.1.0', { final: true }),
+    )
+  })
+
+  it('refuses a final with no Security or an empty one, and takes "None."', async () => {
+    // Mutation: the Security rule dropped, so a final's notes can be silent
+    // on whether it fixes a vulnerability.
+    const { changelogSection } = await load()
+    const dated = CHANGES.replace('## [0.2.0]', '## [0.2.0] - 2026-11-01')
+    expect(() => changelogSection(dated, '0.2.0', { final: true })).toThrow('has no "### Security"')
+    expect(changelogSection(dated, '0.2.0', { final: false })).toContain('- A first fault.')
+    const empty = CHANGES.replace('\nNone.\n', '\n')
+    expect(() => changelogSection(empty, '0.1.0', { final: true })).toThrow('has no "### Security"')
+    expect(changelogSection(CHANGES, '0.1.0', { final: true })).toContain('### Security\n\nNone.')
+  })
+
+  it("finds package.json's version in the committed changelog, ready for its next candidate", async () => {
+    // Mutation: the section renamed for another version.
+    const { changelogSection, changelogParts, CHANGELOG } = await load()
+    expect(CHANGELOG).toBe(join(repo, 'CHANGELOG.md'))
+    const text = readFileSync(CHANGELOG, 'utf8')
+    const section = changelogSection(text, PKG.version, { final: false })
+    const parts = changelogParts(section, PKG.version)
+    expect(parts.changes).toMatch(/^### (Added|Changed|Deprecated|Removed|Fixed)$/m)
+    expect(text).toMatch(/^## \[Unreleased\]$/m)
+    expect(text).toMatch(/^## \[0\.1\.0\] - 2026-10-08$/m)
   })
 })
 

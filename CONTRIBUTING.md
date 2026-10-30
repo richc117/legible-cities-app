@@ -202,7 +202,8 @@ pass in a couple of minutes without running the suite; anything else runs it,
 and so does every push to `main`.
 Other workflows are not required: the determinism run also starts on pull
 requests that touch the app, and the installers and the acceptance run are the
-maintainer's, on a tag or by hand.
+maintainer's, on a tag or by hand; [`docs/releasing.md`](docs/releasing.md)
+says how a release is cut, gated, published and, if it must be, pulled.
 
 ### The gate documents
 

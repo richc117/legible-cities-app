@@ -14,5 +14,37 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "is the results template's run table, row for row",
     "why": "A field the workflow computes and the record does not list: applyPrior drops it silently and the run's issue never shows whether the attestation was verified."
+  },
+  {
+    "file": "docs/acceptance.md",
+    "find": "| Previous version installed | (step 22: the version installed before this one, 0.1.0; none where step 22 was not run) |\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is the results template's run table, row for row",
+    "why": "The update's field gone from the checklist's template while the record still writes it: a person run would not say which version it updated over."
+  },
+  {
+    "file": "tests/acceptance/record.ts",
+    "find": "  'Previous version installed',\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is the results template's run table, row for row",
+    "why": "A field the template has and the record does not list: the automated run's record would lack the row that says the update was not automated."
+  },
+  {
+    "file": "docs/acceptance.md",
+    "find": "| 22 | Update over 0.1.0 | pass / fail | |\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is the results template, row for row",
+    "why": "Step 22 gone from the template's steps while the record still writes its row: the update over 0.1.0 would have nowhere to be recorded by a person."
+  },
+  {
+    "file": "tests/acceptance/record.ts",
+    "find": "  22: 'Update over 0.1.0',\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "names every step as its heading does, the time left blank there",
+    "why": "Step 22 missing from the record: the automated run could not say it is not automated, and the record would claim twenty-one steps where the checklist has twenty-two."
   }
 ]
