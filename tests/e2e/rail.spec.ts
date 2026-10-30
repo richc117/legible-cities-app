@@ -362,7 +362,10 @@ test("the rail's headings, every step's number and Outputs start at one edge", a
 // so the measure is taken with that word on the steps: a grid chosen over a
 // layout made with another takes cells 03 to 06 there. At 1024 and 1280
 // pixels wide, the widest of the six names, set in the current step's bold
-// weight, must fit the narrowest name box a stale step leaves it.
+// weight, must fit the narrowest name box a stale step leaves it. That is
+// stricter than the app needs for cell 01, which has nothing above it, is
+// never stale and reads "running" at its longest, but a name that fits
+// beside "not drawn yet" fits beside any word a step shows.
 test('no step in the rail cuts its name short, even with "not drawn yet" beside it', async () => {
   test.setTimeout(120_000)
   const h = home()
@@ -398,10 +401,26 @@ test('no step in the rail cuts its name short, even with "not drawn yet" beside 
                 .trim()
               const was = names.map((el) => el.style.fontWeight)
               names.forEach((el) => (el.style.fontWeight = bold))
-              const widest = Math.max(...names.map((el) => el.scrollWidth))
+              // The text's own width, not `scrollWidth`: a name box is
+              // `flex: 1`, so its `scrollWidth` is never less than its own
+              // box, and the widest box (a ready step's, beside a shorter
+              // word) would read as a name wider than a stale step's.
+              const text = names.map((el) => {
+                const range = document.createRange()
+                range.selectNodeContents(el)
+                return { name: el.textContent ?? '', px: range.getBoundingClientRect().width }
+              })
               const room = Math.min(...stale.map((el) => el.clientWidth))
               names.forEach((el, n) => (el.style.fontWeight = was[n]))
-              return { staleSteps: stale.length, cut: widest > room, widest, room }
+              const widest = text.reduce((a, b) => (b.px > a.px ? b : a))
+              return {
+                staleSteps: stale.length,
+                cut: Math.ceil(widest.px) > room,
+                widest: widest.name,
+                widestPx: widest.px,
+                narrowestBox: room,
+                widths: text.map((t) => `${t.name} ${t.px.toFixed(1)}`),
+              }
             }),
           { message: `the widest name fits the narrowest box at ${width}px wide` },
         )
