@@ -87,7 +87,7 @@ export const TUNING_NAME = 'Layout tuning'
  * the layout engine, and a word a person has not met is not made a fact
  * about their project (issue 560).
  */
-export const LOOM_DEFAULTS = 'the defaults'
+export const TUNING_DEFAULTS = 'the defaults'
 
 /** What the row says while it holds one. */
 export const TUNED = 'tuned'
@@ -99,7 +99,7 @@ export const TUNED = 'tuned'
  * number is no choice, and the record never holds one anyway.
  */
 export const tuningWord = (tuning: ProjectTuning | undefined): string =>
-  tuningIsSet(tuning) ? TUNED : LOOM_DEFAULTS
+  tuningIsSet(tuning) ? TUNED : TUNING_DEFAULTS
 
 /**
  * The section's first sentence: what the tuning is, and that nothing moves
@@ -116,7 +116,7 @@ export const PENALTY_LEGEND = 'Bend penalties'
 
 /** What a penalty is, said once at the head of the group. */
 export const PENALTY_SENTENCE =
-  'What octi pays where a line bends by each angle, and for running on a diagonal: the higher the cost, the more it avoids them. A cost has no unit.'
+  'What the layout pays where a line bends by each angle, and for running on a diagonal: the higher the cost, the more it avoids them. A cost has no unit.'
 
 /** The button that puts every field and the grid back. */
 export const RESET_LABEL = 'Reset to the defaults'
@@ -290,8 +290,8 @@ export function tuningNotice(
   record: Pick<ProjectRecord, 'layout' | 'tuning' | 'laidOutWith'>,
 ): string | null {
   if (record.layout === null || sameTuning(record.tuning, record.laidOutWith)) return null
-  const wanted = tuningIsSet(record.tuning) ? 'this tuning' : LOOM_DEFAULTS
-  const had = tuningIsSet(record.laidOutWith) ? 'another tuning' : LOOM_DEFAULTS
+  const wanted = tuningIsSet(record.tuning) ? 'this tuning' : TUNING_DEFAULTS
+  const had = tuningIsSet(record.laidOutWith) ? 'another tuning' : TUNING_DEFAULTS
   return `Lay out again to use ${wanted}: the map on screen was laid out with ${had}.`
 }
 

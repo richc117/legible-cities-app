@@ -150,7 +150,7 @@ export const NOTHING_YET = 'The engine has not said anything yet.'
  * though it had not been.
  */
 export const NOTHING_SAID =
-  'This run logged nothing: it ended before any stage finished, and no LOOM tool had anything to report.'
+  'This run logged nothing: it ended before any stage finished, and no layout tool had anything to report.'
 
 /**
  * How many lines there are, in the words the row says them. "Yet" only

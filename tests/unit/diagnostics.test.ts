@@ -176,7 +176,7 @@ describe('the caveats line, and what "Copy as text" hands over', () => {
 
   it('counts the caveats and gives the score beside them', () => {
     expect(caveatsSentence(report())).toBe(
-      "1 caveat. The layout's issues score is 0.2137, where 0 means it compromised on nothing.",
+      '1 caveat. The layout’s issues score is 0.2137, where 0 means it compromised on nothing.',
     )
     expect(caveatsSentence(report({ caveats: ['a', 'b'] }))).toMatch(/^2 caveats\. /)
   })

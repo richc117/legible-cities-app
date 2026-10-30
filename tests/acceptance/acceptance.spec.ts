@@ -1722,7 +1722,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(diagnostics).toBeVisible()
         const sentence = await text(diagnostics.getByRole('status').first())
         expect(sentence).toMatch(
-          /^(No caveats: the layout compromised on nothing, and its issues score is [\d.]+\.|\S+ caveats?\. The layout's issues score is [\d.]+, where 0 means it compromised on nothing\.)$/,
+          /^(No caveats: the layout compromised on nothing, and its issues score is [\d.]+\.|\S+ caveats?\. The layout’s issues score is [\d.]+, where 0 means it compromised on nothing\.)$/,
         )
         log.note(`"${sentence}"`)
         await expect(diagnostics.locator('caption')).toHaveText(

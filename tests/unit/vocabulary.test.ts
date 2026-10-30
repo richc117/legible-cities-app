@@ -6,24 +6,27 @@
 // `no-literals.test.ts` reads its files, and those words are refused in it.
 //
 // What is read is what a person can be shown: every string literal, every
-// template's text and every run of JSX text under `src/renderer/src`, found
-// by TypeScript's own parser, so a comment is never read and a word split
-// across lines in JSX is still one run. Identifiers are not text: the grid
-// named `octilinear` in the record, or a table keyed by it, is the engine's
-// name and stays. What is composed at run time from the engine's values -
-// the stage words, the grid's options, the diagnostics' sentences - is
-// called and read too, since no literal holds it.
+// template's text and every run of JSX text under `src/renderer/src`, and
+// in every module of `src/shared` the renderer imports a value from (and
+// what those import in turn), since a sentence written there - a refusal,
+// a tool's name - reaches the same screen. TypeScript's own parser finds
+// them, so a comment is never read, a string in a type is not text, and a
+// word split across lines in JSX is still one run. Identifiers are not text:
+// the grid named `octilinear` in the record, or a table keyed by it, is the
+// engine's name and stays. What is composed at run time from the engine's
+// values - the stage words, the grid's options, the diagnostics' sentences
+// - is called and read too, since no literal holds it.
 //
-// The allowances are exact sentences in named files, each with its reason,
-// and an allowance that no longer matches anything fails, so the list
-// cannot outlive what it excuses. The engine's own sentences (a refusal of
-// a tuning's range, an inspection's warning) are the engine's to word and
-// are not here: they reach the screen as the engine wrote them (DESIGN.md
-// 11). Each test was watched failing under its mutation in
-// `vocabulary.mutations.json`.
+// The allowances are exact sentences in named files, or a whole file where
+// every sentence in it names a tool, each with its reason, and an allowance
+// that no longer matches anything fails, so the list cannot outlive what it
+// excuses. The engine's own sentences (a refusal of a tuning's range, an
+// inspection's warning) are the engine's to word and are not here: they
+// reach the screen as the engine wrote them (DESIGN.md 11). Each test was
+// watched failing under its mutation in `vocabulary.mutations.json`.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import { caveatsSentence } from '../../src/renderer/src/engine/diagnostics'
@@ -40,55 +43,74 @@ import {
 import { TUNING_RESET_SAID } from '../../src/renderer/src/putBackWords'
 import { TUNING_KEYS } from '../../src/shared/project/types'
 
-const root = resolve(__dirname, '../../src/renderer/src')
+const src = resolve(__dirname, '../../src')
+const renderer = join(src, 'renderer', 'src')
+const shared = join(src, 'shared')
 
-/** The pipeline's words a cell no longer says, in any case. */
-const REFUSED = /\b(fudge|octilinear|collapse)\b/i
+/** The pipeline's words a cell no longer says, in any case and any form. */
+const REFUSED = /\b(fudg\w*|octilinear\w*|collapse)\b/i
 
 /** The layout engine's name, which a cell says once. */
 const NAMED = /\bLOOM\b/
 
 interface Allowance {
+  /** The file, from `src/`. */
   file: string
-  text: string
+  /** The exact text allowed, or null for every text in the file. */
+  text: string | null
   why: string
 }
 
-/** Where a refused word is not a word a person reads. */
+/** Where a refused word is not a word a person reads, or is the engine's own and explained. */
 const REFUSED_ALLOWED: Allowance[] = [
   {
-    file: 'engine/diagnostics.ts',
+    file: 'renderer/src/engine/diagnostics.ts',
     text: 'octilinear',
     why: 'the row id of the Octilinearity figure, the engine’s field name, which is never drawn',
+  },
+  {
+    file: 'renderer/src/engine/diagnostics.ts',
+    text: 'Octilinearity',
+    why: 'the figure the engine prints under that name, explained beside it in plain words',
+  },
+  {
+    file: 'shared/project/types.ts',
+    text: 'octilinear',
+    why: 'the grid’s name in the record and on the wire, shown only inside the grid option’s bracket',
   },
 ]
 
 /** Where LOOM is named, and why there. */
 const NAMED_ALLOWED: Allowance[] = [
   {
-    file: 'tuningRules.ts',
+    file: 'renderer/src/tuningRules.ts',
     text: TUNING_SENTENCE,
     why: 'the tuning’s lead: the cells’ one naming, which says what LOOM is, for the grid’s names below it',
   },
   {
-    file: 'notebook/EngineLog.tsx',
-    text: 'This run logged nothing: it ended before any stage finished, and no LOOM tool had anything to report.',
-    why: 'the engine’s log is where the tools’ own words belong, and it prints theirs',
-  },
-  {
-    file: 'Settings.tsx',
+    file: 'renderer/src/Settings.tsx',
     text: 'LOOM tools',
     why: 'Settings names the bundled tools as their licences and the first-run check do; it is not a cell',
   },
   {
-    file: 'Settings.tsx',
+    file: 'renderer/src/Settings.tsx',
     text: 'LOOM backend',
     why: 'Settings’ versions list, the engine’s report of the tools it runs',
   },
   {
-    file: 'Settings.tsx',
+    file: 'renderer/src/Settings.tsx',
     text: 'LOOM commit',
     why: 'Settings’ versions list, the engine’s report of the tools it runs',
+  },
+  {
+    file: 'shared/first-run.ts',
+    text: null,
+    why: 'the first-run check of the bundled tools, which names the tool that will not run',
+  },
+  {
+    file: 'shared/licences.ts',
+    text: null,
+    why: 'the licences, which name each component as its licence does',
   },
 ]
 
@@ -102,6 +124,42 @@ function walk(dir: string): string[] {
   return out
 }
 
+const parse = (path: string): ts.SourceFile =>
+  ts.createSourceFile(
+    path,
+    readFileSync(path, 'utf8'),
+    ts.ScriptTarget.Latest,
+    true,
+    path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  )
+
+/** The modules a file imports values from, resolved; a type-only import brings no text. */
+function valueImports(path: string): string[] {
+  const out: string[] = []
+  for (const statement of parse(path).statements) {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly === true) continue
+    const spec = (statement.moduleSpecifier as ts.StringLiteral).text
+    if (!spec.startsWith('.')) continue
+    const base = resolve(dirname(path), spec)
+    const found = [`${base}.ts`, `${base}.tsx`, join(base, 'index.ts')].find(existsSync)
+    if (found !== undefined) out.push(found)
+  }
+  return out
+}
+
+/** Every `src/shared` module the renderer's files import a value from, and what those import. */
+function sharedModules(): string[] {
+  const seen = new Set<string>()
+  const next = walk(renderer).flatMap(valueImports)
+  while (next.length > 0) {
+    const path = next.pop() as string
+    if (!path.startsWith(shared) || seen.has(path)) continue
+    seen.add(path)
+    next.push(...valueImports(path))
+  }
+  return [...seen].sort()
+}
+
 interface Said {
   file: string
   line: number
@@ -110,14 +168,8 @@ interface Said {
 
 /** Every piece of text a file holds that a screen could show, with where it is. */
 function textOf(path: string): Said[] {
-  const source = ts.createSourceFile(
-    path,
-    readFileSync(path, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true,
-    path.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  )
-  const file = relative(root, path).replace(/\\/g, '/')
+  const source = parse(path)
+  const file = relative(src, path).replace(/\\/g, '/')
   const said: Said[] = []
   const visit = (node: ts.Node): void => {
     if (
@@ -128,11 +180,14 @@ function textOf(path: string): Said[] {
       ts.isTemplateTail(node) ||
       ts.isJsxText(node)
     ) {
-      // A module's own path is not text, and JSX text is one run however
-      // the formatter broke its lines.
-      const isModule = ts.isImportDeclaration(node.parent) || ts.isExportDeclaration(node.parent)
+      // A module's own path is not text, nor a string in a type, and JSX
+      // text is one run however the formatter broke its lines.
+      const notText =
+        ts.isImportDeclaration(node.parent) ||
+        ts.isExportDeclaration(node.parent) ||
+        ts.isLiteralTypeNode(node.parent)
       const text = ts.isJsxText(node) ? node.text.replace(/\s+/g, ' ').trim() : node.text
-      if (!isModule && text !== '') {
+      if (!notText && text !== '') {
         const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1
         said.push({ file, line, text })
       }
@@ -143,17 +198,25 @@ function textOf(path: string): Said[] {
   return said
 }
 
-const everything = walk(root).flatMap(textOf)
+const modules = sharedModules()
+const everything = [...walk(renderer), ...modules].flatMap(textOf)
 
 const allowed = (list: Allowance[], said: Said): boolean =>
-  list.some((each) => each.file === said.file && each.text === said.text)
+  list.some((each) => each.file === said.file && (each.text === null || each.text === said.text))
 
 const where = (said: Said): string => `${said.file}:${said.line}: ${said.text}`
 
 describe('the words the renderer writes', () => {
-  it('reads the renderer’s files, and finds their text', () => {
+  it('reads the renderer’s files and the shared modules it imports, and finds their text', () => {
     // A walk that found nothing would pass every test below.
     expect(everything.length).toBeGreaterThan(1000)
+    expect(modules.map((path) => relative(src, path).replace(/\\/g, '/'))).toEqual(
+      expect.arrayContaining([
+        'shared/project/validate.ts',
+        'shared/first-run.ts',
+        'shared/licences.ts',
+      ]),
+    )
     expect(everything.some((said) => said.text === 'What the layout had to compromise on')).toBe(
       true,
     )
@@ -175,11 +238,21 @@ describe('the words the renderer writes', () => {
   })
 
   it('keep every allowance to a sentence that is still there', () => {
-    for (const each of [...REFUSED_ALLOWED, ...NAMED_ALLOWED]) {
-      expect(
-        everything.some((said) => said.file === each.file && said.text === each.text),
-        `${each.file}: "${each.text}" (${each.why})`,
-      ).toBe(true)
+    const lists: [Allowance[], RegExp][] = [
+      [REFUSED_ALLOWED, REFUSED],
+      [NAMED_ALLOWED, NAMED],
+    ]
+    for (const [list, word] of lists) {
+      for (const each of list) {
+        // An exact allowance names a text that is there; a whole file's
+        // still holds a text that needs it.
+        const there = everything.some(
+          (said) =>
+            said.file === each.file &&
+            (each.text === null ? word.test(said.text) : said.text === each.text),
+        )
+        expect(there, `${each.file}: "${each.text ?? 'any'}" (${each.why})`).toBe(true)
+      }
     }
   })
 })

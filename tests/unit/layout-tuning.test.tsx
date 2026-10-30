@@ -306,7 +306,7 @@ describe('the section as it is drawn', () => {
   })
 
   it('says the defaults on its row for a record that holds no tuning, and tuned for one that does', () => {
-    // The span, not the word: the grid's option says "LOOM’s own" too.
+    // The span, not the word: the grid's option says "the default" too.
     expect(drawn()).toContain(
       'Layout tuning <span class="layout-tuning-word">the defaults</span></button></h3>',
     )

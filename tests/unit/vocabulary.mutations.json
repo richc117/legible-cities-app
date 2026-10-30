@@ -17,8 +17,8 @@
   },
   {
     "file": "src/renderer/src/tuningRules.ts",
-    "find": "export const LOOM_DEFAULTS = 'the defaults'",
-    "replace": "export const LOOM_DEFAULTS = 'LOOM’s defaults'",
+    "find": "export const TUNING_DEFAULTS = 'the defaults'",
+    "replace": "export const TUNING_DEFAULTS = 'LOOM’s defaults'",
     "test": "tests/unit/vocabulary.test.ts",
     "title": "name LOOM only in the tuning’s lead, once, and where the tools are listed",
     "why": "The tuning's row word restored: LOOM is named outside the tuning's lead."
@@ -30,5 +30,21 @@
     "test": "tests/unit/vocabulary.test.ts",
     "title": "bracket the grid’s engine word, and say nothing of LOOM in its options",
     "why": "The grid's engine word put back in front of its bracket: the select offers \"octilinear\" as the option's name."
+  },
+  {
+    "file": "src/renderer/src/engine/diagnostics.ts",
+    "find": "`No caveats: the layout compromised on nothing, and its issues score is ${score(report.issues)}.`",
+    "replace": "`No caveats: nothing was fudged, and the issues score is ${score(report.issues)}.`",
+    "test": "tests/unit/vocabulary.test.ts",
+    "title": "say none of fudge, octilinear or collapse",
+    "why": "The clean caveats sentence restored: the diagnostics say \"nothing was fudged\" again, which only the widened word catches."
+  },
+  {
+    "file": "src/shared/project/validate.ts",
+    "find": "of the modes the engine knows, such as",
+    "replace": "of the modes LOOM knows, such as",
+    "test": "tests/unit/vocabulary.test.ts",
+    "title": "name LOOM only in the tuning’s lead, once, and where the tools are listed",
+    "why": "A shared module's refusal names LOOM again: cell 01 says it beside the typed mode, which only reading src/shared catches."
   }
 ]

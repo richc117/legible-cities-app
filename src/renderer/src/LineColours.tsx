@@ -483,7 +483,7 @@ function LineRow({
           label:
             line.feed === null
               ? `Reset line ${line.label} to the default colour`
-              : `Reset line ${line.label} to the colour in the feed`,
+              : `Reset line ${line.label} to the feed’s colour`,
           enabled: overridden,
           onReset,
         }}

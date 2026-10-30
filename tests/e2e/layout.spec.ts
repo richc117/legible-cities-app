@@ -231,7 +231,7 @@ test("shows what the layout had to compromise on, in the engine's own words and 
     await expect(
       compromises.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
     ).toBeVisible()
-    await expect(compromises).toContainText("The layout's issues score is 0.2137")
+    await expect(compromises).toContainText('The layout’s issues score is 0.2137')
     // Every figure is the block's, formatted and never derived.
     await expect(compromises).toContainText('99.4%')
     await expect(compromises).toContainText('112 of 116 (97%)')
