@@ -62,11 +62,47 @@ export function areReports(value: unknown): value is string[] {
 
 const section = (title: string, body: string): string => `## ${title}\n\n${body.trimEnd()}\n`
 
-/** The text, in the order the spec gives, before the home folder is shortened. */
-export function composeDiagnostics(input: DiagnosticsInput): string {
+/**
+ * The most the copy may hold, in characters counted as `.length` (UTF-16
+ * units, never fewer than the code points, so the count errs on the safe
+ * side). GitHub does not document a limit on an issue's body; its own error
+ * says 65,536 characters, and everything else the form carries (the steps,
+ * what happened, the version) shares that body. 48,000 leaves about 17,000
+ * for those (issue 567).
+ */
+export const DIAGNOSTICS_BUDGET = 48_000
+
+/** What a copy over the budget lost: the trimmed lines and reports, as the line under the heading counts them. */
+interface Kept {
+  main: string[]
+  engine: string[]
+  /** How many of the oldest reports are gone. */
+  reportsDropped: number
+}
+
+/** `main.log, the last 200 lines`, or what is left of that once a copy was trimmed. */
+function logTitle(name: string, kept: number, trimmed: boolean): string {
+  if (!trimmed) return `${name}.log, the last ${TAIL_LINES} lines`
+  if (kept === 0) return `${name}.log, no lines kept`
+  return kept === 1 ? `${name}.log, the last line` : `${name}.log, the last ${kept} lines`
+}
+
+/** The sentence under the heading of a copy that was cut to the budget. */
+function trimLine(kept: Kept, reports: number): string {
+  return (
+    `Trimmed to fit a GitHub issue: main.log keeps its last ${kept.main.length} lines, ` +
+    `engine.log ${kept.engine.length}, and ${reports - kept.reportsDropped} of ${reports} map reports. ` +
+    'The whole logs are in the logs folder (Settings › Open logs folder); attach them to the report.'
+  )
+}
+
+/** The text with the oldest `dropped` things gone, in the order `dropOrder` gives. */
+function assemble(input: DiagnosticsInput, kept: Kept | null): string {
   const { app, versions, os, engine } = input
+  const reports = kept === null ? input.reports : input.reports.slice(kept.reportsDropped)
+  const heading = `# ${app.name} diagnostics\n`
   const parts = [
-    `# ${app.name} diagnostics\n`,
+    kept === null ? heading : `${heading}\n${trimLine(kept, input.reports.length)}\n`,
     section('App', `${app.name} ${app.version}`),
     section(
       'Runtime',
@@ -85,16 +121,95 @@ export function composeDiagnostics(input: DiagnosticsInput): string {
         ...FIRST_RUN_TOOLS.map((tool) => describeCheck(tool, input.firstRun[tool])),
       ].join('\n'),
     ),
-    section(`main.log, the last ${TAIL_LINES} lines`, input.mainLog),
-    section(`engine.log, the last ${TAIL_LINES} lines`, input.engineLog),
+    section(
+      logTitle('main', kept?.main.length ?? 0, kept !== null),
+      kept === null ? input.mainLog : kept.main.join('\n') || 'No lines kept.',
+    ),
+    section(
+      logTitle('engine', kept?.engine.length ?? 0, kept !== null),
+      kept === null ? input.engineLog : kept.engine.join('\n') || 'No lines kept.',
+    ),
     section(
       'Maps drawn this session',
       input.reports.length === 0
         ? 'No map has been drawn since the app started.'
-        : input.reports.map((r) => r.trimEnd()).join('\n\n---\n\n'),
+        : reports.length === 0
+          ? 'No report kept.'
+          : reports.map((r) => r.trimEnd()).join('\n\n---\n\n'),
     ),
   ]
   return parts.join('\n')
+}
+
+/** What one step of the trimming takes away. */
+type Drop = 'main' | 'engine' | 'report'
+
+/**
+ * The steps from the whole copy to nothing but its head, in order: the
+ * oldest line of whichever log is longer now (so the two shrink together,
+ * and the one that said more says less first), then, once the logs are
+ * empty, the oldest map report. The head sections are not in it.
+ */
+function dropOrder(input: DiagnosticsInput, main: string[], engine: string[]): Drop[] {
+  const size = (lines: string[]): number => lines.reduce((n, l) => n + l.length + 1, 0)
+  let mainSize = size(main)
+  let engineSize = size(engine)
+  let m = 0
+  let e = 0
+  const order: Drop[] = []
+  while (m < main.length || e < engine.length) {
+    if (e >= engine.length || (m < main.length && mainSize >= engineSize)) {
+      mainSize -= main[m].length + 1
+      m += 1
+      order.push('main')
+    } else {
+      engineSize -= engine[e].length + 1
+      e += 1
+      order.push('engine')
+    }
+  }
+  for (let r = 0; r < input.reports.length; r += 1) order.push('report')
+  return order
+}
+
+/**
+ * The text, in the order the spec gives, before the home folder is shortened.
+ *
+ * It is the one place the whole text exists (the page sends the map reports
+ * in, main adds the logs), so it is where the budget is kept: a text over
+ * `DIAGNOSTICS_BUDGET` loses its oldest log lines and then its oldest map
+ * reports, and says so in a line under the heading. App, Runtime, Operating
+ * system, Engine and Bundled tools are never cut: they are what a report
+ * cannot do without, and they are small.
+ */
+export function composeDiagnostics(input: DiagnosticsInput): string {
+  const whole = assemble(input, null)
+  if (whole.length <= DIAGNOSTICS_BUDGET) return whole
+  const main = input.mainLog.split('\n')
+  const engine = input.engineLog.split('\n')
+  const order = dropOrder(input, main, engine)
+  const after = (steps: number): string => {
+    const gone = order.slice(0, steps)
+    const count = (kind: Drop): number => gone.filter((d) => d === kind).length
+    return assemble(input, {
+      main: main.slice(count('main')),
+      engine: engine.slice(count('engine')),
+      reportsDropped: count('report'),
+    })
+  }
+  // The fewest steps that fit: each step only shortens the text, bar the
+  // digits of the counts in the line that says so, which the final loop
+  // makes good.
+  let low = 1
+  let high = order.length
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (after(middle).length <= DIAGNOSTICS_BUDGET) high = middle
+    else low = middle + 1
+  }
+  let steps = low
+  while (steps < order.length && after(steps).length > DIAGNOSTICS_BUDGET) steps += 1
+  return after(steps)
 }
 
 /** The platforms whose file systems ignore case by default, where a path can come back in either. */
@@ -234,7 +349,7 @@ export function shortHomeFrom(home: string, rawTemp: string, realTemp: string): 
 }
 
 /**
- * The finished copy: composed, shortened, and checked. A home folder that
+ * The finished copy: composed within the budget, shortened, and checked. A home folder that
  * survived the replacement is a bug here, and the copy is refused rather
  * than made (FR-006).
  */
@@ -245,7 +360,18 @@ export function diagnosticsText(
 ): string {
   // URLs first: log files written before the logs redacted them still hold
   // whole addresses, and a copy is where they would leave the machine.
-  const text = shortenHome(redactUrls(composeDiagnostics(input)), homes, platform)
+  const finish = (text: string): string => shortenHome(redactUrls(text), homes, platform)
+  // What varies in length is finished before the budget is kept, because a
+  // redacted value can be longer than the one it hides; the whole is then
+  // finished once more, which changes nothing in the parts that were.
+  const text = finish(
+    composeDiagnostics({
+      ...input,
+      mainLog: finish(input.mainLog),
+      engineLog: finish(input.engineLog),
+      reports: input.reports.map(finish),
+    }),
+  )
   if (containsHome(text, homes, platform)) {
     throw new Error('the diagnostics still named your home folder, so nothing was copied')
   }

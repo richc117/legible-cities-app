@@ -22,5 +22,37 @@
     "test": "tests/unit/diagnostics-text.test.ts",
     "title": "is handed the build's release label for the app, not Electron's version",
     "why": "The About panel's build version falls back to CFBundleVersion, so a candidate's About box says \"1.0.0-rc.2 (1.0.0)\"."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      main: main.slice(count('main')),",
+    "replace": "      main: main.slice(0, main.length - count('main')),",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "drops the oldest lines and keeps the newest",
+    "why": "A trim that keeps the head of the log and drops its end: the newest lines, the ones a report is about, would be the ones lost."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  if (whole.length <= DIAGNOSTICS_BUDGET) return whole",
+    "replace": "  if (whole.length >= 0) return whole",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "drops the oldest lines and keeps the newest",
+    "why": "The budget never compared with: a copy of any size is returned whole, and a long one is too long for an issue."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  if (whole.length <= DIAGNOSTICS_BUDGET) return whole",
+    "replace": "  if (whole.length < 0) return whole",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "leaves a copy under the budget as it was, with no line saying otherwise",
+    "why": "The comparison reversed to always trim: a copy that fits is cut and carries a trim line it should not."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "    kept === null ? heading : `${heading}\\n${trimLine(kept, input.reports.length)}\\n`,",
+    "replace": "    heading,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "keeps the five head sections byte for byte",
+    "why": "The line under the heading left out: a trimmed copy would say nothing of what it lost, and the reader would take the logs for whole."
   }
 ]

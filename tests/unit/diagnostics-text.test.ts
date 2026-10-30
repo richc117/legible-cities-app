@@ -12,6 +12,7 @@ import {
   areReports,
   composeDiagnostics,
   containsHome,
+  DIAGNOSTICS_BUDGET,
   diagnosticsText,
   shortenHome,
   shortHomeFrom,
@@ -114,6 +115,135 @@ describe('the composed text', () => {
     const config = await readFile(join(__dirname, '../../electron.vite.config.ts'), 'utf8')
     expect(config).toContain('process.env.LEGIBLE_RELEASE_REF')
     expect(config).toContain('define: { __RELEASE_LABEL__: JSON.stringify(RELEASE_LABEL) },')
+  })
+})
+
+/** `count` log lines, each `width` characters wide and numbered, so one can be told from another. */
+const logOf = (name: string, count: number, width: number): string =>
+  Array.from({ length: count }, (_, i) => `${name} line ${i} `.padEnd(width, '.')).join('\n')
+
+/** The text between one `## ` heading and the next, heading included. */
+const sectionOf = (text: string, title: string): string => {
+  const from = text.indexOf(`## ${title}`)
+  const next = text.indexOf('\n## ', from + 1)
+  return text.slice(from, next === -1 ? undefined : next)
+}
+
+const TRIM = /^Trimmed to fit a GitHub issue: .*$/m
+
+describe('the budget', () => {
+  it.each([
+    ['twenty 64 KB reports', 64 * 1024],
+    ['twenty 4 KB reports, some of which fit', 4 * 1024],
+  ])('holds %s and two 256 KB logs to the budget, and counts what is left', (_, size) => {
+    const reports = Array.from({ length: 20 }, (_, i) => `report ${i} `.padEnd(size, 'r'))
+    const text = composeDiagnostics(
+      input({
+        mainLog: logOf('main', 2600, 100),
+        engineLog: logOf('engine', 2600, 100),
+        reports,
+      }),
+    )
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    const line = TRIM.exec(text)?.[0]
+    expect(line).toMatch(
+      /^Trimmed to fit a GitHub issue: main\.log keeps its last (\d+) lines, engine\.log (\d+), and (\d+) of 20 map reports\./,
+    )
+    const [, main, engine, kept] = /last (\d+) lines, engine\.log (\d+), and (\d+) of/.exec(line!)!
+    const linesIn = (title: string): number =>
+      sectionOf(text, title)
+        .split('\n')
+        .filter((l) => / line \d+ \./.test(l)).length
+    expect(linesIn('main.log')).toBe(Number(main))
+    expect(linesIn('engine.log')).toBe(Number(engine))
+    expect(text.match(/^report \d+ /gm)?.length ?? 0).toBe(Number(kept))
+  })
+
+  it('drops the oldest lines and keeps the newest', () => {
+    const text = composeDiagnostics(
+      input({ mainLog: logOf('main', 200, 150), engineLog: logOf('engine', 200, 150) }),
+    )
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(text).toContain('main line 199 ')
+    expect(text).toContain('engine line 199 ')
+    expect(text).not.toContain('main line 0 ')
+    expect(text).not.toContain('engine line 0 ')
+    // The lines kept are one run to the end, none missing in between.
+    const kept = text.match(/main line (\d+) /g)!.map((l) => Number(/\d+/.exec(l)![0]))
+    expect(kept).toEqual(Array.from({ length: kept.length }, (_, i) => 199 - kept.length + 1 + i))
+    // The map report was not touched, since the logs gave enough.
+    expect(text).toContain('Bart — the map drawn for 2026-09-12')
+  })
+
+  it('takes from the longer log first, and leaves a short one whole', () => {
+    const text = composeDiagnostics(
+      input({ mainLog: logOf('main', 400, 150), engineLog: logOf('engine', 10, 150) }),
+    )
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(text).toMatch(/engine\.log 10, and 1 of 1 map reports/)
+    expect(text).toContain('engine line 0 ')
+    expect(text).not.toContain('main line 0 ')
+    expect(text).toContain('main line 399 ')
+  })
+
+  it('drops the oldest map reports only once the logs are gone', () => {
+    const reports = Array.from({ length: 3 }, (_, i) => `report ${i} `.padEnd(20_000, 'r'))
+    const text = composeDiagnostics(input({ reports }))
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(text).not.toContain('report 0 ')
+    expect(text).toContain('report 1 ')
+    expect(text).toContain('report 2 ')
+    expect(text).toContain('and 2 of 3 map reports')
+    expect(text).toContain('main.log keeps its last 0 lines, engine.log 0')
+  })
+
+  it('keeps the five head sections byte for byte', () => {
+    const head = (text: string): string =>
+      text.slice(text.indexOf('## App'), text.indexOf('## main.log'))
+    const whole = composeDiagnostics(input())
+    const trimmed = composeDiagnostics(
+      input({ mainLog: logOf('main', 2000, 100), engineLog: logOf('engine', 2000, 100) }),
+    )
+    expect(trimmed).toMatch(TRIM)
+    expect(head(trimmed)).toBe(head(whole))
+    expect(head(whole)).toContain('## Bundled tools')
+    // And the line goes under the heading, before the first section.
+    expect(trimmed.indexOf('Trimmed to fit')).toBeGreaterThan(trimmed.indexOf('# Legible Cities'))
+    expect(trimmed.indexOf('Trimmed to fit')).toBeLessThan(trimmed.indexOf('## App'))
+  })
+
+  it('leaves a copy under the budget as it was, with no line saying otherwise', () => {
+    const text = composeDiagnostics(input({ mainLog: logOf('main', 200, 100) }))
+    expect(text.length).toBeLessThan(DIAGNOSTICS_BUDGET)
+    expect(text).not.toMatch(TRIM)
+    expect(text).toContain('## main.log, the last 200 lines')
+    expect(text).toContain('main line 0 ')
+    expect(text).toContain('main line 199 ')
+  })
+
+  it('names the lines a trimmed log really keeps, not 200', () => {
+    const text = composeDiagnostics(
+      input({ mainLog: logOf('main', 200, 150), engineLog: logOf('engine', 200, 150) }),
+    )
+    const main = /main\.log keeps its last (\d+) lines/.exec(text)![1]
+    expect(text).toContain(`## main.log, the last ${main} lines`)
+    expect(text).not.toContain('the last 200 lines')
+  })
+
+  it('holds the finished copy to the budget when redaction makes a line longer, and still hides the home', async () => {
+    const home = join(await folder(), 'someone')
+    // A short query value becomes <redacted>, which is longer than it was.
+    const url = 'https://example.org/g.zip?k=1'
+    const lines = Array.from({ length: 400 }, (_, i) => `main line ${i} ${url} ${home}/x`)
+    const text = diagnosticsText(
+      input({ mainLog: lines.join('\n'), engineLog: logOf('engine', 400, 100) }),
+      [home],
+      'linux',
+    )
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(text).toMatch(TRIM)
+    expect(text).toContain('<redacted>')
+    expect(text).not.toContain(home)
   })
 })
 
