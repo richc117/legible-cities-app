@@ -23,6 +23,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { HELP_PAGES } from '../../src/main/help-ipc'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -944,5 +945,32 @@ test('a name no one has touched is filled once the engine is ready, and a typed 
     await expect(name, 'the feed’s own name, once the list is in').toHaveValue('LA Metro Rail')
     await name.fill('Los Angeles')
     await expect(name).toHaveValue('Los Angeles')
+  })
+})
+
+test('the sheet says what a feed is and opens the page that says where to find one', async () => {
+  await withApp(home(), async (page, app) => {
+    // The platform's browser cannot be driven from a test: the main
+    // process's own opener is replaced, so the app's handler still runs
+    // (issue 555; the Help menu's test does the same).
+    await app.evaluate(({ shell }) => {
+      const opened: string[] = []
+      ;(globalThis as unknown as { opened: string[] }).opened = opened
+      shell.openExternal = (async (url: string) => {
+        opened.push(url)
+      }) as never
+    })
+    const dialog = await openSheet(page, 'feed')
+    const hint = dialog.getByText(/^A feed is a transit agency.s timetable/)
+    await expect(hint).toContainText('a format called GTFS')
+    await expect(dialog.getByRole('group', { name: 'Start from' })).toHaveAccessibleDescription(
+      (await hint.textContent()) ?? '',
+    )
+    await dialog.getByRole('button', { name: 'Where to find a feed' }).click()
+    await expect
+      .poll(() => app.evaluate(() => (globalThis as unknown as { opened: string[] }).opened))
+      .toEqual([HELP_PAGES.feeds])
+    // The sheet is as it was.
+    await expect(dialog).toBeVisible()
   })
 })

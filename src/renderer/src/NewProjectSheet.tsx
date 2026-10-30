@@ -49,6 +49,13 @@ import { useSnapshot } from './useSnapshot'
 // source, and what makes that safe is the guard in the main process that
 // takes only a path its own dialog answered, once - unchanged here.
 
+/** What a feed and GTFS are, once, beside the choice of where a feed comes from (issue 555). */
+export const SOURCE_HINT =
+  'A feed is a transit agency’s timetable, published in a format called GTFS, usually as a zip on its open-data page.'
+
+/** The button beside it, which opens the Help page "Finding a feed". */
+export const FIND_A_FEED = 'Where to find a feed'
+
 /** Where a new project's feed comes from. */
 export type Source = 'feed' | 'zip' | 'address'
 
@@ -114,7 +121,7 @@ export function arrivalName(typed: boolean, held: boolean, feedName: string | nu
   return feedName
 }
 
-type Field = 'name' | 'feed' | 'file' | 'url'
+type Field = 'name' | 'feed' | 'file' | 'url' | 'source-hint'
 type Messages = Partial<Record<Field, string>>
 
 // A create's refusal about the feed opens with the word ("feed key must
@@ -502,8 +509,26 @@ export default function NewProjectSheet({
           A project draws one feed: a sample city, or a GTFS feed of your own from a file or an
           address.
         </p>
-        <fieldset className="field source-choice" disabled={adding || busy}>
+        <fieldset
+          className="field source-choice"
+          disabled={adding || busy}
+          aria-describedby={field('source-hint')}
+        >
           <legend className="field-label">Start from</legend>
+          {/* Said where the choice is made, because "feed" and "GTFS" are the
+              format's words and not a stranger's (issue 555). The page is
+              the project's own, opened in the person's browser by name. */}
+          <div className="source-help">
+            <p id={field('source-hint')} className="hint">
+              {SOURCE_HINT}
+            </p>
+            <Button
+              variant="ghost"
+              onClick={() => void window.api.help.open('feeds').catch(() => undefined)}
+            >
+              {FIND_A_FEED}
+            </Button>
+          </div>
           {(
             [
               ['feed', 'A sample city, or a feed you added'],
