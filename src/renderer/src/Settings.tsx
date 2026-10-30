@@ -53,6 +53,19 @@ interface Props {
   /** A view the main process answered with: the screen never edits its own. */
   onChanged: (next: SettingsView) => void
   engine: EngineState | null
+  /**
+   * A section to arrive at, from the app's menu (issue 554): About opens the
+   * versions, and Copy diagnostics opens the logs and diagnostics and copies
+   * there, so its result is said under its own button. `at` tells one ask
+   * from the next, so a second ask while the screen is open is answered too.
+   */
+  section?: SettingsSection
+}
+
+/** Where the menu sends a person in Settings, and the ask's own number. */
+export interface SettingsSection {
+  name: 'versions' | 'diagnostics'
+  at: number
 }
 
 /** Where a folder came from, in the screen's words. */
@@ -164,8 +177,12 @@ function reported(value: string | null, absent: string): string {
   return value === null || value === '' ? absent : value
 }
 
-export default function Settings({ settings, onChanged, engine }: Props): JSX.Element {
+export default function Settings({ settings, onChanged, engine, section }: Props): JSX.Element {
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const sectionHeadings = useRef<Record<SettingsSection['name'], HTMLHeadingElement | null>>({
+    versions: null,
+    diagnostics: null,
+  })
   const [size, setSize] = useState<FolderSize | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -230,6 +247,34 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
   useEffect(() => {
     headingRef.current?.focus()
   }, [])
+
+  // "Copy diagnostics", from its button or from the menu.
+  const copy = useCallback((): void => {
+    // A second press while the first is gathering would copy twice.
+    if (copying.current) return
+    copying.current = true
+    setCopied(null)
+    void copyDiagnostics({
+      listProjects: () => window.api.projects.list(),
+      reports: reportsInSession,
+      copy: (reports) => window.api.settings.copyDiagnostics(reports),
+    })
+      .then(setCopied)
+      .finally(() => {
+        copying.current = false
+      })
+  }, [])
+
+  // Arriving from the menu: the section's heading takes focus, which brings
+  // it into view, after the screen's own heading has (the effect above runs
+  // first); Copy diagnostics then copies, as its button does.
+  const sectionName = section?.name
+  const sectionAt = section?.at
+  useEffect(() => {
+    if (sectionName === undefined || sectionAt === undefined) return
+    sectionHeadings.current[sectionName]?.focus()
+    if (sectionName === 'diagnostics') copy()
+  }, [sectionName, sectionAt, copy])
 
   // The folder's size as the main process measures it; null, said as
   // "Measuring…", until it answers or where it cannot.
@@ -397,7 +442,15 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
       </section>
 
       <section aria-labelledby="settings-logs">
-        <h2 id="settings-logs">Logs and diagnostics</h2>
+        <h2
+          id="settings-logs"
+          tabIndex={-1}
+          ref={(element) => {
+            sectionHeadings.current.diagnostics = element
+          }}
+        >
+          Logs and diagnostics
+        </h2>
         <div className="toolbar">
           <Button
             onClick={() => {
@@ -417,24 +470,7 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
           it. They stay on this computer.
         </p>
         <div className="toolbar">
-          <Button
-            aria-describedby="diagnostics-description"
-            onClick={() => {
-              // A second press while the first is gathering would copy twice.
-              if (copying.current) return
-              copying.current = true
-              setCopied(null)
-              void copyDiagnostics({
-                listProjects: () => window.api.projects.list(),
-                reports: reportsInSession,
-                copy: (reports) => window.api.settings.copyDiagnostics(reports),
-              })
-                .then(setCopied)
-                .finally(() => {
-                  copying.current = false
-                })
-            }}
-          >
+          <Button aria-describedby="diagnostics-description" onClick={copy}>
             Copy diagnostics
           </Button>
         </div>
@@ -478,7 +514,15 @@ export default function Settings({ settings, onChanged, engine }: Props): JSX.El
       </section>
 
       <section aria-labelledby="settings-versions">
-        <h2 id="settings-versions">Versions</h2>
+        <h2
+          id="settings-versions"
+          tabIndex={-1}
+          ref={(element) => {
+            sectionHeadings.current.versions = element
+          }}
+        >
+          Versions
+        </h2>
         {/* The app's own version is known without the engine, so it is
             said whether or not the engine is running (issue 544). */}
         <dl className="fields">

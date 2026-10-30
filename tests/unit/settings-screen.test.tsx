@@ -85,7 +85,10 @@ describe('the sections that hold the logs and the folders', () => {
   })
 
   it('give each section a heading that is its own region name', () => {
-    const headings = [...html.matchAll(/<h2 id="(settings-[^"]+)">([^<]+)<\/h2>/g)].map((m) => m[2])
+    // A heading the menu sends focus to carries `tabindex` after its id.
+    const headings = [...html.matchAll(/<h2 id="(settings-[^"]+)"[^>]*>([^<]+)<\/h2>/g)].map(
+      (m) => m[2],
+    )
     expect(headings).toEqual([
       'Folders',
       'Logs and diagnostics',
@@ -95,7 +98,7 @@ describe('the sections that hold the logs and the folders', () => {
       'Licences',
       'Engine data',
     ])
-    for (const [, id] of html.matchAll(/<h2 id="(settings-[^"]+)">/g))
+    for (const [, id] of html.matchAll(/<h2 id="(settings-[^"]+)"/g))
       expect(html, id).toContain(`aria-labelledby="${id}"`)
   })
 })

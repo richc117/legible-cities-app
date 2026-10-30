@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/Settings.tsx",
+    "find": "    if (sectionName === 'diagnostics') copy()\n",
+    "replace": "",
+    "test": "tests/unit/settings-menu.test.tsx",
+    "title": "takes Copy diagnostics to its section",
+    "why": "The copy on arrival removed: the menu's Copy diagnostics would open the section and copy nothing."
+  }
+]
