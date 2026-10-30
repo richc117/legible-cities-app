@@ -230,6 +230,26 @@ describe('the budget', () => {
     expect(text).not.toContain('main line 0 ')
   })
 
+  it('reads correctly for a log of one line, and for one of none', () => {
+    const big = (name: string): string => `${name} `.padEnd(30_000, 'r')
+    const one = composeDiagnostics(
+      input({ reports: [big('report 0'), big('report 1')], mainLog: 'only line' }),
+    )
+    expect(one.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(one).toContain(
+      'main.log keeps its last line, engine.log 1 line, and 1 of 2 map reports. The whole logs',
+    )
+    expect(one).toContain('## main.log, the last line\n\nonly line')
+    // One line bigger than the whole budget goes, after the one report.
+    const none = composeDiagnostics(
+      input({ mainLog: 'm'.repeat(60_000), engineLog: 'e'.repeat(60_000) }),
+    )
+    expect(none.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(none).toContain('main.log keeps no lines, engine.log no lines, and 0 of 1 map reports.')
+    expect(none).toContain('## main.log, no lines kept\n\nNo lines kept.')
+    expect(none).not.toMatch(/\b1 lines\b|\b0 lines\b/)
+  })
+
   it('keeps the five head sections byte for byte', () => {
     const head = (text: string): string =>
       text.slice(text.indexOf('## App'), text.indexOf('## main.log'))

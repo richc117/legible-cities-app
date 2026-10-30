@@ -98,9 +98,21 @@ function logTitle(name: string, kept: number, trimmed: boolean): string {
 
 /** The sentence under the heading of a copy that was cut to the budget. */
 function trimLine(kept: Kept, reports: number): string {
+  const mainKept =
+    kept.main.length === 0
+      ? 'no lines'
+      : kept.main.length === 1
+        ? 'its last line'
+        : `its last ${kept.main.length} lines`
+  const engineKept =
+    kept.engine.length === 0
+      ? 'no lines'
+      : kept.engine.length === 1
+        ? '1 line'
+        : `${kept.engine.length}`
   return (
-    `Trimmed to fit a GitHub issue: main.log keeps its last ${kept.main.length} lines, ` +
-    `engine.log ${kept.engine.length}, and ${reports - kept.reportsDropped} of ${reports} map reports. ` +
+    `Trimmed to fit a GitHub issue: main.log keeps ${mainKept}, ` +
+    `engine.log ${engineKept}, and ${reports - kept.reportsDropped} of ${reports} map reports. ` +
     'The whole logs are in the logs folder (Settings › Open logs folder); attach them to the report.'
   )
 }
