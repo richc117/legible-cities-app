@@ -76,6 +76,10 @@ links are inline, with no images and no reference-style links.
   GitHub issue, trimming the oldest log lines first and saying what it
   left out; the whole logs stay in the logs folder, and the bug form has a
   place to attach them.
+- The cells say what they do in plain words: a layout's stages are read,
+  simplify, sort, straighten, trips, draw, animate and save; the
+  diagnostics say what the layout had to compromise on; and each line's
+  colour is written once.
 
 ### Fixed
 
@@ -87,6 +91,8 @@ links are inline, with no images and no reference-style links.
 - A screen reader announces a status sentence again when it repeats.
 - A heading the app moves focus to, such as the Library's, draws its focus
   ring round its words, not across the whole column like a text field.
+- Opening a line's colour panel near the foot of the window no longer
+  scrolls its colour chip out of sight.
 
 ### Security
 
