@@ -69,6 +69,10 @@ on:
       - 'assets/brand/**'
       # How the app finds its components, and the packager's own version.
       - 'src/main/**'
+      # What the app reports as its version, built in by the config from
+      # release.mjs's releaseLabel (issue 558).
+      - 'electron.vite.config.ts'
+      - 'scripts/release.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/vendor-python.sh'

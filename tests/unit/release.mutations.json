@@ -134,5 +134,21 @@
     "test": "tests/unit/release.test.ts",
     "title": "say a release candidate is one",
     "why": "A candidate's notes say the app reports 1.0.0 when it reports 1.0.0-rc.N, so a tester takes the right version for a wrong one."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "    process.stderr.write(\n      `git could not name",
+    "replace": "    void (\n      `git could not name",
+    "test": "tests/unit/release.test.ts",
+    "title": "says why when git cannot name the build's commit, and goes on without one",
+    "why": "A build that loses its commit reports the bare version and says nothing of why, so no one looks at the git that failed."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      - 'electron.vite.config.ts'\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "builds a branch that changes what the app reports as its version",
+    "why": "A branch that changes only how the version label is built packages no installer, so nothing shows what the change makes the app report."
   }
 ]

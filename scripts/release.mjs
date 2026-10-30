@@ -175,8 +175,8 @@ const LOOKUP_TIMEOUT_MS = 10 * 1000
  * folder holding `.git`, a worktree's file included), else null. The
  * folder is checked first so that an unpacked source archive sitting
  * inside some other repository does not take that repository's commit;
- * git missing, or failing, is null too, and the build reports the bare
- * version.
+ * git missing, or failing, is null too, with git's standard error printed,
+ * and the build reports the bare version.
  *
  * @param {Record<string, string | undefined>} env
  * @param {string} cwd
@@ -186,7 +186,15 @@ export function buildCommit(env, cwd) {
   if (typeof env.GITHUB_SHA === 'string' && env.GITHUB_SHA !== '') return env.GITHUB_SHA
   if (!existsSync(join(cwd, '.git'))) return null
   const result = git(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], LOOKUP_TIMEOUT_MS)
-  if (result.error || result.status !== 0) return null
+  if (result.error || result.status !== 0) {
+    // The build goes on with the bare version; the reason is printed, as
+    // every child's standard error here is on failure.
+    const said = result.error ? result.error.message : (result.stderr ?? '').trim()
+    process.stderr.write(
+      `git could not name the commit built, so the app reports the bare version: ${said || `git exited ${result.status}`}\n`,
+    )
+    return null
+  }
   const commit = result.stdout.trim()
   return COMMIT.test(commit) ? commit : null
 }

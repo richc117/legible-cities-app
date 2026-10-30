@@ -62,5 +62,21 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "answers null without a tag, for a tag this clone lacks, and without git",
     "why": "A tag the clone does not have read as one without the feature, so the App row is judged by the older rule instead of recorded as not checked."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (where.status === 1) return false\n",
+    "replace": "  if (where.status === 1) return null\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "answers false for a tag whose tree has no such file, and asks for no text",
+    "why": "git's \"no such path\" read as git failing: a tag from before the file is recorded as not checked instead of judged by the older rule."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (file.error || file.status !== 0) return null\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "answers null when reading the file fails or times out, whatever it printed",
+    "why": "A read that failed or timed out taken as the file: the tag is judged as one without the feature, on what git never finished printing."
   }
 ]

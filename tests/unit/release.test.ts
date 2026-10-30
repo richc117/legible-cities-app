@@ -22,7 +22,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const repo = resolve(__dirname, '../..')
 const SCRIPT = join(repo, 'scripts', 'release.mjs')
@@ -495,6 +495,24 @@ describe('the tag, main and the remote, over real repositories', () => {
     mkdirSync(unpacked)
     expect(buildCommit({}, unpacked)).toBeNull()
     expect(buildCommit({}, scratch())).toBeNull()
+  })
+
+  it("says why when git cannot name the build's commit, and goes on without one", async () => {
+    // Mutation: the warning dropped, so a build that reports the bare
+    // version says nothing of why it lost its commit.
+    const { buildCommit } = await load()
+    const broken = scratch()
+    mkdirSync(join(broken, '.git'))
+    const warn = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      expect(buildCommit({}, broken)).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(
+        /^git could not name the commit built, so the app reports the bare version: .*not a git repository/,
+      )
+    } finally {
+      warn.mockRestore()
+    }
   })
 
   it('peels a tag to its commit, and says when there is no such tag', async () => {
@@ -1308,6 +1326,16 @@ describe('build.yml', () => {
 
   it('runs on a v tag and still on branches', () => {
     expect(workflow).toMatch(/\n {2}push:\n {4}branches: \['\*\*'\]\n {4}tags: \['v\*'\]\n/)
+  })
+
+  it('builds a branch that changes what the app reports as its version', () => {
+    // Mutation: the config left out of the path filter, so a branch that
+    // changes only how the label is built packages no installer to show it.
+    const on = workflow.slice(workflow.indexOf('\non:\n'), workflow.indexOf('\npermissions:\n'))
+    const paths = [...on.matchAll(/^ {6}- '([^']+)'$/gm)].map((match) => match[1])
+    expect(paths).toEqual(
+      expect.arrayContaining(['electron.vite.config.ts', 'scripts/release.mjs']),
+    )
   })
 
   it('reads by default, and gives contents: write to the release job alone, on a tag', () => {
