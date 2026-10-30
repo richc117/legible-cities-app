@@ -89,6 +89,13 @@ const NO_LAYOUT_FOR_A_DAY = 'Lay the project out before choosing a day.'
 export const LAYOUT_KEPT =
   'The layout was already made when you cancelled; the next run draws from it.'
 
+/**
+ * The forced run's name: the job's label, the warning's button, and cell
+ * 02's button with an ellipsis after it (issue 559). One string, so the
+ * job a person watches is named as the command they pressed.
+ */
+export const LAY_OUT_FROM_SCRATCH = 'Lay out from scratch'
+
 export interface RunSnapshot {
   state: RunState
   stages: Stage[]
@@ -684,7 +691,7 @@ export class LayoutRun {
 
   /** `start` once a second run has been refused: the job, the engine's refusal, the record read. */
   #startLayout(handed: ProjectRecord, engine: EngineState | null, force: boolean): void {
-    this.#open('layout', force ? 'Re-layout' : 'Layout run', handed.id)
+    this.#open('layout', force ? LAY_OUT_FROM_SCRATCH : 'Layout run', handed.id)
     if (!this.#begin(engine, kindFlags({ kind: 'layout', forced: force }))) return
     // Only a layout can download its feed; a redraw works from the stored
     // layout, whose feed is on disk. No writer moves the feed.

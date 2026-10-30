@@ -255,10 +255,10 @@ test('a re-layout draws its new build while the stored set’s drawings stay as 
     const stored = readRecord(engineHome)
 
     const relayout = async (): Promise<void> => {
-      await page.getByRole('button', { name: 'Re-layout', exact: true }).click()
+      await page.getByRole('button', { name: 'Lay out from scratch…', exact: true }).click()
       await page
         .getByRole('dialog', { name: 'Lay this project out from scratch?' })
-        .getByRole('button', { name: 'Re-layout' })
+        .getByRole('button', { name: 'Lay out from scratch' })
         .click()
     }
 

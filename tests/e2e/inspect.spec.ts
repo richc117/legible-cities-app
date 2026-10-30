@@ -135,7 +135,7 @@ test('shows what is in the feed, sorts the routes, and marks what the mode keeps
     await expect(inspect.getByRole('combobox', { name: 'Operator' })).toHaveCount(0)
 
     // The layout is asked with the choice.
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
       .split('\n')
@@ -183,7 +183,7 @@ test('a feed with several operators offers the choice, filters the routes, and s
     // since issue 407 reads the store's answer in the beat between it
     // arriving and the screen rendering it too.
     await expect(page.getByRole('definition').filter({ hasText: /^every operator$/ })).toBeVisible()
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const asked = readFileSync(join(engineHome, 'fake-engine.received'), 'utf8')
       .split('\n')
@@ -261,7 +261,7 @@ test('a refused inspection says so and leaves the rest of the screen working', a
     await openProjectOn(page, 'LA Metro Rail', 'Los Angeles')
     const inspect = cell(page, 'data')
     await expect(inspect.getByRole('alert')).toHaveText('The feed has neither calendar table.')
-    await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /^lay out( again)?$/i })).toBeEnabled()
   })
 })
 
@@ -339,7 +339,7 @@ test('a change of mode marks 02 to 06 stale, starts nothing, and leaves the map 
     await expect(
       panel(page, 'Theme').getByRole('radio', { name: 'Sepia', exact: true }),
     ).toBeEnabled()
-    await expect(page.getByRole('button', { name: /lay out/i })).toBeEnabled()
+    await expect(page.getByRole('button', { name: /^lay out( again)?$/i })).toBeEnabled()
   })
 })
 

@@ -503,7 +503,7 @@ test('refuses a project an export folder inside or around the engine folder that
       await newProject(page, 'Los Angeles')
       await page.getByRole('button', { name: 'Open Los Angeles' }).click()
       await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
-      await page.getByRole('button', { name: /lay out/i }).click()
+      await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
       await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
       // An engine folder is chosen, and waits.
@@ -576,7 +576,7 @@ test("the reset's reason while runs are going is its description, and follows th
       await expect(entry).toBeVisible()
       await entry.click()
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(name)
-      await page.getByRole('button', { name: /lay out/i }).click()
+      await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
       await page.getByRole('button', { name: 'Back to Library' }).click()
     }
     const toggle = page.getByRole('button', { name: /^Jobs, / })

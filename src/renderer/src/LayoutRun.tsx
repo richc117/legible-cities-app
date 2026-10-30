@@ -9,7 +9,13 @@ import type { EngineState } from '../../shared/engine'
 import { shortLayoutId } from '../../shared/layout'
 import { drawnDate } from '../../shared/project/helpers'
 import { type ProjectRecord } from '../../shared/project/types'
-import { downloading, kindOfRun, type LayoutRun as Run, type RunKindOf } from './engine/layoutRun'
+import {
+  downloading,
+  kindOfRun,
+  LAY_OUT_FROM_SCRATCH,
+  type LayoutRun as Run,
+  type RunKindOf,
+} from './engine/layoutRun'
 import { NOT_LAID_OUT, WAITING_FOR_FEED } from './DownloadLine'
 import { processStoppedSentence, type FrameFailure } from './notebook/olderPage'
 import { EVERY_OPERATOR } from './record'
@@ -98,6 +104,9 @@ export default function LayoutRun({
   const begin = (): void => run.start(project, engine)
   // The re-layout, behind its warning: every stage runs again, and the
   // engine keeps the stored layout until the new one is whole (ADR-033).
+  // Its button is "Lay out from scratch…", the ellipsis saying a dialog
+  // follows, and the dialog's button repeats the command without it (issue
+  // 559): "Re-layout" beside "Lay out again" read as two names for one act.
   const relayout = async (): Promise<void> => {
     setConfirming(false)
     run.start(project, engine, { force: true })
@@ -105,7 +114,7 @@ export default function LayoutRun({
   const relayoutButton = project.layout !== null && (
     <Button onClick={() => setConfirming(true)} disabled={disabled}>
       <Icon name="route" />
-      Re-layout
+      {`${LAY_OUT_FROM_SCRATCH}…`}
     </Button>
   )
   const warning = (
@@ -113,11 +122,11 @@ export default function LayoutRun({
       open={confirming}
       title="Lay this project out from scratch?"
       description="The layout engine is heuristic: a new layout may place stations differently. The stored layout stays until the new one is whole, and every project on this feed with the same settings draws from it, so their maps change too. Nothing changes if this is cancelled."
-      confirmLabel="Re-layout"
+      confirmLabel={LAY_OUT_FROM_SCRATCH}
       variant="primary"
       onConfirm={relayout}
       onCancel={() => setConfirming(false)}
-      busyLabel="Starting the re-layout…"
+      busyLabel="Starting the layout from scratch…"
     />
   )
 

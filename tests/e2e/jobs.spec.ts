@@ -108,7 +108,7 @@ const onlyProjectId = (h: Home): string => {
 /** Lay the open project out and give it the stand-in page that animates, for an export. */
 async function layOutForExport(page: Page, h: Home): Promise<void> {
   const id = onlyProjectId(h)
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))
 }
@@ -193,7 +193,7 @@ test('jobs in two projects are listed together, running ones first', async () =>
 
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await openNewProject(page, 'Bart')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     // The two are running at once, not one after the other.
     await expect(toggle(page)).toHaveAccessibleName('Jobs, 2 running')
     await openInspector(page)
@@ -220,7 +220,7 @@ test('an eight-stage job fits the inspector: one left edge, no sideways scroll, 
   const h = home({ octi_child: true, octi_ms: 60_000 })
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await openInspector(page)
 
     const job = jobNamed(page, 'Los Angeles Layout run')
@@ -299,7 +299,7 @@ test('Cancel in the inspector during octi cancels the run and ends the layout to
   const h = home({ octi_child: true, octi_ms: 60_000 })
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await openInspector(page)
 
     const job = jobNamed(page, 'Los Angeles Layout run')
@@ -342,7 +342,7 @@ test("a mode the feed's route types do not carry fails with the engine's sentenc
   const h = home({ empty_modes: ['all'] })
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/matched no routes/).first()).toBeVisible({ timeout: 20_000 })
     await openInspector(page)
 
@@ -374,7 +374,7 @@ test('Copy log puts the job on the clipboard with the feed key and the home fold
   })
   await withApp(h, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/matched no routes/).first()).toBeVisible({ timeout: 20_000 })
     await openInspector(page)
 
@@ -520,11 +520,11 @@ test('cancelling the newer of two running jobs leaves focus on its heading as it
   const h = home({ octi_child: true, octi_ms: 60_000 })
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(toggle(page)).toHaveAccessibleName('Jobs, 1 running')
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await openNewProject(page, 'Bart')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(toggle(page)).toHaveAccessibleName('Jobs, 2 running')
     await openInspector(page)
 
@@ -548,7 +548,7 @@ test('focus a person moved away from a Cancel is not taken back when the job end
   const h = home({ octi_child: true, octi_ms: 60_000 })
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await openInspector(page)
     const job = jobNamed(page, 'Los Angeles Layout run')
     await expect(job.getByRole('img')).toHaveAccessibleName('Running octilinear.', {
@@ -582,7 +582,7 @@ test("a renamed project's jobs say its new name, and a deleted project's jobs le
   const h = home()
   await withApp(h, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     // The first end reads the names, so the name is known before the rename.
     await expect(announcement(page)).toHaveText('Los Angeles: Layout run, finished.', {
       timeout: 30_000,

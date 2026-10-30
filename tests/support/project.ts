@@ -337,7 +337,7 @@ export async function openingLanded(page: Page, name: string, since: Opening[]):
 
 /** Lay out the open project and wait for the run to finish. */
 export async function layOut(page: Page): Promise<void> {
-  await control(page, /lay out/i).click()
+  await control(page, /^lay out( again)?$/i).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 }
 

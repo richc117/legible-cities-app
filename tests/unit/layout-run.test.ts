@@ -2169,7 +2169,7 @@ describe('the run as a job', () => {
     const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15' })
     run.start(record, READY, { force: true })
     await tick()
-    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Re-layout' })
+    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Lay out from scratch' })
     run.cancel()
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()

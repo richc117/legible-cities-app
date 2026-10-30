@@ -289,7 +289,7 @@ test('a refused stage says so, and the rest of the screen works', async () => {
     await laidOutProject(page)
     const view = panel(page, 'Where the routes run')
     await expect(view.getByRole('alert')).toHaveText('The stand-in draws no stage today.')
-    await expect(page.getByRole('button', { name: 'Re-layout' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Lay out from scratch…' })).toBeEnabled()
   })
 })
 

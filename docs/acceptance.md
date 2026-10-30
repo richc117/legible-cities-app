@@ -268,7 +268,8 @@ run.
   station is filled as the engine finishes it, and the sentence beside the
   line is the engine's for the last stage that finished. **Cancel** is
   beside it while it runs.
-- It ends with "Laid out.", **Lay out again** and **Re-layout**. The map
+- It ends with "Laid out.", **Lay out again** and **Lay out from
+  scratch…**. The map
   appears after cell 02, its trains moving, and scrolls with the cells. The
   sentence under the heading becomes
   "The map is drawn from every cell." and **Run all** is gone, since
@@ -366,7 +367,7 @@ tuning** again to close it. Open **Engine log** and press **Copy
 log**. Read **What the build had to fudge**, press the
 information button beside one measure (a screen reader names it
 "What `<measure>` means"), press **Escape**, and press **Copy as text**.
-Press **Re-layout**, then **Cancel** in the dialog.
+Press **Lay out from scratch…**, then **Cancel** in the dialog.
 
 **See.**
 - The run's line still says "Laid out." beside **Lay out again** (the
@@ -374,7 +375,8 @@ Press **Re-layout**, then **Cancel** in the dialog.
 - The cell's footer lists **Layout** (`<8 characters>`), **Made** (`<date
   and time>`), **Built with** and **Engine now** (the engine's version, the
   same as the status line). Write the Layout and the Made down for step 17.
-- **Layout tuning**, under **Lay out again** and **Re-layout**, is closed
+- **Layout tuning**, under **Lay out again** and **Lay out from
+  scratch…**, is closed
   until opened, its row reading "Layout tuning" and "LOOM’s defaults"
   (issue 385). Open, it says "LOOM’s own settings for laying this project
   out. A tuned layout is a layout of its own: the map keeps the layout it
@@ -412,9 +414,9 @@ Press **Re-layout**, then **Cancel** in the dialog.
   drawing the map for `<day>`", and an explanation that appears on the
   press and goes on **Escape**. **Copy as text** says "The figures and the
   caveats are on the clipboard."
-- **Re-layout** opens a dialog titled "Lay this project out from
-  scratch?", with **Cancel** focused; **Cancel** closes it and starts
-  nothing.
+- **Lay out from scratch…** opens a dialog titled "Lay this project out
+  from scratch?", its button **Lay out from scratch**, with **Cancel**
+  focused; **Cancel** closes it and starts nothing.
 
 Result: ____
 

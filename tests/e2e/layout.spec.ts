@@ -129,7 +129,7 @@ test('lays a project out, reports every stage, and records what it was drawn fro
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await expect(page.getByRole('button', { name: /lay out/i })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^lay out( again)?$/i })).toBeVisible()
     const before = readRecord(engineHome)
     expect(before.layout).toBeNull()
     expect(before.date).toBeNull()
@@ -149,7 +149,7 @@ test('lays a project out, reports every stage, and records what it was drawn fro
       'every station waiting',
     ).toEqual(STAGE_WORDS.map(() => 'mark mark-pending'))
 
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     const run = cell(page, 'process')
     await expect(run).toBeVisible()
     // Every stage the engine reports is on the line, in the words a person
@@ -182,7 +182,7 @@ test('shows no path on the screen, whatever the engine says', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     // The engine's last progress message is the folder it wrote into. The
     // dates in the record carry slashes, so only the run's own region is read.
@@ -230,7 +230,7 @@ test("shows what the build had to fudge, in the engine's own words and figures",
     // Nothing to say about a build that has not happened.
     await expect(fudge).toHaveCount(0)
 
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await expect(fudge).toBeVisible()
 
@@ -291,7 +291,7 @@ test('a clean network says there are no caveats and a score of 0', async () => {
   })
   await withApp(engineHome, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const fudge = panel(page, 'What the build had to fudge')
     await expect(fudge).toContainText('No caveats')
@@ -317,7 +317,7 @@ test('a run that did not finish leaves no figures on the screen', async () => {
   const engineHome = home({ ...FUDGED, progress_delay_ms: 400 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
     // Cell 02's sentence: cell 01's stage view says the run was cancelled
     // too once it has drawn a stage (issue 382).
@@ -333,7 +333,7 @@ test('a cancelled run writes nothing and says so', async () => {
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
     const before = JSON.stringify(readRecord(engineHome))
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await page.getByRole('button', { name: /cancel/i }).click()
     await expect(cell(page, 'process').getByText(/was cancelled/i)).toBeVisible({
       timeout: 20_000,
@@ -358,8 +358,8 @@ test('a cancelled run writes nothing and says so', async () => {
       'no station was left running or failed',
     ).toEqual([])
     // A cancelled run has to be repeatable, or the project is stuck.
-    await expect(page.getByRole('button', { name: /lay out/i })).toBeVisible()
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await expect(page.getByRole('button', { name: /^lay out( again)?$/i })).toBeVisible()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   })
 })
@@ -371,7 +371,7 @@ test('a refused run shows the engine sentence and writes nothing', async () => {
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
     const before = JSON.stringify(readRecord(engineHome))
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/the stand-in draws nothing/)).toBeVisible({ timeout: 20_000 })
     expect(JSON.stringify(readRecord(engineHome))).toBe(before)
   })
@@ -397,7 +397,7 @@ test('quitting during a run leaves no process and an unchanged record', async ()
   })
   await openNewProject(page, 'Los Angeles')
   const before = JSON.stringify(readRecord(engineHome))
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(cell(page, 'process')).toBeVisible()
 
   // Quit with the run still going.
@@ -414,12 +414,12 @@ test('a re-layout runs every stage again behind its warning, and cancelling the 
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = readRecord(engineHome)
 
     // The warning first, and its cancel leaves everything as it was.
-    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page.getByRole('button', { name: 'Lay out from scratch…' }).click()
     const dialog = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText(/may place stations differently/)
@@ -427,10 +427,10 @@ test('a re-layout runs every stage again behind its warning, and cancelling the 
     await expect(dialog).toBeHidden()
     expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
 
-    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page.getByRole('button', { name: 'Lay out from scratch…' }).click()
     await page
       .getByRole('dialog', { name: 'Lay this project out from scratch?' })
-      .getByRole('button', { name: 'Re-layout' })
+      .getByRole('button', { name: 'Lay out from scratch' })
       .click()
     const run = cell(page, 'process')
     await expect(run).toBeVisible()
@@ -451,18 +451,18 @@ test('a cancelled re-layout leaves the project as it was', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = readRecord(engineHome)
-    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page.getByRole('button', { name: 'Lay out from scratch…' }).click()
     await page
       .getByRole('dialog', { name: 'Lay this project out from scratch?' })
-      .getByRole('button', { name: 'Re-layout' })
+      .getByRole('button', { name: 'Lay out from scratch' })
       .click()
     await page.getByRole('button', { name: /cancel/i }).click()
     await expect(cell(page, 'process').getByText(/was cancelled/i)).toBeVisible()
     expect(JSON.stringify(readRecord(engineHome))).toBe(JSON.stringify(before))
-    await expect(page.getByRole('button', { name: 'Re-layout' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Lay out from scratch…' })).toBeVisible()
   })
 })
 
@@ -470,11 +470,11 @@ test('two projects on one feed record the same layout', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'One')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: /back to library/i }).click()
     await openNewProject(page, 'Two')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     const layouts = readdirSync(join(engineHome, 'projects')).map(
@@ -504,7 +504,7 @@ test("a first layout stores the engine's day and the feed's window, and shows bo
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     const after = readRecord(engineHome)
@@ -542,7 +542,7 @@ test('a feed whose window has ended still gets a day inside it, never today', as
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Mexico City')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     expect(readRecord(engineHome).date).toBe('2024-04-02')
     const control = page
@@ -556,7 +556,7 @@ test('a chosen day is drawn from the stored layout alone, and written when the m
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = readRecord(engineHome)
     expect(before.date).toBe('2026-06-16')
@@ -601,7 +601,7 @@ test('a day picked a moment before Lay out again is the day that run draws and r
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     expect(readRecord(engineHome).date).toBe('2026-06-16')
 
@@ -640,7 +640,7 @@ test('a day outside the window cannot be chosen, and nothing is built', async ()
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = JSON.stringify(readRecord(engineHome))
 
@@ -671,7 +671,7 @@ test('a cancelled rebuild keeps the chosen day, and leaves the map where it was'
   const engineHome = home({ map_draws: true, progress_delay_ms: 400 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = readRecord(engineHome)
     const section = cell(page, 'frame')
@@ -722,7 +722,7 @@ test('a rebuild whose cancel came too late records the day it drew and loads the
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const before = readRecord(engineHome)
     expect((before.drawn as { date: string }).date).toBe('2026-06-16')
@@ -769,7 +769,7 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     expect(readRecord(engineHome).date).toBe('2026-06-16')
     // The engine's own day, on cell 03's collapsed row.
@@ -828,7 +828,7 @@ test('Revert puts the day back to the one the map shows, and runs nothing', asyn
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const section = await openCell(page, 'frame')
     const revert = section.getByRole('button', { name: /^Revert/ })
@@ -880,7 +880,7 @@ test('cell 03 offers no frame control it cannot honour, and says why', async () 
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const body = page.getByRole('group', { name: '03 Frame and service day', exact: true })
     await expect(body).toContainText(
@@ -912,7 +912,7 @@ test('reopening a laid-out project runs nothing and shows the same day and windo
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     // The record's count of its writes (spec 037) is set aside, as `opened`
     // is: opening the project is a write, which raises it by one.
@@ -998,7 +998,7 @@ test("a feed without a calendar fails the run with the engine's sentence and wri
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
     const before = JSON.stringify(readRecord(engineHome))
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText('The feed has neither calendar table.')).toBeVisible({
       timeout: 20_000,
     })
@@ -1015,7 +1015,7 @@ test('the busiest-weekday button stays under the keyboard, and a refusal returns
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const section = cell(page, 'frame')
     const control = section.getByLabel('Draw for another day')
@@ -1040,17 +1040,18 @@ test('the busiest-weekday button stays under the keyboard, and a refusal returns
 })
 
 // A layout laid out again from another project (A3-06): two projects on one
-// feed share the set, and the one that did not press Re-layout is told.
+// feed share the set, and the one that did not press Lay out from scratch…
+// is told.
 
 test('a project is told when another re-laid out the layout it draws from', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'One')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: /back to library/i }).click()
     await openNewProject(page, 'Two')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out\.$/)).toBeVisible({ timeout: 30_000 })
     const records = () =>
       Object.fromEntries(
@@ -1079,10 +1080,10 @@ test('a project is told when another re-laid out the layout it draws from', asyn
     )
 
     // Two, still open, re-lays out: the shared set is made again.
-    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page.getByRole('button', { name: 'Lay out from scratch…' }).click()
     await page
       .getByRole('dialog', { name: 'Lay this project out from scratch?' })
-      .getByRole('button', { name: 'Re-layout' })
+      .getByRole('button', { name: 'Lay out from scratch' })
       .click()
     await expect(page.getByText(/^Laid out again from scratch/)).toBeVisible({ timeout: 30_000 })
     const after = records()
@@ -1196,7 +1197,7 @@ test('the engine log is closed under the stages, fills while the run goes, and s
     // Nothing before a run: there is no job to have a log.
     await expect(logToggle(page)).toBeHidden()
 
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     // It arrives closed, and its lines are in the document but hidden, as
     // every disclosure in this app keeps its contents.
     await expect(logToggle(page)).toBeVisible({ timeout: 20_000 })
@@ -1237,7 +1238,7 @@ test('opening the engine log leaves the notebook where it was', async () => {
   })
   await withApp(engineHome, async (page) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     // The map has answered before any of this is measured.
@@ -1374,7 +1375,7 @@ test("cell 02 draws the engine's lines with the keys out, and its Copy log write
   })
   await withApp(engineHome, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await logToggle(page).click()
     // On screen first: the line is redacted before it ever reaches the page
@@ -1450,7 +1451,7 @@ test('the three cells with provenance carry it, the other three carry none, and 
     await expect(group('process').locator('dl')).toHaveCount(0)
     await expect(group('frame').locator('dl')).toHaveCount(0)
 
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const record = readRecord(engineHome)
 
@@ -1732,7 +1733,7 @@ async function projectWithASeam(
   options: StandInPageOptions = {},
 ): Promise<void> {
   await openNewProject(page, 'Los Angeles')
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   standInPage(engineHome, options)
   // Reopened so the frame loads what was just written: the viewer navigates
@@ -2212,7 +2213,7 @@ test('the projects list is newest opened first, and says how far each project ha
         )
 
     await openNewProject(page, 'First')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await expect(page.getByRole('button', { name: 'Open First' })).toContainText(

@@ -246,7 +246,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Re-layout warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Lay out from scratch… warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Layout tuning: a closed disclosure, the grid, seven numeric fields and Reset to LOOM’s defaults (issue 385) | by construction: the toggle a native button in an `h3`, one Tab stop while closed; open, the grid the kit's native select and each number a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus to the section's `h3` as it disables itself; Enter commits a field, asserted in `tuning.spec.ts`, which CI's `e2e` job runs (the spec clicks and fills, and Enter is its only key); Tab reach is swept, open and in both themes, since issue 436 (`notebook-a11y.spec.ts`, "the project with the layout tuning and one line's options open") | by construction: the toggle named by its row, "Layout tuning" and "LOOM’s defaults" or "tuned", over a group named "Layout tuning"; the select named "Grid", each option the engine's word and its gloss; each number named by its label and described by its range and LOOM's own, the five penalties in a fieldset whose legend is "Bend penalties"; a refusal an alert and `aria-invalid` on the field; asserted in `layout-tuning.test.tsx` and `tuning.spec.ts`, the latter run by CI's `e2e` job; swept open | by construction (the app's ring on the toggle, the kit's on the fields); swept open, each ring measured (issue 436) | by construction (the chevron's turn is a transition only where motion is allowed); swept open | by construction (`--text`, `--text-muted` on `--surface`, `.message` and `.message.error` and the kit's field, pairs the contrast test already holds) | by construction, as Night | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
@@ -441,7 +441,7 @@ was thrown to the top of the document with nothing said.
 
 - **D1. The layout run.** "Lay out" gives way to Cancel, Cancel to "Lay out
   again" when the run ends, and a confirmed re-layout closes its warning
-  onto a Re-layout button the run has removed. The region remembers the
+  onto a Lay out from scratch… button the run has removed. The region remembers the
   element that last took focus in it; when that element can no longer hold
   focus (removed, in a closed dialog, disabled, not drawn) and focus has
   nowhere else to be, focus goes to the control that took its place,
@@ -1133,14 +1133,15 @@ a table).
   status reading the engine's sentence for each stage as it finishes. At the
   end listen for "Laid out." (or the rebuild's sentence), the job-end
   announcement, and focus on **Lay out again**, not on nothing.
-- **Re-layout warning.** Press **Re-layout**. Listen for a dialog "Lay this
-  project out from scratch?", its description, and focus on **Cancel**.
-  Press **Cancel** and listen for focus back on **Re-layout**. Open it
-  again and press **Re-layout**: the dialog closes and the run starts with
-  focus on **Cancel** (D1, D8).
-- **Layout tuning.** Under **Lay out again** and **Re-layout**, a level-3
-  heading holding a button "Layout tuning LOOM’s defaults", collapsed (issue
-  385). Press it: listen for expanded, a group "Layout tuning", the sentence
+- **Lay out from scratch… warning.** Press **Lay out from scratch…**.
+  Listen for a dialog "Lay this project out from scratch?", its
+  description, and focus on **Cancel**. Press **Cancel** and listen for
+  focus back on **Lay out from scratch…**. Open it again and press **Lay
+  out from scratch**: the dialog closes and the run starts with focus on
+  **Cancel** (D1, D8).
+- **Layout tuning.** Under **Lay out again** and **Lay out from
+  scratch…**, a level-3 heading holding a button "Layout tuning LOOM’s
+  defaults", collapsed (issue 385). Press it: listen for expanded, a group "Layout tuning", the sentence
   "LOOM’s own settings for laying this project out. A tuned layout is a
   layout of its own: the map keeps the layout it has until you lay out
   again.", a select "Grid" reading "octilinear (eight directions; LOOM’s

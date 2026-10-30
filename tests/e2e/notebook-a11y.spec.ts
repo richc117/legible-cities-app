@@ -62,11 +62,15 @@ test('focus through a layout run and a confirmed re-layout, and left where a per
     await expect(again).toBeFocused({ timeout: 30_000 })
 
     // A re-layout confirmed from the keyboard: the warning closes onto a
-    // Re-layout button the run has removed, and focus goes to the run's
-    // Cancel, then to Lay out again.
-    await pressWithKeyboard(page.getByRole('button', { name: 'Re-layout', exact: true }))
+    // Lay out from scratch… button the run has removed, and focus goes to
+    // the run's Cancel, then to Lay out again.
+    await pressWithKeyboard(
+      page.getByRole('button', { name: 'Lay out from scratch…', exact: true }),
+    )
     const warning = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
-    await pressWithKeyboard(warning.getByRole('button', { name: 'Re-layout', exact: true }))
+    await pressWithKeyboard(
+      warning.getByRole('button', { name: 'Lay out from scratch', exact: true }),
+    )
     await expect(warning).toBeHidden()
     await expect(cancel).toBeFocused()
     await expect(again).toBeFocused({ timeout: 30_000 })
@@ -342,7 +346,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await page.getByRole('button', { name: 'Cancel', exact: true }).click()
 
     // The re-layout warning and the delete confirmation.
-    await page.getByRole('button', { name: 'Re-layout' }).click()
+    await page.getByRole('button', { name: 'Lay out from scratch…' }).click()
     const relayout = page.getByRole('dialog', { name: 'Lay this project out from scratch?' })
     await sweep(page, 'the re-layout warning', relayout)
     // This warning is written inside cell 02, so while it is open the cell

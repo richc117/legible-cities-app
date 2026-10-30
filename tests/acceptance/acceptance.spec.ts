@@ -1164,7 +1164,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       await log.soft('the two buttons', async () => {
         await expect(window.getByRole('button', { name: 'Lay out again' })).toBeVisible()
-        await expect(window.getByRole('button', { name: 'Re-layout' })).toBeVisible()
+        await expect(window.getByRole('button', { name: 'Lay out from scratch…' })).toBeVisible()
       })
       const said = (await saidSoFar(window)).slice(mark)
       await log.soft('"02 Process is running." while it ran', () =>
@@ -1629,8 +1629,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ).toBeVisible()
       })
 
-      await log.soft('Re-layout asks first, and Cancel starts nothing', async () => {
-        await window.getByRole('button', { name: 'Re-layout' }).click()
+      await log.soft('Lay out from scratch… asks first, and Cancel starts nothing', async () => {
+        await window.getByRole('button', { name: 'Lay out from scratch…' }).click()
         const dialog = window.getByRole('dialog', { name: 'Lay this project out from scratch?' })
         await expect(dialog).toBeVisible()
         await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused()
