@@ -389,7 +389,10 @@ function check(
       temps.removed.push(dir)
     },
     now: () => (clock += 7),
-    timeoutMs: 50,
+    // A deadline no healthy fake comes near, so a loaded machine cannot turn
+    // a pass into a timeout (issue 635). A test that hangs a child on purpose
+    // gives its own short one.
+    timeoutMs: 10_000,
     log: {
       info: (m) => lines.push(`info ${m}`),
       warn: (m) => lines.push(`warn ${m}`),
@@ -544,7 +547,16 @@ describe('FirstRunCheck', () => {
       detail: 'gtfs2graph could not be started (EACCES).',
     })
 
-    const hung = check({ scripts: { gtfs2graph: { hang: true } } })
+    // Only the hung child meets the short deadline: ffmpeg is skipped, so its
+    // healthy fakes cannot lose the same race under load (issue 635).
+    const hung = check({
+      scripts: { gtfs2graph: { hang: true } },
+      timeoutMs: 50,
+      targets: {
+        loom: { kind: 'check', path: LOOM, named: false },
+        ffmpeg: { kind: 'skip', reason: 'not this test' },
+      },
+    })
     const result = await hung.subject.run()
     expect(result.loom).toMatchObject({
       kind: 'timeout',
@@ -749,14 +761,22 @@ describe('FirstRunCheck', () => {
 
   it('a quit while the folder is being removed publishes nothing, so the launch check never quits past the summary', async () => {
     let release = (): void => undefined
+    // The quit waits for the removal to begin, not for a clock: a loaded
+    // machine can take longer than any fixed wait to close the three fakes,
+    // and a quit before the removal would leave it held for good (issue 635).
+    let entered = (): void => undefined
+    const removing = new Promise<void>((r) => {
+      entered = r
+    })
     const { subject, seen, lines } = check({
       removeTemp: () =>
         new Promise<void>((r) => {
           release = r
+          entered()
         }),
     })
     const running = subject.run()
-    await new Promise((r) => setTimeout(r, 20))
+    await removing
     subject.abort()
     release()
     await running
