@@ -257,9 +257,11 @@ describe('acceptance.yml verifies the attestation of the Release it downloads', 
 
   it('verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched', () => {
     expect(step.length).toBeGreaterThan(0)
-    expect(step.indexOf('gh attestation verify')).toBeGreaterThan(
-      step.indexOf("field 'Matches SHA256SUMS.txt?' yes"),
-    )
+    // The call itself, not a sentence that names it: the failure note says
+    // "gh attestation verify refused", so the bare words are in the step
+    // whether or not it runs.
+    const call = step.indexOf('if ! gh attestation verify "$subject" \\\n')
+    expect(call).toBeGreaterThan(step.indexOf("field 'Matches SHA256SUMS.txt?' yes"))
     expect(step).toContain('for subject in "$DOWNLOAD/$ASSET" "$DOWNLOAD/SHA256SUMS.txt"; do')
     expect(step).toContain('--repo "$GITHUB_REPOSITORY"')
     expect(step).toContain('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml"')
