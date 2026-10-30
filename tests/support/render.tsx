@@ -74,6 +74,8 @@ export function defaultApi(record: () => ProjectRecord & { readOnly: boolean }):
       onLog: unsubscribed,
     },
     projects: { get: async () => record() },
+    // The app's menu (issue 554): nothing chosen.
+    app: { onMenuCommand: unsubscribed },
   }
 }
 

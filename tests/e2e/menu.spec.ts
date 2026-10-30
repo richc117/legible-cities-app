@@ -108,8 +108,14 @@ test('sets its own menu, with Help and the app’s commands', async () => {
 
 test('takes each command to the screen it names', async () => {
   await withApp(async (page, app) => {
-    const heading = page.getByRole('heading', { level: 1 })
+    // By its element, not its role: behind a modal dialog the screen's
+    // heading is inert, and it is read there too.
+    const heading = page.locator('h1')
     await expect(heading).toHaveText('Library')
+    // The diagnostics carry the engine's own answer.
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/ready/i, {
+      timeout: 20_000,
+    })
 
     await choose(app, 'settings')
     await expect(heading).toHaveText('Settings')
