@@ -10,7 +10,6 @@ import {
   NOT_SENT,
   PAGE_METHODS,
   registerEngineHandlers,
-  RETRY_GUARD_NAME,
   type EngineSource,
 } from '../../src/main/engine-ipc'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
@@ -28,7 +27,11 @@ interface Deferred {
   reject(error: unknown): void
 }
 
-function harness(topFrame = true, guard?: (method: string) => Promise<string | null>) {
+function harness(
+  topFrame = true,
+  guard?: (method: string) => Promise<string | null>,
+  resetting: () => string | null = () => null,
+) {
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -99,6 +102,7 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     NO_ROOTS,
     new ProjectActivity(() => 0),
     { recordGone: async () => false },
+    resetting,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -727,8 +731,7 @@ describe('a request has no deadline of its own (issue 351)', () => {
 })
 
 // The Library's "Try again" (issue 562): the supervisor is asked only from
-// the top frame and only when the guard in front of every request lets it
-// through, which a reset of the engine's data does not.
+// the top frame and never while the engine's data is being reset.
 describe('the retry', () => {
   const RESETTING = 'The engine data is being reset; wait for it to finish.'
 
@@ -747,24 +750,12 @@ describe('the retry', () => {
 
   it('is refused while the engine data is being reset, with the reset’s sentence, and the supervisor is never asked', async () => {
     let resetting: string | null = RESETTING
-    const asked: string[] = []
-    // Composed as src/main/index.ts composes it: the reset on both sides of
-    // the registry, whose rules name no retry.
-    const registry = async (method: string): Promise<string | null> => {
-      asked.push(method)
-      return method === 'feeds.remove' ? 'One project uses this feed.' : null
-    }
-    const h = harness(true, async (method) => resetting ?? (await registry(method)) ?? resetting)
+    const h = harness(true, undefined, () => resetting)
     expect(await h.call(CHANNELS.engineRetry)).toBe(RESETTING)
     expect(h.retries.count, 'nothing started under the reset').toBe(0)
 
     resetting = null
     expect(await h.call(CHANNELS.engineRetry)).toBeNull()
     expect(h.retries.count).toBe(1)
-    expect(asked).toEqual([RETRY_GUARD_NAME])
-  })
-
-  it('puts itself to the guard under a name no page request can carry', () => {
-    expect((PAGE_METHODS as readonly string[]).includes(RETRY_GUARD_NAME)).toBe(false)
   })
 })

@@ -218,6 +218,7 @@ function bridge(
     NO_ROOTS,
     activity,
     over.records ?? { recordGone: async () => false },
+    () => null,
     over.lookupMs,
   )
   const event = {} as IpcMainInvokeEvent

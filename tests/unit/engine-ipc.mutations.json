@@ -1,10 +1,10 @@
 [
   {
     "file": "src/main/engine-ipc.ts",
-    "find": "    const refused = await guard(RETRY_GUARD_NAME, undefined)\n    if (refused !== null) return refused\n",
+    "find": "    const refused = resetting()\n    if (refused !== null) return refused\n",
     "replace": "",
     "test": "tests/unit/engine-ipc.test.ts",
     "title": "is refused while the engine data is being reset",
-    "why": "The retry not put to the guard (issue 562): a Try again pressed during a reset of the engine's data starts an engine that writes into the folders being removed."
+    "why": "The retry not checked against the reset (issue 562): a Try again pressed during a reset of the engine's data starts an engine that writes into the folders being removed."
   }
 ]

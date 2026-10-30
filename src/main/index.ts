@@ -820,6 +820,8 @@ if (!hasLock) {
       activity,
       // A map.build for a project with no record is refused (issue 505).
       store,
+      // And a person's retry while the engine's data is being reset (issue 562).
+      resetInProgress,
     )
     // Electron grants a permission request by default. Nothing this app
     // shows has any business asking for one, and the viewer's page least of

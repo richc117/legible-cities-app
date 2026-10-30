@@ -83,17 +83,6 @@ export interface EngineSource {
   retry(): string | null
 }
 
-/**
- * The name the retry is put to the guard under (issue 562). It is no method
- * of the engine's and is never sent to one: the guard is asked because what
- * stands in front of every request stands in front of a start too. The one
- * composed in `index.ts` asks the reset first and last, and the registry's
- * rules name only `feeds.add` and `feeds.remove`, so a reset under way is
- * what refuses a retry, with the reset's own sentence: an engine started
- * while its home's folders are being removed would write into them.
- */
-export const RETRY_GUARD_NAME = 'app:engine-retry'
-
 export type Send = (channel: string, payload: unknown) => void
 
 /** A refusal before the engine sees a request: null lets it through, a sentence stops it. */
@@ -163,6 +152,14 @@ export function registerEngineHandlers(
    * folder (issue 505). Required, as `activity` is.
    */
   records: RecordLookup,
+  /**
+   * Why nothing may write under the engine's home right now, or null: the
+   * reset's own check (`resetInProgress` in `index.ts`), asked before a
+   * person's retry starts the engine (issue 562), since an engine started
+   * while the home's folders are being removed would write into them.
+   * Required, as `activity` is.
+   */
+  resetting: () => string | null,
   /** How long that lookup may take; a test shortens it. */
   lookupMs: number = FOLDERS_TIMEOUT_MS,
 ): () => void {
@@ -306,7 +303,7 @@ export function registerEngineHandlers(
   // channel here, and nothing crosses inward. Null when the engine is
   // starting again, else the sentence the line under the buttons says.
   handle(CHANNELS.engineRetry, async (): Promise<string | null> => {
-    const refused = await guard(RETRY_GUARD_NAME, undefined)
+    const refused = resetting()
     if (refused !== null) return refused
     const why = engine.retry()
     if (why !== null) log(`refused a retry: ${why}`)
