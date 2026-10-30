@@ -1,0 +1,34 @@
+[
+  {
+    "file": "src/renderer/src/Diagnostics.tsx",
+    "find": "<h3 id=\"diagnostics-heading\">What the layout had to compromise on</h3>",
+    "replace": "<h3 id=\"diagnostics-heading\">What the build had to fudge</h3>",
+    "test": "tests/unit/vocabulary.test.ts",
+    "title": "say none of fudge, octilinear or collapse",
+    "why": "The diagnostics' old heading restored: cell 02 says \"fudge\" again."
+  },
+  {
+    "file": "src/renderer/src/stages.ts",
+    "find": "  topo: 'simplify',\n",
+    "replace": "  topo: 'collapse',\n",
+    "test": "tests/unit/vocabulary.test.ts",
+    "title": "name each stage in a plain word",
+    "why": "The wireframes' stage word restored: the progress line and the jobs say \"collapse\" again."
+  },
+  {
+    "file": "src/renderer/src/tuningRules.ts",
+    "find": "export const LOOM_DEFAULTS = 'the defaults'",
+    "replace": "export const LOOM_DEFAULTS = 'LOOM’s defaults'",
+    "test": "tests/unit/vocabulary.test.ts",
+    "title": "name LOOM only in the tuning’s lead, once, and where the tools are listed",
+    "why": "The tuning's row word restored: LOOM is named outside the tuning's lead."
+  },
+  {
+    "file": "src/renderer/src/tuningRules.ts",
+    "find": "    label: `${GRID_GLOSSES[grid]} (${grid}${grid === DEFAULT_TUNING.grid ? '; the default' : ''})`,\n",
+    "replace": "    label: `${grid} (${GRID_GLOSSES[grid]}${grid === DEFAULT_TUNING.grid ? '; the default' : ''})`,\n",
+    "test": "tests/unit/vocabulary.test.ts",
+    "title": "bracket the grid’s engine word, and say nothing of LOOM in its options",
+    "why": "The grid's engine word put back in front of its bracket: the select offers \"octilinear\" as the option's name."
+  }
+]
