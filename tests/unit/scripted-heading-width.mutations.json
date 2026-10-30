@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/styles/app.css",
+    "find": "  inline-size: fit-content;\n",
+    "replace": "",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "is as wide as its words, and no wider than its column",
+    "why": "The rule that fits a scripted heading to its words deleted: the ring runs the width of the column again."
+  },
+  {
+    "file": "src/renderer/src/styles/app.css",
+    "find": ":is(h1, h2, h3)[tabindex='-1']",
+    "replace": ":is(h1, h2)[tabindex='-1']",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "is reached by that rule wherever the interface draws one",
+    "why": "A level dropped from the selector: a job's title, an h3 the interface focuses, takes the full-width ring again."
+  },
+  {
+    "file": "src/renderer/src/styles/app.css",
+    "find": ":not(.disclosure-heading) {",
+    "replace": " {",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "leaves a cell’s heading alone: its row is a band, and the ring is the band’s",
+    "why": "The cell heading no longer excluded: its band, which fills the cell on purpose, is shrunk to its words."
+  }
+]
