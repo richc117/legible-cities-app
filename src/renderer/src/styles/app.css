@@ -1008,6 +1008,25 @@ fig-button:not([icon]) > .icon {
   outline-offset: var(--focus-ring-offset);
 }
 
+/* A heading the app focuses by script (a screen's own on arrival, the
+   Outputs and Jobs headings when focus is handed back, a job's title) is a
+   block, so its ring would run the width of the column and read as a text
+   field rather than as the place focus landed (issue 564). The ring stays,
+   as section 12 says it must; the heading is as wide as its words, so the
+   ring is. The selector is the trait these share, a heading made focusable
+   by `tabindex="-1"`, so a heading added later is covered without being
+   named. A cell's heading is the exception, found by its band, the
+   `.cell-head` button it holds: that row fills the cell on purpose, and the
+   ring is the band's. Not every heading the kit's Disclosure draws has one:
+   the layout tuning's has a toggle that is only its words. A heading whose
+   words wrap, such as a long project name, still takes its column's width:
+   once its words are wider than the column, `fit-content` is the column's
+   width, and a box is not narrowed to its longest wrapped line. */
+:is(h1, h2, h3)[tabindex='-1']:not(:has(> .cell-head)) {
+  inline-size: fit-content;
+  max-inline-size: 100%;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

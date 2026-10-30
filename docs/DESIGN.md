@@ -688,6 +688,14 @@ are the design's half of those answers.
   An outline and a hard-edged shadow on one element are read as two bands,
   each counting towards the thickness only if it clears 3:1 itself
   (`tests/support/ring.ts`); no control draws one today.
+  A heading that takes focus by script is as wide as its words, so its ring is.
+  The one exception is a cell's heading, the one that holds a `.cell-head`
+  button: that row is a band that fills the cell, and the ring is the band's.
+  The layout tuning's heading is drawn by the same kit control but holds a
+  toggle that is only its words, and is not exempt. A heading whose words
+  wrap, such as a long project name, still takes its column's width, because
+  once its words are wider than the column, `fit-content` is the column's
+  width, and a box is not narrowed to its longest wrapped line.
 - Forced colours (Windows high contrast; issue 436). The mode replaces every
   colour with the user's palette and removes every `box-shadow`, so the
   resting edges drawn as a shadow - the kit's text field, a select, a
