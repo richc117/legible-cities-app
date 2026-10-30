@@ -19,7 +19,8 @@ these up to date:
   `### Known issues`, which may say "None.". What is under `## [Unreleased]`
   moves into it. The release job fills the notes' "What changed", "Known
   issues" and "Security" from this section, and drafts nothing for a tag
-  whose version has none (`scripts/release.mjs notes`).
+  whose version has none (`scripts/release.mjs notes`). Links in it are
+  inline, `[text](address)`, with no images and no reference-style links.
 - **The status text**, which says which version is current:
   - `README.md`, the install paragraph that names the first release and
     the paragraph that opens "Status:";
@@ -36,10 +37,19 @@ these up to date:
   spec the gate relies on, unless the maintainer has accepted it in writing
   on that issue (issue 553).
 
-Once that has merged, dispatch the vendor workflow on `main` (`gh workflow
-run vendor.yml --ref main`), so the tag's run finds its caches warm
-(`docs/ARCHITECTURE.md` says why), then tag a commit of `main` and push the
-tag alone:
+Once that has merged, check the notes on the commit to be tagged, for a
+candidate and for a final alike. The release job writes them only after
+packaging, an hour into its run, and a refusal then means moving a tag
+already pushed; this refuses exactly as the job would, in a second:
+
+```
+node scripts/release.mjs notes vX.Y.Z-rc.N <scratch file>
+```
+
+(`vX.Y.Z` for a final). Then dispatch the vendor workflow on `main` (`gh
+workflow run vendor.yml --ref main`), so the tag's run finds its caches warm
+(`docs/ARCHITECTURE.md` says why), and tag that commit and push the tag
+alone:
 
 ```
 git tag vX.Y.Z-rc.N <commit on main>
@@ -56,7 +66,9 @@ notes then say "No publicly known vulnerability is fixed in this
 release."), and adds the section's link at the foot of the changelog,
 `[X.Y.Z]: https://github.com/richc117/legible-cities-app/compare/v<previous>...vX.Y.Z`,
 with `[Unreleased]` moved to compare from `vX.Y.Z`. The release job refuses
-a final tag whose section is undated or has no Security.
+a final tag whose section is undated or has no Security. These may go into
+the last candidate's pull request, since a candidate's notes accept a dated
+section, so that the final is tagged on the very commit the gate passed.
 
 ## The gate
 
@@ -98,9 +110,9 @@ A published Release is never deleted, and its assets are never replaced.
 released version's contents must not change (Semantic Versioning 2.0.0,
 item 3). A bad release is superseded instead:
 
-1. **Publish a patch release**, `X.Y.Z+1`, that fixes or reverts the fault,
-   cut, gated and published as above. Its changelog section says what was
-   wrong with the version it replaces.
+1. **Publish a patch release**, the next patch version, `X.Y.(Z+1)`, that
+   fixes or reverts the fault, cut, gated and published as above. Its
+   changelog section says what was wrong with the version it replaces.
 2. **Open the bad Release's notes with a banner**, edited on GitHub:
    `> **Do not install this version.** <why>. Install <next> instead.`,
    with a link to the patch, followed by what a person who installed it

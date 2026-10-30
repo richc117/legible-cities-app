@@ -4,7 +4,9 @@ What changed in each version of Legible Cities that a person can install.
 The format is [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
 and the versions follow [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
 Each release's notes on the Releases page are filled from its section here;
-[`docs/releasing.md`](docs/releasing.md) says how.
+[`docs/releasing.md`](docs/releasing.md) says how. Beside Keep a Changelog's
+headings, every section carries Known issues, which may say "None.", and
+links are inline, with no images and no reference-style links.
 
 ## [Unreleased]
 
@@ -28,7 +30,7 @@ Each release's notes on the Releases page are filled from its section here;
 - The Library's cards show a picture of each map.
 - Settings shows the app's version.
 - The window opens where you left it, on a display that is still attached.
-- Each installer and `SHA256SUMS.txt` carries a signed attestation, which
+- Each installer and `SHA256SUMS.txt` has a signed attestation, which
   [the install guide](docs/install.md#check-who-built-it-optional) shows how
   to check.
 - The install guide has a troubleshooting section, and
@@ -40,7 +42,7 @@ Each release's notes on the Releases page are filled from its section here;
   time you open a project that has a map, the map is drawn again from the
   project's stored layout, so its stations do not move, though the names
   on it may be placed differently.
-- A project you open or change in 1.0 opens read-only in 0.1.0.
+- A project 1.0 redraws or you change opens read-only in 0.1.0.
   [Updating from an earlier release](docs/install.md#updating-from-an-earlier-release)
   says how to keep a copy you can go back to.
 - A GIF's colours are chosen from the map it shows.
