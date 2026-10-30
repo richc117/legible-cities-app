@@ -292,9 +292,13 @@ export class Sidecar {
    * or its interpreter could not be spawned. Null when it has started, else
    * why not, as a sentence. Refused while quitting, with no interpreter at
    * all, for a mismatched engine, which would answer the same version, and
-   * in every state but those two, so a press that races a state change never
-   * starts a second engine beside the first. `start()` is no way back in: it
-   * returns once it has run.
+   * in every state but those two, so a press that races a state change
+   * starts nothing. Refused too while the engine given up on is still being
+   * ended: `failed()` says `stopped` before it ends a live child (a handshake
+   * that timed out, a stray line on stdout), and that can take
+   * `shutdownMs` and two `terminateMs`, so a retry then would start a second
+   * engine on the same home beside the first. `start()` is no way back in:
+   * it returns once it has run.
    */
   retry(): string | null {
     if (this.stopping) return RETRY_REFUSALS.quitting
@@ -303,6 +307,7 @@ export class Sidecar {
     if (state.state === 'mismatched') return RETRY_REFUSALS.mismatched
     if ((state.state !== 'stopped' && state.state !== 'unavailable') || !state.retryable)
       return RETRY_REFUSALS.notDown
+    if (this.ending !== null) return RETRY_REFUSALS.stillStopping
     this.log('trying again, as a person asked')
     // The failures that ended in giving up are forgiven: a retry that fails
     // at once is restarted as a first start's failure is, not given up on.
@@ -669,8 +674,11 @@ export class Sidecar {
     this.setState({
       state: 'unavailable',
       reason: interpreterFailedReason(what, this.options.bundledInterpreter ?? false),
-      // The file may be back by the time a person tries again (a scanner's
-      // quarantine undone), which no restart of ours would wait for.
+      // The interpreter was found as the app opened and its spawn failed, so a
+      // later spawn may not: a file whose permissions are put right, or one
+      // taken away (a scanner's quarantine) and put back. No restart of ours
+      // waits for that; a person's retry spawns the same command again, and
+      // does not look for another.
       retryable: true,
     })
   }

@@ -948,6 +948,33 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       await missing.stop()
     })
 
+    // The supervisor says stopped the moment it gives up, and only then ends
+    // the engine it gave up on. A handshake that timed out leaves that engine
+    // alive, and one that answers nothing takes the whole shutdown bound to
+    // end: a retry meanwhile would start a second engine on the same home.
+    it('is refused while the engine it gave up on is still being ended, and starts once it has gone', async () => {
+      const h = harness(
+        { mute: true },
+        // No restarts, so the first failure is the give-up.
+        { handshakeMs: 1_000, shutdownMs: 2_000, restartDelaysMs: [] },
+      )
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      // A cold interpreter can take a while to write its pid.
+      const pidFile = join(h.home, 'fake-engine.pid')
+      await eventually(() => existsSync(pidFile), 5_000, 'the engine to write its pid')
+      const pid = h.pid()
+      expect(alive(pid), 'the engine given up on is still running').toBe(true)
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
+      expect(h.pid(), 'no second engine wrote its pid').toBe(pid)
+
+      await eventually(() => !alive(pid), 10_000, 'the first engine to end')
+      // Its ending settles a moment after the exit is seen.
+      await eventually(() => h.sidecar.retry() === null, 5_000, 'a retry to start')
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(2)
+    })
+
     it('is refused with no interpreter at all, which is not retryable', () => {
       const none = new Sidecar({ command: null, env: {}, pin: PIN, log: () => {} })
       none.start()

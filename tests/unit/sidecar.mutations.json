@@ -30,5 +30,13 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "after giving up, starts again with the whole restart budget",
     "why": "A retry that keeps the failures it gave up on (issue 562): its first failure is the fifth in a row, and the supervisor gives up again at once instead of restarting three times."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.ending !== null) return RETRY_REFUSALS.stillStopping\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "is refused while the engine it gave up on is still being ended",
+    "why": "A retry let through while the engine given up on is still being ended (issue 562): a second engine starts on the same home beside one that has not yet gone."
   }
 ]
