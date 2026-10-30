@@ -327,11 +327,12 @@ describe('the project screen, counted', () => {
     expect(toggle.getAttribute('aria-expanded'), 'the press closed it').toBe('false')
   })
 
-  it('renders cell 06, the header and the outputs for a frame of the export', async () => {
-    // Row 3. A frame is the most frequent change on the screen and three
-    // parts read it: cell 06 (its strip), the header (the run graph) and
-    // the outputs (which read the folder again when the run's state moves).
-    // The notebook reads it too, for the run graph, and passes the five
+  it('renders cell 06 and the header for a frame of the export, and not the outputs', async () => {
+    // Row 3. A frame is the most frequent change on the screen and two
+    // parts read it: cell 06 (its strip) and the header (the run graph). The
+    // outputs do not: the folder is read again when the run's state moves,
+    // by the screen's one read (`useOutputs`), and the rows are their own
+    // slice (issue 563). The notebook reads the frame too, for the run graph, and passes the five
     // other cells by: their state did not change. Mutations: `exporting`
     // put back in the export's context - the five cells that read whether
     // an export goes render on every frame; the notebook's cell slot not
@@ -345,7 +346,21 @@ describe('the project screen, counted', () => {
     await still()
     const count = counted()
     screen.rerender({ exportSnapshot: exportFrame(2) })
-    expect(count).toEqual(only({ export: 1, header: 1, outputs: 1 }))
+    expect(count).toEqual(only({ export: 1, header: 1 }))
+  })
+
+  it('renders the outputs and cell 06 alone for a read of the folder', async () => {
+    // Issue 563. The rows are the rail's list and the line cell 06 draws
+    // beside Export, and nothing else reads them: not the header, whose run
+    // graph is the run's, nor the five other cells. Mutation: `outputs` in
+    // the export's slice - the header renders for a read, and for every
+    // frame the outputs render again.
+    const screen = renderScreen()
+    await answered()
+    await still()
+    const count = counted()
+    screen.rerender({ outputs: { rows: [], read: () => undefined } })
+    expect(count).toEqual(only({ export: 1, outputs: 1 }))
   })
 
   it('renders every cell for a move of the layout run, by design', async () => {

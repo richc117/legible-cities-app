@@ -514,11 +514,14 @@ export function planOptions(
 
 /**
  * What the preview's plan answered: the address cell 06's preview frame is
- * sent to, with the size it was planned for and the engine's notes; or the
- * engine's refusal, in its own shape, so its sentence reaches the screen.
+ * sent to, with the size it was planned for, the engine's notes and the
+ * file an export of this choice would write (a bare name, checked as an
+ * export checks it: issue 563 says beside Export what it would replace);
+ * or the engine's refusal, in its own shape, so its sentence reaches the
+ * screen.
  */
 export type ExportPreview =
-  | { ok: true; url: string; width: number; height: number; notes: string[] }
+  | { ok: true; url: string; width: number; height: number; notes: string[]; file: string }
   | { ok: false; error: EngineErrorShape }
 
 /** The three stages an export goes through, in order. */

@@ -75,6 +75,7 @@ function harness(topFrame = true, blocked: string | null = null) {
         width: 1,
         height: 1,
         notes: [],
+        file: 'y.mp4',
       }
     },
     cancel: (token) => cancelled.push(token),

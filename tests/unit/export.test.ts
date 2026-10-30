@@ -1296,6 +1296,33 @@ describe('what the export tab chooses', () => {
     await expect(answer).resolves.toMatchObject({ ok: true })
   })
 
+  // Cell 06 says beside Export which file an export would replace (issue
+  // 563), and it can say it only from the name the preview's plan gave: the
+  // one the export itself would write, since both ask the engine for the
+  // same plan bar the safe-zone overlay.
+  it('answers the file the plan named, and refuses a plan whose file is not a bare name', async () => {
+    // Mutation: `file: plan.filename` answered as the plan's stem, or as
+    // nothing at all - the first answer then names a file no export writes.
+    const h = harness()
+    const answer = h.exporter.preview('abcdefghijk1', REEL)
+    await until('the plan', () => h.eng.requests.length === 1)
+    h.eng.requests[0].resolve(plan({ filename: 'la-metro-rail-instagram-reel-tag.mp4' }))
+    await expect(answer).resolves.toMatchObject({
+      ok: true,
+      file: 'la-metro-rail-instagram-reel-tag.mp4',
+    })
+    for (const filename of ['../escape.mp4', 'sub/dir.mp4', '/abs/file.mp4', null, 7, '']) {
+      const bad = harness()
+      const refused = bad.exporter.preview('abcdefghijk1', REEL)
+      await until('the plan', () => bad.eng.requests.length === 1)
+      bad.eng.requests[0].resolve(plan({ filename: filename as never }))
+      await expect(refused, `a plan naming ${JSON.stringify(filename)}`).resolves.toMatchObject({
+        ok: false,
+        error: { code: ERROR_CODES.exportFailed },
+      })
+    }
+  })
+
   it('makes a JPEG still at standard quality only, read from the engine’s table', async () => {
     // Bluesky's still is the engine's one JPEG preset at v0.8.2; which it is
     // comes from the table, so a table that says otherwise is obeyed.
@@ -1389,6 +1416,7 @@ describe('what the export tab chooses', () => {
         width: 540,
         height: 960,
         notes: ['see a file'],
+        file: 'la-metro-rail-instagram-reel.mp4',
       })
       expect(h.exporter.live, 'a preview is not an export').toBe(0)
       expect(h.cap.calls).toHaveLength(0)

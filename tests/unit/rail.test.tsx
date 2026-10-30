@@ -46,12 +46,18 @@ const allOpen = (): Record<CellId, boolean> =>
   Object.fromEntries(CELLS.map((id) => [id, true])) as Record<CellId, boolean>
 
 /**
- * The rail reads two things from the screen's state - the project's id, for
- * the outputs it asks for, and the export run's state, which is when it
- * asks again - and the default's project and idle export are both.
+ * The rail reads the project's name, for its heading, and the screen's one
+ * read of the folder (`ProjectState.outputs`, issue 563), which the default
+ * leaves unread.
  */
-function draw(states: Record<CellId, CellStatus> = allReady()): string {
-  const state: ProjectState = defaultProjectState()
+function draw(
+  states: Record<CellId, CellStatus> = allReady(),
+  outputs: ProjectState['outputs'] | null = null,
+): string {
+  const state: ProjectState = {
+    ...defaultProjectState(),
+    ...(outputs === null ? {} : { outputs }),
+  }
   return renderToStaticMarkup(
     <ProjectProviders state={state}>
       <Rail states={states} open={allOpen()} onOpen={() => {}} />
@@ -122,6 +128,24 @@ describe('the rail’s stepper', () => {
     // different things, and a folder with ten files in it must never flash
     // the first on its way to the second.
     expect(drawn).not.toContain('class="rail-empty"')
+  })
+})
+
+describe('the rail’s Outputs, from the screen’s read of the folder', () => {
+  it('draws the rows it is given, and the empty sentence for a folder that holds none', () => {
+    // Mutation: the list read from anywhere but the screen's rows - the
+    // rows given here are never drawn.
+    const read = (): void => undefined
+    const rows = [
+      { file: 'a.mp4', preset: 'instagram-reel', made: '2026-09-30T02:16:00.000Z', present: true },
+      { file: 'b.png', preset: 'instagram-post', made: '2026-09-29T02:16:00.000Z', present: false },
+    ]
+    const drawn = draw(allReady(), { rows, read })
+    expect(drawn).toContain('<ul class="outputs">')
+    expect([...drawn.matchAll(/<li class="output"/g)]).toHaveLength(2)
+    expect(drawn).toContain('aria-label="Reveal Instagram reel, a.mp4"')
+    expect(drawn).not.toContain(NOTHING_YET)
+    expect(draw(allReady(), { rows: [], read })).toContain(NOTHING_YET)
   })
 })
 

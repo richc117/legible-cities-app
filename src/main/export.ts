@@ -449,12 +449,23 @@ export class Exporter {
         plan.height < 1
       )
         throw engineError(ERROR_CODES.exportFailed, "The engine's plan has no size.", 'export')
+      // The file this choice would write, which cell 06 sets beside the
+      // folder's outputs to say what an export would replace (issue 563). It
+      // crosses the bridge as a name and is checked as the export checks the
+      // one it writes to, so a plan that names a path never reaches the screen.
+      if (typeof plan.filename !== 'string' || !FILENAME.test(plan.filename))
+        throw engineError(
+          ERROR_CODES.exportFailed,
+          "The engine's plan names no usable file.",
+          'export',
+        )
       return {
         ok: true,
         url: plan.url,
         width: plan.width,
         height: plan.height,
         notes: notesOf(plan),
+        file: plan.filename,
       }
     } catch (error) {
       // Not the door: the export bridge takes the paths out, with the

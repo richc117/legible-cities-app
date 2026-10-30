@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
-import type { ExportOutput } from '../../../shared/export'
+import { useRef, type JSX } from 'react'
 import { useFocusHandback } from '../focusHandback'
 import Icon from '../icons/Icon'
 import Button from '../kit/Button'
 import { exportable } from '../runGraph'
-import { useProjectExport, useProjectRecord } from './context'
+import { useProjectOutputs, useProjectRecord } from './context'
 import Time from './Time'
 import { EXPORT_ONE, GONE, NOTHING_YET, outputName } from './outputWords'
 
@@ -64,34 +63,19 @@ export function OutputsEmpty({
 
 export default function Outputs({ onExport }: { onExport: () => void }): JSX.Element | null {
   const { project } = useProjectRecord()
-  const { exportSnapshot } = useProjectExport()
+  // One read for the screen, shared with cell 06's line about a replacement
+  // (`useOutputs`): a Reveal that finds its file gone reads the folder again
+  // for both.
+  const {
+    outputs: { rows, read },
+  } = useProjectOutputs()
   const id = project?.id ?? null
-  const [rows, setRows] = useState<ExportOutput[] | null>(null)
   const sectionRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   // The heading and not another row's Reveal: the rows are a person's own
   // files and which one takes the place of one that went is not this
   // region's to decide, while the heading says where the person now is.
   useFocusHandback(sectionRef, () => headingRef.current, rows)
-
-  const read = useCallback((): void => {
-    if (id === null) return
-    window.api.export.outputs(id).then(
-      (list) => setRows(list),
-      // A folder that cannot be read is a list with nothing in it rather
-      // than a sentence in the corner of a screen about a step a person did
-      // not take. The main process has already logged the reason.
-      () => setRows([]),
-    )
-  }, [id])
-
-  // Once when the project opens, and again whenever the export run changes
-  // state: `done` is the one that adds a row, but a cancel and a failure
-  // both leave the folder as it was and cost one cheap read.
-  const runState = exportSnapshot.state
-  useEffect(() => {
-    read()
-  }, [read, runState])
 
   if (id === null) return null
   return (

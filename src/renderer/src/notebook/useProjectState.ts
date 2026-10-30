@@ -28,6 +28,7 @@ import { useEngineState } from '../useEngineState'
 import { useSnapshot } from '../useSnapshot'
 import { keepFocusInCell, redrawOnOpen, redrawPageOnOpen } from './olderPage'
 import { useRefusedGone } from './useCheapEdit'
+import { useOutputs, type OutputsState } from './useOutputs'
 
 // Everything the project screen holds, in one hook (A5.5-08).
 //
@@ -137,6 +138,12 @@ export interface ProjectState {
    * whose redraw failed is built from what it lacks (issue 517).
    */
   openedSeams: readonly string[] | null
+  /**
+   * What the project has produced, read from its folder once for the whole
+   * screen: the rail's Outputs lists it and cell 06 says what a second
+   * export would replace (issue 563).
+   */
+  outputs: OutputsState
   /** The feed's registry entry's mode and agency, when the Library listed it. */
   registry: { mode: string; agency: string | null } | null
   /** The feed as the engine reads it, cached by the inspection module. */
@@ -339,6 +346,9 @@ export function useProjectState(
   }, [state.status])
 
   const project = state.status === 'ready' ? state.project : null
+
+  // The folder is named for the project, so a rename moves it (issue 563).
+  const outputs = useOutputs(project?.id ?? null, exportSnapshot.state, project?.name ?? '')
 
   // A project just made from a sample city starts its layout as its screen
   // opens (A5.6-03), once, and only while there is nothing laid out and
@@ -664,6 +674,7 @@ export function useProjectState(
     exporter,
     runSnapshot,
     exportSnapshot,
+    outputs,
     layingOut,
     settling,
     refused,

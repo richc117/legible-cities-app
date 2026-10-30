@@ -6,7 +6,13 @@ import { exportable } from '../../runGraph'
 import Cell from '../Cell'
 import { exportFooter } from '../CellFooter'
 import type { CellViewProps } from '../cells'
-import { useProjectActions, useProjectExport, useProjectRecord, useProjectRuns } from '../context'
+import {
+  useProjectActions,
+  useProjectExport,
+  useProjectOutputs,
+  useProjectRecord,
+  useProjectRuns,
+} from '../context'
 
 // Cell 06, Export: the preset, the storyboard and everything the reel is
 // made of (ADR-045), and a preview of the frame it will make (ADR-046).
@@ -59,6 +65,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
   // so the cell reads the snapshot it is drawn from rather than the run's
   // own, which nothing would render it for.
   const { exportSnapshot } = useProjectExport()
+  const { outputs } = useProjectOutputs()
   const [address, setAddress] = useState<PreviewAddress | null>(null)
   const toggle = toggleExportCell(() => setAddress(null), onToggle)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -80,6 +87,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
           layingOut={layingOut}
           active={open}
           inspect={inspect}
+          outputs={outputs}
           onChoice={setExport}
           onPreview={setAddress}
           preview={

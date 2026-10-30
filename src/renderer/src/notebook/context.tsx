@@ -4,9 +4,9 @@ import type { ProjectState } from './useProjectState'
 export type { ProjectState } from './useProjectState'
 
 // The shared wiring of a project's screen, reaching the six cells without
-// a prop list (A5.5-08): **seven contexts, split by who reads what** (issue
-// 433) - the record, the runs, the export, the actions, the map, the reload
-// and the opening, each memoised over its own fields. The map's four fields
+// a prop list (A5.5-08): **nine contexts, split by who reads what** (issue
+// 433) - the record, the runs, the export, the outputs, the actions, the map,
+// the reload, the opening and the decision, each memoised over its own fields. The map's four fields
 // are three contexts because their readers differ: cell 03's transport
 // reads `drawn` beside the map's frame, so `themeReloads`, which the frame
 // alone reads, cannot sit with it without rendering cell 03 on a reload;
@@ -44,8 +44,12 @@ export type { ProjectState } from './useProjectState'
 //   snapshot: five cells read whether an export goes, and none of them its
 //   frames.
 // - The export: its snapshot alone, which moves every frame - the most
-//   frequent change on the screen. Cell 06's strip, the header, the
-//   notebook's run graph and the outputs.
+//   frequent change on the screen. Cell 06's strip, the header and the
+//   notebook's run graph.
+// - The outputs: what the folder holds and the way to read it again
+//   (`useOutputs`, issue 563) - moved by a read, which follows a run's end,
+//   a rename or a destination. The rail's list and cell 06's line about a
+//   replacement, and neither of them the frames, nor the header the rows.
 // - The actions: the writers, the two engine reads, the map's seam report,
 //   the skip link and the heading's ref - stable for the
 //   screen's life (`useProjectState` makes each once per project).
@@ -75,6 +79,7 @@ type RunsSlice = Pick<
   'run' | 'exporter' | 'runSnapshot' | 'layingOut' | 'exporting' | 'settling' | 'refused'
 >
 type ExportSlice = Pick<ProjectState, 'exportSnapshot'>
+type OutputsSlice = Pick<ProjectState, 'outputs'>
 type ActionsSlice = Pick<
   ProjectState,
   | 'inspect'
@@ -98,6 +103,7 @@ type OnOpenSlice = Pick<ProjectState, 'onOpen'>
 const RecordContext = createContext<RecordSlice | null>(null)
 const RunsContext = createContext<RunsSlice | null>(null)
 const ExportContext = createContext<ExportSlice | null>(null)
+const OutputsContext = createContext<OutputsSlice | null>(null)
 const ActionsContext = createContext<ActionsSlice | null>(null)
 const MapContext = createContext<MapSlice | null>(null)
 const ReloadContext = createContext<ReloadSlice | null>(null)
@@ -125,8 +131,9 @@ export function ProjectProviders({
     () => ({ run, exporter, runSnapshot, layingOut, exporting, settling, refused }),
     [run, exporter, runSnapshot, layingOut, exporting, settling, refused],
   )
-  const { exportSnapshot } = state
+  const { exportSnapshot, outputs } = state
   const exported = useMemo(() => ({ exportSnapshot }), [exportSnapshot])
+  const produced = useMemo(() => ({ outputs }), [outputs])
   const { inspect, readStage, setInputs, setDate, setTheme, setTuning, setExport } = state
   const { setName, deleteProject, pageSeams, skipPastMap, headingRef } = state
   const actions = useMemo(
@@ -168,15 +175,17 @@ export function ProjectProviders({
     <RecordContext.Provider value={record}>
       <RunsContext.Provider value={runs}>
         <ExportContext.Provider value={exported}>
-          <ActionsContext.Provider value={actions}>
-            <MapContext.Provider value={map}>
-              <ReloadContext.Provider value={reload}>
-                <OpeningContext.Provider value={opening}>
-                  <OnOpenContext.Provider value={decided}>{children}</OnOpenContext.Provider>
-                </OpeningContext.Provider>
-              </ReloadContext.Provider>
-            </MapContext.Provider>
-          </ActionsContext.Provider>
+          <OutputsContext.Provider value={produced}>
+            <ActionsContext.Provider value={actions}>
+              <MapContext.Provider value={map}>
+                <ReloadContext.Provider value={reload}>
+                  <OpeningContext.Provider value={opening}>
+                    <OnOpenContext.Provider value={decided}>{children}</OnOpenContext.Provider>
+                  </OpeningContext.Provider>
+                </ReloadContext.Provider>
+              </MapContext.Provider>
+            </ActionsContext.Provider>
+          </OutputsContext.Provider>
         </ExportContext.Provider>
       </RunsContext.Provider>
     </RecordContext.Provider>
@@ -198,6 +207,9 @@ export const useProjectRuns = (): RunsSlice => useSlice(RunsContext, 'useProject
 
 /** The export's snapshot, which moves every frame. */
 export const useProjectExport = (): ExportSlice => useSlice(ExportContext, 'useProjectExport')
+
+/** What the project has produced, read from its folder once for the screen (issue 563). */
+export const useProjectOutputs = (): OutputsSlice => useSlice(OutputsContext, 'useProjectOutputs')
 
 /** The writers, the engine's reads and the screen's callbacks and refs: stable. */
 export const useProjectActions = (): ActionsSlice => useSlice(ActionsContext, 'useProjectActions')

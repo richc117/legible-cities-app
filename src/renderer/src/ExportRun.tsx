@@ -4,10 +4,12 @@ import { useFocusHandback } from './focusHandback'
 import Icon from './icons/Icon'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
-import type { ExportChoice } from '../../shared/export'
+import type { ExportChoice, ExportOutput } from '../../shared/export'
 import type { ProjectRecord } from '../../shared/project/types'
 import type { ExportRun as Run } from './engine/exportRun'
 import type { Stage } from './ProgressLine'
+import Time from './notebook/Time'
+import { KEEP_BOTH, replacedBy } from './notebook/outputWords'
 import { useSnapshot } from './useSnapshot'
 
 // The export on screen: the three stages on the progress line as the main
@@ -16,12 +18,24 @@ import { useSnapshot } from './useSnapshot'
 // progress line on the export screen (section 10) and makes cancel a text
 // button beside it; a finished export is a deliverable (section 8.2): its
 // name in prose and "Reveal", never its path.
+//
+// Beside Export, while a file the folder still holds has the name the next
+// export will write, one line says so (issue 563): what would be replaced,
+// when it was made, and that a filename tag keeps both. The names are
+// deterministic on purpose, so a second export of one choice replaces the
+// first, and a dialog on a step that is usually meant would be asked every
+// time; the sentence sits where the press is and leaves the press alone.
+
+/** The sentence's id, which Export's description names. One export run is drawn at a time. */
+const REPLACES_ID = 'export-replaces'
 
 export default function ExportRun({
   run,
   project,
   engine,
   choice,
+  planned = null,
+  outputs = null,
   disabled = false,
 }: {
   run: Run
@@ -30,6 +44,16 @@ export default function ExportRun({
   /** What to export, as the export tab holds it at the moment of the press (A5-01). */
   choice: ExportChoice
   /**
+   * The file an export of `choice` would write, from the preview's plan for
+   * it as it is now; null while none has answered, or the engine refused.
+   */
+  planned?: string | null
+  /**
+   * What the project's folder holds (`ProjectState.outputs`), or null before
+   * it is read; the line says what `planned` would replace among these.
+   */
+  outputs?: readonly ExportOutput[] | null
+  /**
    * True while something else, such as a layout run, is changing the
    * project, or while the choice is one the engine has refused.
    */
@@ -37,6 +61,7 @@ export default function ExportRun({
 }): JSX.Element {
   const { state, stages, message, announced, error, file, left, refused } = useSnapshot(run)
   const begin = (): void => run.start(project, engine, choice)
+  const replaced = replacedBy(outputs, planned)
   // "Export" gives way to Cancel, and Cancel to "Reveal" or "Export" again
   // when the export ends; focus on the one that went goes to the one that
   // came (A6-07).
@@ -64,15 +89,25 @@ export default function ExportRun({
       ref={exportRef}
       onClick={begin}
       disabled={disabled}
+      aria-describedby={replaced === undefined ? undefined : REPLACES_ID}
     >
       <Icon name="export" />
       Export
     </Button>
   )
+  // Shown, not spoken: it is the button's description, read when a person
+  // reaches Export, and not a live region, which would say it unprompted
+  // each time a plan answered.
+  const replaces = replaced !== undefined && (
+    <p id={REPLACES_ID} className="message export-replaces">
+      Exporting replaces {replaced.file}, made <Time iso={replaced.made} />. {KEEP_BOTH}
+    </p>
+  )
 
   if (state === 'idle') {
     return (
       <div className="focus-region" ref={region}>
+        {replaces}
         <div className="toolbar">{exportButton}</div>
       </div>
     )
@@ -104,6 +139,7 @@ export default function ExportRun({
             <p className="prose" role="status">
               {unfinishedSentence(state, left, stages, refused)}
             </p>
+            {replaces}
             <div className="toolbar">{exportButton}</div>
           </>
         )}
@@ -114,6 +150,7 @@ export default function ExportRun({
                 said once, with the file's name, by the job's end sentence
                 on every screen (`endSentence`, issue 570). */}
             <p className="prose">Exported {file}.</p>
+            {replaces}
             <div className="toolbar">
               <Button ref={revealRef} onClick={() => run.reveal()}>
                 <Icon name="forward" />

@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/main/export.ts",
+    "find": "        notes: notesOf(plan),\n        file: plan.filename,\n",
+    "replace": "        notes: notesOf(plan),\n        file: plan.filename.replace(/\\.[a-z0-9]+$/, ''),\n",
+    "test": "tests/unit/export.test.ts",
+    "title": "answers the file the plan named, and refuses a plan whose file is not a bare name",
+    "why": "The preview answering the plan's stem in place of its file: cell 06 would name a file no export writes."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "      if (typeof plan.filename !== 'string' || !FILENAME.test(plan.filename))\n        throw engineError(\n          ERROR_CODES.exportFailed,\n          \"The engine's plan names no usable file.\",\n          'export',\n        )\n      return {\n        ok: true,",
+    "replace": "      return {\n        ok: true,",
+    "test": "tests/unit/export.test.ts",
+    "title": "answers the file the plan named, and refuses a plan whose file is not a bare name",
+    "why": "The preview's check of the file's name dropped: a plan naming a path would reach the screen as the file an export replaces."
+  }
+]

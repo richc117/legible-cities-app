@@ -660,9 +660,10 @@ record and its writers, the two runs and whether either is going, and the
 refs the focus handbacks point at - carried to them by contexts, so a cell
 reads what it needs without a prop list. The contexts are split by who
 reads what (issue 433): the record; the runs, with whether either goes;
-the export's snapshot alone, which moves every frame; the actions, the
-writers and callbacks made once per project; and three small ones for the
-map - the redraw count (the map's frame and cell 03's transport), the
+the export's snapshot alone, which moves every frame; the outputs, what
+the project's folder holds (the rail's list and cell 06's line about a
+replacement, issue 563); the actions, the writers and callbacks made once
+per project; and three small ones for the map - the redraw count (the map's frame and cell 03's transport), the
 theme reload count (the frame alone) and what the opening redrew (cells 02
 and 03). Each value is memoised over its own fields, so a part of the
 screen renders for a change to what it reads and for nothing else; a run
@@ -730,7 +731,16 @@ rows. It is read again whenever an export settles. A row says the preset
 and when it was made, and no path. Reveal names the file by its bare name,
 which the main process checks against what the folder holds before it joins
 the two, so a name the page invented resolves to nothing; a file moved or
-deleted since reads as gone and offers nothing to press. Because a person
+deleted since reads as gone and offers nothing to press. The read is
+`useOutputs` (`notebook/useOutputs.ts`), made once by `useProjectState` and
+handed down in `ProjectState.outputs`, so the rail and cell 06 read the same
+rows: again when an export settles, when the project is renamed (the folder
+is named for it) and, from cell 06, when a destination is chosen. Beside
+Export, cell 06 says what a second export would replace, when a present
+row's file, compared without regard to case, is the one the preview's plan
+named (`ExportPreview.file`, issue 563); the line covers only the newest
+`OUTPUTS_MAX` rows, and the preview refuses a plan whose file name an
+export would refuse, so Export is disabled before the press. Because a person
 may point a destination at a folder they already use, a sidecar over
 `SIDECAR_MAX` is passed over unopened and one read opens at most
 `SCAN_MAX`.

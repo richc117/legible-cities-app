@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/notebook/context.tsx",
+    "find": "const exported = useMemo(() => ({ exportSnapshot }), [exportSnapshot])",
+    "replace": "const exported = useMemo(() => ({ exportSnapshot, outputs }), [exportSnapshot, outputs])",
+    "test": "tests/unit/cell-renders.test.tsx",
+    "title": "renders the outputs and cell 06 alone for a read of the folder",
+    "why": "The outputs in the export's context: the header, which reads the run's frames, renders for every read of the folder."
+  }
+]

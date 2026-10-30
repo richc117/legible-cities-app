@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/notebook/Outputs.tsx",
+    "find": "      {rows !== null && rows.length > 0 && (",
+    "replace": "      {false && (",
+    "test": "tests/unit/rail.test.tsx",
+    "title": "draws the rows it is given, and the empty sentence for a folder that holds none",
+    "why": "The list never drawn from the screen's rows: a folder with outputs shows none of them in the rail."
+  }
+]

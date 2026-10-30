@@ -120,6 +120,8 @@ async function column(state: Partial<ProjectState> = {}): Promise<void> {
   // The feed's inspection still on its way: cell 01 is not what is landed on.
   const drawn: ProjectState = {
     ...defaultProjectState(new ScreenRun()),
+    // The screen's one read of the folder, answered: nothing exported yet.
+    outputs: { rows: [], read: () => undefined },
     inspect: () => pending(),
     ...state,
   }

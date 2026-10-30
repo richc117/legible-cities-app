@@ -11,6 +11,7 @@ import { useExportLines } from './export/useExportLines'
 import { useExportPreview } from './export/useExportPreview'
 import { useExportTables } from './export/useExportTables'
 import ExportRunView from './ExportRun'
+import { useRereadOnChange, type OutputsState } from './notebook/useOutputs'
 import { defaultsFor, plannedChoice, playedBy, type PreviewAddress } from './exportChoice'
 import { openingOf, PREVIEW_NOTE } from './opening'
 import { exportable } from './runGraph'
@@ -36,6 +37,8 @@ interface Props {
   active: boolean
   /** The feed as the engine read it, for the lines; the Inspect view's cache answers. */
   inspect: (key: string) => Promise<Inspection>
+  /** What the project has produced, read for the screen; the run says what a second export replaces. */
+  outputs: OutputsState
   /** Write the choice to the record; the view takes the record that comes back. */
   onChoice: (choice: ExportChoice) => Promise<void>
   /** The address cell 06's preview should show, when a plan answers. */
@@ -57,6 +60,7 @@ export default function ExportTab({
   layingOut,
   active,
   inspect,
+  outputs,
   onChoice,
   onPreview,
   preview,
@@ -80,7 +84,7 @@ export default function ExportTab({
   // What the preview and the export are planned from: the choice, less a line
   // hidden in cell 05, which the stored choice keeps for it shown again (issue 399).
   const asked = useMemo(() => plannedChoice(choice, project.lines), [choice, project.lines])
-  const { refused, refusal, notes } = useExportPreview({
+  const { refused, refusal, notes, file } = useExportPreview({
     project,
     asked,
     active,
@@ -93,6 +97,9 @@ export default function ExportTab({
   // Held here, so a form drawn again shows what was typed and the folder answered.
   const drafts = useExportDrafts(choice, dropped)
   const destination = useDestination(project.destination)
+  // The folder the outputs are read from moves with the destination, which
+  // only this cell holds (issue 563).
+  useRereadOnChange(outputs.read, destination.folder ?? '')
 
   // An export locks the choices it was planned from, which a change could not reach
   // now; Chromium blurs a disabled control, so focus goes to the cell's heading first.
@@ -194,6 +201,8 @@ export default function ExportTab({
           project={project}
           engine={engine}
           choice={asked}
+          planned={file}
+          outputs={outputs.rows}
           disabled={layingOut || refused || read === null}
         />
       )}
