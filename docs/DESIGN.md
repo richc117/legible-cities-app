@@ -514,28 +514,36 @@ Legible Cities), then File (New project… at Command-N; Close window), Edit,
 View, Window and Help, which is the system's Help menu with its search
 field. On Windows and Linux: File (New project… and Settings at Control-N
 and Control-comma; Exit, or Quit on Linux), Edit, View, Window (Minimize,
-Close window) and Help, each top-level name with its access key; About
-Legible Cities is Help's last item and opens Settings at **Versions**,
-never the system's About, which is a native message box there. The menu
-bar on Windows is always shown, not hidden behind Alt: it is how a
-keyboard user finds the commands, and this section's measurements were
-taken with it. Edit is the system's role, without which copy and paste in
-a text field stop working on macOS. View holds Actual size, Zoom in and
-Zoom out (the system's zoom, which is how the interface's text is resized,
-WCAG 1.4.4) and Full screen; Reload, Force reload and Toggle developer
-tools are added to it in a development build only, and a packaged build
-has no developer tools at all. Help holds, in this order on every
-platform, Legible Cities guide, Finding a feed, Install and
-troubleshooting guide, then Report a problem and Copy diagnostics: each
-page is a fixed address the main process holds, opened in the platform's
-browser, and Copy diagnostics opens Settings at **Logs and diagnostics**
-and copies there, so its result is said under its own button. Labels are
-in sentence case, and only New project… (and Settings… on macOS, as Apple
+Close window) and Help; About Legible Cities is Help's last item and opens
+Settings at **Versions**, never the system's About, which is a native
+message box there. Each top-level name there has its first letter as its
+access key, and Zoom in and Zoom out, which share theirs, take their
+second word's. The menu bar on Windows is always shown, not hidden behind
+Alt: it is how a keyboard user finds the commands, and this section's
+measurements were taken with it. Edit is the system's role, without which
+copy and paste in a text field stop working on macOS. View holds Actual
+size, Zoom in and Zoom out (the system's zoom, which is how the
+interface's text is resized, WCAG 1.4.4) and Full screen; Reload, Force
+reload and Toggle developer tools are added to it in a development build
+only, and a packaged build has no developer tools at all. Help holds, in
+this order on every platform, Legible Cities guide and Install and
+troubleshooting guide, then Report a problem and Copy diagnostics; Finding
+a feed joins them with its page (issue 555), and not before, so no item
+opens a page that is not there. Each page is a fixed address the main
+process holds, opened in the platform's browser. Copy diagnostics opens
+Settings at **Logs and diagnostics** and copies there: the result is said
+in the status line under that section's own button, which a person can
+see and a screen reader hears, beside the sentence saying what was copied
+and that nothing was sent anywhere; copied in place, from a menu, it would
+have nowhere on screen to say either. The labels the app writes are in
+sentence case, and only New project… (and Settings… on macOS, as Apple
 writes it) ends in an ellipsis, because only it asks for more before it
-acts. No item is hidden by state: a command the screen cannot take now
-does nothing, and every command does nothing while a modal dialog is open,
-since a native shortcut fires behind one. The menu is the same on every
-screen, so the help in it is in the same place throughout (WCAG 3.2.6).
+acts; the items under Edit and Window are the system's roles and carry
+the system's own labels. No item is hidden by state: a command the screen
+cannot take now does nothing, and every command does nothing while a
+modal dialog is open, since a native shortcut fires behind one. The menu
+is the same on every screen, so the help in it is in the same place
+throughout (WCAG 3.2.6).
 
 A project's screen has four regions (ADR-045):
 

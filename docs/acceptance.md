@@ -179,11 +179,14 @@ steps past the unsigned-app warning for this version of macOS or Windows.
   holds Reload, Force reload or Toggle developer tools**. Command-R or
   Command-Option-I on a Mac, and Control-R, F5 or Control-Shift-I on
   Windows, reload nothing and open no developer tools. **Help** holds
-  "Legible Cities guide", "Finding a feed", "Install and troubleshooting
-  guide", "Report a problem" and "Copy diagnostics", and on Windows
+  "Legible Cities guide", "Install and troubleshooting guide", "Report a
+  problem" and "Copy diagnostics", and on Windows
   "About Legible Cities" last, which opens Settings at **Versions**.
   **check:** on a Mac, Command-C and Command-V copy and paste in a text
   field, such as the name in the New project sheet.
+  The automated run checks, as part of its step 3, that no menu holds
+  those three and that the window's developer tools will not open; how the
+  menu bar is drawn and what the shortcuts do stay a person's.
 
 Result: ____
 

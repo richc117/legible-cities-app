@@ -90,7 +90,8 @@ the viewer's frames under `api.viewer`, the engine under `api.engine`, the
 one file chooser under `api.feeds`, the export under `api.export`, one
 clipboard write under `api.clipboard`, a job's copied log under `api.jobs`,
 the app's own settings under `api.settings`, the first-run check under
-`api.firstRun`, and the licences under `api.licences`.
+`api.firstRun`, the licences under `api.licences`, and the app's menu under
+`api.app` and `api.help`.
 
 | `api.projects` | Does |
 |---|---|
@@ -170,6 +171,11 @@ record write is.
 | `licences.read()` | whether the notices, the runtime's licence texts and Chromium's licences are there to open (issue 108, "Licences") |
 | `licences.openNotices()`, `showTexts()`, `openChromium()` | open each of them; none takes an argument, since the paths are fixed in the app and held by the main process |
 
+| `api.app`, `api.help` | Does |
+|---|---|
+| `app.onMenuCommand(listener)` | each menu item the interface answers - `new-project`, `settings`, `copy-diagnostics`, and `about` on Windows and Linux - one of a closed set, which the preload checks again; subscribing tells main the page listens, and a command main held until then arrives first, on the same channel (issue 554, "The menu") |
+| `help.open(page)` | opens a Help page in the platform's browser by name, from a closed set; main holds every address and refuses any other name, and opens nothing |
+
 The engine bridge is deliberately untyped beyond a method name and an
 object of parameters: the typed client over it is generated from the
 engine's schema and wraps it (A1-02, "The protocol, as types"). An engine error crosses as a plain object rather than an
@@ -214,6 +220,24 @@ together. Contracts: `specs/003-project/contracts/bridge.md`,
 `specs/020-line-order/contracts/bridge.md`,
 `specs/021-theme/contracts/bridge.md` and
 `specs/037-record-session/contracts/bridge.md`.
+
+## The menu
+
+The app sets its own menu before its first window (`src/main/menu.ts`,
+issue 554), never Electron's default, in each platform's order; DESIGN.md
+section 9 has the items. The template is data with no Electron import, so a
+unit test walks it on every platform. Reload, Force reload and Toggle
+developer tools are in a development build only, and the window's
+`devTools` preference follows `app.isPackaged` too, so a packaged build
+cannot open its tools whatever asks. Most items are the system's roles or
+are answered in main: the Help pages open a fixed address
+(`src/main/help-ipc.ts`). The four the interface answers are sent to the
+page; main holds the last one while no page listens - on macOS with no
+window, which the command opens, or between a load and the page's
+subscription - and sends it once the page says it listens
+(`src/main/menu-ipc.ts`), restoring and focusing the window first. The page
+drops a command while a modal `<dialog>` is open, since a native shortcut
+fires behind one (`src/renderer/src/menuCommands.ts`).
 
 ## The engine process
 
