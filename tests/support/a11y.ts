@@ -1302,7 +1302,13 @@ export async function expectPopoverClear(
           p.x >= c.x + c.width ||
           p.x + p.width <= c.x
         if (!apart) problems.push('the popover intersects its chip')
-        if (c.y < 0 || c.y + c.height > win.h) problems.push('the chip is not inside the window')
+        // Layout lands on fractions of a pixel, and a chip Playwright scrolled
+        // to the window's foot can sit a few hundredths past it (688.15 in a
+        // 688-pixel window, issue 560's shorter cells): wholly visible. Half a
+        // pixel is not a chip out of sight; a chip the page moved away is.
+        const edge = 0.5
+        if (c.y < -edge || c.y + c.height > win.h + edge)
+          problems.push('the chip is not inside the window')
         return problems.join('; ')
       },
       { message: `${where}: the popover, its chip and the window`, timeout: 5_000 },
