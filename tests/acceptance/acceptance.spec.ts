@@ -918,7 +918,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
       }
       record.field('Engine version', pins.engine.version)
-      // Step 2's last point, which the first window is: the header.
+      // Step 2's points about the first window: the header, and the menu.
       await log.soft(
         'the header: the mark and name, the status line, Jobs and Settings',
         async () => {
@@ -927,6 +927,47 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await expect(header.getByRole('status', { name: 'Engine' })).toBeVisible()
           await expect(header.getByRole('button', { name: /^Jobs, / })).toBeVisible()
           await expect(header.getByRole('button', { name: 'Settings' })).toBeVisible()
+        },
+      )
+      // The packaged menu has no Reload and no developer tools, at any depth,
+      // and the window refuses to open its tools whoever asks (issue 554).
+      // How the menu bar is drawn, and the shortcuts, stay step 2's person's.
+      await log.soft(
+        'the menu: no Reload, Force reload or developer tools, and no developer tools to open',
+        async () => {
+          const found = await (session.app as ElectronApplication).evaluate(
+            async ({ BrowserWindow, Menu }) => {
+              const roles: string[] = []
+              const walk = (items: Electron.MenuItem[]): void => {
+                for (const item of items) {
+                  if (item.role !== undefined) roles.push(item.role.toLowerCase())
+                  if (item.submenu !== undefined) walk(item.submenu.items)
+                }
+              }
+              const menu = Menu.getApplicationMenu()
+              walk(menu?.items ?? [])
+              const contents = BrowserWindow.getAllWindows()
+                .map((w) => w.webContents)
+                .find((c) => c.getURL().startsWith('app://local/ui/'))
+              if (contents === undefined) return { menu: menu !== null, roles, opened: null }
+              // Opening is not immediate where it is allowed, so the event is
+              // waited for, and the tools closed again if it comes.
+              const opened = await new Promise<boolean>((done) => {
+                const timer = setTimeout(() => done(contents.isDevToolsOpened()), 3_000)
+                contents.once('devtools-opened', () => {
+                  clearTimeout(timer)
+                  done(true)
+                })
+                contents.openDevTools()
+              })
+              if (opened) contents.closeDevTools()
+              return { menu: menu !== null, roles, opened }
+            },
+          )
+          expect(found.menu, 'the app set a menu of its own').toBe(true)
+          for (const role of ['reload', 'forcereload', 'toggledevtools'])
+            expect(found.roles, `no ${role} item`).not.toContain(role)
+          expect(found.opened, 'the developer tools stayed shut').toBe(false)
         },
       )
 
