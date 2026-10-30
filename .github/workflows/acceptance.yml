@@ -138,13 +138,15 @@ jobs:
           # verify, asking for this repository, the build workflow, and the
           # tag under test, by name and by the commit it points at (issue 557,
           # ADR-057). Both files: the installer, and SHA256SUMS.txt that names
-          # it. The commit is read first, so a tag that will not resolve stops
-          # the step here and never reaches gh as an empty --source-digest.
+          # it. The commit is read into a variable first, belt and braces: the
+          # case below already sends a tag git cannot find to its last branch,
+          # and this makes sure one that still will not resolve stops the step
+          # and never reaches gh as an empty --source-digest.
           contains=0
           git merge-base --is-ancestor "$ATTESTED_SINCE" "refs/tags/$TAG" || contains=$?
           case "$contains" in
             0)
-              digest=$(git rev-parse "refs/tags/$TAG^{commit}")
+              digest=$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}")
               for subject in "$DOWNLOAD/$ASSET" "$DOWNLOAD/SHA256SUMS.txt"; do
                 if ! gh attestation verify "$subject" \
                     --repo "$GITHUB_REPOSITORY" \

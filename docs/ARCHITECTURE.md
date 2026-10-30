@@ -2617,8 +2617,8 @@ A published Release is accepted by `.github/workflows/acceptance.yml`, on
 request with its tag (A6-04): on `macos-15` and `windows-latest` it
 downloads the Release's installer and `SHA256SUMS.txt` with a read-only
 token, checks the one against the other and verifies both files'
-attestations against the tag (a tag from before ADR-057 is recorded as not
-attested), installs (the dmg mounted
+attestations against the tag and the commit it points at (a tag from before
+ADR-057 is recorded as not attested), installs (the dmg mounted
 read-only and the app copied out; the NSIS installer run silently into
 `%LOCALAPPDATA%\Programs\<package name>`), drives the installed app through
 `docs/acceptance.md`'s steps 3 to 20 with

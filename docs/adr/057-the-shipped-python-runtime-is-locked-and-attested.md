@@ -176,7 +176,8 @@ each installer and `SHA256SUMS.txt` with `--repo`, `--signer-workflow`,
 `--source-ref "$GITHUB_REF"`, `--source-digest "$GITHUB_SHA"` and
 `--deny-self-hosted-runners`. The draft is published by hand only after both
 are green. The acceptance run's step 1 makes the same check, with the tag as
-`--source-ref`, over the published Release's own download, and records a tag
+`--source-ref` and the commit it points at as `--source-digest`, over the
+published Release's own download, and records a tag
 from before this decision as not attested. The claim stays what GitHub says
 of artifact attestations by themselves, SLSA Build Level 2 in its words, and
 this project claims no level.)

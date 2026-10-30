@@ -275,7 +275,7 @@ describe('acceptance.yml verifies the attestation of the Release it downloads', 
     expect(step).toContain('--repo "$GITHUB_REPOSITORY"')
     expect(step).toContain('--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml"')
     expect(step).toContain('--source-ref "refs/tags/$TAG"')
-    expect(step).toContain('digest=$(git rev-parse "refs/tags/$TAG^{commit}")')
+    expect(step).toContain('digest=$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}")')
     expect(step).toContain('--source-digest "$digest"')
     expect(step).toContain('--deny-self-hosted-runners')
     expect(step).toContain('GH_TOKEN: ${{ github.token }}')
@@ -501,6 +501,20 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
       afterCommit: string
     }
 
+    /**
+     * The environment git sees in these tests: none of the machine's or the
+     * calling repository's (a hook, a GIT_DIR from a commit in progress).
+     */
+    function isolated(): NodeJS.ProcessEnv {
+      const env: NodeJS.ProcessEnv = {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      }
+      for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE']) delete env[name]
+      return env
+    }
+
     function git(dir: string, ...args: string[]): string {
       const run = spawnSync(
         'git',
@@ -508,14 +522,16 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
           '-c',
           'user.name=lane',
           '-c',
-          'user.email=lane@example.com',
+          'user.email=lane@example.invalid',
           '-c',
           'commit.gpgsign=false',
           '-c',
           'tag.gpgsign=false',
+          '-c',
+          'core.hooksPath=/dev/null',
           ...args,
         ],
-        { cwd: dir, encoding: 'utf8', timeout: 30_000 },
+        { cwd: dir, encoding: 'utf8', timeout: 30_000, env: isolated() },
       )
       expect(run.status, `git ${args.join(' ')}: ${run.stderr}`).toBe(0)
       return run.stdout.trim()
@@ -558,7 +574,8 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
           '  "release download")',
           '    while [ $# -gt 0 ]; do [ "$1" = --dir ] && dir=$2; shift; done',
           '    cp "$STUB_FIXTURES"/* "$dir"/ ;;',
-          '  "attestation verify") [ -z "${STUB_REFUSE:-}" ] || exit 1 ;;',
+          '  "attestation verify")',
+          '    [ -z "${STUB_REFUSE:-}" ] || [ "$(basename "$3")" != "$STUB_REFUSE" ] || exit 1 ;;',
           '  *) exit 64 ;;',
           'esac',
           '',
@@ -573,7 +590,7 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
       const result = asRunner(step, {
         cwd: dir,
         env: {
-          ...process.env,
+          ...isolated(),
           PATH: `${join(dir, 'bin')}:${process.env.PATH ?? ''}`,
           TAG: tag,
           ASSET: asset,
@@ -630,15 +647,27 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
     it('fails a tag git cannot find, and records no verification', async () => {
       const done = run(await setup(), 'v9.9.9')
       expect(done.result.status).not.toBe(0)
-      expect(done.field).not.toBe('yes')
+      expect(done.field).toBe('no')
+      expect(done.step1?.result).toBe('fail')
+      expect(done.step1?.notes).toContain('Git could not tell whether v9.9.9 contains')
       expect(done.verifies).toEqual([])
     })
 
-    it('fails the step, and records no, when gh refuses an attestation', async () => {
-      const done = run(await setup(), 'v1.0.0-rc.1', '1')
+    it('fails the step, and records no, when gh refuses the installer', async () => {
+      const done = run(await setup(), 'v1.0.0-rc.1', asset)
       expect(done.result.status).not.toBe(0)
       expect(done.field).toBe('no')
       expect(done.step1?.result).toBe('fail')
+      expect(done.verifies).toHaveLength(1)
+    })
+
+    it('fails the step, and records no, when gh refuses SHA256SUMS.txt alone', async () => {
+      const done = run(await setup(), 'v1.0.0-rc.1', 'SHA256SUMS.txt')
+      expect(done.result.status).not.toBe(0)
+      expect(done.field).toBe('no')
+      expect(done.step1?.result).toBe('fail')
+      expect(done.step1?.notes).toContain('refused SHA256SUMS.txt')
+      expect(done.verifies).toHaveLength(2)
     })
   },
 )

@@ -86,5 +86,21 @@
     "test": "tests/unit/release-attestation.test.ts",
     "title": "records a tag from before the attest job as not attested, and asks gh for nothing",
     "why": "The branches for a tag with and without the attest job swapped: a tag from before attestations would be asked for one and fail, and a current tag would be recorded as not attested and never verified."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "digest=$(git rev-parse --verify --quiet \"refs/tags/$TAG^{commit}\")",
+    "replace": "digest=$(git rev-parse --verify --quiet \"refs/tags/$TAG\")",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies a tag the attest job's commit is in, by name and by commit, and records it",
+    "why": "The digest read from the tag object and not its commit: for an annotated tag, which a maintainer's may be, --source-digest would name the tag's own hash and no attestation would match it."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "for subject in \"$DOWNLOAD/$ASSET\" \"$DOWNLOAD/SHA256SUMS.txt\"; do",
+    "replace": "for subject in \"$DOWNLOAD/$ASSET\"; do",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "fails the step, and records no, when gh refuses SHA256SUMS.txt alone",
+    "why": "The checksum file left out of the acceptance verify: the file that names every source archive would be recorded as verified without being asked about."
   }
 ]
