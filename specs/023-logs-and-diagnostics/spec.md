@@ -35,6 +35,14 @@ report needs:
 - the figures and caveats of every project whose map was drawn in this
   session.
 
+*Amended 29 Oct 2026 (issue 567): a copy is held to 48,000 characters so it
+fits a GitHub issue. Over that, the oldest log lines go first (each log
+keeps at least its newest 20), then the reports of the projects opened first
+in the session, and a line under the heading says what was left out; the
+sections from the app's version to the bundled tools are never cut. "The
+last 200 lines" above is the most a log gives, not what a trimmed copy
+carries.*
+
 Every path under the person's home folder is written with `~`, and the
 text is checked for the home folder before it is copied. A person pastes
 it into an issue; nothing is sent by the app.
@@ -101,6 +109,10 @@ the clipboard bridge was given.
    the last 200 lines of `main.log`; the last 200 lines of `engine.log`;
    and the diagnostics copy of each project drawn this session, in the
    format the project's own panel copies.
+   *Note, 29 Oct 2026 (issue 567): when the copy would exceed 48,000
+   characters it is trimmed as the note under the first list above says, and
+   the headings of the two logs then name the lines kept ("the last 137
+   lines", "the last line", "no lines kept") instead of 200.*
 2. **Given** the copied text, **When** it is searched for the home folder,
    **Then** it is not there: every occurrence is `~`, whichever separator
    and, on Windows, whichever case it was written in.

@@ -493,11 +493,17 @@ of both, with your home folder written as `~`; read it before you share it.
    the reports from the maps made in this session. Your home folder is
    written as `~`, and web addresses lose their query values, their
    fragments and any user name or password in them. Nothing is sent
-   anywhere.
+   anywhere. A copy has to fit in an issue, so when the logs and reports
+   are long, the oldest log lines and the reports of the projects you
+   opened first in the session are left out, and a line under the heading
+   says so.
 2. Open a [bug report](https://github.com/richc117/legible-cities-app/issues/new?template=bug.yml)
    on the repository, say what you did and what happened, and paste the
    diagnostics into it. **Read what you paste first**, and remove anything
    you would rather not share, such as a feed address.
+3. If the diagnostics say they were trimmed, press **Open logs folder** in
+   Settings and drag `main.log` and `engine.log` into the report's **Log
+   files** box. Read them first too.
 
 If the app cannot open at all, say so in the report with your version of
 macOS or Windows, and attach the logs from the folder in the tables above

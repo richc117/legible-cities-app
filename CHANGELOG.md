@@ -69,6 +69,10 @@ links are inline, with no images and no reference-style links.
   presets are named by platform and what they make ("LinkedIn square GIF");
   days are written out ("17 September 2026"); and a project whose cells are
   all ready says "map drawn from every cell".
+- **Copy diagnostics** keeps what it copies short enough to paste into a
+  GitHub issue, trimming the oldest log lines first and saying what it
+  left out; the whole logs stay in the logs folder, and the bug form has a
+  place to attach them.
 
 ### Fixed
 

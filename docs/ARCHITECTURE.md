@@ -162,7 +162,7 @@ record write is.
 | `settings.engineSize()` | walks the engine's home, bounded and never through a symbolic link |
 | `settings.openLogsFolder()` | makes the platform's log folder for this app if it is missing, and opens it |
 | `settings.resetEngineData()` | removes `projects`, `out`, `data` and `frames` beneath the engine's home, never the home itself; answers what went and what would not; refused while anything is writing under it, and while a project under this home exports to a folder of its own that is inside the home, is it, or holds it, naming the project (issue 206; choosing the engine's folder is refused on the same rule, a project's folder is refused against the engine folder waiting for a restart, and none of the three sees a record left behind in a previous home) |
-| `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most `DIAGNOSTICS_REPORTS`, checked in main); composed in the main process with the home folder written as `~`; nothing is sent (A6-03) |
+| `settings.copyDiagnostics(reports)` | puts what a bug report needs on the clipboard: the versions, the operating system, `engine.info`, the last 200 lines of both logs and the reports given, each project's diagnostics as its panel copies them (at most `DIAGNOSTICS_REPORTS`, checked in main); composed in the main process with the home folder written as `~`, and held to `DIAGNOSTICS_BUDGET` (48,000 characters) so it fits an issue body, a trim line under the heading saying what was left out (issue 567); nothing is sent (A6-03) |
 
 | `api.firstRun`, `api.licences` | Does |
 |---|---|
@@ -2456,6 +2456,24 @@ shape as well. A match is a whole folder name; a full stop ends one unless
 a name carries on after it. The composed text is checked for the home
 folder afterwards, percent-decoded as well, and a copy that still names it
 is refused.
+The copy is held to `DIAGNOSTICS_BUDGET`, 48,000 characters counted as
+`.length` (issue 567): GitHub documents no limit on an issue's body, its
+own error says 65,536 characters, and the form's other fields share that
+body. Over the budget, `composeDiagnostics` (the one place the whole text
+exists, since the page's reports and the logs meet there) drops, in order,
+the oldest lines of the longer log down to `LOG_FLOOR` (20) lines in each;
+then the reports of the projects opened first in the session, which is the
+order the page sends them in (`reportsInSession` walks the runs in the order
+they were first opened); then, only if it still does not fit, what is left
+of the logs. App, Runtime, Operating system, Engine and Bundled tools are
+never cut. A line under the heading says how many lines of each log and how
+many reports were kept, and that the whole logs are in the logs folder. The
+variable parts are redacted and shortened before the budget is kept, so the
+finished copy is what is held to it, and the home-folder check runs after
+the trimming. A head that is over the budget by itself is copied all the
+same, with a warning line in `main.log` naming the length. The bug form has
+a field without `render` for the whole logs, since a text area with
+`render` takes no attachment.
 A path outside the home folder, such as an export folder on another
 volume, is left as it is. The copy redacts web addresses again, since a
 log written before the redaction existed still holds them whole. Neither

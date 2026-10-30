@@ -22,5 +22,117 @@
     "test": "tests/unit/diagnostics-text.test.ts",
     "title": "is handed the build's release label for the app, not Electron's version",
     "why": "The About panel's build version falls back to CFBundleVersion, so a candidate's About box says \"1.0.0-rc.2 (1.0.0)\"."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      main: main.slice(count('main')),",
+    "replace": "      main: main.slice(0, main.length - count('main')),",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "drops the oldest lines and keeps the newest",
+    "why": "A trim that keeps the head of the log and drops its end: the newest lines, the ones a report is about, would be the ones lost."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  if (whole.length <= DIAGNOSTICS_BUDGET) return whole",
+    "replace": "  if (whole.length >= 0) return whole",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "drops the oldest lines and keeps the newest",
+    "why": "The budget never compared with: a copy of any size is returned whole, and a long one is too long for an issue."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  if (whole.length <= DIAGNOSTICS_BUDGET) return whole",
+    "replace": "  if (whole.length < 0) return whole",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "leaves a copy under the budget as it was, with no line saying otherwise",
+    "why": "The comparison reversed to always trim: a copy that fits is cut and carries a trim line it should not."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "    kept === null ? heading : `${heading}\\n${trimLine(kept, input.reports.length)}\\n`,",
+    "replace": "    heading,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "keeps the five head sections byte for byte",
+    "why": "The line under the heading left out: a trimmed copy would say nothing of what it lost, and the reader would take the logs for whole."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  dropLogs(LOG_FLOOR)\n",
+    "replace": "  dropLogs(0)\n",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "drops the oldest map reports once the logs are down to their floor, and not before",
+    "why": "The floor removed: the logs are emptied before any map report goes, and a report-heavy session loses its logs, the most diagnostic part of the copy."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  dropLogs(0)\n  return order",
+    "replace": "  return order",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "takes lines from below the floor only when nothing else is left to take",
+    "why": "The last step left out: when even the floor does not fit, nothing more is taken and the copy stays over the budget."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "        ? 'its last line'\n",
+    "replace": "        ? 'its last 1 lines'\n",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "reads correctly for a log of one line, and for one of none",
+    "why": "The plural kept for one line: the trim line reads \"its last 1 lines\"."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      mainLog: finish(input.mainLog),",
+    "replace": "      mainLog: input.mainLog,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "holds the finished copy to the budget when redaction makes lines longer, and still hides the home",
+    "why": "The log composed unfinished: the budget is kept on text that redaction then lengthens, and the finished copy is over it."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "{ absent: finish(input.engine.absent) }",
+    "replace": "input.engine",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "finishes the engine sentence too, since the head is never cut",
+    "why": "The engine's sentence left unfinished: its addresses grow in redaction after the budget was kept."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  if (whole.length <= DIAGNOSTICS_BUDGET) return whole",
+    "replace": "  if (whole.length < DIAGNOSTICS_BUDGET) return whole",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "trims at one character over the budget and not at the budget",
+    "why": "The comparison made strict: a copy of exactly the budget is cut though it fits."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "map ${reports === 1 ? 'report' : 'reports'}`",
+    "replace": "map reports`",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "counts the reports in the singular for one, and says there were none for none",
+    "why": "The plural for one report: the line reads \"1 of 1 map reports\"."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      ? 'no map reports'",
+    "replace": "      ? '0 of 0 map reports'",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "counts the reports in the singular for one, and says there were none for none",
+    "why": "Zero reports read as \"0 of 0\" instead of saying there were none."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      engineLog: finish(input.engineLog),",
+    "replace": "      engineLog: input.engineLog,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "holds the finished copy to the budget when redaction makes lines longer, and still hides the home",
+    "why": "The engine log composed unfinished: the budget is kept on text that redaction then lengthens."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "      reports: input.reports.map(finish),",
+    "replace": "      reports: input.reports,",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "holds the finished copy to the budget when redaction makes lines longer, and still hides the home",
+    "why": "The reports composed unfinished: the budget is kept on text that redaction then lengthens."
   }
 ]

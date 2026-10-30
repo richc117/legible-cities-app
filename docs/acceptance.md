@@ -1034,10 +1034,27 @@ into a plain text editor.
 - The text begins "# Legible Cities diagnostics" and has the sections
   **App** ("Legible Cities `<version>`": write this app version into the
   run's issue), **Runtime**, **Operating system**, **Engine**,
-  **Bundled tools**, the last 200 lines of `main.log` and of `engine.log`,
-  and **Maps drawn this session**.
+  **Bundled tools**, the last 200 lines of `main.log` and of `engine.log`
+  (the lines kept, when the copy was trimmed, as the next-but-one point
+  says), and **Maps drawn this session**.
 - Your user name does not appear in any path in it: the home folder is
   written as `~`.
+- A copy that would be too long for an issue is cut to fit (48,000
+  characters at most): where a run's logs and reports made it so, the line
+  under the heading reads "Trimmed to fit a GitHub issue: main.log keeps
+  its last `<N>` lines, engine.log `<M>`, and `<K>` of `<R>` map reports.
+  The whole logs are in the logs folder (Settings › Open logs folder);
+  attach them to the report." (main.log cut to one line reads "its last
+  line", engine.log "1 line", either cut to nothing "no lines"; a session
+  with one map reads "… of 1 map report", one with none "no map reports")
+  with the
+  oldest log lines gone and the newest kept, each log keeping at least its
+  newest 20 lines until the reports of the projects opened first in the
+  session have gone, the five sections from **App** to **Bundled tools** whole, and no
+  such line in a copy that was not cut. A short session is not cut, so
+  write down whether this run's copy was (the automated run notes it); "not trimmed" is a result, and
+  the trimmed case is judged by `tests/unit/diagnostics-text.test.ts`, not
+  by this step.
 
 Result: ____
 

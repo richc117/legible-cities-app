@@ -1,0 +1,42 @@
+[
+  {
+    "file": ".github/ISSUE_TEMPLATE/bug.yml",
+    "find": "      description: If the app cannot open, or the diagnostics were trimmed, drag main.log and engine.log here.\n",
+    "replace": "      description: If the app cannot open, or the diagnostics were trimmed, drag main.log and engine.log here.\n      render: text\n",
+    "test": "tests/unit/bug-template.test.ts",
+    "title": "has a text area for log files that takes an attachment, so it sets no render",
+    "why": "The log-files field given render: text, which GitHub does not let take an attachment: the form would ask for files it cannot accept."
+  },
+  {
+    "file": ".github/ISSUE_TEMPLATE/bug.yml",
+    "find": "          required: true\n",
+    "replace": "          required: false\n",
+    "test": "tests/unit/bug-template.test.ts",
+    "title": "will not send until the person says they read what they pasted",
+    "why": "The confirmation made optional: a report could be sent without the person having read what they pasted."
+  },
+  {
+    "file": ".github/ISSUE_TEMPLATE/bug.yml",
+    "find": "      placeholder: \"The App row under Settings › Versions, and your system\"\n",
+    "replace": "      placeholder: \"1.0.0, macOS 15.1 (Apple Silicon) / Windows 11 24H2\"\n",
+    "test": "tests/unit/bug-template.test.ts",
+    "title": "still asks for the version, with an example that is no version",
+    "why": "The old placeholder back, with a version number in it that the next release makes wrong."
+  },
+  {
+    "file": ".github/ISSUE_TEMPLATE/bug.yml",
+    "find": "      render: text\n",
+    "replace": "",
+    "test": "tests/unit/bug-template.test.ts",
+    "title": "keeps the diagnostics as text, which is why the logs have a field of their own",
+    "why": "The diagnostics field without render: text, so a line beginning with # in the paste draws as a heading."
+  },
+  {
+    "file": ".github/ISSUE_TEMPLATE/bug.yml",
+    "find": "if the app opens; if it does not, the version you downloaded.",
+    "replace": "if the app opens.",
+    "test": "tests/unit/bug-template.test.ts",
+    "title": "still asks for the version, with an example that is no version",
+    "why": "The description saying nothing for a person whose app will not open, who has no Settings to read the version from."
+  }
+]
