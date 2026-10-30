@@ -389,7 +389,10 @@ function check(
       temps.removed.push(dir)
     },
     now: () => (clock += 7),
-    timeoutMs: 50,
+    // A deadline no healthy fake comes near, so a loaded machine cannot turn
+    // a pass into a timeout (issue 635). A test that hangs a child on purpose
+    // gives its own short one.
+    timeoutMs: 10_000,
     log: {
       info: (m) => lines.push(`info ${m}`),
       warn: (m) => lines.push(`warn ${m}`),
@@ -544,7 +547,7 @@ describe('FirstRunCheck', () => {
       detail: 'gtfs2graph could not be started (EACCES).',
     })
 
-    const hung = check({ scripts: { gtfs2graph: { hang: true } } })
+    const hung = check({ scripts: { gtfs2graph: { hang: true } }, timeoutMs: 50 })
     const result = await hung.subject.run()
     expect(result.loom).toMatchObject({
       kind: 'timeout',
