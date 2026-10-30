@@ -127,11 +127,12 @@ export function validateServiceWindow(service: unknown): string | null {
   return null
 }
 
-const MADE_MAX = 64
+// Exported, with `MADE_PATTERN`, for tests/unit/compatibility.test.ts alone.
+export const MADE_MAX = 64
 // ISO 8601 with a time and an offset, as the engine writes it beside a
 // stored layout (isoformat with seconds, in UTC). Compared as a string, so
 // the shape is pinned before the value is trusted, as a day's is.
-const MADE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
+export const MADE_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 
 /** The engine's `made`: an ISO timestamp a clock could have written. */
 export function validateMade(made: unknown): string | null {
