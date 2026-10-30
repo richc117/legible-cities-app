@@ -870,4 +870,35 @@ describe('what the samples region offers while the engine is down (issue 562)', 
     expect(html.indexOf(SAMPLES_STOPPED_FIRST)).toBeLessThan(html.indexOf('the actions'))
     expect(html.endsWith('<p>the actions</p></section>')).toBe(true)
   })
+
+  it('draws the sentence with the actions even over cards, never the buttons alone', () => {
+    const sentence = samplesSentence(
+      { state: 'stopped', reason: 'It exited.', retryable: true },
+      'unread',
+    ) as string
+    const html = renderToStaticMarkup(
+      <SampleCities
+        presets={[feed()]}
+        palette="dark"
+        sentence={sentence}
+        actions={<p>the actions</p>}
+        onOpen={() => undefined}
+      />,
+    )
+    // Its first sentence: the whole one carries an apostrophe the markup escapes.
+    expect(html).toContain(SAMPLES_STOPPED_FIRST)
+    // Under the heading: the sentence, then the actions, then the cards.
+    expect(html.indexOf(SAMPLES_STOPPED_FIRST)).toBeLessThan(html.indexOf('the actions'))
+    expect(html.indexOf('the actions')).toBeLessThan(html.indexOf('aria-label="Presets"'))
+    // With cards and no actions, the cards speak for themselves.
+    const quiet = renderToStaticMarkup(
+      <SampleCities
+        presets={[feed()]}
+        palette="dark"
+        sentence={sentence}
+        onOpen={() => undefined}
+      />,
+    )
+    expect(quiet).not.toContain(SAMPLES_STOPPED_FIRST)
+  })
 })

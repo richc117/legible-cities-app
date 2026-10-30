@@ -174,6 +174,8 @@ test('says the engine is unavailable when no interpreter exists, and still works
 // file again, so the test puts the engine right on disk and then presses
 // Try again, and the samples list.
 test('offers Try again and Copy diagnostics once the engine has stopped, and Try again starts it once more', async () => {
+  // Four launches and 7 s of backoff before the give-up, then a start again.
+  test.setTimeout(120_000)
   const home = fakeHome({ exit: 'at-once' })
   const env = {
     SCHEMATIC_HOME: home,

@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/EngineDownActions.tsx",
+    "find": "      setSaid(why)\n      retryButton.current?.focus()\n",
+    "replace": "      setSaid(why)\n",
+    "test": "tests/unit/engine-down-actions.test.tsx",
+    "title": "puts focus back on Try again when the retry is refused",
+    "why": "A refused retry leaves focus on the region's heading (issue 562): the button that is still there, and the line that says why, are behind the person's focus rather than at it."
+  },
+  {
+    "file": "src/renderer/src/EngineDownActions.tsx",
+    "find": "    document.getElementById(SAMPLES_HEADING_ID)?.focus()\n",
+    "replace": "",
+    "test": "tests/unit/engine-down-actions.test.tsx",
+    "title": "hands focus to the Sample cities heading before the bridge is asked",
+    "why": "Focus left on Try again as the retry starts (issue 562): the state change takes the button away and focus falls to the body."
+  }
+]

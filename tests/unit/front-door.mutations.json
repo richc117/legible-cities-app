@@ -6,5 +6,13 @@
     "test": "tests/unit/front-door.test.tsx",
     "title": "what the samples region offers while the engine is down",
     "why": "Try again offered whatever the state says (issue 562): with no interpreter at all it is drawn, and every press is refused, since there is nothing a start could find."
+  },
+  {
+    "file": "src/renderer/src/SampleCities.tsx",
+    "find": "      {(presets.length === 0 || Boolean(actions)) && sentence !== null && (\n",
+    "replace": "      {presets.length === 0 && sentence !== null && (\n",
+    "test": "tests/unit/front-door.test.tsx",
+    "title": "draws the sentence with the actions even over cards",
+    "why": "The down sentence drawn only when there are no cards (issue 562): Try again and Copy diagnostics would sit over the cards with nothing saying why they are there."
   }
 ]

@@ -61,6 +61,7 @@ export default function EngineDownActions({
   // A second press while the first is on its way would copy, or start, twice.
   const copying = useRef(false)
   const retrying = useRef(false)
+  const retryButton = useRef<HTMLElement>(null)
 
   const retry = (): void => {
     if (retrying.current) return
@@ -71,12 +72,18 @@ export default function EngineDownActions({
     // body (rules/renderer.md): it is handed to the region's heading first,
     // which stays.
     document.getElementById(SAMPLES_HEADING_ID)?.focus()
+    // A refusal leaves the button where it was, so focus goes back to it,
+    // after the line under it has been told why.
+    const refused = (why: string): void => {
+      setSaid(why)
+      retryButton.current?.focus()
+    }
     void onRetry()
       .then(
         (why) => {
-          if (why !== null) setSaid(why)
+          if (why !== null) refused(why)
         },
-        (error: unknown) => setSaid(retryNotAsked(messageOf(error))),
+        (error: unknown) => refused(retryNotAsked(messageOf(error))),
       )
       .finally(() => {
         retrying.current = false
@@ -105,7 +112,7 @@ export default function EngineDownActions({
     <>
       <div className="toolbar">
         {actions.retry && (
-          <Button variant="primary" onClick={retry}>
+          <Button variant="primary" ref={retryButton} onClick={retry}>
             Try again
           </Button>
         )}
