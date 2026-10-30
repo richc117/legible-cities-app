@@ -590,7 +590,7 @@ leaves the rules to the contract.
 | --- | --- | --- |
 | 01 Data | `Inspect`, `StageView`, the feed's download (`DownloadLine`) | `DataCell.tsx` |
 | 02 Process | `LayoutRun`, the layout's tuning (`LayoutTuning`), the engine's log (`EngineLog`), `Diagnostics` | `ProcessCell.tsx` |
-| 03 Frame and service day | `ServiceDay`, the transport (`Transport`), the trip (`Trip`) | `FrameCell.tsx` |
+| 03 Day | `ServiceDay`, the transport (`Transport`), the trip (`Trip`) | `FrameCell.tsx` |
 | 04 Style | `ThemeSwitch`, `StyleFields` with `StyleLooks` | `StyleCell.tsx` |
 | 05 Lines | `LineColours`, with each line's options under its row (`LineOptionsDisclosure`, held by `useLineOptions`), and `LineOrder` | `LinesCell.tsx` |
 | 06 Export | `ExportTab` (with `ExportOpening`), which draws `ExportRun` itself, and the cell's own preview (`ExportPreview`) | `ExportCell.tsx` |

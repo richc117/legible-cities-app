@@ -191,7 +191,7 @@ redraw has finished, and the project's picture in the Library follows. A
 project with no map yet is left alone. So is one that cell 02 or cell 03
 says is out of date, for example a day you chose and have not drawn, or a
 layout that was made again since the map was drawn: it stays as it was drawn
-until you run it. If a redraw fails, cell 03 (Frame and service day) says
+until you run it. If a redraw fails, cell 03 (Day) says
 that the map could not be redrawn as the project opened, gives the engine's
 reason, and the old map stays on screen. The redraw is tried again the next
 time the project opens.

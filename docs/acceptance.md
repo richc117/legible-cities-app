@@ -351,7 +351,7 @@ map's top edge, and then **Enter**.
   cell 03 says is drawn, and no station list is open until you open one.
 - Tab on past cell 02 reaches **Skip past the map** over the top edge of
   the map, which sits after cell 02, and **Enter** on it puts focus on cell
-  03's heading, "03 Frame and service day", without passing through the
+  03's heading, "03 Day", without passing through the
   map's own controls.
 - Collapsed, cell 01's row reads "`<n>` stops in the feed", under a
   chevron that points right at the row's left edge; open, the chevron
@@ -420,9 +420,9 @@ Press **Lay out from scratch…**, then **Cancel** in the dialog.
 
 Result: ____
 
-### 7. Cell 03, Frame and service day: pick a day, scrub the clock
+### 7. Cell 03, Day: pick a day, scrub the clock
 
-**Do.** In cell **03 Frame and service day**, choose another date in
+**Do.** In cell **03 Day**, choose another date in
 **Draw for another day** and look at the cells below before pressing
 anything; then press **Draw for this day**. Then press **Use the busiest
 weekday** and **Draw for this day** again. Try typing a date outside the
@@ -1134,7 +1134,7 @@ Copy everything in the block below into a new issue titled
 | 4 | Open a sample city, and watch it download and lay out (___ s) | pass / fail | |
 | 5 | Cell 01, Data: the feed and where its routes run | pass / fail | |
 | 6 | Cell 02, Process: the layout and what the build had to fudge | pass / fail | |
-| 7 | Cell 03, Frame and service day: pick a day, scrub the clock | pass / fail | |
+| 7 | Cell 03, Day: pick a day, scrub the clock | pass / fail | |
 | 8 | Cell 04, Style: the theme and the sizes | pass / fail | |
 | 9 | Cell 05, Lines: colours, by dragging | pass / fail | |
 | 10 | Cell 05, Lines: the order | pass / fail | |

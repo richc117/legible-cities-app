@@ -251,7 +251,7 @@ The two reader columns are a person's, recorded per run in
 | Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
-### Cell 03, Frame and service day
+### Cell 03, Day
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
@@ -1176,9 +1176,9 @@ a table).
   explanation is no longer shown and focus has not moved (D9). Press **Copy as text** and
   listen for "The figures and the caveats are on the clipboard."
 
-#### Cell 03, Frame and service day
+#### Cell 03, Day
 
-- **Service day and date control.** In cell **03 Frame and service day**,
+- **Service day and date control.** In cell **03 Day**,
   listen for the section "Service day" (its name is the cell's heading, so
   there is no heading of its own inside it), the status "Drawn for `<day>`.
   The feed covers `<start>` to `<end>`; the busiest weekday, counted from
