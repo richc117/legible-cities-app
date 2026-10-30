@@ -157,10 +157,12 @@ describe('what the samples region says when it has no presets to draw', () => {
   const unavailable: EngineState = {
     state: 'unavailable',
     reason: 'The engine could not be started.',
+    retryable: true,
   }
   const stopped: EngineState = {
     state: 'stopped',
     reason: 'It exited. The engine failed 3 times in a row.',
+    retryable: true,
   }
 
   it('says the engine is on its way while it is starting or restarting, or not yet heard from', () => {
@@ -206,7 +208,7 @@ describe('what the samples region says when it has no presets to draw', () => {
   })
 
   it('does not report the app’s own quit as a failure', () => {
-    const quitting: EngineState = { state: 'stopped', reason: QUITTING_REASON }
+    const quitting: EngineState = { state: 'stopped', reason: QUITTING_REASON, retryable: false }
     expect(samplesSentence(quitting, 'unread')).toBe(SAMPLES_AWAY)
     expect(samplesSentence(quitting, 'listed')).toBe(SAMPLES_AWAY)
   })
@@ -741,7 +743,7 @@ describe('the samples region’s sentence, state by state (issue 595)', () => {
     ['ready, listed', { state: 'ready', version: '1.0.0', protocol: 1 }, 'listed', SAMPLES_NONE],
     [
       'unavailable',
-      { state: 'unavailable', reason: 'Reinstall the app.' },
+      { state: 'unavailable', reason: 'Reinstall the app.', retryable: true },
       'unread',
       `Reinstall the app. ${SAMPLES_ENGINE_DOWN}`,
     ],
@@ -753,13 +755,13 @@ describe('the samples region’s sentence, state by state (issue 595)', () => {
     ],
     [
       'stopped',
-      { state: 'stopped', reason: 'It exited.' },
+      { state: 'stopped', reason: 'It exited.', retryable: true },
       'unread',
       `${SAMPLES_STOPPED_FIRST} It exited. ${SAMPLES_ENGINE_DOWN}`,
     ],
     [
       'stopped by the app’s own quit',
-      { state: 'stopped', reason: QUITTING_REASON },
+      { state: 'stopped', reason: QUITTING_REASON, retryable: false },
       'unread',
       SAMPLES_AWAY,
     ],

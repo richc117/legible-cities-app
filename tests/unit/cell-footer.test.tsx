@@ -101,7 +101,7 @@ describe('cell 02’s provenance', () => {
     for (const engine of [
       null,
       { state: 'starting', attempt: 1 },
-      { state: 'unavailable', reason: 'no python' },
+      { state: 'unavailable', reason: 'no python', retryable: false },
     ] as (EngineState | null)[]) {
       expect(terms(processFacts(project(), engine))).not.toContain('Engine now')
     }

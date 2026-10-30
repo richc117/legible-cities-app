@@ -10,6 +10,7 @@ import {
   NOT_SENT,
   PAGE_METHODS,
   registerEngineHandlers,
+  RETRY_GUARD_NAME,
   type EngineSource,
 } from '../../src/main/engine-ipc'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
@@ -47,6 +48,9 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
   let notificationListener: ((n: Notification) => void) | null = null
   let nextId = 1
   let state: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
+  // What the supervisor's retry answers, and how many times it was asked.
+  let retryAnswer: string | null = null
+  const retries = { count: 0 }
   const engine: EngineSource = {
     get state() {
       return state
@@ -61,6 +65,10 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     onNotification: (l) => {
       notificationListener = l
       return () => {}
+    },
+    retry: () => {
+      retries.count += 1
+      return retryAnswer
     },
   }
   const defaultRequest = (
@@ -110,21 +118,32 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     setEngineRequest: (request: typeof defaultRequest) => {
       engineRequest = request
     },
+    retries,
+    setRetryAnswer: (answer: string | null) => {
+      retryAnswer = answer
+    },
   }
 }
 
 describe('registerEngineHandlers', () => {
-  it('registers the three channels and nothing else', () => {
+  it('registers the four channels and nothing else', () => {
     const { handlers } = harness()
     expect([...handlers.keys()].sort()).toEqual(
-      [CHANNELS.engineState, CHANNELS.engineRequest, CHANNELS.engineCancel].sort(),
+      [
+        CHANNELS.engineState,
+        CHANNELS.engineRequest,
+        CHANNELS.engineCancel,
+        CHANNELS.engineRetry,
+      ].sort(),
     )
   })
   it('refuses a caller that is not the top frame', async () => {
-    const { call, requests } = harness(false)
+    const { call, requests, retries } = harness(false)
     await expect(call(CHANNELS.engineState)).rejects.toThrow('forbidden')
     await expect(call(CHANNELS.engineRequest, 't1', 'engine.info')).rejects.toThrow('forbidden')
     expect(requests).toEqual([])
+    await expect(call(CHANNELS.engineRetry)).rejects.toThrow('forbidden')
+    expect(retries.count, 'a subframe never reaches the supervisor').toBe(0)
   })
   it('answers the state and sends each change to the window', async () => {
     const { call, sent, setState } = harness()
@@ -215,7 +234,7 @@ describe('registerEngineHandlers', () => {
   })
   it('passes a refusal from the supervisor through as a settled error', async () => {
     const { call, setState, sent } = harness()
-    setState({ state: 'unavailable', reason: 'no engine' })
+    setState({ state: 'unavailable', reason: 'no engine', retryable: false })
     expect(await call(CHANNELS.engineRequest, 'tok', 'engine.info')).toEqual({ accepted: true })
     await tick()
     const settled = sent.find((m) => m.channel === CHANNELS.engineSettled)
@@ -704,5 +723,48 @@ describe('a request has no deadline of its own (issue 351)', () => {
       accepted: boolean
     }
     expect(again.accepted).toBe(true)
+  })
+})
+
+// The Library's "Try again" (issue 562): the supervisor is asked only from
+// the top frame and only when the guard in front of every request lets it
+// through, which a reset of the engine's data does not.
+describe('the retry', () => {
+  const RESETTING = 'The engine data is being reset; wait for it to finish.'
+
+  it('asks the supervisor and answers null once the engine is starting again', async () => {
+    const h = harness()
+    expect(await h.call(CHANNELS.engineRetry)).toBeNull()
+    expect(h.retries.count).toBe(1)
+  })
+
+  it('passes the supervisor’s refusal through, and logs it', async () => {
+    const h = harness()
+    h.setRetryAnswer('The engine is already running or on its way.')
+    expect(await h.call(CHANNELS.engineRetry)).toBe('The engine is already running or on its way.')
+    expect(h.log.some((line) => line.includes('refused a retry'))).toBe(true)
+  })
+
+  it('is refused while the engine data is being reset, with the reset’s sentence, and the supervisor is never asked', async () => {
+    let resetting: string | null = RESETTING
+    const asked: string[] = []
+    // Composed as src/main/index.ts composes it: the reset on both sides of
+    // the registry, whose rules name no retry.
+    const registry = async (method: string): Promise<string | null> => {
+      asked.push(method)
+      return method === 'feeds.remove' ? 'One project uses this feed.' : null
+    }
+    const h = harness(true, async (method) => resetting ?? (await registry(method)) ?? resetting)
+    expect(await h.call(CHANNELS.engineRetry)).toBe(RESETTING)
+    expect(h.retries.count, 'nothing started under the reset').toBe(0)
+
+    resetting = null
+    expect(await h.call(CHANNELS.engineRetry)).toBeNull()
+    expect(h.retries.count).toBe(1)
+    expect(asked).toEqual([RETRY_GUARD_NAME])
+  })
+
+  it('puts itself to the guard under a name no page request can carry', () => {
+    expect((PAGE_METHODS as readonly string[]).includes(RETRY_GUARD_NAME)).toBe(false)
   })
 })

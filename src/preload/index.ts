@@ -104,6 +104,8 @@ const api: Api = {
     onState: (listener) => subscribe(CHANNELS.engineStateChanged, listener),
     onProgress: (listener) => subscribe(CHANNELS.engineProgress, listener),
     onLog: (listener) => subscribe(CHANNELS.engineLog, listener),
+    // The Library's "Try again" (issue 562): nothing crosses inward.
+    retry: () => invoke(CHANNELS.engineRetry),
   },
   feeds: {
     pickZip: () => invoke(CHANNELS.feedsPickZip),

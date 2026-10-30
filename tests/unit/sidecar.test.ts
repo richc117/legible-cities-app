@@ -20,6 +20,7 @@ import {
 import {
   describeState,
   ERROR_CODES,
+  RETRY_REFUSALS,
   type EngineError,
   type EnginePin,
   type EngineState,
@@ -378,6 +379,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(none.state).toEqual({
       state: 'unavailable',
       reason: 'No engine to run: set LEGIBLE_ENGINE_CHECKOUT.',
+      retryable: false,
     })
     await expect(none.request('engine.info').result).rejects.toMatchObject({
       code: ERROR_CODES.notReady,
@@ -805,7 +807,11 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await rejected
     expect(Date.now() - started).toBeLessThan(1_500)
     expect(alive(pid)).toBe(false)
-    expect(h.sidecar.state).toEqual({ state: 'stopped', reason: 'The app is quitting.' })
+    expect(h.sidecar.state).toEqual({
+      state: 'stopped',
+      reason: 'The app is quitting.',
+      retryable: false,
+    })
     expect(h.log.some((l) => l.startsWith('ended on request'))).toBe(true)
     const again = Date.now()
     await h.sidecar.stop()
@@ -879,6 +885,117 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(error.message).toContain('restarting')
   })
 
+  // A person's "Try again" on the Library (issue 562).
+  describe('a retry', () => {
+    const attempts = (states: EngineState[]): string[] =>
+      states.map((s) =>
+        s.state === 'starting' || s.state === 'restarting' ? `${s.state} ${s.attempt}` : s.state,
+      )
+
+    it('after giving up, starts again with the whole restart budget', async () => {
+      const h = harness({ exit: 'at-once' })
+      h.sidecar.start()
+      const gaveUp = await h.until((s) => s.state === 'stopped')
+      expect(gaveUp).toMatchObject({ state: 'stopped', retryable: true })
+      const before = h.states.length
+      expect(h.sidecar.retry()).toBeNull()
+      // Each launch reads the stand-in's control file again; it still exits.
+      await h.until((s) => s.state === 'stopped' && h.states.length > before)
+      // Four starts again, three restarts between them, as a first start has:
+      // the failures that ended in giving up were forgiven.
+      expect(attempts(h.states.slice(before))).toEqual([
+        'starting 1',
+        'restarting 2',
+        'starting 2',
+        'restarting 3',
+        'starting 3',
+        'restarting 4',
+        'starting 4',
+        'stopped',
+      ])
+      expect(h.log).toContain('trying again, as a person asked')
+    })
+
+    it('after giving up, reaches ready when the engine has been put right', async () => {
+      const h = harness({ exit: 'at-once' })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      writeFileSync(join(h.home, 'fake-engine.json'), JSON.stringify({}))
+      expect(h.sidecar.retry()).toBeNull()
+      await h.until(ready)
+    })
+
+    it('starts an interpreter that could not be spawned once more, and says so again', async () => {
+      const states: EngineState[] = []
+      const missing = new Sidecar({
+        command: ['no-such-interpreter-xyz', '-m', 'schematic.serve'],
+        env: { PATH: process.env.PATH ?? '' },
+        pin: PIN,
+        log: () => {},
+        bounds: FAST,
+      })
+      missing.onState((s) => states.push(s))
+      missing.start()
+      await eventually(() => missing.state.state === 'unavailable', 5_000, 'unavailable')
+      expect(missing.state).toMatchObject({ state: 'unavailable', retryable: true })
+      expect(missing.retry()).toBeNull()
+      await eventually(
+        () => states.filter((s) => s.state === 'unavailable').length === 2,
+        5_000,
+        'unavailable again',
+      )
+      expect(attempts(states)).toEqual(['starting 1', 'unavailable', 'starting 1', 'unavailable'])
+      await missing.stop()
+    })
+
+    it('is refused with no interpreter at all, which is not retryable', () => {
+      const none = new Sidecar({ command: null, env: {}, pin: PIN, log: () => {} })
+      none.start()
+      expect(none.state).toMatchObject({ state: 'unavailable', retryable: false })
+      expect(none.retry()).toBe(RETRY_REFUSALS.noInterpreter)
+      expect(none.state.state).toBe('unavailable')
+    })
+
+    it('is refused for a mismatched engine, which would answer the same version', async () => {
+      const h = harness({ version: '0.1.0' })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'mismatched')
+      const launches = h.states.filter((s) => s.state === 'starting').length
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.mismatched)
+      expect(h.sidecar.state.state).toBe('mismatched')
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(launches)
+    })
+
+    it('is refused while the engine is ready, or on its way, so no second engine starts', async () => {
+      const h = harness()
+      expect(h.sidecar.retry(), 'before the first start').toBe(RETRY_REFUSALS.notDown)
+      h.sidecar.start()
+      expect(h.sidecar.retry(), 'starting').toBe(RETRY_REFUSALS.notDown)
+      await h.until(ready)
+      const pid = h.pid()
+      expect(h.sidecar.retry(), 'ready').toBe(RETRY_REFUSALS.notDown)
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
+      expect(h.pid()).toBe(pid)
+    })
+
+    it('is refused once the app is quitting, after giving up as before it', async () => {
+      const h = harness({ exit: 'at-once' })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      await h.sidecar.stop()
+      const states = h.states.length
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.quitting)
+      expect(h.states).toHaveLength(states)
+
+      const quit = harness()
+      quit.sidecar.start()
+      await quit.until(ready)
+      await quit.sidecar.stop()
+      expect(quit.sidecar.state).toMatchObject({ state: 'stopped', retryable: false })
+      expect(quit.sidecar.retry()).toBe(RETRY_REFUSALS.quitting)
+    })
+  })
+
   it('does not restart while stopping', async () => {
     const h = harness({ exit: 'after-handshake' }, { restartDelaysMs: [500, 500, 500] })
     h.sidecar.start()
@@ -915,7 +1032,9 @@ describe('describeState', () => {
     expect(describeState({ state: 'ready', version: '0.2.0', protocol: 1 })).toBe(
       'Engine ready (0.2.0).',
     )
-    expect(describeState({ state: 'unavailable', reason: 'x.' })).toBe('Engine unavailable: x.')
+    expect(describeState({ state: 'unavailable', reason: 'x.', retryable: false })).toBe(
+      'Engine unavailable: x.',
+    )
     expect(
       describeState({
         state: 'mismatched',

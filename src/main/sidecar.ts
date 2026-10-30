@@ -12,6 +12,7 @@ import {
   EngineError,
   ERROR_CODES,
   QUITTING_REASON,
+  RETRY_REFUSALS,
   type EnginePin,
   type EngineState,
 } from '../shared/engine'
@@ -278,10 +279,36 @@ export class Sidecar {
       this.setState({
         state: 'unavailable',
         reason: this.options.unavailableReason ?? 'No interpreter can run the engine.',
+        retryable: false,
       })
       return
     }
     this.launch()
+  }
+
+  /**
+   * A person's "Try again" on the Library (issue 562): start the engine once
+   * more, with the whole restart budget, after the supervisor gave up on it
+   * or its interpreter could not be spawned. Null when it has started, else
+   * why not, as a sentence. Refused while quitting, with no interpreter at
+   * all, for a mismatched engine, which would answer the same version, and
+   * in every state but those two, so a press that races a state change never
+   * starts a second engine beside the first. `start()` is no way back in: it
+   * returns once it has run.
+   */
+  retry(): string | null {
+    if (this.stopping) return RETRY_REFUSALS.quitting
+    if (this.options.command === null) return RETRY_REFUSALS.noInterpreter
+    const state = this._state
+    if (state.state === 'mismatched') return RETRY_REFUSALS.mismatched
+    if ((state.state !== 'stopped' && state.state !== 'unavailable') || !state.retryable)
+      return RETRY_REFUSALS.notDown
+    this.log('trying again, as a person asked')
+    // The failures that ended in giving up are forgiven: a retry that fails
+    // at once is restarted as a first start's failure is, not given up on.
+    this.failures = 0
+    this.launch()
+    return null
   }
 
   // -- requests --
@@ -642,6 +669,9 @@ export class Sidecar {
     this.setState({
       state: 'unavailable',
       reason: interpreterFailedReason(what, this.options.bundledInterpreter ?? false),
+      // The file may be back by the time a person tries again (a scanner's
+      // quarantine undone), which no restart of ours would wait for.
+      retryable: true,
     })
   }
 
@@ -658,6 +688,7 @@ export class Sidecar {
       this.setState({
         state: 'stopped',
         reason: `${reason} The engine failed ${this.failures} times in a row.`,
+        retryable: true,
       })
     } else {
       const attempt = this.failures + 1
@@ -727,7 +758,7 @@ export class Sidecar {
     }
     this.clearStable()
     if (this._state.state !== 'unavailable' && this._state.state !== 'stopped') {
-      this.setState({ state: 'stopped', reason: QUITTING_REASON })
+      this.setState({ state: 'stopped', reason: QUITTING_REASON, retryable: false })
     }
     // A failure or a mismatch may be ending a child right now: that is the
     // same work, so wait for it rather than quit past it.

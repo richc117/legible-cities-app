@@ -253,6 +253,15 @@ export interface Api {
     onState(listener: (state: EngineState) => void): () => void
     onProgress(listener: (progress: JobProgress) => void): () => void
     onLog(listener: (line: JobLog) => void): () => void
+    /**
+     * Start the engine again after the supervisor gave up on it, or after its
+     * interpreter could not be spawned: the Library's "Try again" (issue
+     * 562), offered only where the state says `retryable`. Nothing crosses
+     * inward. Null when the engine is starting again, and the state's own
+     * changes say the rest; else the sentence for why not, a reset of the
+     * engine's data under way among them.
+     */
+    retry(): Promise<string | null>
   }
   /**
    * The one thing a page cannot do for a feed: choose a file. The main
@@ -454,6 +463,8 @@ export const CHANNELS = {
   engineSettled: 'engine:settled',
   engineProgress: 'engine:progress',
   engineLog: 'engine:log',
+  // The Library's "Try again" (issue 562).
+  engineRetry: 'engine:retry',
   exportRun: 'export:run',
   exportCancel: 'export:cancel',
   exportReveal: 'export:reveal',

@@ -22,5 +22,13 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "issue 587",
     "why": "The listener's message logged unredacted: a key in an address it quotes reaches the supervisor's log line whole."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    this.failures = 0\n    this.launch()\n    return null\n",
+    "replace": "    this.launch()\n    return null\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "after giving up, starts again with the whole restart budget",
+    "why": "A retry that keeps the failures it gave up on (issue 562): its first failure is the fifth in a row, and the supervisor gives up again at once instead of restarting three times."
   }
 ]

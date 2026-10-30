@@ -17,7 +17,7 @@ own), never `shell`. The interpreter is `resolveInterpreter()`'s answer
 
 | From | Event | To | Also |
 |---|---|---|---|
-| — | `start()` with no interpreter | `unavailable(reason)` | logged; terminal for the run |
+| — | `start()` with no interpreter | `unavailable(reason)` | logged; terminal for the run (`retryable: false`) |
 | — | `start()` | `starting(1)` | spawn; handshake begins |
 | `starting(n)` | `engine.info` good | `ready` | nothing queued (there is no queue); the failure count resets once a request is answered or `stableMs` passes in `ready` |
 | `starting(n)` | `engine.info` wrong version or protocol | `mismatched` | the dialog callback is called once with expected and found; the process is shut down like a quit; terminal for the run |
@@ -25,6 +25,7 @@ own), never `shell`. The interpreter is `resolveInterpreter()`'s answer
 | `ready` | process ends or framing error | `restarting(2, reason)` | every request in flight rejects with `-32002` |
 | `restarting(n)` | wait elapsed (1 s, 2 s, 4 s for n = 2, 3, 4) | `starting(n)` | |
 | any but `unavailable`/`stopped` | `stop()` (quit) | `stopped('quitting')` | the shutdown sequence; nothing restarts |
+| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched`, and in every other state; the bridge refuses it too while the engine's data is being reset |
 
 `onState` listeners are called after each transition with the new state.
 Every transition is logged with the reason.

@@ -1,5 +1,6 @@
-// The engine bridge's main side: three handlers over the supervisor and
-// four events to the window. The page addresses a request by a token it
+// The engine bridge's main side: four handlers over the supervisor (the
+// fourth, the Library's "Try again", issue 562) and four events to the
+// window. The page addresses a request by a token it
 // minted; this layer maps it to the id the engine saw and back, so a
 // notification reaches the page with the page's own id. A request's answer
 // travels as an event too, on the same channel as its progress and log
@@ -78,7 +79,20 @@ export interface EngineSource {
   cancel(id: number): void
   onState(listener: (state: EngineState) => void): () => void
   onNotification(listener: (n: Notification) => void): () => void
+  /** Start a down engine again (`Sidecar.retry`): null when it started, else why not. */
+  retry(): string | null
 }
+
+/**
+ * The name the retry is put to the guard under (issue 562). It is no method
+ * of the engine's and is never sent to one: the guard is asked because what
+ * stands in front of every request stands in front of a start too. The one
+ * composed in `index.ts` asks the reset first and last, and the registry's
+ * rules name only `feeds.add` and `feeds.remove`, so a reset under way is
+ * what refuses a retry, with the reset's own sentence: an engine started
+ * while its home's folders are being removed would write into them.
+ */
+export const RETRY_GUARD_NAME = 'app:engine-retry'
 
 export type Send = (channel: string, payload: unknown) => void
 
@@ -286,6 +300,17 @@ export function registerEngineHandlers(
     // 0 is the token held through the guard's await: no engine id yet.
     if (id === 0) cancelledEarly.add(token)
     else engine.cancel(id)
+  })
+
+  // The Library's "Try again" (issue 562): from the top frame only, as every
+  // channel here, and nothing crosses inward. Null when the engine is
+  // starting again, else the sentence the line under the buttons says.
+  handle(CHANNELS.engineRetry, async (): Promise<string | null> => {
+    const refused = await guard(RETRY_GUARD_NAME, undefined)
+    if (refused !== null) return refused
+    const why = engine.retry()
+    if (why !== null) log(`refused a retry: ${why}`)
+    return why
   })
 
   const offState = engine.onState((state) => send(CHANNELS.engineStateChanged, state))

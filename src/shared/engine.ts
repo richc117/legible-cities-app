@@ -19,13 +19,37 @@ export interface EnginePin {
 /** The stopped reason the supervisor sets for the app's own quit, which is not a failure. */
 export const QUITTING_REASON = 'The app is quitting.'
 
+/**
+ * Why `Sidecar.retry` would not start the engine again (issue 562), one
+ * sentence each, for the line under the Library's buttons: the page offers
+ * the button only where a retry can work, so one of these is said only when
+ * the state moved between the drawing and the press.
+ */
+export const RETRY_REFUSALS = {
+  quitting: 'The app is quitting, so the engine is not started again.',
+  noInterpreter:
+    'There is no interpreter to start the engine with, so trying again would not help.',
+  mismatched:
+    'The engine is the wrong version for this app, so starting it again would find the same one.',
+  notDown: 'The engine is already running or on its way.',
+} as const
+
+/**
+ * `retryable` on the two down states that carry it says whether a person's
+ * "Try again" can help (issue 562): true where the supervisor gave up after
+ * failing too often, or where the interpreter it was given could not be
+ * spawned (a file a scanner quarantined, and has since put back); false where
+ * there is no interpreter to start at all, and for the app's own quit. A
+ * mismatched engine has no such flag: starting it again finds the same
+ * version, and its dialog says so.
+ */
 export type EngineState =
   | { state: 'starting'; attempt: number }
   | { state: 'ready'; version: string; protocol: number }
   | { state: 'restarting'; attempt: number; reason: string }
-  | { state: 'unavailable'; reason: string }
+  | { state: 'unavailable'; reason: string; retryable: boolean }
   | { state: 'mismatched'; expected: EnginePin; found: { version: string; protocol: number } }
-  | { state: 'stopped'; reason: string }
+  | { state: 'stopped'; reason: string; retryable: boolean }
 
 // The three shapes below are the engine's, from the generated types
 // (A1-02), with the app's own two differences named rather than copied, so

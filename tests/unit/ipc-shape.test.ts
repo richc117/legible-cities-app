@@ -307,6 +307,7 @@ describe('a field the paths cannot be looked for in', () => {
       cancel: () => {},
       onState: () => () => {},
       onNotification: () => () => {},
+      retry: () => null,
     }
     const warned = vi.spyOn(log, 'warn').mockImplementation(() => {})
     // A folder that is not a string makes the scrub throw, which is how a
@@ -366,6 +367,7 @@ describe('both bridges hand the door their folders', () => {
       cancel: () => {},
       onState: () => () => {},
       onNotification: () => () => {},
+      retry: () => null,
     }
     registerEngineHandlers(
       ipc,

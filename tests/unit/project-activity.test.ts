@@ -206,6 +206,7 @@ function bridge(
     },
     onState: () => () => {},
     onNotification: () => () => {},
+    retry: () => null,
   }
   registerEngineHandlers(
     ipc,
