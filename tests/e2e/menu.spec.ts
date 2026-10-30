@@ -181,7 +181,12 @@ test('still answers after the window refuses a navigation away', async () => {
     )
     expect(page.url()).toMatch(/^app:\/\/local\/ui\//)
     await choose(app, 'settings')
-    await expect(heading).toHaveText('Settings')
+    // Read in the page, not through a locator: Playwright saw the refused
+    // navigation start and would wait on it for good, though it never
+    // commits ("waiting for navigation to finish").
+    await expect
+      .poll(() => page.evaluate(() => document.querySelector('h1')?.textContent ?? ''))
+      .toBe('Settings')
   })
 })
 
