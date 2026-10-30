@@ -13,6 +13,8 @@ import {
 } from '../../src/shared/first-run'
 import { firstRunTitle } from '../../src/renderer/src/FirstRunDialog'
 import { NOT_LAID_OUT } from '../../src/renderer/src/DownloadLine'
+import { SAMPLES_STOPPED_FIRST } from '../../src/renderer/src/Library'
+import { SHEET_REFUSALS } from '../../src/renderer/src/NewProjectSheet'
 
 // docs/install.md's "Troubleshooting" quotes the app (issue 566): what the
 // first-run dialog says, what the engine's unavailable reason says, and two
@@ -36,13 +38,24 @@ function troubleshooting(): string {
   return guide.slice(from, to === -1 ? undefined : to)
 }
 
-/** Each blockquote line of the section, without its marker; a list item may indent one. */
+/**
+ * Each blockquote of the section, without its markers; a list item may indent
+ * one. Consecutive lines of one blockquote are joined with a space, as a
+ * Markdown reader joins them, so a long sentence may be wrapped in the source.
+ */
 function quotations(section: string): string[] {
-  return section
-    .split('\n')
-    .map((line) => line.trimStart())
-    .filter((line) => line.startsWith('> '))
-    .map((line) => line.slice(2))
+  const quoted: string[] = []
+  let open = false
+  for (const line of section.split('\n').map((l) => l.trimStart())) {
+    if (line.startsWith('> ')) {
+      if (open) quoted[quoted.length - 1] += ' ' + line.slice(2)
+      else quoted.push(line.slice(2))
+      open = true
+    } else {
+      open = false
+    }
+  }
+  return quoted
 }
 
 const failed = (kind: FailureKind, tool: FirstRunTool): ToolCheck => ({
@@ -88,7 +101,14 @@ function promised(): string[] {
   })
   if (missing.interpreter !== null) throw new Error('an installed app with no runtime resolved')
   const engine = [missing.reason, interpreterFailedReason('spawn failed', true)]
-  return [...dialog, ...engine, FEED_REFUSALS.notUrl, FEED_REFUSALS.localHost, NOT_LAID_OUT]
+  return [
+    ...dialog,
+    ...engine,
+    SHEET_REFUSALS.httpOnly,
+    FEED_REFUSALS.localHost,
+    SAMPLES_STOPPED_FIRST,
+    NOT_LAID_OUT,
+  ]
 }
 
 describe('docs/install.md, Troubleshooting, against the app', () => {
@@ -136,7 +156,7 @@ describe('SUPPORT.md and the guide it points at', () => {
 
   it('is linked from the README and from CONTRIBUTING.md', () => {
     expect(read('README.md')).toContain('](SUPPORT.md)')
-    expect(read('CONTRIBUTING.md')).toContain('`SUPPORT.md`')
+    expect(read('CONTRIBUTING.md')).toContain('](SUPPORT.md)')
   })
 
   it('has every in-page link of the install guide land on a heading', () => {

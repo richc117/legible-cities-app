@@ -54,5 +54,45 @@
     "test": "tests/unit/install-guide-sentences.test.ts",
     "title": "is linked from the README and from CONTRIBUTING.md",
     "why": "The README's line about SUPPORT.md losing its link: GitHub suggests the link there, and a reader would have nowhere to go."
+  },
+  {
+    "file": "src/renderer/src/NewProjectSheet.tsx",
+    "find": "  httpOnly: 'Use an address that starts with http:// or https://.',\n",
+    "replace": "  httpOnly: 'Use an address that starts with http or https.',\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "The sheet's refusal of an address without a scheme reworded in the code: the guide quotes it for the person who typed one."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "  if (bundledInterpreter) return 'Reinstall the app. The bundled engine could not be started.'\n",
+    "replace": "  if (bundledInterpreter) return 'Reinstall the app. The bundled engine would not start.'\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "The reason for a bundled engine that would not start reworded in the code: the guide's quotation of it must follow."
+  },
+  {
+    "file": "src/renderer/src/FirstRunDialog.tsx",
+    "find": "  return `${names.join(' and ')} will not run`\n",
+    "replace": "  return `${names.join(' & ')} will not run`\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "The dialog's title for both tools joined another way: the guide quotes the title that names both."
+  },
+  {
+    "file": "src/renderer/src/Library.tsx",
+    "find": "export const SAMPLES_STOPPED_FIRST = 'Quit and open Legible Cities again.'\n",
+    "replace": "export const SAMPLES_STOPPED_FIRST = 'Quit Legible Cities and open it again.'\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "What the Library leads with for a stopped engine reworded in the code: the guide's quotation of it must follow."
+  },
+  {
+    "file": "CONTRIBUTING.md",
+    "find": "[`SUPPORT.md`](SUPPORT.md)",
+    "replace": "`SUPPORT.md`",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "is linked from the README and from CONTRIBUTING.md",
+    "why": "CONTRIBUTING.md's line about SUPPORT.md losing its link: a reader of the contributing guide would have nowhere to go."
   }
 ]

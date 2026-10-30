@@ -503,7 +503,7 @@ code or assets, add them to `THIRD_PARTY_NOTICES.md` with their licence.
 ## Reporting problems
 
 - Bugs and ideas: open an issue with the matching template.
-- Help using the app, or a problem with an install: see `SUPPORT.md`.
+- Help using the app, or a problem with an install: see [`SUPPORT.md`](SUPPORT.md).
 - Security: see `SECURITY.md`; please do not open a public issue for a
   vulnerability.
 - Conduct: see `CODE_OF_CONDUCT.md`.
