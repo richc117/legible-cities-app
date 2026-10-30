@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type JSX } from 'react'
 import { needsTelling } from '../../shared/first-run'
 import { endSentence } from '../../shared/jobs'
+import type { MenuCommand } from '../../shared/menu'
 import type { SettingsView } from '../../shared/settings'
 import EngineStatus from './EngineStatus'
 import FirstRunDialog, { useFirstRun } from './FirstRunDialog'
@@ -18,9 +19,10 @@ import Inspector, { INSPECTOR_ID, NARROW_QUERY, toggleName } from './Inspector'
 import { LiveRegion, useAnnouncer } from './Jobs'
 import Button from './kit/Button'
 import Library from './Library'
+import { modalOpen, NEW_PROJECT_CARD, whenPresent } from './menuCommands'
 import MismatchDialog from './MismatchDialog'
 import ProjectView from './ProjectView'
-import Settings, { copyDiagnostics } from './Settings'
+import Settings, { copyDiagnostics, type SettingsSection } from './Settings'
 import { applyTheme } from './theme'
 import { useEngineState } from './useEngineState'
 
@@ -37,12 +39,17 @@ import { useEngineState } from './useEngineState'
 // project's, because the jobs it lists span projects. It starts collapsed;
 // its toggle in the header carries the running count, and a job that ends
 // is announced once, politely, whether it is open or not.
+//
+// The app's menu (issue 554) asks for a screen too: New project is the
+// Library with its New project card pressed (`create`, the ask's number,
+// gone once the card is pressed), and About and Copy diagnostics are
+// Settings at a section of it.
 type Screen =
-  | { screen: 'library'; notice: string | null }
+  | { screen: 'library'; notice: string | null; create?: number }
   // `layOut`: the project was just made from a sample city, and its screen
   // starts the layout as it opens (A5.6-03).
   | { screen: 'project'; id: string; layOut?: boolean }
-  | { screen: 'settings' }
+  | { screen: 'settings'; section?: SettingsSection }
 
 export default function App(): JSX.Element {
   const [screen, setScreen] = useState<Screen>({ screen: 'library', notice: null })
@@ -107,6 +114,68 @@ export default function App(): JSX.Element {
   // made inert, so Shift+Tab cannot reach controls a person cannot see. The
   // header stays reachable, and its toggle closes the inspector.
   const narrow = useMediaQuery(NARROW_QUERY)
+
+  // The menu's commands (issue 554). Each one is what the screen's own
+  // control does, and none is answered while a modal dialog is up: a native
+  // accelerator fires behind one. Each ask is numbered, so asking again for
+  // the section already shown takes focus to it again.
+  const asks = useRef(0)
+  useEffect(
+    () =>
+      window.api.app.onMenuCommand((command: MenuCommand) => {
+        if (modalOpen(document)) return
+        const at = ++asks.current
+        // Below 900px an open inspector makes the main region inert, and
+        // the screen asked for could take no focus: it closes first, as for
+        // the way back to the Library.
+        if (narrow && inspectorOpen) setInspectorOpen(false)
+        if (command === 'new-project') {
+          setScreen((s) => ({
+            screen: 'library',
+            notice: s.screen === 'library' ? s.notice : null,
+            create: at,
+          }))
+          return
+        }
+        if (settings === null) {
+          readSettings()
+          // With no settings to show, Settings cannot copy; the copy is made
+          // here and said in the window's polite line.
+          if (command === 'copy-diagnostics') {
+            void copyDiagnostics({
+              listProjects: () => window.api.projects.list(),
+              reports: reportsInSession,
+              copy: (reports) => window.api.settings.copyDiagnostics(reports),
+            }).then(announce)
+            return
+          }
+        }
+        if (command === 'settings') {
+          setScreen((s) => (s.screen === 'settings' ? s : { screen: 'settings' }))
+          return
+        }
+        const name = command === 'about' ? 'versions' : 'diagnostics'
+        setScreen({ screen: 'settings', section: { name, at } })
+      }),
+    [announce, inspectorOpen, narrow, readSettings, settings],
+  )
+  // The Library asked for by New project: its card is pressed once the
+  // Library has drawn it, and the ask is then spent.
+  const mainRef = useRef<HTMLDivElement>(null)
+  const create = screen.screen === 'library' ? screen.create : undefined
+  useEffect(() => {
+    const root = mainRef.current
+    if (create === undefined || root === null) return
+    return whenPresent<HTMLButtonElement>(root, NEW_PROJECT_CARD, (card) => {
+      setScreen((s) =>
+        s.screen === 'library' && s.create === create ? { screen: 'library', notice: s.notice } : s,
+      )
+      // A dialog that opened while the Library was being read wins.
+      if (modalOpen(document)) return
+      card.focus()
+      card.click()
+    })
+  }, [create])
 
   const openInspector = (): void => setInspectorOpen(true)
   const closeInspector = (): void => {
@@ -201,7 +270,7 @@ export default function App(): JSX.Element {
         data-announces="jobs"
       />
       <div className="app-body" data-inspector={inspectorOpen ? 'open' : 'closed'}>
-        <div className="app-main" inert={inspectorOpen && narrow}>
+        <div className="app-main" inert={inspectorOpen && narrow} ref={mainRef}>
           {screen.screen === 'settings' ? (
             settings === null ? (
               // The bridge answered nothing. Say so, and offer the one way out
@@ -214,7 +283,12 @@ export default function App(): JSX.Element {
                 </div>
               </main>
             ) : (
-              <Settings settings={settings} onChanged={setSettings} engine={engine} />
+              <Settings
+                settings={settings}
+                onChanged={setSettings}
+                engine={engine}
+                section={screen.section}
+              />
             )
           ) : screen.screen === 'project' ? (
             <ProjectView

@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/main/menu.ts",
+    "find": "      ...(packaged\n",
+    "replace": "      ...(false\n",
+    "test": "tests/unit/menu.test.ts",
+    "title": "has no Reload, Force reload or developer tools",
+    "why": "The packaged flag ignored: a release would ship Reload and the developer tools again, as Electron's default menu did."
+  },
+  {
+    "file": "src/main/menu.ts",
+    "find": "  const edit: MenuItemTemplate = { label: top('Edit'), role: 'editMenu' }\n",
+    "replace": "  const edit: MenuItemTemplate = { label: top('Edit') }\n",
+    "test": "tests/unit/menu.test.ts",
+    "title": "keeps the Edit menu’s role",
+    "why": "The Edit menu's role deleted: copy and paste in a text field stop working on macOS, and nothing else would say so."
+  }
+]

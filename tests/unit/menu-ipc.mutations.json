@@ -1,0 +1,34 @@
+[
+  {
+    "file": "src/main/menu-ipc.ts",
+    "find": "    if (this.#deps.current(frame)) this.#deps.send(pending.command)\n    else this.#pending = pending\n",
+    "replace": "",
+    "test": "tests/unit/menu-ipc.test.ts",
+    "title": "holds a command chosen before the page listens",
+    "why": "The held command never sent: a command chosen with no window open, or before the page subscribed, would be lost."
+  },
+  {
+    "file": "src/main/menu-ipc.ts",
+    "find": "    if (pending === null || this.#deps.now() - pending.at > HELD_MS) return\n",
+    "replace": "    if (pending === null) return\n",
+    "test": "tests/unit/menu-ipc.test.ts",
+    "title": "drops a held command that has waited longer than it may",
+    "why": "The held command's age ignored: a choice made long ago would be acted on whenever a page next listened."
+  },
+  {
+    "file": "src/main/menu-ipc.ts",
+    "find": "    if (this.#listener !== null && this.#deps.current(this.#listener)) {\n",
+    "replace": "    if (this.#listener !== null) {\n",
+    "test": "tests/unit/menu-ipc.test.ts",
+    "title": "sends only to the frame that said it listens",
+    "why": "A command sent to whatever page the window holds, though it never said it listens: the command is lost on a page that has not subscribed."
+  },
+  {
+    "file": "src/main/menu-ipc.ts",
+    "find": "    this.#listener = null\n    this.#pending = null\n",
+    "replace": "    this.#listener = null\n",
+    "test": "tests/unit/menu-ipc.test.ts",
+    "title": "forgets what it held when the renderer dies",
+    "why": "A choice made over a crash kept: the page that replaces the dead one would act on it."
+  }
+]

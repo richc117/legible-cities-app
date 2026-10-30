@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { CHANNELS, type Accepted, type Api, type Settled } from '../shared/api'
 import { type EngineErrorShape } from '../shared/engine'
 import { messageOf, unwrapIpcError } from '../shared/errors'
+import { isMenuCommand } from '../shared/menu'
 
 // A rejection's message is the contract's sentence, without Electron's
 // remote-method wrapper around it.
@@ -161,6 +162,24 @@ const api: Api = {
     openNotices: () => invoke(CHANNELS.licencesOpenNotices),
     showTexts: () => invoke(CHANNELS.licencesShowTexts),
     openChromium: () => invoke(CHANNELS.licencesOpenChromium),
+  },
+  // The app's own menu (issue 554). Only a command from the closed set
+  // reaches the page's listener; a help page crosses as a name, and main
+  // holds the address. Main is told the page listens once the listener is
+  // on, and sends what it held on the same channel, so it is heard.
+  app: {
+    onMenuCommand: (listener) => {
+      const off = subscribe<unknown>(CHANNELS.menuCommand, (command) => {
+        if (isMenuCommand(command)) listener(command)
+      })
+      // Nothing to wait for: the held command comes as an event. A refusal
+      // leaves the page as deaf as it was, and is not the listener's to hear.
+      ipcRenderer.invoke(CHANNELS.menuListening).catch(() => undefined)
+      return off
+    },
+  },
+  help: {
+    open: (page) => invoke(CHANNELS.helpOpen, page),
   },
 }
 

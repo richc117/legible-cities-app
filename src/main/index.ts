@@ -6,7 +6,17 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { mkdir, readFile, realpath } from 'node:fs/promises'
 import { homedir, release, tmpdir, type } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { BrowserWindow, app, clipboard, dialog, ipcMain, screen, session, shell } from 'electron'
+import {
+  BrowserWindow,
+  Menu,
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  screen,
+  session,
+  shell,
+} from 'electron'
 import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import { isSettled } from '../shared/engine'
@@ -23,6 +33,9 @@ import {
 import { registerEngineHandlers } from './engine-ipc'
 import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first-run'
 import { registerFirstRunHandlers } from './first-run-ipc'
+import { openHelpPage, registerHelpHandlers, type HelpIpcDeps } from './help-ipc'
+import { menuTemplate } from './menu'
+import { MenuCommands, registerMenuHandlers } from './menu-ipc'
 import { LicencesService, registerLicencesHandlers } from './licences-ipc'
 import { PickedPaths, registerFeedsHandlers, registryGuard } from './feeds-ipc'
 import { destinationRefusal, Destinations, Exporter, keptFramesFolder } from './export'
@@ -225,6 +238,11 @@ function createWindow(): BrowserWindow {
       // The checker would fetch dictionaries from a CDN on Windows and Linux;
       // the app makes no network call but a feed (constitution IV).
       spellcheck: false,
+      // A packaged build has no developer tools: the menu offers none, and
+      // this refuses `openDevTools` whatever asks (issue 554). An end-to-end
+      // or acceptance run drives the app over the debugging protocol, not
+      // through this window's tools.
+      devTools: !app.isPackaged,
     },
   })
   // Nothing this app shows may open a window or move the one it has. The
@@ -310,8 +328,16 @@ function createWindow(): BrowserWindow {
   window.on('closed', () => {
     if (mainWindow !== window) return
     mainWindow = null
+    menuCommands.gone()
     quitWithTheWindow()
   })
+  // A page that goes stops hearing the menu until the next one says it
+  // listens (src/main/menu-ipc.ts). A navigation counts once it has
+  // committed: `did-navigate` is the main frame's, to another document, and
+  // a navigation `will-navigate` refuses never reaches it. A renderer that
+  // died takes the held command with it.
+  window.webContents.on('did-navigate', () => menuCommands.gone())
+  window.webContents.on('render-process-gone', () => menuCommands.crashed())
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
     if (sidecar !== null) window.webContents.send(CHANNELS.engineStateChanged, sidecar.state)
@@ -405,6 +431,58 @@ function createSidecar(config: Config): Sidecar {
     log: engineLog,
     bundledInterpreter,
   })
+}
+
+/**
+ * The menu's commands for the page, held until it listens (issue 554). The
+ * window is brought up first - restored if minimised, and focused - so the
+ * screen the command opens is seen.
+ */
+const menuCommands = new MenuCommands({
+  send: (command) => {
+    const window = mainWindow
+    if (window === null || window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send(CHANNELS.menuCommand, command)
+  },
+  current: (frame) =>
+    mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.webContents.mainFrame === frame,
+  now: () => Date.now(),
+})
+
+/**
+ * The app's own menu, in place of Electron's default (issue 554,
+ * src/main/menu.ts). Set before the first window, so no window ever shows
+ * the default. The page's commands go to the app's window; with none open,
+ * which only macOS allows, the command opens one, as the Dock icon does, and
+ * is held until the new page listens.
+ */
+function setAppMenu(help: HelpIpcDeps): void {
+  if (process.platform === 'darwin') {
+    app.setAboutPanelOptions({
+      applicationName: PRODUCT_NAME,
+      applicationVersion: app.getVersion(),
+      copyright: 'Licensed under GPL-3.0-or-later.',
+    })
+  }
+  const template = menuTemplate({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    name: PRODUCT_NAME,
+    act: (action) => {
+      if (action.kind === 'help') {
+        openHelpPage(action.page, help).catch((error: unknown) =>
+          log.warn('help', `the help page could not be opened: ${messageOf(error)}`),
+        )
+        return
+      }
+      if (mainWindow === null || mainWindow.isDestroyed()) mainWindow = createWindow()
+      menuCommands.command(action.command)
+    },
+  })
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 const hasLock = app.requestSingleInstanceLock()
@@ -835,6 +913,14 @@ if (!hasLock) {
       }),
       isTopFrame,
     )
+    // The Help pages, by name, for the page and for the menu below.
+    const helpDeps: HelpIpcDeps = {
+      openExternal: (url) => shell.openExternal(url),
+      log: (message) => log.info('help', message),
+    }
+    registerHelpHandlers(ipcMain, helpDeps, isTopFrame)
+    registerMenuHandlers(ipcMain, menuCommands, isTopFrame)
+    setAppMenu(helpDeps)
     mainWindow = createWindow()
 
     // The app's own window decides, not every window: an export's capture
