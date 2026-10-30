@@ -232,10 +232,17 @@ developer tools are in a development build only, and the window's
 cannot open its tools whatever asks. Most items are the system's roles or
 are answered in main: the Help pages open a fixed address
 (`src/main/help-ipc.ts`). The four the interface answers are sent to the
-page; main holds the last one while no page listens - on macOS with no
-window, which the command opens, or between a load and the page's
-subscription - and sends it once the page says it listens
-(`src/main/menu-ipc.ts`), restoring and focusing the window first. The page
+page; main holds the last one, for at most ten seconds, while no page
+listens - on macOS with no window, which the command opens, or between a
+load and the page's subscription - and sends it once the page says it
+listens (`src/main/menu-ipc.ts`), restoring and focusing the window first.
+A command goes only to the frame that said it listens while it is still
+the window's main frame. Listening ends when a navigation of the main
+frame commits (`did-navigate`), not when one starts, since the window
+refuses some after they have started and the page that stays never says
+again that it listens; and it ends when the renderer dies, which drops
+the held command too, since a choice made over a crash is not the next
+page's. The page
 drops a command while a modal `<dialog>` is open, since a native shortcut
 fires behind one (`src/renderer/src/menuCommands.ts`).
 

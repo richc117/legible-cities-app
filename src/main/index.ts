@@ -332,11 +332,12 @@ function createWindow(): BrowserWindow {
     quitWithTheWindow()
   })
   // A page that goes stops hearing the menu until the next one says it
-  // listens (src/main/menu-ipc.ts): a reload, or a renderer that died.
-  window.webContents.on('did-start-navigation', (details) => {
-    if (details.isMainFrame && !details.isSameDocument) menuCommands.gone()
-  })
-  window.webContents.on('render-process-gone', () => menuCommands.gone())
+  // listens (src/main/menu-ipc.ts). A navigation counts once it has
+  // committed: `did-navigate` is the main frame's, to another document, and
+  // a navigation `will-navigate` refuses never reaches it. A renderer that
+  // died takes the held command with it.
+  window.webContents.on('did-navigate', () => menuCommands.gone())
+  window.webContents.on('render-process-gone', () => menuCommands.crashed())
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
     if (sidecar !== null) window.webContents.send(CHANNELS.engineStateChanged, sidecar.state)
@@ -437,13 +438,18 @@ function createSidecar(config: Config): Sidecar {
  * window is brought up first - restored if minimised, and focused - so the
  * screen the command opens is seen.
  */
-const menuCommands = new MenuCommands((command) => {
-  const window = mainWindow
-  if (window === null || window.isDestroyed()) return
-  if (window.isMinimized()) window.restore()
-  window.show()
-  window.focus()
-  window.webContents.send(CHANNELS.menuCommand, command)
+const menuCommands = new MenuCommands({
+  send: (command) => {
+    const window = mainWindow
+    if (window === null || window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send(CHANNELS.menuCommand, command)
+  },
+  current: (frame) =>
+    mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.webContents.mainFrame === frame,
+  now: () => Date.now(),
 })
 
 /**

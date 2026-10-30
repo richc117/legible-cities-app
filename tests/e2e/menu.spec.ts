@@ -166,6 +166,25 @@ test('takes each command to the screen it names', async () => {
   })
 })
 
+test('still answers after the window refuses a navigation away', async () => {
+  // A navigation the window refuses (`will-navigate`, src/main/index.ts)
+  // has started all the same; the page stays, never subscribes again, and
+  // must still hear the menu.
+  await withApp(async (page, app) => {
+    const heading = page.locator('h1')
+    await expect(heading).toHaveText('Library')
+    await page.evaluate(() => {
+      location.href = 'https://example.org'
+    })
+    await page.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    )
+    expect(page.url()).toMatch(/^app:\/\/local\/ui\//)
+    await choose(app, 'settings')
+    await expect(heading).toHaveText('Settings')
+  })
+})
+
 test('opens a Help page at the address main holds', async () => {
   await withApp(async (page, app) => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Library')
