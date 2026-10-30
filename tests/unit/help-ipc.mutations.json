@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/main/help-ipc.ts",
+    "find": "  const url = isHelpPage(page) ? HELP_PAGES[page] : null\n",
+    "replace": "  const url = String(page)\n",
+    "test": "tests/unit/help-ipc.test.ts",
+    "title": "refuses",
+    "why": "The handler passing the page's argument through: the page could then send the browser anywhere."
+  }
+]

@@ -14,6 +14,7 @@ import type {
 import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { LicencesView } from './licences'
+import type { HelpPage, MenuCommand } from './menu'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { Station } from './trip'
 import type { ViewerMethod, ViewerRole } from './viewer'
@@ -394,6 +395,25 @@ export interface Api {
     /** Chromium's licences, as Electron ships them, in the platform's browser. */
     openChromium(): Promise<void>
   }
+  // The app's own menu (issue 554). Main builds the menu and answers most of
+  // it itself; these are the two ways it reaches the page and back.
+  /** What the window as a whole is told by the main process. */
+  app: {
+    /**
+     * A menu item the interface answers: New project, Settings, Copy
+     * diagnostics, and About on Windows and Linux. One of a closed set;
+     * the page ignores a command while a modal dialog is open.
+     */
+    onMenuCommand(listener: (command: MenuCommand) => void): () => void
+  }
+  /**
+   * The Help pages, opened in the platform's browser by name. Takes no
+   * address: the main process holds every one, and refuses a name it does
+   * not know.
+   */
+  help: {
+    open(page: HelpPage): Promise<void>
+  }
 }
 
 /**
@@ -462,4 +482,7 @@ export const CHANNELS = {
   licencesOpenNotices: 'licences:open-notices',
   licencesShowTexts: 'licences:show-texts',
   licencesOpenChromium: 'licences:open-chromium',
+  // The app's own menu (issue 554).
+  menuCommand: 'app:menu-command',
+  helpOpen: 'help:open',
 } as const
