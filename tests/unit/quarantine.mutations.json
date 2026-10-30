@@ -1,0 +1,50 @@
+[
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "        run: npm run test:e2e -- --grep-invert @quarantine\n",
+    "replace": "        run: npm run test:e2e\n",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "leaves the quarantined tests out of the required e2e job",
+    "why": "The required suite runs the quarantined tests again: a test known to be flaky blocks every merge, and quarantine takes nothing off the critical path."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "--grep @quarantine --pass-with-no-tests\n",
+    "replace": "--grep @quarantine\n",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "runs only the quarantined tests in a job that passes where there are none",
+    "why": "Playwright exits with an error when its filter matches nothing, so the quarantine job would fail on every run in which no test is tagged, which is the usual state."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "    continue-on-error: true\n    timeout-minutes: 30\n",
+    "replace": "    timeout-minutes: 30\n",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "runs only the quarantined tests in a job that passes where there are none",
+    "why": "The quarantine job's red runs are reported as failed runs, and a run that fails is what the quarantine is there to keep from being the change's."
+  },
+  {
+    "file": "tests/e2e/rail.spec.ts",
+    "find": "test('the six cells are a named stepper, and never a tablist', async () => {",
+    "replace": "test('the six cells are a named stepper, and never a tablist', { tag: '@quarantine' }, async () => {",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "each carry the issue they are quarantined for",
+    "why": "A test quarantined with no issue named is a test nobody is fixing, and the cap and the seven days have nothing to count from."
+  },
+  {
+    "file": "tests/fixtures/quarantine/annotated/flaky.spec.ts",
+    "find": "    annotation: { type: 'issue', description: 'https://github.com/example/app/issues/1' },\n",
+    "replace": "",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "accepts a test tagged with the issue it is quarantined for",
+    "why": "The scan reads the tag and not its annotation, so a tag with no issue passes."
+  },
+  {
+    "file": "tests/fixtures/quarantine/over-cap/flaky.spec.ts",
+    "find": "  'quarantined number 14',\n  {\n    tag: '@quarantine',\n",
+    "replace": "  'quarantined number 14',\n  {\n",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "counts every tag, so that the cap can bite",
+    "why": "A tag the scan does not count lets the quarantine grow past the cap without a test going red."
+  }
+]
