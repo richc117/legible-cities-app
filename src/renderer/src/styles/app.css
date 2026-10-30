@@ -1015,9 +1015,13 @@ fig-button:not([icon]) > .icon {
    as section 12 says it must; the heading is as wide as its words, so the
    ring is. The selector is the trait these share, a heading made focusable
    by `tabindex="-1"`, so a heading added later is covered without being
-   named. A cell's heading is the exception: its row is a button-shaped band
-   that fills the cell on purpose, and the ring is the band's. */
-:is(h1, h2, h3)[tabindex='-1']:not(.disclosure-heading) {
+   named. A cell's heading is the exception, found by its band, the
+   `.cell-head` button it holds: that row fills the cell on purpose, and the
+   ring is the band's. Not every heading the kit's Disclosure draws has one:
+   the layout tuning's has a toggle that is only its words. A heading whose
+   words wrap, such as a long project name, still takes its column's width,
+   since `fit-content` cannot shrink below the longest line. */
+:is(h1, h2, h3)[tabindex='-1']:not(:has(> .cell-head)) {
   inline-size: fit-content;
   max-inline-size: 100%;
 }

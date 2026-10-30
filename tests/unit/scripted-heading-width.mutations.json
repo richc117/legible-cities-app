@@ -9,18 +9,42 @@
   },
   {
     "file": "src/renderer/src/styles/app.css",
-    "find": ":is(h1, h2, h3)[tabindex='-1']",
-    "replace": ":is(h1, h2)[tabindex='-1']",
+    "find": "  max-inline-size: 100%;\n}\n\n@media (prefers-reduced-motion: reduce) {",
+    "replace": "}\n\n@media (prefers-reduced-motion: reduce) {",
     "test": "tests/unit/scripted-heading-width.test.ts",
-    "title": "is reached by that rule wherever the interface draws one",
-    "why": "A level dropped from the selector: a job's title, an h3 the interface focuses, takes the full-width ring again."
+    "title": "is as wide as its words, and no wider than its column",
+    "why": "The cap deleted: a heading whose words are wider than its column, such as a long project name, overflows it instead of wrapping."
   },
   {
     "file": "src/renderer/src/styles/app.css",
-    "find": ":not(.disclosure-heading) {",
+    "find": ":is(h1, h2, h3)[tabindex='-1']",
+    "replace": ":is(h1, h2)[tabindex='-1']",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "is reached by that rule at every level the interface uses",
+    "why": "A level dropped from the selector: a job's title and the layout tuning's heading, both h3, take the full-width ring again."
+  },
+  {
+    "file": "src/renderer/src/styles/app.css",
+    "find": ":not(:has(> .cell-head)) {",
     "replace": " {",
     "test": "tests/unit/scripted-heading-width.test.ts",
-    "title": "leaves a cell’s heading alone: its row is a band, and the ring is the band’s",
-    "why": "The cell heading no longer excluded: its band, which fills the cell on purpose, is shrunk to its words."
+    "title": "leaves a cell’s heading alone, found by its band and not by the kit’s class",
+    "why": "The cell heading no longer exempt: its band, which fills the cell on purpose, is shrunk to its words."
+  },
+  {
+    "file": "src/renderer/src/styles/app.css",
+    "find": ":not(:has(> .cell-head)) {",
+    "replace": ":not(.disclosure-heading) {",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "leaves a cell’s heading alone, found by its band and not by the kit’s class",
+    "why": "The exemption widened to every heading the kit's Disclosure draws: the layout tuning's heading, which has no band, gets the full-width ring back."
+  },
+  {
+    "file": "src/renderer/src/notebook/Outputs.tsx",
+    "find": "<h2 id=\"outputs-heading\" tabIndex={-1} ref={headingRef}>",
+    "replace": "<h2 id=\"outputs-heading\" ref={headingRef}>",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "is each one the interface draws, and this list is exact",
+    "why": "A scripted heading gone from the source: the list the test holds no longer matches what the interface draws, so a change in the set is seen here."
   }
 ]
