@@ -10,7 +10,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FeedAdd, type AddClient } from '../../src/renderer/src/engine/feedAdd'
 import NewProjectSheet, { FIND_A_FEED, SOURCE_HINT } from '../../src/renderer/src/NewProjectSheet'
-import { cleanup, press, READY, renderPanel } from '../support/render'
+import { answered, byName, cleanup, press, READY, renderPanel } from '../support/render'
 
 vi.mock('../../src/renderer/src/kit/Button', async () =>
   (await import('../support/kit-stubs')).kitButtonStub(),
@@ -92,5 +92,34 @@ describe('the New project sheet’s help for a feed', () => {
     press(FIND_A_FEED)
     expect(open).toHaveBeenCalledTimes(1)
     expect(open).toHaveBeenCalledWith('feeds')
+  })
+
+  it('says so, under the button, when the page would not open', async () => {
+    // Mutation (`new-project-sheet-hint.mutations.json`): the rejection
+    // swallowed - the button does nothing and says nothing.
+    draw(async () => Promise.reject(new Error('There is no such help page.')))
+    const status = document.querySelector('fieldset.source-choice [role="status"]')
+    expect(status, 'the line is there before it has anything to say').not.toBeNull()
+    expect(status?.textContent).toBe('')
+    press(FIND_A_FEED)
+    await answered()
+    expect(status?.textContent).toBe(
+      'The feeds page could not be opened: There is no such help page.',
+    )
+    expect(byName('button', FIND_A_FEED), 'the sheet stays as it was').toBeTruthy()
+  })
+
+  it('clears the line on the next press', async () => {
+    let fail = true
+    draw(async () => (fail ? Promise.reject(new Error('no browser')) : undefined))
+    const status = (): string | undefined =>
+      document.querySelector('fieldset.source-choice [role="status"]')?.textContent
+    press(FIND_A_FEED)
+    await answered()
+    expect(status()).toBe('The feeds page could not be opened: no browser.')
+    fail = false
+    press(FIND_A_FEED)
+    await answered()
+    expect(status()).toBe('')
   })
 })

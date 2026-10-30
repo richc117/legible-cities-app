@@ -10,6 +10,7 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS } from '../shared/api'
+import { messageOf } from '../shared/errors'
 import { isHelpPage, type HelpPage } from '../shared/menu'
 import { INSTALL_GUIDE_URL } from './first-run-ipc'
 import { guardedHandle } from './ipc-shape'
@@ -37,6 +38,8 @@ export interface HelpIpcDeps {
   /** The platform's browser: `shell.openExternal`. */
   openExternal: (url: string) => Promise<void>
   log: (message: string) => void
+  /** A page that could not be opened, for the log; the menu's path writes its own. */
+  warn: (message: string) => void
 }
 
 /**
@@ -58,5 +61,14 @@ export function registerHelpHandlers(
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
   const handle = guardedHandle(ipcMain, isTopFrame)
-  handle(CHANNELS.helpOpen, async (_event, page) => openHelpPage(page, deps))
+  handle(CHANNELS.helpOpen, async (_event, page) => {
+    try {
+      await openHelpPage(page, deps)
+    } catch (error) {
+      // The page is told too, by the rejection; the log keeps the reason
+      // for a report (the menu's path writes the same line for its own).
+      deps.warn(`the help page could not be opened: ${messageOf(error)}`)
+      throw error
+    }
+  })
 }

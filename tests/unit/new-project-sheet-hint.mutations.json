@@ -14,5 +14,13 @@
     "test": "tests/unit/new-project-sheet-hint.test.tsx",
     "title": "asks the bridge for the feeds page, by name",
     "why": "The button asking for another page (issue 555): \"Where to find a feed\" opens the guide, not the page that says where a feed is."
+  },
+  {
+    "file": "src/renderer/src/NewProjectSheet.tsx",
+    "find": "                  setHelpSaid(`The feeds page could not be opened: ${fullStopped(messageOf(error))}`)\n",
+    "replace": "                  void error\n",
+    "test": "tests/unit/new-project-sheet-hint.test.tsx",
+    "title": "says so, under the button, when the page would not open",
+    "why": "A failed open swallowed (issue 555): the button does nothing and says nothing, and a person presses it again and again."
   }
 ]

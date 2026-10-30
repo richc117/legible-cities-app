@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react'
 import type { CreateProjectInput, PickedZip } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
-import { messageOf } from '../../shared/errors'
+import { fullStopped, messageOf } from '../../shared/errors'
 import { isFeedUrl } from '../../shared/feeds'
 import { validateFeedKey, validateName } from '../../shared/project/validate'
 import { DEFAULT_FEED, uniqueName } from './record'
@@ -121,7 +121,7 @@ export function arrivalName(typed: boolean, held: boolean, feedName: string | nu
   return feedName
 }
 
-type Field = 'name' | 'feed' | 'file' | 'url' | 'source-hint'
+type Field = 'name' | 'feed' | 'file' | 'url'
 type Messages = Partial<Record<Field, string>>
 
 // A create's refusal about the feed opens with the word ("feed key must
@@ -186,6 +186,8 @@ export default function NewProjectSheet({
   const [picking, setPicking] = useState(false)
   const [messages, setMessages] = useState<Messages>({})
   const [busy, setBusy] = useState(false)
+  // What the Where-to-find-a-feed button says when its page would not open.
+  const [helpSaid, setHelpSaid] = useState<string | null>(null)
   // Which add this opening started, counted, or 0 for none. The add run is
   // the front door's one run and outlives the sheet: an add left going by
   // an earlier opening (a second Escape closes the dialog; the engine's
@@ -249,6 +251,7 @@ export default function NewProjectSheet({
       setFile(null)
       setMessages({})
       setBusy(false)
+      setHelpSaid(null)
       setAttempt(0)
       if (run.snapshot.state !== 'running') run.reset()
       setShowing((n) => n + 1)
@@ -512,23 +515,33 @@ export default function NewProjectSheet({
         <fieldset
           className="field source-choice"
           disabled={adding || busy}
-          aria-describedby={field('source-hint')}
+          aria-describedby={`${ids}-source-hint`}
         >
           <legend className="field-label">Start from</legend>
           {/* Said where the choice is made, because "feed" and "GTFS" are the
               format's words and not a stranger's (issue 555). The page is
               the project's own, opened in the person's browser by name. */}
           <div className="source-help">
-            <p id={field('source-hint')} className="hint">
+            <p id={`${ids}-source-hint`} className="hint">
               {SOURCE_HINT}
             </p>
             <Button
               variant="ghost"
-              onClick={() => void window.api.help.open('feeds').catch(() => undefined)}
+              onClick={() => {
+                setHelpSaid(null)
+                window.api.help.open('feeds').catch((error: unknown) => {
+                  setHelpSaid(
+                    `The feeds page could not be opened: ${fullStopped(messageOf(error))}`,
+                  )
+                })
+              }}
             >
               {FIND_A_FEED}
             </Button>
           </div>
+          <p className="message error" role="status" aria-live="polite">
+            {helpSaid}
+          </p>
           {(
             [
               ['feed', 'A sample city, or a feed you added'],

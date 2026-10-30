@@ -16,23 +16,26 @@ import { HELP_PAGE_KEYS } from '../../src/shared/menu'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
-function setUp(topFrame = true) {
+function setUp(topFrame = true, browser: (url: string) => Promise<void> = async () => undefined) {
   const handlers = new Map<string, Handler>()
   const ipc = { handle: (c: string, h: Handler) => handlers.set(c, h) } as unknown as IpcMain
   const opened: string[] = []
+  const warned: string[] = []
   registerHelpHandlers(
     ipc,
     {
       openExternal: async (url) => {
         opened.push(url)
+        await browser(url)
       },
       log: () => undefined,
+      warn: (message) => warned.push(message),
     },
     () => topFrame,
   )
   const call = (...args: unknown[]): Promise<unknown> =>
     handlers.get(CHANNELS.helpOpen)!({} as IpcMainInvokeEvent, ...args)
-  return { call, opened, handlers }
+  return { call, opened, warned, handlers }
 }
 
 describe('the Help pages', () => {
@@ -87,6 +90,23 @@ describe('the Help pages', () => {
     const { call, opened } = setUp()
     await expect(call(page)).rejects.toThrow(UNKNOWN_HELP_PAGE)
     expect(opened).toEqual([])
+  })
+
+  it('logs why a page would not open, and rejects with the same reason', async () => {
+    // Mutation (`help-ipc.mutations.json`): the handler's catch deleted - the
+    // rejection still reaches the page, but the log never hears of it.
+    const { call, warned } = setUp(true, async () => Promise.reject(new Error('no browser')))
+    await expect(call('feeds')).rejects.toThrow('no browser')
+    expect(warned).toEqual(['the help page could not be opened: no browser'])
+  })
+
+  it('logs a refused name too, and says nothing of a page that opened', async () => {
+    const refused = setUp()
+    await expect(refused.call('https://example.org')).rejects.toThrow(UNKNOWN_HELP_PAGE)
+    expect(refused.warned).toHaveLength(1)
+    const fine = setUp()
+    await fine.call('guide')
+    expect(fine.warned).toEqual([])
   })
 
   it('refuses a frame that is not the interface’s own top frame, and opens nothing', async () => {

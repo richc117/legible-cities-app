@@ -847,7 +847,8 @@ dialog .source-help {
   margin: 0 0 var(--space-2-2);
 }
 
-dialog .source-help p {
+dialog .source-help p,
+dialog .source-choice > .message {
   margin: 0;
 }
 
