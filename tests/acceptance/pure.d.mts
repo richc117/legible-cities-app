@@ -45,3 +45,15 @@ export function tagContains(options: {
     options: { cwd: string; encoding: 'utf8'; timeout: number; windowsHide: boolean },
   ) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout'>
 }): boolean | null
+
+export function tagSourceContains(options: {
+  tag: string | undefined
+  path: string
+  text: string
+  cwd: string
+  run?: (
+    command: string,
+    args: string[],
+    options: { cwd: string; encoding: 'utf8'; timeout: number; windowsHide: boolean },
+  ) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout' | 'error'>
+}): boolean | null

@@ -94,5 +94,61 @@
     "test": "tests/unit/release.test.ts",
     "title": "count a change heading with nothing under it as no change, and leave it out",
     "why": "An empty change heading counted as a change: a section of bare headings passes, and the notes print \"### Added\" over nothing."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "    return tag.label\n",
+    "replace": "    return tag.version\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "a candidate tag, its -rc.N kept",
+    "why": "The -rc.N stripped from the version the app reports: a candidate says 1.0.0 in Settings and in its bug reports, and no one can tell which candidate it was."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "    if (tag.version !== pkgVersion) {\n",
+    "replace": "    if (false) {\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "a tag for another version than package.json",
+    "why": "A tag for another version than package.json's builds an app that reports the tag's version, one it is not, instead of failing the build."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        env:\n          LEGIBLE_RELEASE_REF: ${{ github.ref }}\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "builds the app knowing the ref, through the environment and never the script",
+    "why": "The build never told which ref it builds: a candidate built from its tag reports 1.0.0+<sha7>, and a tag for another version builds without a refusal."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "  if (!existsSync(join(cwd, '.git'))) return null\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "takes the build's commit from GITHUB_SHA, else from the checkout itself, else none",
+    "why": "An unpacked source archive inside some other repository is built with that repository's commit as its version's build metadata."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "the app inside reports version ${parsed.label}.",
+    "replace": "the app inside reports version ${pkg.version}.",
+    "test": "tests/unit/release.test.ts",
+    "title": "say a release candidate is one",
+    "why": "A candidate's notes say the app reports 1.0.0 when it reports 1.0.0-rc.N, so a tester takes the right version for a wrong one."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "    process.stderr.write(\n      `git could not name",
+    "replace": "    void (\n      `git could not name",
+    "test": "tests/unit/release.test.ts",
+    "title": "says why when git cannot name the build's commit, and goes on without one",
+    "why": "A build that loses its commit reports the bare version and says nothing of why, so no one looks at the git that failed."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      - 'electron.vite.config.ts'\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "builds a branch that changes what the app reports as its version",
+    "why": "A branch that changes only how the version label is built packages no installer, so nothing shows what the change makes the app report."
   }
 ]

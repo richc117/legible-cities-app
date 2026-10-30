@@ -22,7 +22,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const repo = resolve(__dirname, '../..')
 const SCRIPT = join(repo, 'scripts', 'release.mjs')
@@ -88,6 +88,8 @@ interface AssembleInput {
 }
 interface Module {
   parseTag(tag: string): { version: string; rc: number | null; label: string } | null
+  releaseLabel(pkgVersion: string, ref: string | null | undefined, commit?: string | null): string
+  buildCommit(env: Record<string, string | undefined>, cwd: string): string | null
   installedElectron(root: string): string | null
   decide(input: {
     tag: string
@@ -247,6 +249,45 @@ describe('parseTag', () => {
   ])('refuses %j', async (tag) => {
     const { parseTag } = await load()
     expect(parseTag(tag)).toBeNull()
+  })
+})
+
+// The version the app reports (issue 558): electron.vite.config.ts builds
+// it in, from build.yml's LEGIBLE_RELEASE_REF and the commit.
+describe('releaseLabel', () => {
+  const SHA = 'abc1234def5678abc1234def5678abc1234def56'
+
+  it.each([
+    ['a candidate tag, its -rc.N kept', 'refs/tags/v1.0.0-rc.2', SHA, '1.0.0-rc.2'],
+    ['a final tag', 'refs/tags/v1.0.0', SHA, '1.0.0'],
+    ['a branch, with the commit as build metadata', 'refs/heads/main', SHA, '1.0.0+abc1234'],
+    ['a pull request', 'refs/pull/7/merge', SHA, '1.0.0+abc1234'],
+    ['no ref, as in a local build', undefined, SHA, '1.0.0+abc1234'],
+    ['a short commit', '', 'abc1234', '1.0.0+abc1234'],
+    ['a tag that is no release tag', 'refs/tags/v1.0.0-beta.1', SHA, '1.0.0+abc1234'],
+    ['a branch named like a tag', 'refs/heads/v2.0.0', SHA, '1.0.0+abc1234'],
+    ['nothing at all', undefined, undefined, '1.0.0'],
+    ['a branch with no commit known', 'refs/heads/main', null, '1.0.0'],
+  ])('%s', async (_, ref, commit, label) => {
+    // Mutations: the -rc.N stripped; a tag for another version accepted.
+    const { releaseLabel } = await load()
+    expect(releaseLabel('1.0.0', ref, commit)).toBe(label)
+  })
+
+  it.each(['refs/tags/v1.0.1', 'refs/tags/v0.1.0-rc.2', 'refs/tags/v2.0.0'])(
+    'throws for %s, a tag for another version than package.json',
+    async (ref) => {
+      const { releaseLabel } = await load()
+      expect(() => releaseLabel('1.0.0', ref, SHA)).toThrow(
+        /is for version .*package\.json says 1\.0\.0/,
+      )
+    },
+  )
+
+  it('throws for a package.json version that is not X.Y.Z, and a commit that is not hex', async () => {
+    const { releaseLabel } = await load()
+    expect(() => releaseLabel('1.0.0-rc.1', 'refs/heads/main', SHA)).toThrow(/not X\.Y\.Z/)
+    expect(() => releaseLabel('1.0.0', 'refs/heads/main', 'HEAD')).toThrow(/not a commit id/)
   })
 })
 
@@ -442,6 +483,37 @@ describe('the tag, main and the remote, over real repositories', () => {
     )
     return { ...result, outputs: readFileSync(outputs, 'utf8') }
   }
+
+  it("takes the build's commit from GITHUB_SHA, else from the checkout itself, else none", async () => {
+    // Mutation: the checkout test dropped, so a folder inside another
+    // repository (an unpacked source archive) takes that repository's commit.
+    const { buildCommit } = await load()
+    const { dir, side } = repositories()
+    expect(buildCommit({}, dir)).toBe(side)
+    expect(buildCommit({ GITHUB_SHA: 'f'.repeat(40) }, dir)).toBe('f'.repeat(40))
+    const unpacked = join(dir, 'unpacked')
+    mkdirSync(unpacked)
+    expect(buildCommit({}, unpacked)).toBeNull()
+    expect(buildCommit({}, scratch())).toBeNull()
+  })
+
+  it("says why when git cannot name the build's commit, and goes on without one", async () => {
+    // Mutation: the warning dropped, so a build that reports the bare
+    // version says nothing of why it lost its commit.
+    const { buildCommit } = await load()
+    const broken = scratch()
+    mkdirSync(join(broken, '.git'))
+    const warn = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      expect(buildCommit({}, broken)).toBeNull()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(warn.mock.calls[0]?.[0])).toMatch(
+        /^git could not name the commit built, so the app reports the bare version: .*not a git repository/,
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
 
   it('peels a tag to its commit, and says when there is no such tag', async () => {
     const { tagCommit } = await load()
@@ -870,6 +942,8 @@ describe('the notes', () => {
     const { text, problems } = fillNotes(template(), values)
     expect(problems).toEqual([])
     expect(text.startsWith('> **A release candidate.**')).toBe(true)
+    // The app built from the tag reports the tag's version (issue 558).
+    expect(text).toContain(': the app inside reports version 0.1.0-rc.2. Use it')
     expect(text).toContain('Legible-Cities-0.1.0-rc.2-mac-arm64.dmg')
   })
 
@@ -1254,6 +1328,16 @@ describe('build.yml', () => {
     expect(workflow).toMatch(/\n {2}push:\n {4}branches: \['\*\*'\]\n {4}tags: \['v\*'\]\n/)
   })
 
+  it('builds a branch that changes what the app reports as its version', () => {
+    // Mutation: the config left out of the path filter, so a branch that
+    // changes only how the label is built packages no installer to show it.
+    const on = workflow.slice(workflow.indexOf('\non:\n'), workflow.indexOf('\npermissions:\n'))
+    const paths = [...on.matchAll(/^ {6}- '([^']+)'$/gm)].map((match) => match[1])
+    expect(paths).toEqual(
+      expect.arrayContaining(['electron.vite.config.ts', 'scripts/release.mjs']),
+    )
+  })
+
   it('reads by default, and gives contents: write to the release job alone, on a tag', () => {
     expect(workflow.slice(0, workflow.indexOf('\njobs:\n'))).toMatch(
       /\npermissions:\n {2}contents: read\n/,
@@ -1286,6 +1370,25 @@ describe('build.yml', () => {
 
   it("asks where the tag points now, with this run's commit", () => {
     expect(release).toContain('--run-commit "$GITHUB_SHA"')
+  })
+
+  it('builds the app knowing the ref, through the environment and never the script', () => {
+    // Mutation: the env line dropped, so a candidate built from its tag
+    // reports 1.0.0+<sha7> instead of 1.0.0-rc.N (issue 558).
+    const pkg = jobs.slice(jobs.indexOf('\n  package:\n'), jobs.indexOf('\n  release:\n'))
+    const at = pkg.indexOf('      - name: Build the app\n')
+    expect(at).toBeGreaterThan(0)
+    // The step runs to the blank line after it; the ref is an env value,
+    // so no ${{ }} reaches a shell, and nothing else is set.
+    const step = pkg.slice(at, pkg.indexOf('\n\n', at))
+    expect(step).toBe(
+      [
+        '      - name: Build the app',
+        '        run: npm run build',
+        '        env:',
+        '          LEGIBLE_RELEASE_REF: ${{ github.ref }}',
+      ].join('\n'),
+    )
   })
 
   it("packages no installer without the source of Electron's FFmpeg library, checked before installing", () => {

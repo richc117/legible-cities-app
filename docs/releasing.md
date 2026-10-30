@@ -56,7 +56,11 @@ git tag vX.Y.Z-rc.N <commit on main>
 git push origin vX.Y.Z-rc.N
 ```
 
-The tag's `build` run drafts a Release marked as a pre-release.
+The tag's `build` run drafts a Release marked as a pre-release. The app in
+it reports the tag's version, `X.Y.Z-rc.N`, under Settings › Versions and
+in Copy diagnostics, as the notes' banner says; an installer built from
+`main` or a branch reports `X.Y.Z+<sha7>`, the commit it was built from
+(issue 558).
 
 **The final release** is a tag `vX.Y.Z`, cut the same way once a candidate
 has passed the gate. Its pull request also dates the section, `## [X.Y.Z] -

@@ -85,7 +85,7 @@ import {
   openCell,
   type CellId,
 } from '../support/project'
-import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
+import { tagContains as gitTagContains, tagSourceContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
 /** The presets in the engine's registry at the pin (`vendor/pins.json`, v0.10.1). */
@@ -203,6 +203,36 @@ const FEATURES = {
 
 /** The release under test, by its tag; the workflow names it. */
 const TAG = process.env.LEGIBLE_ACCEPTANCE_TAG ?? ''
+
+/**
+ * What a release's own source says, read from the tag's tree rather than
+ * by the commit that brought it: such a row can be written in the pull
+ * request that adds the feature, where a FEATURES row names a commit a
+ * squash merge replaces. Against a tag whose `path` lacks `text` the check
+ * takes the older rule; where git cannot tell, it is recorded as not
+ * checked, never passed.
+ */
+interface SourceFeature {
+  name: string
+  path: string
+  text: string
+  landed: string
+}
+
+const SOURCE_FEATURES = {
+  // The App row says a candidate's whole version, its -rc.<N> included,
+  // from the tag it was built from (issue 558); before it, package.json's.
+  releaseLabel: {
+    name: "the candidate's own version in the App row",
+    path: 'src/main/index.ts',
+    text: '__RELEASE_LABEL__',
+    landed: 'issue 558',
+  },
+} satisfies Record<string, SourceFeature>
+
+/** Whether the tag under test's own source holds a feature (pure.mjs). */
+const tagHas = (feature: SourceFeature): boolean | null =>
+  tagSourceContains({ tag: TAG, path: feature.path, text: feature.text, cwd: repoRoot })
 
 /**
  * Whether the tag under test contains a feature's commit: true or false, or
@@ -1113,7 +1143,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // when the tag is known to contain the change: a tag older than it
         // has no such row, and git answering "cannot tell" (a commit this
         // clone lacks, a shallow clone) is not a yes. It must then be the
-        // tag's version without any -rc.<N>, which is package.json's.
+        // tag's own version, -rc.<N> included, for a tag that contains the
+        // release label (issue 558), and the tag's version without any
+        // -rc.<N>, which is package.json's, for one older than it; where git
+        // cannot tell which, the row is recorded as not automated.
         const contains = TAG === '' ? null : tagContains(FEATURES.appVersionRow)
         if (TAG === '') {
           log.notAutomated(
@@ -1126,15 +1159,23 @@ test('a release, installed, through docs/acceptance.md', async () => {
               : `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.appVersionRow.commit.slice(0, 7)} (${FEATURES.appVersionRow.landed}): the commit is not in this clone, or the clone is shallow.`,
           )
         } else {
-          try {
-            const app = await read('App')
-            log.note(`App: ${app}`)
-            const expected = TAG.slice(1).replace(/-rc\.\d+$/, '')
-            if (app !== expected) wrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
-          } catch (error) {
-            wrong.push(
-              `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          const { releaseLabel } = SOURCE_FEATURES
+          const labelled = tagHas(releaseLabel)
+          if (labelled === null) {
+            log.notAutomated(
+              `the app's own version under Versions: git could not read ${TAG}'s ${releaseLabel.path}, so not whether it has ${releaseLabel.name} (${releaseLabel.landed}) and should say its -rc.<N>.`,
             )
+          } else {
+            try {
+              const app = await read('App')
+              log.note(`App: ${app}`)
+              const expected = labelled ? TAG.slice(1) : TAG.slice(1).replace(/-rc\.\d+$/, '')
+              if (app !== expected) wrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
+            } catch (error) {
+              wrong.push(
+                `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
           }
         }
         if (wrong.length > 0) throw new Error(wrong.join('; '))

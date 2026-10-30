@@ -15,6 +15,7 @@ import {
   parseSums,
   RESULTS,
   tagContains,
+  tagSourceContains,
   writtenSince,
 } from '../acceptance/pure.mjs'
 import { FIELDS, RunRecord, STEP_TITLES } from '../acceptance/record'
@@ -173,6 +174,86 @@ describe('tagContains', () => {
     expect(tagContains({ tag: 'v1', commit: 'abc', cwd: '.', run: unknown.run })).toBeNull()
     const noGit = git({ 'rev-parse': { status: null, stdout: '' } })
     expect(tagContains({ tag: 'v1', commit: 'abc', cwd: '.', run: noGit.run })).toBeNull()
+  })
+})
+
+// A feature told from the tag's own source, so its row needs no commit a
+// squash merge would replace (issue 558's release label).
+describe('tagSourceContains', () => {
+  type Answer = { status: number | null; stdout: string; error?: Error }
+  // Each of the three questions answered on its own: whether the tag is
+  // there, whether its tree has the path, and the file's text.
+  type Asked = 'tag' | 'path' | 'read'
+  const git = (answers: Partial<Record<Asked, Answer>>) => {
+    const asked: string[][] = []
+    const run = (_command: string, args: string[]): Answer => {
+      asked.push(args)
+      const which: Asked =
+        args[0] === 'cat-file' ? 'read' : args[3].endsWith('^{commit}') ? 'tag' : 'path'
+      return answers[which] ?? { status: 128, stdout: '' }
+    }
+    return { run, asked }
+  }
+  const ok = { status: 0, stdout: 'f'.repeat(40) + '\n' }
+  const ask = (run: ReturnType<typeof git>['run'], tag = 'v1.0.0-rc.2') =>
+    tagSourceContains({ tag, path: 'src/main/index.ts', text: '__RELEASE_LABEL__', cwd: '.', run })
+
+  it("answers from the tag's own file, true where it holds the text and false where not", () => {
+    // Mutation: the file's text not read, every tag that has the file a yes,
+    // so a release from before the label is expected to say its -rc.<N>.
+    const holds = git({
+      tag: ok,
+      path: ok,
+      read: { status: 0, stdout: 'version: __RELEASE_LABEL__ },\n' },
+    })
+    expect(ask(holds.run)).toBe(true)
+    expect(holds.asked).toEqual([
+      ['rev-parse', '--verify', '--quiet', 'refs/tags/v1.0.0-rc.2^{commit}'],
+      ['rev-parse', '--verify', '--quiet', 'refs/tags/v1.0.0-rc.2:src/main/index.ts'],
+      ['cat-file', 'blob', 'refs/tags/v1.0.0-rc.2:src/main/index.ts'],
+    ])
+    const lacks = git({
+      tag: ok,
+      path: ok,
+      read: { status: 0, stdout: 'version: app.getVersion() },\n' },
+    })
+    expect(ask(lacks.run)).toBe(false)
+  })
+
+  it('answers false for a tag whose tree has no such file, and asks for no text', () => {
+    // Mutation: git's "no such path" read as git failing, so a tag from
+    // before the file is recorded as not checked rather than judged.
+    const noFile = git({ tag: ok, path: { status: 1, stdout: '' } })
+    expect(ask(noFile.run)).toBe(false)
+    expect(noFile.asked).toHaveLength(2)
+  })
+
+  it('answers null without a tag, for a tag this clone lacks, and without git', () => {
+    // Mutation: a tag git does not have read as one without the feature,
+    // so a run from a clone that lacks it judges the row by the older rule.
+    const none = git({})
+    expect(ask(none.run, '')).toBeNull()
+    expect(none.asked).toEqual([])
+    const unknown = git({ tag: { status: 1, stdout: '' }, path: { status: 1, stdout: '' } })
+    expect(ask(unknown.run)).toBeNull()
+    expect(unknown.asked).toHaveLength(1)
+    const noGit = git({ tag: { status: null, stdout: '' }, path: { status: 1, stdout: '' } })
+    expect(ask(noGit.run)).toBeNull()
+    const pathFails = git({ tag: ok, path: { status: 128, stdout: '' } })
+    expect(ask(pathFails.run)).toBeNull()
+  })
+
+  it('answers null when reading the file fails or times out, whatever it printed', () => {
+    // Mutation: the read's failure ignored, so a timed-out read that
+    // printed part of the file, or none, reads as a tag without the feature.
+    const timedOut = git({
+      tag: ok,
+      path: ok,
+      read: { status: null, stdout: '', error: new Error('spawnSync git ETIMEDOUT') },
+    })
+    expect(ask(timedOut.run)).toBeNull()
+    const failed = git({ tag: ok, path: ok, read: { status: 128, stdout: '' } })
+    expect(ask(failed.run)).toBeNull()
   })
 })
 

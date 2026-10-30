@@ -2645,7 +2645,12 @@ the maintainer may have edited; removing any asset this run does not
 attach), refuses a
 published Release for the tag untouched, uploads with replacement, and
 reads the draft back to compare every asset's name, size and GitHub's
-sha256 digest with the files. An `-rc.N` draft is a prerelease. Before
+sha256 digest with the files. An `-rc.N` draft is a prerelease. The app
+built from a release tag reports the tag's own version, `1.0.0-rc.2` for
+`v1.0.0-rc.2`, in Settings and in Copy diagnostics, while `package.json`
+stays X.Y.Z; any other build reports `X.Y.Z+<sha7>` (`releaseLabel` in
+`scripts/release.mjs`, built in by `electron.vite.config.ts` from the
+`LEGIBLE_RELEASE_REF` the build step sets, issue 558). Before
 the draft is written, the same folder is uploaded as the `release-assets`
 artefact, and a last job, `attest`, the only one with `id-token: write`
 and with nothing else that writes, holds each file to its line in
