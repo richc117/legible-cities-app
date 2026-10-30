@@ -1043,7 +1043,8 @@ into a plain text editor.
   under the heading reads "Trimmed to fit a GitHub issue: main.log keeps
   its last `<N>` lines, engine.log `<M>`, and `<K>` of `<R>` map reports.
   The whole logs are in the logs folder (Settings › Open logs folder);
-  attach them to the report." with the oldest lines gone and the newest
+  attach them to the report." (a log cut to one line reads "its last
+  line", one cut to nothing "no lines") with the oldest lines gone and the newest
   kept, the five sections from **App** to **Bundled tools** whole, and no
   such line in a copy that was not cut. A short session is not cut, so
   write down whether this run's copy was; "not trimmed" is a result, and
