@@ -1,16 +1,24 @@
 [
   {
     "file": "src/renderer/src/ColourChip.tsx",
-    "find": "  if (top < header) return Math.max(top - header, chip.bottom - height)\n",
-    "replace": "  if (top < header) return top - header\n",
+    "find": "  return Math.min(Math.max(want, chip.bottom - height), chip.top - header)\n",
+    "replace": "  return Math.min(want, chip.top - header)\n",
     "test": "tests/unit/colour-fit.test.ts",
     "title": "moves the page down for a panel above its chip under the header, as far as the chip still fits",
-    "why": "The limit removed: a panel above a chip near the window's foot moves the page down by its overlap with the header and takes the chip out of the window."
+    "why": "The lower clamp removed: a panel above a chip near the window's foot moves the page down by its overlap with the header and takes the chip out of the window."
   },
   {
     "file": "src/renderer/src/ColourChip.tsx",
-    "find": "  if (bottom > height) return Math.min(bottom - height, top - header)\n",
-    "replace": "  if (bottom > height) return bottom - height\n",
+    "find": "  return Math.min(Math.max(want, chip.bottom - height), chip.top - header)\n",
+    "replace": "  return Math.min(Math.max(want, chip.bottom - height), top - header)\n",
+    "test": "tests/unit/colour-fit.test.ts",
+    "title": "brings back a chip already past the foot, though its panel above runs under the header",
+    "why": "The upper clamp taken from the panel's top instead of the chip's, as the first fix had it: with both overrunning at once the page moves down by the panel's overlap with the header, and a chip already past the foot goes further out."
+  },
+  {
+    "file": "src/renderer/src/ColourChip.tsx",
+    "find": "  return Math.min(Math.max(want, chip.bottom - height), chip.top - header)\n",
+    "replace": "  return Math.max(want, chip.bottom - height)\n",
     "test": "tests/unit/colour-fit.test.ts",
     "title": "moves the page up by the overflow of a panel below its chip, but never the chip under the header",
     "why": "The header limit removed: a panel taller than the window moves the page up until the chip is under the header."

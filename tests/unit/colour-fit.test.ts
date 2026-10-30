@@ -34,4 +34,10 @@ describe('the scroll that keeps a colour panel and its chip in the window', () =
     // At the foot already: nothing moves.
     expect(fitShift({ top: 696, bottom: 720 }, { top: 16, bottom: 690 }, HEADER, HEIGHT)).toBe(0)
   })
+
+  it('brings back a chip already past the foot, though its panel above runs under the header', () => {
+    // Both overrun at once: the chip's 12 past the foot decides, and the
+    // page moves up 12, never down by the panel's 36 under the header.
+    expect(fitShift({ top: 708, bottom: 732 }, { top: 20, bottom: 700 }, HEADER, HEIGHT)).toBe(12)
+  })
 })

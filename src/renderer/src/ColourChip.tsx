@@ -42,19 +42,16 @@ export interface Span {
  * chip, because the window had room above it - the page moves down, but
  * never so far that the chip goes past the bottom of the window: the panel
  * is in the top layer and is drawn over the header, while a chip pushed
- * out of the window is a panel whose control cannot be seen. That second
- * limit was missing: with the chip near the foot of the window and the
- * panel above it, under the header, the page moved down by the panel's
- * overlap with the header and took the chip past the bottom (the reading
- * of the notebook sweep's failure once issue 560 shortened cells 01 and
- * 05).
+ * out of the window is a panel whose control cannot be seen. So the panel's
+ * wish is clamped to the chip's own room, whichever way the panel overruns:
+ * with a chip already a little past the foot and its panel flipped above
+ * it, both overruns hold at once, and the chip's room decides.
  */
 export function fitShift(chip: Span, panel: Span, header: number, height: number): number {
   const top = Math.min(chip.top, panel.top)
   const bottom = Math.max(chip.bottom, panel.bottom)
-  if (bottom > height) return Math.min(bottom - height, top - header)
-  if (top < header) return Math.max(top - header, chip.bottom - height)
-  return 0
+  const want = bottom > height ? bottom - height : top < header ? top - header : 0
+  return Math.min(Math.max(want, chip.bottom - height), chip.top - header)
 }
 
 /**
