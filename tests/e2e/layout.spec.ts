@@ -2226,7 +2226,7 @@ test('the projects list is newest opened first, and says how far each project ha
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: 'Back to Library' }).click()
     await expect(page.getByRole('button', { name: 'Open First' })).toContainText(
-      'finished up to 05 Lines',
+      'map drawn from every cell',
     )
 
     // A second project, made and never opened, comes first: it is newer.

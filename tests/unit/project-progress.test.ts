@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { progressWords } from '../../src/renderer/src/projectProgress'
+import { EVERY_CELL, EVERY_CELL_READY, progressWords } from '../../src/renderer/src/projectProgress'
 import type { RunFacts } from '../../src/renderer/src/runGraph'
 import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
@@ -52,8 +52,19 @@ describe('how far a project has got, in words', () => {
     expect(progressWords(fresh, null)).toBe('finished up to 01 Data; not laid out yet')
   })
 
-  it('is its lines once the map is drawn from everything above the export', () => {
-    expect(progressWords(current, null)).toBe('finished up to 05 Lines')
+  it('says the map is drawn from every cell once it is, in the header’s words', () => {
+    // Mutation: the old return, "finished up to 05 Lines", which every
+    // finished card said alike and which read as not finished (issue 559).
+    expect(progressWords(current, null)).toBe('map drawn from every cell')
+    expect(EVERY_CELL).toBe('map drawn from every cell')
+    expect(progressWords(current, null)).not.toMatch(/finished up to/)
+  })
+
+  it('says every cell is ready, and no more, of a record that cannot prove its map current', () => {
+    // A record from before `drawn` existed reads ready in the run graph;
+    // the header tells it "Every cell is ready.", and so does its card.
+    expect(progressWords(base, null)).toBe(EVERY_CELL_READY)
+    expect(EVERY_CELL_READY).toBe('every cell ready')
   })
 
   it('stops at the cell holding a change the map does not show yet', () => {

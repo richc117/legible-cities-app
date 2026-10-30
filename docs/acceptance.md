@@ -853,8 +853,8 @@ confirmation, and then **Cancel**.
 
 **See.**
 - On the front door, **Your projects** holds the **New project** card and
-  then "LA Metro Rail", with "Los Angeles · Metro Rail" and "finished up to
-  05 Lines" beneath its name and, above it, the engine's small picture of
+  then "LA Metro Rail", with "Los Angeles · Metro Rail" and "map drawn
+  from every cell" beneath its name and, above it, the engine's small picture of
   the map it drew for this project, in the project's own line colours and
   in the interface's palette, whichever theme the project's map wears; the
   LA Metro Rail sample's card now says "downloaded" in its chip.
@@ -951,7 +951,7 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
 - On reopening: no first-run dialog; **Your projects** holds the **New
   project** card, then Caltrain and then LA Metro Rail (newest opened
   first), each with the engine's picture of its map, where it runs and
-  "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
+  "map drawn from every cell"; **Your feeds** still lists Caltrain.
 - LA Metro Rail opens with cells 01 and 02 collapsed and the map after
   them; opening cell 02 shows "Drawn from layout `<8 characters>` for
   `<day>`.", the **same day** you wrote down in step 7, and the same

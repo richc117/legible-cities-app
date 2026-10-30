@@ -366,7 +366,7 @@ describe('Your projects', () => {
     expect(html).toContain('aria-label="Open Los Angeles"')
     expect(html).toContain('aria-describedby="card-kq7x2mzp4dna-facts"')
     expect(html).toContain(
-      '<span class="card-facts" id="card-kq7x2mzp4dna-facts"><span class="card-fact">Los Angeles · Metro Rail</span><span class="card-fact">finished up to 05 Lines</span><span class="card-chip">read-only</span></span>',
+      '<span class="card-facts" id="card-kq7x2mzp4dna-facts"><span class="card-fact">Los Angeles · Metro Rail</span><span class="card-fact">map drawn from every cell</span><span class="card-chip">read-only</span></span>',
     )
     // A card says less than a row did (ADR-047).
     expect(html).not.toMatch(/Service day|Opened|Made |Feed la-metro-rail/)

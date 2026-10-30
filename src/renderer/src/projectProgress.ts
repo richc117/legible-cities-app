@@ -23,8 +23,23 @@ import {
 // A project that has not been laid out is finished up to its data and no
 // further: the run graph reads cell 02 as ready there, because nothing is
 // stale before anything has been made, but nothing has been made either.
+//
+// A project with every one of cells 01 to 05 ready says so in the project
+// header's own words (issue 559): every finished card read "finished up to
+// 05 Lines", which told nine cards apart in nothing and read as not
+// finished. "Ready to export" would be untrue of a read-only project, and
+// says something about cell 06, which is not counted. A record from before
+// `drawn` existed reads ready without proving its map current, and the
+// header tells it "Every cell is ready." rather than that its map is drawn
+// from every cell; so does its card.
 
 const MAP_CELLS: readonly CellId[] = ['data', 'process', 'frame', 'style', 'lines']
+
+/** A project whose map is drawn from every cell it has, as `runAll.ts` says it. */
+export const EVERY_CELL = 'map drawn from every cell'
+
+/** The same for a record from before `drawn`, which cannot prove its map current. */
+export const EVERY_CELL_READY = 'every cell ready'
 
 const named = (id: CellId): string => {
   const cell = CELL_LIST.find((c) => c.id === id) as (typeof CELL_LIST)[number]
@@ -40,7 +55,7 @@ export function progressWords(record: GraphRecord, run: RunFacts | null): string
   if (failed !== undefined) return `${named(failed)} failed`
   if (record.layout === null) return `finished up to ${named('data')}; not laid out yet`
   const behind = MAP_CELLS.findIndex((id) => states[id].state !== 'ready')
-  if (behind === -1) return `finished up to ${named('lines')}`
+  if (behind === -1) return record.drawn === null ? EVERY_CELL_READY : EVERY_CELL
   // The cell before the first one behind; cell 01 is never stale itself,
   // since a source marks only the cells below its own.
   return `finished up to ${named(MAP_CELLS[Math.max(behind - 1, 0)])}`

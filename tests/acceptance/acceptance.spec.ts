@@ -2918,7 +2918,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           ).toHaveAccessibleName('New project')
           const entry = window.getByRole('button', { name: `Open ${LA}` })
           await expect(entry).toContainText('Los Angeles · Metro Rail')
-          await expect(entry).toContainText('finished up to 05 Lines')
+          await expect(entry).toContainText('map drawn from every cell')
           await expect(
             window
               .getByRole('list', { name: 'Presets' })
@@ -3272,7 +3272,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         expect(names).toEqual(['Open Caltrain', `Open ${LA}`])
         for (const row of await rows.all()) {
-          await expect(row).toContainText('finished up to 05 Lines')
+          await expect(row).toContainText('map drawn from every cell')
         }
         await expect(rows.nth(1)).toContainText('Los Angeles · Metro Rail')
         if (session.caltrainFeed !== null) {

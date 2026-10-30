@@ -918,8 +918,9 @@ a table).
   "Open `<name>`" (D4).
 - **Project cards.** In the list "Projects", after **New project**, each
   card is a button "Open `<name>`", with where it runs and how far it has
-  got read as its description ("Los Angeles · Metro Rail, finished up to
-  05 Lines", A5.6-04, ADR-047). Nothing is read for its picture area: the
+  got read as its description ("Los Angeles · Metro Rail, map drawn from
+  every cell", A5.6-04, ADR-047, issue 559; a project that is behind reads
+  "finished up to `<cell>`"). Nothing is read for its picture area: the
   engine's picture of the map there has an empty alternative text, and the
   glyph of a project not yet drawn is hidden. A project's card reads the
   same in Night and in Parchment, with the picture and without.
