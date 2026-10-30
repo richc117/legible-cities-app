@@ -6,7 +6,7 @@ import Button from '../kit/Button'
 import { exportable } from '../runGraph'
 import { useProjectExport, useProjectRecord } from './context'
 import Time from './Time'
-import { EXPORT_ONE, GONE, NOTHING_YET, UNNAMED_PRESET } from './outputWords'
+import { EXPORT_ONE, GONE, NOTHING_YET, outputName } from './outputWords'
 
 // What this project has produced, under the stepper in the rail (A5.5-21,
 // docs/DESIGN.md 8.2, "Outputs").
@@ -18,10 +18,10 @@ import { EXPORT_ONE, GONE, NOTHING_YET, UNNAMED_PRESET } from './outputWords'
 // an export settles, so a file that has just been written appears without a
 // restart, and again on a press that finds its file gone.
 //
-// No path is shown (constitution V). A row says the preset and when it was
-// made; Reveal opens the folder, and the main process is the only side that
-// ever knows which folder that is. A file moved or deleted since reads as
-// gone rather than failing on a press, and offers nothing to press.
+// No path is shown (constitution V). A row says the preset's title and when
+// it was made; Reveal opens the folder, and the main process is the only
+// side that ever knows which folder that is. A file moved or deleted since
+// reads as gone rather than failing on a press, and offers nothing to press.
 //
 // Which is a control that goes with the press that used it (A6-07): the
 // Reveal answers false, the list is read again, the row turns to a
@@ -106,13 +106,13 @@ export default function Outputs({ onExport }: { onExport: () => void }): JSX.Ele
         <ul className="outputs">
           {rows.map((row) => (
             <li key={row.file} className="output">
-              <span className="output-preset">{row.preset ?? UNNAMED_PRESET}</span>
+              <span className="output-preset">{outputName(row.preset)}</span>
               <span className="output-made">
                 <Time iso={row.made} />
               </span>
               {row.present ? (
                 <Button
-                  aria-label={`Reveal ${row.preset ?? UNNAMED_PRESET}, ${row.file}`}
+                  aria-label={`Reveal ${outputName(row.preset)}, ${row.file}`}
                   onClick={() => {
                     void window.api.export.revealOutput(id, row.file).then(
                       // False means the file went between the read and the

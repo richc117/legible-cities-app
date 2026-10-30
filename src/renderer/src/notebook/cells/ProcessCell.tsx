@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { ProjectRecord } from '../../../../shared/project/types'
+import { momentWords } from '../../dates'
 import DiagnosticsView from '../../Diagnostics'
 import LayoutRunView from '../../LayoutRun'
 import { isTuningRedraw } from '../../engine/layoutRun'
@@ -42,8 +43,8 @@ import EngineLog from '../EngineLog'
  * row's first word until issue 279 cut the row to one fact; the strip
  * under the open cell carries it.
  *
- * The moment is read as the strip reads it - the person's own locale, as
- * `Time` renders it - because a row and the strip below it saying the same
+ * The moment is read as the strip reads it - `momentWords`, as `Time`
+ * renders it - because a row and the strip below it saying the same
  * thing differently is a difference a person has to stop and resolve. The row is drawn only
  * while the cell is collapsed and the strip only while it is open, so the
  * two are never on the screen together (issue 209).
@@ -59,8 +60,7 @@ export function processSummary(
   if (project.layout === null) return 'not laid out yet'
   // The eight-character id is in the footer, where provenance lives.
   if (project.made === null) return 'laid out'
-  const made = new Date(project.made)
-  return `laid out ${Number.isNaN(made.getTime()) ? project.made : made.toLocaleString()}`
+  return `laid out ${momentWords(project.made)}`
 }
 
 export default function ProcessCell({ cell, state, open, onToggle }: CellViewProps): JSX.Element {

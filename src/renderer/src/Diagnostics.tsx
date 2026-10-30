@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
 import type { ProjectRecord } from '../../shared/project/types'
+import { dayWords } from './dates'
 import { caveatsSentence, copyText, metrics } from './engine/diagnostics'
 import {
   isTuningRedraw,
@@ -203,7 +204,7 @@ export function DiagnosticsReport({
         </ul>
       )}
       <table className="measures" ref={table}>
-        <caption>What the engine measured drawing the map for {report.date}</caption>
+        <caption>What the engine measured drawing the map for {dayWords(report.date)}</caption>
         <thead>
           <tr>
             <th scope="col">Measure</th>

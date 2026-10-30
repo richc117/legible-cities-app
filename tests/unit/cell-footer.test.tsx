@@ -22,6 +22,7 @@ import CellFooter, {
   processFacts,
   SIDECAR_NOTE,
 } from '../../src/renderer/src/notebook/CellFooter'
+import { momentWords } from '../../src/renderer/src/dates'
 import type { EngineState } from '../../src/shared/engine'
 import type { ProjectRecord, ServiceWindow } from '../../src/shared/project/types'
 
@@ -70,7 +71,7 @@ describe('cell 02’s provenance', () => {
     expect(facts[2].value).toBe('rail, LACMTA')
   })
 
-  it('keeps the exact moment on the element and shows it in the person’s locale', () => {
+  it('keeps the exact moment on the element and shows it in the interface’s words', () => {
     // The builder hands the strip the record's ISO value and the strip
     // renders it; a builder cannot hand it an element (`Fact.value`).
     expect(processFacts(project(), null)[1].value).toEqual({ iso: '2026-09-13T14:03:00+00:00' })
@@ -78,9 +79,11 @@ describe('cell 02’s provenance', () => {
     // React writes the attribute as it is spelled in JSX; HTML reads it
     // case-insensitively, so the test does too.
     expect(html).toMatch(/<time datetime="2026-09-13T14:03:00\+00:00"/i)
-    // The locale rendering is the machine's, so what is asserted is that it
-    // is not the ISO string shown raw.
-    expect(html).toContain(new Date('2026-09-13T14:03:00+00:00').toLocaleString())
+    // The words are `momentWords`'s, whose day and time are the machine's
+    // zone (`dates.test.ts` holds them), so what is asserted is that the
+    // strip uses them and does not show the ISO string raw.
+    expect(html).toContain(`>${momentWords('2026-09-13T14:03:00+00:00')}</time>`)
+    expect(html).toMatch(/>1[34] September 2026 at /)
   })
 
   it('says nothing about a layout that does not exist, or about facts the record lacks', () => {
@@ -154,10 +157,10 @@ describe('cell 03’s provenance', () => {
       'The engine’s busiest weekday',
       'Counted from',
     ])
-    expect(facts[0].value).toBe('2026-03-17')
-    expect(facts[1].value).toBe('2026-03-01 to 2026-06-30')
-    expect(facts[2].value).toBe('2026-03-17')
-    expect(facts[3].value).toBe('2026-03-10')
+    expect(facts[0].value).toBe('17 March 2026')
+    expect(facts[1].value).toBe('1 March 2026 to 30 June 2026')
+    expect(facts[2].value).toBe('17 March 2026')
+    expect(facts[3].value).toBe('10 March 2026')
   })
 
   it('says the same four things for a day the person picked, and credits no one', () => {
@@ -171,8 +174,8 @@ describe('cell 03’s provenance', () => {
       'The engine’s busiest weekday',
       'Counted from',
     ])
-    expect(facts[0].value).toBe('2026-04-02')
-    expect(facts[2].value).toBe('2026-03-17')
+    expect(facts[0].value).toBe('2 April 2026')
+    expect(facts[2].value).toBe('17 March 2026')
   })
 
   it('does not credit the engine’s own day to the person after a second layout run', () => {
@@ -194,8 +197,8 @@ describe('cell 03’s provenance', () => {
     expect(said).not.toContain('by the engine')
     // Both answers are there to be compared, and neither is dropped
     // because it stopped matching the day.
-    expect(facts[2].value).toBe('2026-09-15')
-    expect(facts[3].value).toBe('2026-09-08')
+    expect(facts[2].value).toBe('15 September 2026')
+    expect(facts[3].value).toBe('8 September 2026')
   })
 
   it('draws none of the panel’s own sentence, whose words its terms share', () => {
@@ -213,7 +216,7 @@ describe('cell 03’s provenance', () => {
 
   it('says a window of one day as one day', () => {
     const one = { ...WINDOW, start: '2026-03-17', end: '2026-03-17' }
-    expect(frameFacts({ date: '2026-03-17', service: one })[1].value).toBe('one day, 2026-03-17')
+    expect(frameFacts({ date: '2026-03-17', service: one })[1].value).toBe('one day, 17 March 2026')
   })
 
   it('draws no footer at all before a layout run has answered a window', () => {

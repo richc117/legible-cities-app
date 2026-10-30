@@ -46,5 +46,13 @@
     "test": "tests/unit/service-day-follows.test.tsx",
     "title": "puts the record’s day back when a rebuild is refused after another run failed",
     "why": "The edge taken on the state alone: a rebuild refused at once after a failed layout run stays failed, so the control keeps a day the record does not hold."
+  },
+  {
+    "file": "src/renderer/src/ServiceDay.tsx",
+    "find": "    const invalid = value === '' ? CHOOSE_A_DAY : validateServiceDate(value)\n",
+    "replace": "    const invalid = validateServiceDate(value)\n",
+    "test": "tests/unit/service-day-follows.test.tsx",
+    "title": "asks for a day, rather than for the record’s way of writing one",
+    "why": "An empty control handed to the record's validator: a person who cleared the day is told the record's format, \"the service day must be written YYYY-MM-DD\", instead of to choose one."
   }
 ]

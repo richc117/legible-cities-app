@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, type JSX, type ReactNode, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
-import type { ExportChoice } from '../../shared/export'
+import { presetTitle, type ExportChoice } from '../../shared/export'
 import type { ProjectRecord } from '../../shared/project/types'
 import type { Inspection } from '../../shared/protocol'
 import type { ExportRun as Run } from './engine/exportRun'
@@ -139,8 +139,12 @@ export default function ExportTab({
         <>
           {dropped !== null && (
             <p className="notice" role="status">
-              The export this project was set to, {dropped}, is no longer offered by the engine.
-              This is the Instagram reel with the engine&rsquo;s defaults until another is chosen.
+              {/* A preset by its title, as everywhere else (issue 559); a
+                  storyboard's name, or a preset the app never offered,
+                  is not one, and is said as it was. */}
+              The export this project was set to, {presetTitle(dropped)}, is no longer offered by
+              the engine. This is the Instagram reel with the engine&rsquo;s defaults until another
+              is chosen.
             </p>
           )}
           <p className="prose">

@@ -8,6 +8,7 @@ import {
   isStoryboardName,
   lengthOf,
   playsStoryboard,
+  presetTitle,
   trimAsEngine,
   validateCaption,
   type ExportChoice,
@@ -72,18 +73,30 @@ export function byPlatform(
 /** Is this preset a video or a GIF, which play a storyboard? The shared rule, under the tab's name. */
 export const plays = playsStoryboard
 
-/** A preset as the chooser lists it: the engine's name, its size and what it makes. */
+/**
+ * A preset as the chooser lists it: its title, its size and what it makes,
+ * "Instagram post, 1080 by 1350, PNG still" (issue 559). A video's title
+ * says what it is for and its container says it moves, "LinkedIn video,
+ * 1200 by 1200, MP4"; a GIF's title already says it is one, so it adds
+ * nothing after the size (`preset-titles.test.ts` holds every GIF's title
+ * to that).
+ */
 export function presetWords(preset: Preset): string {
   const made =
     preset.format === 'gif'
-      ? 'GIF'
+      ? ''
       : preset.kind === 'video'
-        ? `video, ${preset.format.toUpperCase()}`
-        : `still, ${preset.format.toUpperCase()}`
-  return `${preset.name}: ${preset.width} by ${preset.height}, ${made}`
+        ? `, ${preset.format.toUpperCase()}`
+        : `, ${preset.format.toUpperCase()} still`
+  return `${presetTitle(preset.name)}, ${preset.width} by ${preset.height}${made}`
 }
 
-/** A storyboard as the chooser lists it: its name, the views it visits and its length. */
+/**
+ * A storyboard as the chooser lists it: its name, the views it visits and
+ * its length. The name is the engine's with its first letter capitalised
+ * and nothing else changed, "Morph: map, linear and time, 9 seconds"; the
+ * views are the page's own words.
+ */
 export function storyboardWords(storyboard: Storyboard): string {
   const views = storyboard.views.split(' -> ').filter((view) => view !== '')
   const visited =
@@ -91,7 +104,8 @@ export function storyboardWords(storyboard: Storyboard): string {
       ? (views[0] ?? 'one view')
       : `${views.slice(0, -1).join(', ')} and ${views[views.length - 1]}`
   const seconds = Math.round(storyboard.seconds * 10) / 10
-  return `${storyboard.name}: ${visited}, ${seconds} seconds`
+  const name = storyboard.name.charAt(0).toUpperCase() + storyboard.name.slice(1)
+  return `${name}: ${visited}, ${seconds} seconds`
 }
 
 /** What `export.plan` does with an option it is not sent, for this preset. */

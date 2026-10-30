@@ -1,6 +1,7 @@
 import { isEngineErrorShape, ERROR_CODES, type EngineState } from '../../../shared/engine'
 import {
   EXPORT_STAGES,
+  presetTitle,
   UNPROVEN_FRAMES,
   type ExportProgress,
   type ExportChoice,
@@ -230,7 +231,7 @@ export class ExportRun {
     if (this.#snapshot.state === 'running') return
     this.#attempt = {
       id: nextJobId(),
-      label: `Export as ${choice.preset}`,
+      label: `Export as ${presetTitle(choice.preset)}`,
       projectId: project.id,
       started: Date.now(),
       ended: null,

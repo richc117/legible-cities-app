@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { progressWords } from '../../src/renderer/src/projectProgress'
+import { EVERY_CELL, progressWords } from '../../src/renderer/src/projectProgress'
 import { summarise, withTuning } from '../../src/main/record/helpers'
 import { parseRecord, readTuning } from '../../src/main/record/parse'
 import { validateTuning } from '../../src/main/record/validate'
@@ -264,7 +264,7 @@ describe('reading a record’s tuning', () => {
   it('makes a project’s card say how far it has got from them', () => {
     // The card derives its words from the summary with the run graph
     // (`projectFacts` -> `progressWords`). Mutation: the two left out of
-    // `summarise` - the card then says "finished up to 05 Lines" of a
+    // `summarise` - the card then says "map drawn from every cell" of a
     // project whose layout is of another tuning.
     const drawn = read({ layout: 'a'.repeat(64), date: '2026-09-12' })
     const record = read({
@@ -276,6 +276,6 @@ describe('reading a record’s tuning', () => {
     expect(progressWords(summarise(record, false), null)).toBe('finished up to 02 Process')
     expect(
       progressWords(summarise({ ...record, laidOutWith: { grid: 'hexalinear' } }, false), null),
-    ).toBe('finished up to 05 Lines')
+    ).toBe(EVERY_CELL)
   })
 })

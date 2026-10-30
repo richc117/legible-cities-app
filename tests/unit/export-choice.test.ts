@@ -112,12 +112,18 @@ describe('what is offered', () => {
   })
 
   it('names a preset with its size and what it makes, and a storyboard with its views and length', () => {
-    expect(presetWords(PRESETS[0])).toBe('instagram-post: 1080 by 1350, still, PNG')
-    expect(presetWords(PRESETS[2])).toBe('instagram-reel: 1080 by 1920, video, MP4')
-    expect(presetWords(PRESETS[3])).toBe('linkedin-gif: 1080 by 1920, GIF')
-    expect(storyboardWords(TABLES.storyboards[0])).toBe('tour: map, linear and time, 25 seconds')
-    expect(storyboardWords(TABLES.storyboards[2])).toBe('run: map, 20 seconds')
-    expect(storyboardWords(board('x', '', 4.4))).toBe('x: one view, 4.4 seconds')
+    // By its title, never its id (issue 559); a GIF's title already says GIF.
+    expect(presetWords(PRESETS[0])).toBe('Instagram post, 1080 by 1350, PNG still')
+    expect(presetWords(PRESETS[2])).toBe('Instagram reel, 1080 by 1920, MP4')
+    expect(presetWords(PRESETS[3])).toBe('LinkedIn square GIF, 1080 by 1920')
+    // A preset the app does not offer keeps its id, rather than no name.
+    expect(presetWords({ ...PRESETS[3], name: 'portfolio-gif' })).toBe(
+      'portfolio-gif, 1080 by 1920',
+    )
+    // The engine's name, its first letter capitalised and nothing else.
+    expect(storyboardWords(TABLES.storyboards[0])).toBe('Tour: map, linear and time, 25 seconds')
+    expect(storyboardWords(TABLES.storyboards[2])).toBe('Run: map, 20 seconds')
+    expect(storyboardWords(board('x', '', 4.4))).toBe('X: one view, 4.4 seconds')
   })
 
   it('plays a storyboard for a video or a GIF, and not for a still', () => {

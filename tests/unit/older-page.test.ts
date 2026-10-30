@@ -471,7 +471,7 @@ describe('what cell 03 says when a rebuild of its own failed', () => {
   it('says a plain failure with its day and reason, and nothing of what holds', () => {
     // Mutation: the plain kind given the opening's words.
     expect(frameFailureWords(failure({ job: 'job-2' })!)).toEqual({
-      error: 'The rebuild for 2026-06-16 did not finish.',
+      error: 'The rebuild for 16 June 2026 did not finish.',
       reason: 'la-metro-rail has no stored layout cccccccc.',
       fallback: null,
     })

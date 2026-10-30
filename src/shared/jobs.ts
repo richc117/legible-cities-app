@@ -27,7 +27,7 @@ export interface Job {
   projectId: string | null
   /** The project's name, filled in by whoever lists the jobs; the run knows only the id. */
   projectName: string | null
-  /** What the job is, in a few words: "Layout run", "Export as instagram-reel". */
+  /** What the job is, in a few words: "Layout run", "Export as Instagram reel". */
   label: string
   state: JobState
   stages: JobStage[]

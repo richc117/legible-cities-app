@@ -50,10 +50,10 @@ export type RunAllPlan =
  * until something runs it again, and a re-layout stopped after it had
  * replaced the stored set (`replaced`, A3-05).
  *
- * Never a re-layout. "Re-layout" is behind a warning because it lays out
- * inputs that already have a layout and may move every station (ADR-033);
- * Run all lays out only what has no current layout, which the engine names
- * by its inputs and answers from what it has.
+ * Never a re-layout. "Lay out from scratch…" is behind a warning because
+ * it lays out inputs that already have a layout and may move every station
+ * (ADR-033); Run all lays out only what has no current layout, which the
+ * engine names by its inputs and answers from what it has.
  */
 export function runAllPlan(record: ProjectRecord, run: RunFacts | null): RunAllPlan {
   if (record.layout === null) return { kind: 'layout' }

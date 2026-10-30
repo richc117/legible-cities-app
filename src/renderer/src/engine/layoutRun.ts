@@ -15,6 +15,7 @@ import {
   type SentSet,
   type ServiceWindow,
 } from '../../../shared/project/types'
+import { dayWords } from '../dates'
 import { orderOf, paletteOf, sentSet } from '../record'
 import {
   failureOf,
@@ -88,6 +89,20 @@ const NO_LAYOUT_FOR_A_DAY = 'Lay the project out before choosing a day.'
 /** What a layout run says when its layout was stored before the cancel reached it. */
 export const LAYOUT_KEPT =
   'The layout was already made when you cancelled; the next run draws from it.'
+
+/**
+ * The forced run's name: the job's label, the warning's button, and cell
+ * 02's button with an ellipsis after it (issue 559). One string, so the
+ * job a person watches is named as the command they pressed.
+ */
+export const LAY_OUT_FROM_SCRATCH = 'Lay out from scratch'
+
+/**
+ * A rebuild for a chosen day's job, named for the button that starts it,
+ * cell 03's "Draw for this day", and with the day in words (issue 559):
+ * it was "Rebuild for 2026-09-17", a verb the screen never uses.
+ */
+export const drawForLabel = (day: string): string => `Draw for ${dayWords(day)}`
 
 export interface RunSnapshot {
   state: RunState
@@ -684,7 +699,7 @@ export class LayoutRun {
 
   /** `start` once a second run has been refused: the job, the engine's refusal, the record read. */
   #startLayout(handed: ProjectRecord, engine: EngineState | null, force: boolean): void {
-    this.#open('layout', force ? 'Re-layout' : 'Layout run', handed.id)
+    this.#open('layout', force ? LAY_OUT_FROM_SCRATCH : 'Layout run', handed.id)
     if (!this.#begin(engine, kindFlags({ kind: 'layout', forced: force }))) return
     // Only a layout can download its feed; a redraw works from the stored
     // layout, whose feed is on disk. No writer moves the feed.
@@ -827,7 +842,7 @@ export class LayoutRun {
 
   /** `rebuild` once a second run has been refused: the job, the refusals, the record read. */
   #startRebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
-    this.#open('rebuild', `Rebuild for ${date}`, handed.id)
+    this.#open('rebuild', drawForLabel(date), handed.id)
     if (handed.layout === null) {
       this.#set({
         state: 'failed',
@@ -912,7 +927,7 @@ export class LayoutRun {
     // flags, the cell that reads running - until the record is read. The
     // engine is ready, so `#begin` starts it.
     if (pressed.kind === 'rebuild') {
-      this.#open('rebuild', `Rebuild for ${pressed.date}`, handed.id)
+      this.#open('rebuild', drawForLabel(pressed.date), handed.id)
       this.#begin(engine, kindFlags({ kind: 'rebuild', day: pressed.date }))
     } else {
       // A plan of nothing goes this way too, as a layout, for as long as the
@@ -938,7 +953,7 @@ export class LayoutRun {
       }
       this.#become(
         'rebuild',
-        `Rebuild for ${plan.date}`,
+        drawForLabel(plan.date),
         kindFlags({ kind: 'rebuild', day: plan.date }),
       )
       this.#feedKey = null

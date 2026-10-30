@@ -210,7 +210,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Steps: six buttons, each "`<nn> <name>`, `<state>`", `aria-current="step"` following the scroll (A5.5-21) | swept; **a step moves focus on activation**, to its cell's heading, landing it clear of the header, the only thing pinned since ADR-046, with no smooth scroll under reduced motion (`rail.spec.ts`) | swept (a `<nav>` "Steps" under an `h2` of the project's name, issue 274; the state an icon and a word, never a colour alone) | swept | swept | pass (the state words on `--surface`, and on `--surface-hover` and `--surface-selected` the warning and error words fall back to `--text-muted`; a running step's `--accent-text` on `--surface-selected` and on `--surface-hover`, both added to the contrast test by A5.6-09) | pass (the same) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Outputs: a button "Export one in cell 06." in its empty state once laid out, a row per export, Reveal named "Reveal `<preset>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes; the empty state's button lands on cell 06's heading, `rail.spec.ts`) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, `--accent-text`, the warning icon with its words) | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
+| Outputs: a button "Export one in cell 06." in its empty state once laid out, a row per export, Reveal named "Reveal `<preset's title>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes; the empty state's button lands on cell 06's heading, `rail.spec.ts`) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, `--accent-text`, the warning icon with its words) | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Below 900px | audit only: the rail keeps its names and clips them, and is `inert` while the inspector covers the main region | audit only | audit only | audit only | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
 ### Project: the map, and cell 06's preview
@@ -246,7 +246,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | The layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Re-layout warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Lay out from scratch… warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Layout tuning: a closed disclosure, the grid, seven numeric fields and Reset to LOOM’s defaults (issue 385) | by construction: the toggle a native button in an `h3`, one Tab stop while closed; open, the grid the kit's native select and each number a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus to the section's `h3` as it disables itself; Enter commits a field, asserted in `tuning.spec.ts`, which CI's `e2e` job runs (the spec clicks and fills, and Enter is its only key); Tab reach is swept, open and in both themes, since issue 436 (`notebook-a11y.spec.ts`, "the project with the layout tuning and one line's options open") | by construction: the toggle named by its row, "Layout tuning" and "LOOM’s defaults" or "tuned", over a group named "Layout tuning"; the select named "Grid", each option the engine's word and its gloss; each number named by its label and described by its range and LOOM's own, the five penalties in a fieldset whose legend is "Bend penalties"; a refusal an alert and `aria-invalid` on the field; asserted in `layout-tuning.test.tsx` and `tuning.spec.ts`, the latter run by CI's `e2e` job; swept open | by construction (the app's ring on the toggle, the kit's on the fields); swept open, each ring measured (issue 436) | by construction (the chevron's turn is a transition only where motion is allowed); swept open | by construction (`--text`, `--text-muted` on `--surface`, `.message` and `.message.error` and the kit's field, pairs the contrast test already holds) | by construction, as Night | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
@@ -256,7 +256,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Service day and date control | fixed (D3) | pass | pass | pass | fixed (C4) | fixed (C1, C4) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Revert, while a chosen day is not drawn (A5.5-12) | goes with its own press, focus to the date control holding the day; a refusal to the form's alert and focus to the control | pass (named with its day, "Revert to `<day>`") | pass | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Revert, while a chosen day is not drawn (A5.5-12) | goes with its own press, focus to the date control holding the day; a refusal to the form's alert and focus to the control | pass (named with its day, "Revert to `<day>`") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Transport: Time of day, Play day and Pause, Speed (A5.5-16) | swept on a page that answers what day it has (`notebook-a11y.spec.ts`, "cell 03's transport…"); refused with an alert rather than disabled while a run, an export or the export's preview holds the page | swept (a region named by its `h3`, "Transport"; the range's `aria-valuetext` the page's clock) | swept | swept | pass (`--text`, the range's `--accent`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Trip: Start, End, the steps, Show the whole network (issue 272) | swept, with a picker's popup open and closed (`notebook-a11y.spec.ts`, "cell 03's trip…"): each picker one Tab stop, its options reached by Up and Down with focus kept in the field, Enter choosing, Escape shutting the popup; "Show the whole network" hands focus to Start as it goes; a refusal is an alert beside the control and nothing disables | swept (a region named by its `h3`, "Trip"; two comboboxes "Start" and "End", each controlling a listbox of the same name whose options are named apart; "`<n>` stations match" a polite line while typing; the trip's "`<n>` stops, `<m>` changes." a polite `role="status"`) | swept (the platform's ring on the field; the highlighted option an inset edge in `--focus`) | swept | pass (`--text`, `--text-muted`, `--error` on `--surface`; `--focus` on `--surface-selected`) | pass | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 
@@ -287,7 +287,7 @@ The two reader columns are a person's, recorded per run in
 | Caption, Clock corner, Alt text for the file's sidecar (issue 352) | swept: drawn on the default reel, so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks them, before and after an export; the corner select is unavailable while the clock is off, and its list changes with the preset and the title | swept (Caption and Alt text are named by a `<label for>`; Clock corner is the kit's select named by its `label`; a refused caption or alt text is `aria-invalid` and its sentence is the field's `aria-describedby` message) | swept | swept (nothing moves) | no new pair: `--text`, `--text-muted`, `--text-faint` and `--error` on `--surface-raised` and `--surface-sunken`, and the `--border-strong` edge, all held by `contrast.test.ts` | no new pair | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Opening, Card and Draw-in (issue 392) | Opening swept: it is drawn on the default reel, on "None", so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks it; Card and Draw-in not yet swept: they are drawn only once an opening is chosen, which no sweep does (`opening.spec.ts` fills them by their labels) | Opening swept; Card and Draw-in not yet swept (Opening is the kit's select named by its `label`, its sentence after it in the reading order, since the kit's select takes no description; Card and Draw-in are named by a `<label for>`, their rule the field's `aria-describedby` message, a refused number `aria-invalid` with its sentence in the message's place) | Opening swept; Card and Draw-in not yet swept | Opening swept; Card and Draw-in not yet swept (nothing in the interface moves; the card and the draw-in are the export's frames, the engine's page's) | no new pair: `--text`, `--text-muted` and `--error` on `--surface-raised` and `--surface-sunken`, held by `contrast.test.ts` | no new pair | not yet run: a person's (new after 0.1.0) | not yet run: a person's (new after 0.1.0) |
 | Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13); since issue 542 the line the eye follows (a sentence per frame) is not a live region, and a polite status out of sight beside it changes at each stage and at each tenth of the frames ("Captured 30 percent of the frames."), asserted in `export-run-region.test.tsx`; since issue 570 the finish is spoken once, by the job-end announcement, which names the file ("`<project>`: Export as `<preset>`, finished: `<file>`."), and cell 06's "Exported `<file>`." is shown and is not a live region, asserted in `export-run-region.test.tsx` ("one live region changes, and it names the file") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
+| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13); since issue 542 the line the eye follows (a sentence per frame) is not a live region, and a polite status out of sight beside it changes at each stage and at each tenth of the frames ("Captured 30 percent of the frames."), asserted in `export-run-region.test.tsx`; since issue 570 the finish is spoken once, by the job-end announcement, which names the file ("`<project>`: Export as `<preset's title>`, finished: `<file>`."), and cell 06's "Exported `<file>`." is shown and is not a live region, asserted in `export-run-region.test.tsx` ("one live region changes, and it names the file") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 
 ### Project: the footer
 
@@ -441,7 +441,7 @@ was thrown to the top of the document with nothing said.
 
 - **D1. The layout run.** "Lay out" gives way to Cancel, Cancel to "Lay out
   again" when the run ends, and a confirmed re-layout closes its warning
-  onto a Re-layout button the run has removed. The region remembers the
+  onto a Lay out from scratch… button the run has removed. The region remembers the
   element that last took focus in it; when that element can no longer hold
   focus (removed, in a closed dialog, disabled, not drawn) and focus has
   nowhere else to be, focus goes to the control that took its place,
@@ -891,7 +891,7 @@ a table).
   moving: "`<project>`: `<job>`, `<finished, failed or cancelled>`.", such
   as "Los Angeles: Layout run, finished." (`App.tsx`, `shared/jobs.ts`).
   An export that finished names its file after it, as "Los Angeles: Export
-  as instagram-reel, finished: la-metro-rail-instagram-reel.mp4." (issue
+  as Instagram reel, finished: la-metro-rail-instagram-reel.mp4." (issue
   570). Start a second identical job and listen for the same sentence said again.
   Leave the project screen while a run is going and listen for it on the
   Library.
@@ -918,8 +918,9 @@ a table).
   "Open `<name>`" (D4).
 - **Project cards.** In the list "Projects", after **New project**, each
   card is a button "Open `<name>`", with where it runs and how far it has
-  got read as its description ("Los Angeles · Metro Rail, finished up to
-  05 Lines", A5.6-04, ADR-047). Nothing is read for its picture area: the
+  got read as its description ("Los Angeles · Metro Rail, map drawn from
+  every cell", A5.6-04, ADR-047, issue 559; a project that is behind reads
+  "finished up to `<cell>`"). Nothing is read for its picture area: the
   engine's picture of the map there has an empty alternative text, and the
   glyph of a project not yet drawn is hidden. A project's card reads the
   same in Night and in Parchment, with the picture and without.
@@ -1011,8 +1012,8 @@ a table).
   yet." before any export, with a button "Export one in cell 06." beside
   it once the project is laid out (pressing it opens cell 06 and puts
   focus on its heading), and afterwards a row per export read as its
-  preset and when it was made, with a button "Reveal `<preset>`,
-  `<file>`". A file since moved or deleted is read as "the file has been
+  preset's title and when it was made, with a button "Reveal `<preset's
+  title>`, `<file>`". A file since moved or deleted is read as "the file has been
   moved or deleted", with no button.
 - **Skip past the map.** Tab past cells 01 and 02. Listen for a button
   "Skip past the map" and look for it appearing over the top edge of the
@@ -1133,14 +1134,15 @@ a table).
   status reading the engine's sentence for each stage as it finishes. At the
   end listen for "Laid out." (or the rebuild's sentence), the job-end
   announcement, and focus on **Lay out again**, not on nothing.
-- **Re-layout warning.** Press **Re-layout**. Listen for a dialog "Lay this
-  project out from scratch?", its description, and focus on **Cancel**.
-  Press **Cancel** and listen for focus back on **Re-layout**. Open it
-  again and press **Re-layout**: the dialog closes and the run starts with
-  focus on **Cancel** (D1, D8).
-- **Layout tuning.** Under **Lay out again** and **Re-layout**, a level-3
-  heading holding a button "Layout tuning LOOM’s defaults", collapsed (issue
-  385). Press it: listen for expanded, a group "Layout tuning", the sentence
+- **Lay out from scratch… warning.** Press **Lay out from scratch…**.
+  Listen for a dialog "Lay this project out from scratch?", its
+  description, and focus on **Cancel**. Press **Cancel** and listen for
+  focus back on **Lay out from scratch…**. Open it again and press **Lay
+  out from scratch**: the dialog closes and the run starts with focus on
+  **Cancel** (D1, D8).
+- **Layout tuning.** Under **Lay out again** and **Lay out from
+  scratch…**, a level-3 heading holding a button "Layout tuning LOOM’s
+  defaults", collapsed (issue 385). Press it: listen for expanded, a group "Layout tuning", the sentence
   "LOOM’s own settings for laying this project out. A tuned layout is a
   layout of its own: the map keeps the layout it has until you lay out
   again.", a select "Grid" reading "octilinear (eight directions; LOOM’s
@@ -1352,8 +1354,8 @@ a table).
   for the pop-up buttons "Preset" (its options
   grouped by platform: listen for the group names Instagram, LinkedIn,
   Bluesky and X), "Storyboard" (for a video or GIF preset), "View" (for a
-  still), and "Quality". Choose the preset "bluesky: 1200 by 900, still,
-  JPG" and listen for "Quality" dimmed and "This preset is a JPEG still,
+  still), and "Quality". Choose the preset "Bluesky post, 1200 by 900, JPG
+  still" and listen for "Quality" dimmed and "This preset is a JPEG still,
   which the engine makes at standard quality only." after it.
 - **Frame switches, lines to keep.** Listen for the group "What the frame
   shows" with the checkboxes "Station names", "The title: city, network and
@@ -1420,7 +1422,7 @@ a table).
   the status "The choices wait until the export that is going has
   finished: it was planned from them." At the end listen for the file's
   name said once, in the job-end announcement ("`<project>`: Export as
-  `<preset>`, finished: `<file>`."), and focus on **Reveal**; the line
+  `<preset's title>`, finished: `<file>`."), and focus on **Reveal**; the line
   "Exported `<file>`." is shown and is not read aloud (issue 570).
   Press **Reveal**: the Finder or File Explorer opens, and the reader moves
   to it; switch back (Command-Tab or Alt-Tab) and listen for focus still on

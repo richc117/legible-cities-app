@@ -406,7 +406,7 @@ async function openWithAPage(
   source = THEMED_PAGE,
 ): Promise<void> {
   await project(page, 'Los Angeles')
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   themedPage(h, source)
   await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -727,7 +727,7 @@ test('a page with no setTheme is loaded again at the new theme, once, while the 
   // Laid out with the engine there, and the older page written over the map.
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     themedPage(h, OLDER_PAGE)
   })
@@ -834,7 +834,7 @@ test('a page an older engine drew is redrawn once as its project opens, and then
   const h = home()
   await withApp(h, async (page, app) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     themedPage(h, OLDER_PAGE)
     await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -918,7 +918,7 @@ test('a page the pinned engine drew is not redrawn as its project opens', async 
   const h = home()
   await withApp(h, async (page, app) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     themedPage(h, THEMED_PAGE)
     await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -1000,7 +1000,7 @@ for (const [names, engine] of [
     const h = home()
     await withApp(h, async (page, app) => {
       await project(page, 'Los Angeles')
-      await page.getByRole('button', { name: /lay out/i }).click()
+      await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
       await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
       expect(drawnBy(h), 'the layout run named the engine that drew the map').toBe(PINNED_ENGINE)
       themedPage(h, THEMED_PAGE)
@@ -1082,7 +1082,7 @@ test('a page with every seam is not redrawn as its project opens where its recor
   const h = home()
   await withApp(h, async (page, app) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     themedPage(h, THEMED_PAGE)
     await page.getByRole('button', { name: 'Back to Library' }).click()
@@ -1143,7 +1143,7 @@ async function laidOutWithPage(
 ): Promise<{ first: Record<string, unknown>; drawn: number; laidOut: number }> {
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     themedPage(h, source)
   })
@@ -1227,7 +1227,7 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
     const toggle = page.getByRole('button', { name: /^Jobs, / })
     await toggle.click()
     const inspector = page.getByRole('complementary', { name: 'Inspector' })
-    const job = inspector.getByRole('listitem', { name: /Rebuild for / })
+    const job = inspector.getByRole('listitem', { name: / Draw for / })
     await expect(job, 'the redraw is the one job').toHaveCount(1)
     await expect(job).toHaveAttribute('data-state', 'failed')
     await expect(job, 'with the engine’s reason').toContainText('has no stored layout')
@@ -1451,7 +1451,7 @@ test('the map keeps its own theme whatever the interface is wearing', async () =
   const h = home()
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     // The interface's own theme is a separate setting; the map does not
@@ -1472,7 +1472,7 @@ test('the switch is out of reach while a run is going, because the page is being
     const sepia = radio(page, 'Sepia')
     await expect(sepia).toBeEnabled()
 
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     // `map.build` writes the project's page in place and then sends the
     // frame to the result: a choice now would restyle a document that is
     // about to go, and nothing on screen would show it taking.
@@ -1490,7 +1490,7 @@ test('focus is handed over before the radios go, when a timer closes the way', a
   const h = home({ progress_delay_ms: 400 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 
     // A change of the line order is debounced, so its build starts from a
@@ -1517,7 +1517,7 @@ test('the switch still says which theme is chosen after a rebuild has disabled i
   const h = home({ progress_delay_ms: 400 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const warm = radio(page, 'Warm dark')
     const sepia = radio(page, 'Sepia')
@@ -1587,7 +1587,7 @@ test('an export is planned in the theme the project is drawn in', async () => {
   const h = home({ encode_delay_ms: 600 })
   await withApp(h, async (page) => {
     await project(page, 'Los Angeles')
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     await card(page, 'Sepia').click()
     await expect.poll(() => readRecord(h).theme).toBe('sepia')

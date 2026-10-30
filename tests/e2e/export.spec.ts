@@ -126,7 +126,7 @@ async function laidOutProject(page: Page, h: Home): Promise<void> {
   await expect(entry).toBeVisible()
   await entry.click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   const [id] = readdirSync(join(h.engineHome, 'projects'))
   copyFileSync(fixture, join(h.engineHome, 'out', id, 'la-metro-rail.html'))

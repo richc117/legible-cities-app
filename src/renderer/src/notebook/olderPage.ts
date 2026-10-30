@@ -5,6 +5,7 @@ import { drawnDate, serviceDayRefusal } from '../../../shared/project/helpers'
 import { type ProjectRecord } from '../../../shared/project/types'
 import { isEngineVersion } from '../../../shared/project/validate'
 import { engineBefore } from '../record'
+import { dayWords } from '../dates'
 import { fullStopped } from '../../../shared/errors'
 import type { LayoutRun, RunSnapshot } from '../engine/layoutRun'
 import type { RunAllPlan } from '../runAll'
@@ -326,7 +327,7 @@ export function openingFallback(lacks: PageLacks): string {
 
 /** What cell 03 says first of any other failed rebuild of its own. */
 export const rebuildFailed = (day: string | null): string =>
-  day === null ? 'The rebuild did not finish.' : `The rebuild for ${day} did not finish.`
+  day === null ? 'The rebuild did not finish.' : `The rebuild for ${dayWords(day)} did not finish.`
 
 /**
  * The engine's hint as cell 03 says it: its words exactly as the jobs

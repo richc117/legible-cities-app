@@ -236,7 +236,10 @@ describe('cell 02, Process, and its layout tuning', () => {
     for (const project of [record, fresh]) {
       const { above } = draw(project)
       expect(count(above, TOGGLE), project.layout ?? 'no layout').toBe(1)
-      expect(above.indexOf(TOGGLE)).toBeGreaterThan(above.lastIndexOf('Lay out'))
+      // The warning's own button says "Lay out from scratch" too, and the
+      // dialog is drawn after the section, so it is taken out first.
+      const controls = above.replace(/<dialog\b[\s\S]*?<\/dialog>/g, '')
+      expect(controls.indexOf(TOGGLE)).toBeGreaterThan(controls.lastIndexOf('Lay out'))
       expect(above).toMatch(/role="group" aria-label="Layout tuning" hidden=""/)
     }
   })
@@ -339,7 +342,7 @@ describe('cell 02, Process, after a rebuild of cell 03’s failed', () => {
     expect(html).toContain(`<p class="prose" role="status">${OPENING_REDRAW_STOPPED}</p>`)
     expect(html).not.toContain(ORDINARY)
     expect(html).toContain('Lay out')
-    expect(html).toContain('Re-layout')
+    expect(html).toContain('Lay out from scratch…')
   })
 
   it('keeps its own sentence for a rebuild the opening did not start', () => {

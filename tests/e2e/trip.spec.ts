@@ -259,7 +259,7 @@ async function projectWithAPage(page: Page, engineHome: string): Promise<void> {
   await dialog.getByLabel('Name', { exact: true }).fill('Los Angeles')
   await dialog.getByRole('button', { name: 'Create', exact: true }).click()
   await openProject(page, 'Los Angeles')
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   standInPage(engineHome)
   // Reopened so the frame loads what was just written: the viewer

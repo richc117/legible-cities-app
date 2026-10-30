@@ -66,8 +66,8 @@ export function summarise(record: ProjectRecord, readOnly: boolean): ProjectSumm
     // through the notebook's own run graph, from this summary
     // (`projectFacts` -> `progressWords` -> `runGraph`), and the run graph
     // compares these two to say a layout is of another tuning - without
-    // them the card would say "finished up to 05 Lines" of a project whose
-    // cells 03 to 06 read not drawn yet.
+    // them the card would say "map drawn from every cell" of a project
+    // whose cells 03 to 06 read not drawn yet.
     ...(record.tuning === undefined ? {} : { tuning: { ...record.tuning } }),
     ...(record.laidOutWith === undefined ? {} : { laidOutWith: { ...record.laidOutWith } }),
     readOnly,

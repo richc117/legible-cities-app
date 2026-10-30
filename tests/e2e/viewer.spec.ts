@@ -72,7 +72,7 @@ async function laidOutProject(page: Page): Promise<void> {
   await expect(entry).toBeVisible()
   await entry.click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
 }
 
@@ -87,7 +87,7 @@ test('shows the generated page once a project has a layout, and not before', asy
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
     await expect(page.getByRole('region', { name: 'Map' })).toHaveCount(0)
 
-    await page.getByRole('button', { name: /lay out/i }).click()
+    await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
     const viewer = page.getByRole('region', { name: 'Map' })
     await expect(viewer).toBeVisible()

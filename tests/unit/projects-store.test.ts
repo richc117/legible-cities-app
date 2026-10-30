@@ -844,7 +844,7 @@ describe('completeRebuild', () => {
     const project = await laidOut()
     for (const date of ['2025-12-31', '2027-01-01']) {
       await expect(drawsOn(store).completeRebuild(project.id, { date })).rejects.toThrow(
-        'the feed covers 2026-01-01 to 2026-12-31',
+        'the feed covers 1 January 2026 to 31 December 2026',
       )
     }
     expect((await store.get(project.id)).date).toBe('2026-09-15')
@@ -967,7 +967,7 @@ describe('setDate', () => {
     const project = await laidOut()
     for (const date of ['2025-12-31', '2027-01-01']) {
       await expect(store.setDate(project.id, date)).rejects.toThrow(
-        'the feed covers 2026-01-01 to 2026-12-31',
+        'the feed covers 1 January 2026 to 31 December 2026',
       )
     }
     const after = await store.get(project.id)

@@ -20,6 +20,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 import { FAKE_ENGINE } from '../support/python'
 import { PYTHON, profile, sweep, withApp, type Profile } from '../support/a11y'
 import { cell, laidOutProject, panel } from '../support/project'
+import { dayWords } from '../../src/renderer/src/dates'
 import { STAGE_KEYS, STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
 import { networkWords } from '../../src/renderer/src/networkWords'
 import type { StageDescription } from '../../src/shared/protocol'
@@ -303,7 +304,7 @@ test('a day drawn re-times the words; a day only chosen does not', async () => {
     // Drawn, the day is the day drawn and the words are timed for it.
     await section.getByRole('button', { name: 'Draw for this day' }).click()
     await expect(
-      page.getByText(new RegExp(`^Drawn for ${other} from the stored layout`)),
+      page.getByText(new RegExp(`^Drawn for ${dayWords(other)} from the stored layout`)),
     ).toBeVisible({ timeout: 30_000 })
     await expect
       .poll(

@@ -597,7 +597,9 @@ describe('a rebuild for a chosen day', () => {
     })
     expect(complete, 'the layout record is not rewritten').not.toHaveBeenCalled()
     expect(run.snapshot).toMatchObject({ state: 'done', rebuilt: true, changed: false })
-    expect(drawnSentence('2026-09-12')).toMatch(/Drawn for 2026-09-12 from the stored layout/)
+    expect(drawnSentence('2026-09-12')).toMatch(
+      /Drawn for 12 September 2026 from the stored layout/,
+    )
   })
 
   it('refuses a project without a layout and calls nothing', () => {
@@ -624,7 +626,9 @@ describe('a rebuild for a chosen day', () => {
 
   it("shows the main process's refusal of a day outside the window", async () => {
     const { run, calls, completeRebuild, record } = setup({ layout: LAYOUT, service: WINDOW })
-    completeRebuild.mockRejectedValueOnce(new Error('the feed covers 2026-01-01 to 2026-12-31'))
+    completeRebuild.mockRejectedValueOnce(
+      new Error('the feed covers 1 January 2026 to 31 December 2026'),
+    )
     run.rebuild(record, READY, '2027-01-01')
     await tick()
     calls[0].resolve({ files: {} })
@@ -1982,7 +1986,7 @@ describe('a redraw drawn and then not kept', () => {
       start: (run, record, engine) => run.rebuild(record, engine, '2026-09-12'),
       refuse: ({ completeRebuild }) =>
         completeRebuild.mockRejectedValueOnce(
-          new Error('the feed covers 2026-01-01 to 2026-12-31'),
+          new Error('the feed covers 1 January 2026 to 31 December 2026'),
         ),
       words:
         /^The map was drawn for that day, but the project could not keep it\. Nothing was written: it keeps its day/,
@@ -2169,14 +2173,14 @@ describe('the run as a job', () => {
     const { run, calls, record } = setup({ layout: LAYOUT, date: '2026-09-15' })
     run.start(record, READY, { force: true })
     await tick()
-    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Re-layout' })
+    expect(run.job()).toMatchObject({ kind: 'layout', label: 'Lay out from scratch' })
     run.cancel()
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
     expect(run.job()?.state).toBe('cancelled')
     run.rebuild(record, READY, '2026-09-16')
     await tick()
-    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-16' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Draw for 16 September 2026' })
     run.cancel()
     calls[1].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
     await tick()
@@ -2589,7 +2593,7 @@ describe('Run all plans again from the record the store answers', () => {
     run.runAll(record, READY, runAllPlan)
     // Going from the press as the press's plan would go: cell 03's run.
     expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
-    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Draw for 12 September 2026' })
     const job = run.job()?.id
     expect(calls, 'nothing is asked before the record is read').toHaveLength(0)
 
@@ -2630,7 +2634,7 @@ describe('Run all plans again from the record the store answers', () => {
       params: { layout: LAYOUT, date: '2026-09-20' },
     })
     expect(run.snapshot).toMatchObject({ rebuilt: true, day: '2026-09-20' })
-    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-20' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Draw for 20 September 2026' })
     calls[0].resolve({ files: {} })
     await tick()
     expect(completeRebuild).toHaveBeenCalledWith('p1', {
@@ -2645,7 +2649,7 @@ describe('Run all plans again from the record the store answers', () => {
     await tick()
     expect(day.calls.map((c) => c.method)).toEqual(['map.build'])
     expect(day.calls[0].params.date).toBe('2026-09-12')
-    expect(day.run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+    expect(day.run.job()).toMatchObject({ kind: 'rebuild', label: 'Draw for 12 September 2026' })
 
     const tuned = setup(dayBehind({ date: '2026-09-15', tuning: { gridSize: 50 } }))
     tuned.run.runAll(tuned.record, READY, runAllPlan)
@@ -2687,7 +2691,7 @@ describe('Run all plans again from the record the store answers', () => {
     await tick()
     expect(calls.map((c) => c.method)).toEqual(['map.build'])
     expect(run.snapshot).toMatchObject({ state: 'running', rebuilt: true, day: '2026-09-12' })
-    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-12' })
+    expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Draw for 12 September 2026' })
 
     run.cancel()
     calls[0].reject({ code: ERROR_CODES.cancelled, message: 'Request Cancelled' })
@@ -3298,7 +3302,7 @@ describe('the redraw of an older page as its project opens', () => {
     for (const { run, calls } of [opened, pressed]) {
       expect(calls.map((c) => c.method)).toEqual(['map.build'])
       expect(calls[0].params).toMatchObject({ layout: LAYOUT, date: '2026-09-15' })
-      expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Rebuild for 2026-09-15' })
+      expect(run.job()).toMatchObject({ kind: 'rebuild', label: 'Draw for 15 September 2026' })
       calls[0].resolve({ files: {} })
     }
     await tick()

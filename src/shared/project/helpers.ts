@@ -19,6 +19,7 @@ import {
   TUNING_FIELDS,
 } from './types'
 import { styleRefusals, validateServiceDate } from './validate'
+import { dayWords } from '../dates'
 
 /** Is a field a choice? Unset, or at the engine's own value, it is not. */
 export const chosen = (style: ProjectStyle, key: StyleGroupKey): boolean =>
@@ -183,6 +184,6 @@ export function serviceDayRefusal(
   if (record.service === null)
     return 'lay the project out again to learn which days the feed covers'
   if (!withinWindow(date, record.service))
-    return `the feed covers ${record.service.start} to ${record.service.end}`
+    return `the feed covers ${dayWords(record.service.start)} to ${dayWords(record.service.end)}`
   return null
 }

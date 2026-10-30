@@ -65,8 +65,11 @@ describe('the panel itself', () => {
   it("is a real table with a caption, row headers and the engine's figures", () => {
     const html = markup()
     expect(html).toContain('<caption>')
-    expect(html).toContain('What the engine measured drawing the map for')
-    expect(html).toContain('2026-09-15')
+    // The day in words, as every day on screen is (issue 559); the copied
+    // text keeps the record's form.
+    expect(html).toContain(
+      '<caption>What the engine measured drawing the map for 15 September 2026</caption>',
+    )
     expect(html).toContain('<th scope="col">Measure</th>')
     expect(html.match(/<th scope="row">/g)?.length).toBe(metrics(DIAGNOSTICS).length)
     for (const metric of metrics(DIAGNOSTICS)) expect(html, metric.id).toContain(metric.value)

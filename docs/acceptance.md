@@ -268,7 +268,8 @@ run.
   station is filled as the engine finishes it, and the sentence beside the
   line is the engine's for the last stage that finished. **Cancel** is
   beside it while it runs.
-- It ends with "Laid out.", **Lay out again** and **Re-layout**. The map
+- It ends with "Laid out.", **Lay out again** and **Lay out from
+  scratch…**. The map
   appears after cell 02, its trains moving, and scrolls with the cells. The
   sentence under the heading becomes
   "The map is drawn from every cell." and **Run all** is gone, since
@@ -366,7 +367,7 @@ tuning** again to close it. Open **Engine log** and press **Copy
 log**. Read **What the build had to fudge**, press the
 information button beside one measure (a screen reader names it
 "What `<measure>` means"), press **Escape**, and press **Copy as text**.
-Press **Re-layout**, then **Cancel** in the dialog.
+Press **Lay out from scratch…**, then **Cancel** in the dialog.
 
 **See.**
 - The run's line still says "Laid out." beside **Lay out again** (the
@@ -374,7 +375,8 @@ Press **Re-layout**, then **Cancel** in the dialog.
 - The cell's footer lists **Layout** (`<8 characters>`), **Made** (`<date
   and time>`), **Built with** and **Engine now** (the engine's version, the
   same as the status line). Write the Layout and the Made down for step 17.
-- **Layout tuning**, under **Lay out again** and **Re-layout**, is closed
+- **Layout tuning**, under **Lay out again** and **Lay out from
+  scratch…**, is closed
   until opened, its row reading "Layout tuning" and "LOOM’s defaults"
   (issue 385). Open, it says "LOOM’s own settings for laying this project
   out. A tuned layout is a layout of its own: the map keeps the layout it
@@ -412,9 +414,9 @@ Press **Re-layout**, then **Cancel** in the dialog.
   drawing the map for `<day>`", and an explanation that appears on the
   press and goes on **Escape**. **Copy as text** says "The figures and the
   caveats are on the clipboard."
-- **Re-layout** opens a dialog titled "Lay this project out from
-  scratch?", with **Cancel** focused; **Cancel** closes it and starts
-  nothing.
+- **Lay out from scratch…** opens a dialog titled "Lay this project out
+  from scratch?", its button **Lay out from scratch**, with **Cancel**
+  focused; **Cancel** closes it and starts nothing.
 
 Result: ____
 
@@ -694,13 +696,16 @@ Result: ____
 ### 11. Cell 06, Export: a reel
 
 **Do.** Open cell **06 Export**. Leave **Preset** on
-"instagram-reel: 1080 by 1920, video, MP4" (under **Instagram**) and
+"Instagram reel, 1080 by 1920, MP4" (under **Instagram**) and
 **Storyboard** on the preset's own. Press **Export**. Time it.
 
 **See.**
 - The **Preset** select lists thirteen presets under Instagram, LinkedIn,
-  Bluesky and X, each "`<name>`: `<width>` by `<height>`, `<what it
-  makes>`".
+  Bluesky and X, each "`<title>`, `<width>` by `<height>`", then
+  "`<container>`" for a video ("MP4") or "`<format>` still" for a still
+  ("PNG still"), the title naming the platform and what is made for it and
+  never the engine's id (a GIF's title says GIF, and nothing follows its
+  size).
 - While the cell is open, a preview inside it shows the export's tall
   frame, with the parts Instagram covers shaded, and a caption under it,
   "9:16, 1080 x 1920." and that the shading is guidance and not in the
@@ -745,13 +750,13 @@ Result: ____
 
 ### 12. Cell 06, Export: a post and a GIF
 
-**Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG". In
+**Do.** Choose **Preset** "Instagram post, 1080 by 1350, PNG still". In
 **Caption** type any 60 characters and then an 81st, and read what appears
 under the field. Replace them with `Rush hour on the Red Line` and press
 Tab. In **Alt text for the file’s sidecar** type
 `A schematic of the Los Angeles rail lines.` with a space before it and one
 after, and click elsewhere. Press **Export**. Then choose
-"instagram-reel-gif: 630 by 1120, GIF", choose **Opening** "Title card, then
+"Instagram reel as a GIF, 630 by 1120", choose **Opening** "Title card, then
 the network drawing in", and press **Export**.
 
 **See.**
@@ -805,8 +810,9 @@ and press **Reveal** on the newest.
 - Closing cell 06 takes its preview away; the map, which it never touched,
   is where it was.
 - **Outputs** lists three rows, one per export of steps 11 and 12, the
-  newest first, each with its preset, when it was made and **Reveal** (a screen reader names
-  it "Reveal `<preset>`, `<file>`").
+  newest first, each with its preset's title, when it was made and
+  **Reveal** (a screen reader names it "Reveal `<preset's title>`,
+  `<file>`").
 - The platform's own file browser (the Finder, or File Explorer) opens on
   the export folder's `LA Metro Rail` folder, with that export selected.
 - The folder is at the place install.md's table gives (on Windows, inside
@@ -848,8 +854,8 @@ confirmation, and then **Cancel**.
 
 **See.**
 - On the front door, **Your projects** holds the **New project** card and
-  then "LA Metro Rail", with "Los Angeles · Metro Rail" and "finished up to
-  05 Lines" beneath its name and, above it, the engine's small picture of
+  then "LA Metro Rail", with "Los Angeles · Metro Rail" and "map drawn
+  from every cell" beneath its name and, above it, the engine's small picture of
   the map it drew for this project, in the project's own line colours and
   in the interface's palette, whichever theme the project's map wears; the
   LA Metro Rail sample's card now says "downloaded" in its chip.
@@ -915,9 +921,9 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
 - The inspector's heading **Jobs** takes focus, and lists this session's
   jobs, the newest first and at most the last twenty finished: "Layout run"
   for Caltrain, the feed add ("Feed add of Caltrain"),
-  "Export as instagram-reel-gif", "Export as instagram-post",
-  "Export as instagram-reel", the rebuilds ("Redraw in a new line order",
-  "Redraw in new colours", "Rebuild for `<day>`") and "Layout run" for LA
+  "Export as Instagram reel as a GIF", "Export as Instagram post",
+  "Export as Instagram reel", the rebuilds ("Redraw in a new line order",
+  "Redraw in new colours", "Draw for `<day in words>`") and "Layout run" for LA
   Metro Rail, each "finished, started `<time>`", headed by its project's
   name, or by "Feeds" for the feed add. A job that is running says which
   stage, "running `<stage>`, `<n>` of `<total>`, started `<time>`", above a line
@@ -946,7 +952,7 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
 - On reopening: no first-run dialog; **Your projects** holds the **New
   project** card, then Caltrain and then LA Metro Rail (newest opened
   first), each with the engine's picture of its map, where it runs and
-  "finished up to 05 Lines"; **Your feeds** still lists Caltrain.
+  "map drawn from every cell"; **Your feeds** still lists Caltrain.
 - LA Metro Rail opens with cells 01 and 02 collapsed and the map after
   them; opening cell 02 shows "Drawn from layout `<8 characters>` for
   `<day>`.", the **same day** you wrote down in step 7, and the same

@@ -13,6 +13,7 @@ import { messageOf } from '../../shared/errors'
 import { withinWindow } from '../../shared/project/helpers'
 import { type ProjectRecord } from '../../shared/project/types'
 import { validateServiceDate } from '../../shared/project/validate'
+import { dayWords } from './dates'
 import { debounce, type Debounced } from './debounce'
 import type { LayoutRun as Run } from './engine/layoutRun'
 import Icon from './icons/Icon'
@@ -62,10 +63,16 @@ import { useSnapshot } from './useSnapshot'
 // `drawn.theme` would be the theme switch's other button under another
 // name (specs/028-the-notebook/contracts/run-graph.md, "Revert").
 
-/** The sentence a day outside the window gets, on the form and from the store alike. */
+/**
+ * The sentence a day outside the window gets on the form; the store's own
+ * refusal (`serviceDayRefusal`) writes the window's days the same way.
+ */
 export function outsideWindow(start: string, end: string): string {
-  return `The feed covers ${start} to ${end}.`
+  return `The feed covers ${dayWords(start)} to ${dayWords(end)}.`
 }
+
+/** What "Draw for this day" says with no day in the control (issue 559). */
+export const CHOOSE_A_DAY = 'Choose a day.'
 
 /** What the section is called, as its name inside cell 03. */
 const NAME = 'Service day'
@@ -225,7 +232,7 @@ export default function ServiceDay({
     return (
       <section className="service-day" aria-label={NAME}>
         <p className="prose" role="status">
-          {project.date === null ? 'Not yet chosen. ' : `Drawn for ${project.date}. `}
+          {project.date === null ? 'Not yet chosen. ' : `Drawn for ${dayWords(project.date)}. `}
           Lay the project out again to learn which days the feed covers.
         </p>
       </section>
@@ -275,7 +282,9 @@ export default function ServiceDay({
   }
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    const invalid = validateServiceDate(value)
+    // An emptied control, or one half typed, reports no value: what the
+    // person is missing is a day, not the record's way of writing one.
+    const invalid = value === '' ? CHOOSE_A_DAY : validateServiceDate(value)
     if (invalid !== null) return refuse(invalid)
     if (!withinWindow(value, service)) return refuse(outsideWindow(service.start, service.end))
     if (value === project.date && !undrawn) return
@@ -315,25 +324,28 @@ export default function ServiceDay({
       if (!(await choose(day))) setValue(project.date ?? '')
     })()
   }
+  // Every day here is in words (`dates.ts`, issue 559); the control below
+  // keeps the record's form, which is its value and is drawn by the platform.
   const covers =
     service.start === service.end
-      ? `The feed covers one day, ${service.start}`
-      : `The feed covers ${service.start} to ${service.end}`
+      ? `The feed covers one day, ${dayWords(service.start)}`
+      : `The feed covers ${dayWords(service.start)} to ${dayWords(service.end)}`
   // What the map shows, against what the record holds. The two differ only
   // between a choice and the draw that answers it.
   const said =
     project.date === null
       ? 'Not yet chosen.'
       : !undrawn
-        ? `Drawn for ${project.date}.`
+        ? `Drawn for ${dayWords(project.date)}.`
         : project.drawn?.date == null
-          ? `${project.date} is chosen; no map has been drawn for it yet.`
-          : `${project.date} is chosen; the map still shows ${project.drawn.date}.`
+          ? `${dayWords(project.date)} is chosen; no map has been drawn for it yet.`
+          : `${dayWords(project.date)} is chosen; the map still shows ${dayWords(project.drawn.date)}.`
 
   return (
     <section className="service-day" aria-label={NAME}>
       <p className="prose" role="status">
-        {said} {covers}; the busiest weekday, counted from {service.anchor}, is {service.busiest}.
+        {said} {covers}; the busiest weekday, counted from {dayWords(service.anchor)}, is{' '}
+        {dayWords(service.busiest)}.
       </p>
       <form className="inline-form" noValidate onSubmit={submit}>
         <div className="field">
@@ -362,7 +374,7 @@ export default function ServiceDay({
         <div className="actions">
           {shown !== null && (
             <Button disabled={disabled || running} onClick={() => revert(shown)}>
-              Revert to {shown}
+              Revert to {dayWords(shown)}
             </Button>
           )}
           <Button

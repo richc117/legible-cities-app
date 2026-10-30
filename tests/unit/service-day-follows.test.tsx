@@ -11,6 +11,7 @@
 
 import { act } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { CHOOSE_A_DAY } from '../../src/renderer/src/ServiceDay'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import { answered, BASE, cleanup, press, renderCell } from '../support/render'
 import { pending } from '../support/project-state'
@@ -76,7 +77,7 @@ describe('the control follows the record’s day', () => {
 
     type('2027-03-01')
     expect(dayField().value, 'a day outside the window, typed').toBe('2027-03-01')
-    expect(dayMessage()).toBe('The feed covers 2026-01-01 to 2026-12-31.')
+    expect(dayMessage()).toBe('The feed covers 1 January 2026 to 31 December 2026.')
 
     view.rerender({ project: project({ date: '2026-10-01' }) })
     expect(dayField().value, 'the record’s new day').toBe('2026-10-01')
@@ -88,6 +89,22 @@ describe('the control follows the record’s day', () => {
     expect(dayField().value, 'the day being typed, through a rename and a render').toBe(
       '2026-11-02',
     )
+  })
+})
+
+describe('an empty control', () => {
+  it('asks for a day, rather than for the record’s way of writing one', async () => {
+    // An emptied control, or a half-typed day, reports no value, and the
+    // form can still be submitted from the keyboard (issue 559). Mutation:
+    // the empty value handed to the record's validator, which answers
+    // "the service day must be written YYYY-MM-DD".
+    const run = new DayRun()
+    renderCell('frame', { project: project() }, { run, api: viewer })
+    await answered()
+    type('')
+    act(() => dayField().form?.requestSubmit())
+    expect(dayMessage()).toBe(CHOOSE_A_DAY)
+    expect(run.rebuild, 'nothing is drawn').not.toHaveBeenCalled()
   })
 })
 

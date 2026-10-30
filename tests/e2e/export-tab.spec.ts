@@ -157,7 +157,7 @@ async function laidOut(page: Page, h: Home): Promise<void> {
   await dialog.getByRole('button', { name: 'Create', exact: true }).click()
   await page.getByRole('button', { name: 'Open Los Angeles' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Los Angeles')
-  await page.getByRole('button', { name: /lay out/i }).click()
+  await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
   copyFileSync(fixture, join(h.engineHome, 'out', projectId(h), 'la-metro-rail.html'))
 }

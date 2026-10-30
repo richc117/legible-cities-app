@@ -181,11 +181,11 @@ describe('a cell holding a closed dialog', () => {
           open={false}
           title="Lay this project out from scratch?"
           description="The layout engine is heuristic."
-          confirmLabel="Re-layout"
+          confirmLabel="Lay out from scratch"
           variant="primary"
           onConfirm={async () => {}}
           onCancel={() => {}}
-          busyLabel="Starting the re-layout…"
+          busyLabel="Starting the layout from scratch…"
         />
       </>,
       { number: 2, name: 'Process' },

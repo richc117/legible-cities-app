@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/projectProgress.ts",
+    "find": "  if (behind === -1) return record.drawn === null ? EVERY_CELL_READY : EVERY_CELL\n",
+    "replace": "  if (behind === -1) return `finished up to ${named('lines')}`\n",
+    "test": "tests/unit/project-progress.test.ts",
+    "title": "says the map is drawn from every cell once it is, in the header’s words",
+    "why": "The old return: every finished card said \"finished up to 05 Lines\" alike, which told them apart in nothing and read as not finished."
+  }
+]

@@ -867,8 +867,9 @@ the day is asked for; and, where the result carries `cancel_too_late`, it
 says "The layout was already made when you cancelled; the next run draws
 from it."
 
-"Re-layout" runs the layout call with `force`, behind a warning that the
-layout engine is heuristic and a new layout may place stations differently.
+"Lay out from scratch…" runs the layout call with `force`, behind a
+warning that the layout engine is heuristic and a new layout may place
+stations differently.
 The engine keeps the stored layout until the new set is whole, so a failure,
 or a cancel before the new set is moved in, leaves the project exactly as it
 was; a cancel after that is too late (engine v0.18.0), and the run stops
