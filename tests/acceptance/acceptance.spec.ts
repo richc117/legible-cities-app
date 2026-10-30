@@ -951,16 +951,20 @@ test('a release, installed, through docs/acceptance.md', async () => {
                 .find((c) => c.getURL().startsWith('app://local/ui/'))
               if (contents === undefined) return { menu: menu !== null, roles, opened: null }
               // Opening is not immediate where it is allowed, so the event is
-              // waited for, and the tools closed again if it comes.
-              const opened = await new Promise<boolean>((done) => {
-                const timer = setTimeout(() => done(contents.isDevToolsOpened()), 3_000)
-                contents.once('devtools-opened', () => {
-                  clearTimeout(timer)
-                  done(true)
-                })
-                contents.openDevTools()
-              })
-              if (opened) contents.closeDevTools()
+              // waited for. Either way the listener goes, and tools that are
+              // open are closed, so the rest of the run sees the window as a
+              // person would; that they opened at all is the failure.
+              let heard = false
+              const onOpened = (): void => {
+                heard = true
+              }
+              contents.on('devtools-opened', onOpened)
+              contents.openDevTools()
+              const end = Date.now() + 3_000
+              while (!heard && Date.now() < end) await new Promise((r) => setTimeout(r, 100))
+              contents.removeListener('devtools-opened', onOpened)
+              const opened = heard || contents.isDevToolsOpened()
+              if (contents.isDevToolsOpened()) contents.closeDevTools()
               return { menu: menu !== null, roles, opened }
             },
           )
