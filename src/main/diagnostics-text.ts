@@ -72,6 +72,15 @@ const section = (title: string, body: string): string => `## ${title}\n\n${body.
  */
 export const DIAGNOSTICS_BUDGET = 48_000
 
+/**
+ * The lines of each log a trimmed copy keeps before any map report is
+ * dropped. The logs are the most diagnostic part of a copy, and the newest
+ * lines are the ones nearest the failure, so a session crowded with long
+ * reports loses reports first and these lines last. A log with fewer lines
+ * keeps them all.
+ */
+export const LOG_FLOOR = 20
+
 /** What a copy over the budget lost: the trimmed lines and reports, as the line under the heading counts them. */
 interface Kept {
   main: string[]
@@ -145,10 +154,15 @@ function assemble(input: DiagnosticsInput, kept: Kept | null): string {
 type Drop = 'main' | 'engine' | 'report'
 
 /**
- * The steps from the whole copy to nothing but its head, in order: the
- * oldest line of whichever log is longer now (so the two shrink together,
- * and the one that said more says less first), then, once the logs are
- * empty, the oldest map report. The head sections are not in it.
+ * The steps from the whole copy to nothing but its head, in order:
+ *
+ * 1. the oldest line of whichever log is longer now (so the two shrink
+ *    together, and the one that said more says less first), down to
+ *    `LOG_FLOOR` lines in each;
+ * 2. the oldest map reports;
+ * 3. only then the lines below the floor, the same way, oldest first.
+ *
+ * The head sections are not in it.
  */
 function dropOrder(input: DiagnosticsInput, main: string[], engine: string[]): Drop[] {
   const size = (lines: string[]): number => lines.reduce((n, l) => n + l.length + 1, 0)
@@ -157,18 +171,24 @@ function dropOrder(input: DiagnosticsInput, main: string[], engine: string[]): D
   let m = 0
   let e = 0
   const order: Drop[] = []
-  while (m < main.length || e < engine.length) {
-    if (e >= engine.length || (m < main.length && mainSize >= engineSize)) {
-      mainSize -= main[m].length + 1
-      m += 1
-      order.push('main')
-    } else {
-      engineSize -= engine[e].length + 1
-      e += 1
-      order.push('engine')
+  const dropLogs = (floor: number): void => {
+    const mainLeft = (): boolean => main.length - m > floor
+    const engineLeft = (): boolean => engine.length - e > floor
+    while (mainLeft() || engineLeft()) {
+      if (!engineLeft() || (mainLeft() && mainSize >= engineSize)) {
+        mainSize -= main[m].length + 1
+        m += 1
+        order.push('main')
+      } else {
+        engineSize -= engine[e].length + 1
+        e += 1
+        order.push('engine')
+      }
     }
   }
+  dropLogs(LOG_FLOOR)
   for (let r = 0; r < input.reports.length; r += 1) order.push('report')
+  dropLogs(0)
   return order
 }
 
@@ -177,8 +197,8 @@ function dropOrder(input: DiagnosticsInput, main: string[], engine: string[]): D
  *
  * It is the one place the whole text exists (the page sends the map reports
  * in, main adds the logs), so it is where the budget is kept: a text over
- * `DIAGNOSTICS_BUDGET` loses its oldest log lines and then its oldest map
- * reports, and says so in a line under the heading. App, Runtime, Operating
+ * `DIAGNOSTICS_BUDGET` loses its oldest log lines down to `LOG_FLOOR`, then
+ * its oldest map reports, then what is left of the logs, and says so in a line under the heading. App, Runtime, Operating
  * system, Engine and Bundled tools are never cut: they are what a report
  * cannot do without, and they are small.
  */

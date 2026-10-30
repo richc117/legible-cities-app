@@ -13,6 +13,7 @@ import {
   composeDiagnostics,
   containsHome,
   DIAGNOSTICS_BUDGET,
+  LOG_FLOOR,
   diagnosticsText,
   shortenHome,
   shortHomeFrom,
@@ -156,6 +157,12 @@ describe('the budget', () => {
         .filter((l) => / line \d+ \./.test(l)).length
     expect(linesIn('main.log')).toBe(Number(main))
     expect(linesIn('engine.log')).toBe(Number(engine))
+    // The reports crowd the logs down to their floor and no further.
+    expect(Number(main)).toBe(LOG_FLOOR)
+    expect(Number(engine)).toBe(LOG_FLOOR)
+    expect(text).toContain('main line 2599 ')
+    expect(text).toContain(`engine line ${2600 - LOG_FLOOR} `)
+    expect(text).not.toContain(`engine line ${2599 - LOG_FLOOR} `)
     expect(text.match(/^report \d+ /gm)?.length ?? 0).toBe(Number(kept))
   })
 
@@ -186,15 +193,41 @@ describe('the budget', () => {
     expect(text).toContain('main line 399 ')
   })
 
-  it('drops the oldest map reports only once the logs are gone', () => {
+  it('drops the oldest map reports once the logs are down to their floor, and not before', () => {
     const reports = Array.from({ length: 3 }, (_, i) => `report ${i} `.padEnd(20_000, 'r'))
-    const text = composeDiagnostics(input({ reports }))
+    // A log of 100 short lines: the floor is the newest 20 of them.
+    const text = composeDiagnostics(
+      input({ reports, mainLog: logOf('main', 100, 40), engineLog: logOf('engine', 5, 40) }),
+    )
     expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
     expect(text).not.toContain('report 0 ')
     expect(text).toContain('report 1 ')
     expect(text).toContain('report 2 ')
-    expect(text).toContain('and 2 of 3 map reports')
-    expect(text).toContain('main.log keeps its last 0 lines, engine.log 0')
+    expect(text).toContain(`main.log keeps its last ${LOG_FLOOR} lines, engine.log 5, and 2 of 3`)
+    expect(text).toContain(`main line ${99 - LOG_FLOOR + 1} `)
+    expect(text).not.toContain(`main line ${99 - LOG_FLOOR} `)
+    expect(text).toContain('engine line 0 ')
+  })
+
+  it('takes lines from below the floor only when nothing else is left to take', () => {
+    // Twenty lines of 3,000 characters are 60,000: the floor itself does not fit.
+    const text = composeDiagnostics(
+      input({
+        mainLog: logOf('main', 30, 3000),
+        engineLog: logOf('engine', 30, 3000),
+        reports: ['report 0 '.padEnd(500, 'r'), 'report 1 '.padEnd(500, 'r')],
+      }),
+    )
+    expect(text.length).toBeLessThanOrEqual(DIAGNOSTICS_BUDGET)
+    expect(text).toContain('and 0 of 2 map reports')
+    const kept = (title: string): number =>
+      (sectionOf(text, title).match(/ line \d+ \./g) ?? []).length
+    expect(kept('main.log')).toBeLessThan(LOG_FLOOR)
+    expect(kept('engine.log')).toBeLessThan(LOG_FLOOR)
+    expect(kept('main.log')).toBeGreaterThan(0)
+    expect(text).toContain('main line 29 ')
+    expect(text).toContain('engine line 29 ')
+    expect(text).not.toContain('main line 0 ')
   })
 
   it('keeps the five head sections byte for byte', () => {

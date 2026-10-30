@@ -54,5 +54,21 @@
     "test": "tests/unit/diagnostics-text.test.ts",
     "title": "keeps the five head sections byte for byte",
     "why": "The line under the heading left out: a trimmed copy would say nothing of what it lost, and the reader would take the logs for whole."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  dropLogs(LOG_FLOOR)\n",
+    "replace": "  dropLogs(0)\n",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "drops the oldest map reports once the logs are down to their floor, and not before",
+    "why": "The floor removed: the logs are emptied before any map report goes, and a report-heavy session loses its logs, the most diagnostic part of the copy."
+  },
+  {
+    "file": "src/main/diagnostics-text.ts",
+    "find": "  dropLogs(0)\n  return order",
+    "replace": "  return order",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "takes lines from below the floor only when nothing else is left to take",
+    "why": "The last step left out: when even the floor does not fit, nothing more is taken and the copy stays over the budget."
   }
 ]
