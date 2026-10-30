@@ -171,6 +171,19 @@ steps past the unsigned-app warning for this version of macOS or Windows.
   Library there is no way back to offer; on a project and in Settings the
   header also holds **Library** (named "Back to Library") after the status
   line.
+- The menu is the app's own (issue 554): on a Mac, along the top of the
+  screen, **Legible Cities**, **File**, **Edit**, **View**, **Window** and
+  **Help**; on Windows, across the top of the window and always shown,
+  **File**, **Edit**, **View**, **Window** and **Help**. **View** holds
+  "Actual size", "Zoom in", "Zoom out" and "Full screen", and **no menu
+  holds Reload, Force reload or Toggle developer tools**. Command-R or
+  Command-Option-I on a Mac, and Control-R, F5 or Control-Shift-I on
+  Windows, reload nothing and open no developer tools. **Help** holds
+  "Legible Cities guide", "Finding a feed", "Install and troubleshooting
+  guide", "Report a problem" and "Copy diagnostics", and on Windows
+  "About Legible Cities" last, which opens Settings at **Versions**.
+  **check:** on a Mac, Command-C and Command-V copy and paste in a text
+  field, such as the name in the New project sheet.
 
 Result: ____
 
