@@ -970,6 +970,19 @@ describe('the notes', () => {
     })
   })
 
+  it('count a change heading with nothing under it as no change, and leave it out', async () => {
+    // Mutation: a heading alone counted as a change, so "What changed" can
+    // hold nothing but "### Added".
+    const { changelogParts } = await load()
+    expect(() => changelogParts('### Added\n\n### Known issues\n\nNone.', '9.9.9')).toThrow(
+      'says nothing about what changed',
+    )
+    expect(
+      changelogParts('### Added\n\n### Fixed\n\n- One.\n\n### Known issues\n\nNone.', '9.9.9')
+        .changes,
+    ).toBe('### Fixed\n\n- One.')
+  })
+
   it("name the changelog's three keys once each, under their headings and before the downloads", async () => {
     // Mutation: {{known_issues}} gone from the template, its heading left empty.
     const { notesValues } = await load()

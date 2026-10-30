@@ -86,5 +86,13 @@
     "test": "tests/unit/release.test.ts",
     "title": "from the command line, write the filled notes to the file named",
     "why": "The notes command reading a changelog that is not the committed one: every tag's notes refused, seen only when a tag's release job fails."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "    .filter((part) => (part.name === null ? part.text : contentOf(part)) !== '')\n",
+    "replace": "    .filter((part) => part.text !== '')\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "count a change heading with nothing under it as no change, and leave it out",
+    "why": "An empty change heading counted as a change: a section of bare headings passes, and the notes print \"### Added\" over nothing."
   }
 ]

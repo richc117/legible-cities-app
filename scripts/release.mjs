@@ -729,8 +729,9 @@ export function changelogParts(section, version) {
   const parts = subsections(section)
   const changes = parts
     .filter((part) => part.name !== 'Known issues' && part.name !== 'Security')
+    // A heading with nothing under it is no change, and would print as one.
+    .filter((part) => (part.name === null ? part.text : contentOf(part)) !== '')
     .map((part) => part.text)
-    .filter((text) => text !== '')
     .join('\n\n')
   const known = parts.find((part) => part.name === 'Known issues')
   const security = parts.find((part) => part.name === 'Security')
