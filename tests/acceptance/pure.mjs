@@ -124,3 +124,28 @@ export function tagContains({ tag, commit, cwd, run = spawnSync }) {
   if (result.status === 1) return false
   return null
 }
+
+/**
+ * Whether the file at `path` in the tag's own tree holds `text`: true or
+ * false, or null when there is no tag or git cannot tell - a tag this clone
+ * does not have, no git at all. A tag that has no such file answers false.
+ * This reads the tag's source rather than asking whether it contains a
+ * commit, so a feature can be named before it merges: a squash merge
+ * replaces the branch's commit, and `tagContains` would then need its
+ * entry moved to the one on main. A shallow clone that has the tag has its
+ * tree, so it can tell. `run` is spawnSync, replaced in a test.
+ */
+export function tagSourceContains({ tag, path, text, cwd, run = spawnSync }) {
+  if (tag === '' || tag === undefined) return null
+  const options = { cwd, encoding: 'utf8', timeout: 30_000, windowsHide: true }
+  const commit = run(
+    'git',
+    ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}^{commit}`],
+    options,
+  )
+  if (commit.status !== 0) return null
+  const file = run('git', ['cat-file', 'blob', `refs/tags/${tag}:${path}`], options)
+  if (file.status === null || file.error) return null
+  if (file.status !== 0) return false
+  return String(file.stdout).includes(text)
+}

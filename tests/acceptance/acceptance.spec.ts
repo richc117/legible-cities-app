@@ -85,7 +85,7 @@ import {
   openCell,
   type CellId,
 } from '../support/project'
-import { tagContains as gitTagContains, writtenSince } from './pure.mjs'
+import { tagContains as gitTagContains, tagSourceContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
 /** The presets in the engine's registry at the pin (`vendor/pins.json`, v0.10.1). */
@@ -199,19 +199,40 @@ const FEATURES = {
     commit: 'c6eab22768c573d61b81a6dc20e6aab319729171',
     landed: 'pull request 573',
   },
-  // The App row says a candidate's whole version, its -rc.<N> included,
-  // from the tag it was built from (issue 558); before it, package.json's.
-  // The commit is the lane's own and is moved to the one on main when it
-  // merges.
-  releaseLabel: {
-    name: "the candidate's own version in the App row",
-    commit: 'e58cfb5e40cb0e05cb150602de3d2ea08e1d0033',
-    landed: 'pull request for issue 558',
-  },
 } satisfies Record<string, Feature>
 
 /** The release under test, by its tag; the workflow names it. */
 const TAG = process.env.LEGIBLE_ACCEPTANCE_TAG ?? ''
+
+/**
+ * What a release's own source says, read from the tag's tree rather than
+ * by the commit that brought it: such a row can be written in the pull
+ * request that adds the feature, where a FEATURES row names a commit a
+ * squash merge replaces. Against a tag whose `path` lacks `text` the check
+ * takes the older rule; where git cannot tell, it is recorded as not
+ * checked, never passed.
+ */
+interface SourceFeature {
+  name: string
+  path: string
+  text: string
+  landed: string
+}
+
+const SOURCE_FEATURES = {
+  // The App row says a candidate's whole version, its -rc.<N> included,
+  // from the tag it was built from (issue 558); before it, package.json's.
+  releaseLabel: {
+    name: "the candidate's own version in the App row",
+    path: 'src/main/index.ts',
+    text: '__RELEASE_LABEL__',
+    landed: 'issue 558',
+  },
+} satisfies Record<string, SourceFeature>
+
+/** Whether the tag under test's own source holds a feature (pure.mjs). */
+const tagHas = (feature: SourceFeature): boolean | null =>
+  tagSourceContains({ tag: TAG, path: feature.path, text: feature.text, cwd: repoRoot })
 
 /**
  * Whether the tag under test contains a feature's commit: true or false, or
@@ -1138,10 +1159,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
               : `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.appVersionRow.commit.slice(0, 7)} (${FEATURES.appVersionRow.landed}): the commit is not in this clone, or the clone is shallow.`,
           )
         } else {
-          const labelled = tagContains(FEATURES.releaseLabel)
+          const { releaseLabel } = SOURCE_FEATURES
+          const labelled = tagHas(releaseLabel)
           if (labelled === null) {
             log.notAutomated(
-              `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.releaseLabel.commit.slice(0, 7)} (${FEATURES.releaseLabel.landed}), so not whether it should say its -rc.<N>.`,
+              `the app's own version under Versions: git could not read ${TAG}'s ${releaseLabel.path}, so not whether it has ${releaseLabel.name} (${releaseLabel.landed}) and should say its -rc.<N>.`,
             )
           } else {
             try {

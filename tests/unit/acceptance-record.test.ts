@@ -15,6 +15,7 @@ import {
   parseSums,
   RESULTS,
   tagContains,
+  tagSourceContains,
   writtenSince,
 } from '../acceptance/pure.mjs'
 import { FIELDS, RunRecord, STEP_TITLES } from '../acceptance/record'
@@ -173,6 +174,57 @@ describe('tagContains', () => {
     expect(tagContains({ tag: 'v1', commit: 'abc', cwd: '.', run: unknown.run })).toBeNull()
     const noGit = git({ 'rev-parse': { status: null, stdout: '' } })
     expect(tagContains({ tag: 'v1', commit: 'abc', cwd: '.', run: noGit.run })).toBeNull()
+  })
+})
+
+// A feature told from the tag's own source, so its row needs no commit a
+// squash merge would replace (issue 558's release label).
+describe('tagSourceContains', () => {
+  type Answer = { status: number | null; stdout: string }
+  const git = (answers: Record<string, Answer>) => {
+    const asked: string[][] = []
+    const run = (_command: string, args: string[]): Answer => {
+      asked.push(args)
+      return answers[args[0]] ?? { status: 128, stdout: '' }
+    }
+    return { run, asked }
+  }
+  const tagged = { status: 0, stdout: 'f'.repeat(40) + '\n' }
+  const ask = (run: ReturnType<typeof git>['run'], tag = 'v1.0.0-rc.2') =>
+    tagSourceContains({ tag, path: 'src/main/index.ts', text: '__RELEASE_LABEL__', cwd: '.', run })
+
+  it("answers from the tag's own file, true where it holds the text and false where not", () => {
+    // Mutation: the file's text not read, every tag that has the file a yes,
+    // so a release from before the label is expected to say its -rc.<N>.
+    const holds = git({
+      'rev-parse': tagged,
+      'cat-file': { status: 0, stdout: 'version: __RELEASE_LABEL__ },\n' },
+    })
+    expect(ask(holds.run)).toBe(true)
+    expect(holds.asked).toEqual([
+      ['rev-parse', '--verify', '--quiet', 'refs/tags/v1.0.0-rc.2^{commit}'],
+      ['cat-file', 'blob', 'refs/tags/v1.0.0-rc.2:src/main/index.ts'],
+    ])
+    const lacks = git({
+      'rev-parse': tagged,
+      'cat-file': { status: 0, stdout: 'version: app.getVersion() },\n' },
+    })
+    expect(ask(lacks.run)).toBe(false)
+    const noFile = git({ 'rev-parse': tagged, 'cat-file': { status: 128, stdout: '' } })
+    expect(ask(noFile.run)).toBe(false)
+  })
+
+  it('answers null without a tag, for a tag this clone lacks, and without git', () => {
+    // Mutation: a tag git does not have read as one without the feature,
+    // so a run from a clone that lacks it judges the row by the older rule.
+    const none = git({})
+    expect(ask(none.run, '')).toBeNull()
+    expect(none.asked).toEqual([])
+    const unknown = git({ 'rev-parse': { status: 1, stdout: '' } })
+    expect(ask(unknown.run)).toBeNull()
+    expect(unknown.asked).toHaveLength(1)
+    const noGit = git({ 'rev-parse': { status: null, stdout: '' } })
+    expect(ask(noGit.run)).toBeNull()
   })
 })
 
