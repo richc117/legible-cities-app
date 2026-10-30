@@ -11,9 +11,26 @@ body:
     id: version
     attributes:
       label: App version and operating system
-      placeholder: "0.1.0, macOS 15.1 (Apple Silicon) / Windows 11 24H2"
+      description: Needed even if the app will not open, when there are no diagnostics to copy.
+      placeholder: "The App row under Settings › Versions, and your system"
     validations:
       required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where did it go wrong?
+      options:
+        - Installing or first opening
+        - Opening a sample city or a feed
+        - Laying out
+        - The map, style or lines
+        - Exporting
+        - Settings or reset
+        - Something else
+  - type: input
+    id: earlier
+    attributes:
+      label: Did this work in an earlier version? Which?
   - type: textarea
     id: steps
     attributes:
@@ -39,8 +56,20 @@ body:
       label: Diagnostics
       description: Settings › Copy diagnostics, pasted here. Check it for personal paths first.
       render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log files (optional)
+      description: If the app cannot open, or the diagnostics were trimmed, drag main.log and engine.log here.
   - type: input
     id: feed
     attributes:
       label: Feed
       description: Which network or feed URL, if the bug depends on the data and you are happy to share it.
+  - type: checkboxes
+    id: read
+    attributes:
+      label: Before you send
+      options:
+        - label: I read what I pasted or attached and removed anything I would rather not share.
+          required: true
