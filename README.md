@@ -18,7 +18,8 @@ candidates before it stay on the page, marked "Pre-release".
 
 **Status: 0.1.0 is released.** Everything below works. Each version's
 installers for both Macs and for Windows are built in CI, attached to a
-GitHub Release drafted from its tag, and then installed and driven through
+GitHub Release drafted from its tag ([how a release is cut](docs/releasing.md),
+and [what changed in each](CHANGELOG.md)), and then installed and driven through
 most of [the acceptance checklist](docs/acceptance.md) on a macOS and a
 Windows runner. 0.1.0 passed that run on both, and the runs of its release
 gate that only a person can make were reported done on 8 October 2026 with

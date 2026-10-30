@@ -2635,7 +2635,10 @@ the patch script, and zlib's and bzip2's upstream tarballs, with the
 `loom-windows` job's MSYS2 source packages for the exact revisions it
 linked, and its record of those packages, put inside) and `engine-source` (the engine at its pinned commit, with the hashed manifest its runtime's packages are installed from), one tar each, owners
 and times fixed; writes `SHA256SUMS.txt` over them; and fills the notes from
-`.github/release-notes.md` and the pins. Then one step holding the token
+`.github/release-notes.md`, the pins and the tag's version's section of
+`CHANGELOG.md`, refusing a tag whose section is missing or names no change
+or no known issues, and a final tag's that is undated or has no Security
+(`docs/releasing.md`). Then one step holding the token
 lists the Releases, creates a draft for the tag or updates the one draft
 there is (its title, prerelease flag and assets, never its notes, which
 the maintainer may have edited; removing any asset this run does not
