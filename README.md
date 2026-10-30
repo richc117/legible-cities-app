@@ -127,6 +127,9 @@ your checkout so that `gitleaks` and `bin/preflight` see every commit: this
 is a public repository, and they refuse keys, personal paths and addresses
 before those become history.
 
+If you want help with the app rather than to change it, see
+[`SUPPORT.md`](SUPPORT.md).
+
 ## Licence
 
 Copyright (C) 2026 Richard Caballero.
