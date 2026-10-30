@@ -13,8 +13,10 @@
 // included. The card is drawn once the Library has read its projects, which
 // may be after the screen has changed to it, so the press waits for it.
 
+import { NEW_PROJECT_CARD_CLASS } from './Card'
+
 /** The New project card on the Library (`Card.tsx`'s `create`). */
-export const NEW_PROJECT_CARD = 'button.card-new'
+export const NEW_PROJECT_CARD = `button.${NEW_PROJECT_CARD_CLASS}`
 
 /** Whether a page `<dialog>` is open as a modal, which the menu's commands wait behind. */
 export function modalOpen(doc: Document): boolean {

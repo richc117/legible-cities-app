@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/menuCommands.ts",
+    "find": "    observer.disconnect()\n    then(found)\n",
+    "replace": "    then(found)\n",
+    "test": "tests/unit/menu-commands.test.ts",
+    "title": "waits for a card drawn later, calls once, and stops watching",
+    "why": "The observer left watching once it has found the card: a card drawn again later would be pressed again."
+  },
+  {
+    "file": "src/renderer/src/menuCommands.ts",
+    "find": "  return () => observer.disconnect()\n",
+    "replace": "  return () => undefined\n",
+    "test": "tests/unit/menu-commands.test.ts",
+    "title": "calls nothing once it is stopped",
+    "why": "A stop that does not disconnect: a Library drawn after the screen changed away would still be pressed."
+  }
+]

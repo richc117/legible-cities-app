@@ -91,15 +91,13 @@ test('sets its own menu, with Help and the app’s commands', async () => {
       'Help',
     ])
     const help = bar.find((menu) => menu.label === 'Help')
-    expect(help?.items).toEqual(
-      expect.arrayContaining([
-        'Legible Cities guide',
-        'Finding a feed',
-        'Install and troubleshooting guide',
-        'Report a problem',
-        'Copy diagnostics',
-      ]),
-    )
+    expect(help?.items).toEqual([
+      'Legible Cities guide',
+      'Install and troubleshooting guide',
+      'Report a problem',
+      'Copy diagnostics',
+      ...(platform === 'darwin' ? [] : ['About Legible Cities']),
+    ])
     // A development build: the reload and the tools are there, under View.
     const view = bar.find((menu) => menu.label === 'View')
     expect(view?.roles).toEqual(expect.arrayContaining(['reload', 'forcereload', 'toggledevtools']))
@@ -150,18 +148,16 @@ test('takes each command to the screen it names', async () => {
     await expect(sheet).toBeVisible()
 
     // While the sheet is modal, a command does nothing: the screen behind
-    // it stays the Library and the sheet stays open.
-    // Mutation owed here: remove `if (modalOpen(document)) return` from
-    // App.tsx's menu handler - Settings replaces the Library behind the
-    // sheet, and the heading below reads Settings.
+    // it stays the Library and the sheet stays open. One command, then two
+    // frames, then one read with no retry: a read that retries would pass
+    // before the screen had changed. The browser test
+    // (menu-guard.browser.test.tsx) holds the same rule with its mutation.
     await choose(app, 'settings')
-    await choose(app, 'new-project')
     await page.evaluate(
       () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
     )
-    await expect(heading).toHaveText('Library')
-    await expect(sheet).toBeVisible()
-    await expect(page.locator('dialog[open]')).toHaveCount(1)
+    expect(await heading.textContent()).toBe('Library')
+    expect(await sheet.isVisible()).toBe(true)
 
     // Closed, it hands focus back to the card it was opened from.
     await page.keyboard.press('Escape')

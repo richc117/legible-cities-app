@@ -25,6 +25,9 @@ import Icon from './icons/Icon'
 // never a flat blank (which reads as broken). It is not the mark, which is
 // never given a meaning (DESIGN.md, section 6).
 
+/** The New project card's own class, which the menu's New project finds it by (issue 554). */
+export const NEW_PROJECT_CARD_CLASS = 'card-new'
+
 export interface CardProps {
   /** The primary line. */
   name: string
@@ -67,7 +70,7 @@ export default function Card({
     <button
       ref={ref}
       type="button"
-      className={create ? 'card card-new' : 'card'}
+      className={create ? `card ${NEW_PROJECT_CARD_CLASS}` : 'card'}
       aria-label={label}
       aria-describedby={hasFacts ? factsId : undefined}
       onClick={onClick}
