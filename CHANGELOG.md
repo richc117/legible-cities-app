@@ -35,6 +35,15 @@ links are inline, with no images and no reference-style links.
   to check.
 - The install guide has a troubleshooting section, and
   [`SUPPORT.md`](SUPPORT.md) says where to ask for help.
+- The app has its own menu, with Settings, New project and a Help menu
+  that opens the guides and the form for reporting a problem. A release has
+  no Reload and no developer tools.
+- **Put back** stands beside the three resets (every line's colour, the
+  map's sizes and the layout tuning) and undoes the reset in one step.
+- Before a second export of the same preset, cell 06 says which file it
+  will replace and that a filename tag keeps both.
+- [What 1.0 keeps](docs/compatibility.md) says which of your files a later
+  1.x will still read.
 
 ### Changed
 
@@ -48,6 +57,12 @@ links are inline, with no images and no reference-style links.
 - A GIF's colours are chosen from the map it shows.
 - A message that refuses something now starts with what to do about it.
 - A screen reader hears an export's progress by stage.
+- Cell 03 is called **Day**, and its name is no longer cut short in the
+  rail.
+- The forced layout is **Lay out from scratch…**, beside **Lay out again**;
+  presets are named by platform and what they make ("LinkedIn square GIF");
+  days are written out ("17 September 2026"); and a project whose cells are
+  all ready says "map drawn from every cell".
 
 ### Fixed
 
