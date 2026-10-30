@@ -121,6 +121,7 @@ function container(): Element {
         delete: deleted,
       },
       engine: { onState: () => () => undefined, state: async () => READY },
+      export: { outputs: async () => [] },
     },
   }
   document.defaultView = window

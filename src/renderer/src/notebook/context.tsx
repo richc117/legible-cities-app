@@ -74,7 +74,7 @@ type RunsSlice = Pick<
   ProjectState,
   'run' | 'exporter' | 'runSnapshot' | 'layingOut' | 'exporting' | 'settling' | 'refused'
 >
-type ExportSlice = Pick<ProjectState, 'exportSnapshot'>
+type ExportSlice = Pick<ProjectState, 'exportSnapshot' | 'outputs'>
 type ActionsSlice = Pick<
   ProjectState,
   | 'inspect'
@@ -125,8 +125,8 @@ export function ProjectProviders({
     () => ({ run, exporter, runSnapshot, layingOut, exporting, settling, refused }),
     [run, exporter, runSnapshot, layingOut, exporting, settling, refused],
   )
-  const { exportSnapshot } = state
-  const exported = useMemo(() => ({ exportSnapshot }), [exportSnapshot])
+  const { exportSnapshot, outputs } = state
+  const exported = useMemo(() => ({ exportSnapshot, outputs }), [exportSnapshot, outputs])
   const { inspect, readStage, setInputs, setDate, setTheme, setTuning, setExport } = state
   const { setName, deleteProject, pageSeams, skipPastMap, headingRef } = state
   const actions = useMemo(
@@ -196,7 +196,7 @@ export const useProjectRecord = (): RecordSlice => useSlice(RecordContext, 'useP
 /** The two runs and how they stand, but for the export's snapshot. */
 export const useProjectRuns = (): RunsSlice => useSlice(RunsContext, 'useProjectRuns')
 
-/** The export's snapshot, which moves every frame. */
+/** The export's snapshot, which moves every frame, and what the project has produced. */
 export const useProjectExport = (): ExportSlice => useSlice(ExportContext, 'useProjectExport')
 
 /** The writers, the engine's reads and the screen's callbacks and refs: stable. */

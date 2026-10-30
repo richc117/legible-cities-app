@@ -58,7 +58,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
   // The strip's facts move with the export (its state, the file it wrote),
   // so the cell reads the snapshot it is drawn from rather than the run's
   // own, which nothing would render it for.
-  const { exportSnapshot } = useProjectExport()
+  const { exportSnapshot, outputs } = useProjectExport()
   const [address, setAddress] = useState<PreviewAddress | null>(null)
   const toggle = toggleExportCell(() => setAddress(null), onToggle)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -80,6 +80,7 @@ export default function ExportCell({ cell, state, open, onToggle }: CellViewProp
           layingOut={layingOut}
           active={open}
           inspect={inspect}
+          outputs={outputs}
           onChoice={setExport}
           onPreview={setAddress}
           preview={

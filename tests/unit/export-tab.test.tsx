@@ -93,6 +93,8 @@ async function draw(
       },
   )
   const onChoice = vi.fn<(choice: ExportChoice) => Promise<void>>(async () => undefined)
+  const readOutputs = vi.fn()
+  const outputs = { rows: null, read: readOutputs }
   function Cell({ engine = over.engine === undefined ? READY : over.engine }): JSX.Element {
     return (
       <section>
@@ -108,6 +110,7 @@ async function draw(
           inspect={async () => {
             throw new Error('not read here')
           }}
+          outputs={outputs}
           onChoice={onChoice}
           onPreview={() => undefined}
           handback={heading}
@@ -116,7 +119,10 @@ async function draw(
     )
   }
   const chooseDestination = vi.fn(async () => ({ ...project, destination: '/srv/exports' }))
-  const view = renderPanel(<Cell />, { api: { export: { preview, chooseDestination } } })
+  const useAppFolder = vi.fn(async () => ({ ...project, destination: null }))
+  const view = renderPanel(<Cell />, {
+    api: { export: { preview, chooseDestination, useAppFolder } },
+  })
   await answered()
   const start = (choice: ExportChoice = project.export): void =>
     act(() => run.start(project, READY, choice))
@@ -125,7 +131,7 @@ async function draw(
     view.rerender(<Cell engine={engine} />)
     await answered()
   }
-  return { view, run, heading, start, preview, engineNow, onChoice }
+  return { view, run, heading, start, preview, engineNow, onChoice, readOutputs }
 }
 
 const text = (): string => (document.querySelector('.export-tab')?.textContent ?? '').trim()
@@ -224,6 +230,25 @@ describe('cell 06’s composition', () => {
     expect(form?.nextElementSibling?.className).toBe('focus-region')
     expect(byName('button', 'Export')).toBeTruthy()
     expect(byName('button', 'Choose folder')).toBeTruthy()
+  })
+
+  it('reads the outputs again when the destination changes, and not before (issue 563)', async () => {
+    // The line beside Export says what a second export would replace among
+    // the folder's outputs, and a press on Choose folder or Use the app's
+    // folder moves the folder. Mutation: the key taken out of
+    // `useRereadOnChange`'s effect dependencies - the press then reads
+    // nothing and the line goes on describing the old folder.
+    const { readOutputs } = await draw()
+    expect(
+      readOutputs,
+      'the screen reads at its own times, not at the mount',
+    ).not.toHaveBeenCalled()
+    act(() => byName('button', 'Choose folder').click())
+    await answered()
+    expect(readOutputs).toHaveBeenCalledTimes(1)
+    act(() => byName('button', 'Use the app’s folder').click())
+    await answered()
+    expect(readOutputs).toHaveBeenCalledTimes(2)
   })
 
   it('shows the folder a press answered after the engine has gone and come back', async () => {

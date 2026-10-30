@@ -249,7 +249,11 @@ function container(api: Bridge): Element {
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
   }
-  const window = { document, HTMLIFrameElement: class {}, api: sessionOf(api) }
+  const window = {
+    document,
+    HTMLIFrameElement: class {},
+    api: { ...sessionOf(api), export: { outputs: async () => [] } },
+  }
   document.defaultView = window
   vi.stubGlobal('window', window)
   return {

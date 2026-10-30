@@ -9,9 +9,10 @@
 // button's description and not a live region, so it is read when a person
 // reaches the button and never unprompted.
 //
-// The real `ExportRun` is drawn with the kit, on a stub bridge whose
-// `export.outputs` answers the folder as the test says; the planned file is
-// the prop the export tab hands it from the preview's plan.
+// The real `ExportRun` is drawn with the kit; the folder's outputs and the
+// planned file are the props the export tab hands it, from the screen's one
+// read of the folder and from the preview's plan. `useOutputs`, which makes
+// that read, is held to the times it reads at below.
 
 import { afterEach, describe, expect, it } from 'vitest'
 import ExportRunPanel from '../../src/renderer/src/ExportRun'
@@ -20,6 +21,9 @@ import type { ExportOutput, ExportResult } from '../../src/shared/export'
 import { KEEP_BOTH, replacedBy, replacesWords } from '../../src/renderer/src/notebook/outputWords'
 import { momentWords } from '../../src/renderer/src/dates'
 import { answered, BASE, cleanup, READY, renderPanel } from '../support/render'
+import { useOutputs } from '../../src/renderer/src/notebook/useOutputs'
+import type { RunState } from '../../src/shared/layout'
+import type { JSX } from 'react'
 
 afterEach(cleanup)
 
@@ -44,7 +48,7 @@ const idle = (): ExportRun =>
   })
 
 /** Cell 06's run drawn over a folder holding `rows`, planned to write `planned`. */
-async function draw(rows: ExportOutput[], planned: string | null) {
+async function draw(rows: ExportOutput[] | null, planned: string | null) {
   const view = renderPanel(
     <ExportRunPanel
       run={idle()}
@@ -52,8 +56,8 @@ async function draw(rows: ExportOutput[], planned: string | null) {
       engine={READY}
       choice={{ preset: 'instagram-reel', options: {} }}
       planned={planned}
+      outputs={rows}
     />,
-    { api: { export: { outputs: async () => rows } } },
   )
   await answered()
   const line = view.host.querySelector('#export-replaces')
@@ -83,7 +87,7 @@ describe('the line beside Export that says what a second export replaces', () =>
   it('shows if and only if a present output has the planned name', async () => {
     // Mutation: the `row.present &&` guard dropped from `replacedBy` - the
     // gone row below then says a file it no longer holds would be replaced.
-    const shown = async (rows: ExportOutput[], planned: string | null): Promise<boolean> => {
+    const shown = async (rows: ExportOutput[] | null, planned: string | null): Promise<boolean> => {
       const { view, line, inner } = await draw(rows, planned)
       const shows = line !== null
       expect(inner?.getAttribute('aria-description') !== null, 'the description follows').toBe(
@@ -97,7 +101,16 @@ describe('the line beside Export that says what a second export replaces', () =>
     expect(await shown([row({ file: 'another-name.mp4' })], FILE), 'another name').toBe(false)
     expect(await shown([row({ present: false }), row({ file: 'a.mp4' })], FILE)).toBe(false)
     expect(await shown([], FILE), 'an empty folder').toBe(false)
+    expect(await shown(null, FILE), 'a folder not yet read').toBe(false)
     expect(await shown([row()], null), 'no plan for this choice').toBe(false)
+  })
+
+  it('finds a name without regard to case', () => {
+    // Mutation: the comparison made exact - a folder that is one file for
+    // the platform's filesystem and two for ours then says nothing.
+    const rows = [row({ file: FILE.toUpperCase() })]
+    expect(replacedBy(rows, FILE)?.file).toBe(FILE.toUpperCase())
+    expect(replacedBy([row()], FILE.toUpperCase())?.file).toBe(FILE)
   })
 
   it('finds the output by its name among several', () => {
@@ -105,5 +118,44 @@ describe('the line beside Export that says what a second export replaces', () =>
     expect(replacedBy(rows, FILE)?.made).toBe('2026-10-01T00:00:00.000Z')
     expect(replacedBy(null, FILE), 'before the folder is read').toBeUndefined()
     expect(KEEP_BOTH).toBe('A filename tag keeps both.')
+  })
+})
+
+// Where the screen's one read of the folder is made, and when it is made
+// again: when the export run changes state, and when the project is renamed,
+// since the folder is named for it. (The destination is cell 06's own, and
+// `export-tab.test.tsx` holds the read it asks for.)
+describe('the screen’s read of the folder', () => {
+  function Reader({ state, name }: { state: RunState; name: string }): JSX.Element {
+    const { rows } = useOutputs(BASE.id, state, name)
+    return <p id="rows">{rows === null ? 'unread' : rows.map((r) => r.file).join(',')}</p>
+  }
+
+  it('reads when the project opens, when a run changes state, and when the project is renamed', async () => {
+    // Mutation: `folderKey` taken out of the effect's dependencies - a
+    // renamed project is then read from the folder it no longer exports to.
+    let calls = 0
+    const view = renderPanel(<Reader state="idle" name="Los Angeles" />, {
+      api: {
+        export: {
+          outputs: async () => {
+            calls += 1
+            return [row()]
+          },
+        },
+      },
+    })
+    await answered()
+    expect(calls, 'once when it opens').toBe(1)
+    expect(view.host.querySelector('#rows')?.textContent).toBe(FILE)
+    view.rerender(<Reader state="running" name="Los Angeles" />)
+    await answered()
+    expect(calls, 'again when a run changes state').toBe(2)
+    view.rerender(<Reader state="running" name="Los Angeles" />)
+    await answered()
+    expect(calls, 'not for a draw that changed nothing').toBe(2)
+    view.rerender(<Reader state="running" name="Los Angeles 2" />)
+    await answered()
+    expect(calls, 'again when the project is renamed').toBe(3)
   })
 })

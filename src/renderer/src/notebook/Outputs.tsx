@@ -5,7 +5,6 @@ import Button from '../kit/Button'
 import { exportable } from '../runGraph'
 import { useProjectExport, useProjectRecord } from './context'
 import Time from './Time'
-import { useOutputs } from './useOutputs'
 import { EXPORT_ONE, GONE, NOTHING_YET, outputName } from './outputWords'
 
 // What this project has produced, under the stepper in the rail (A5.5-21,
@@ -64,10 +63,13 @@ export function OutputsEmpty({
 
 export default function Outputs({ onExport }: { onExport: () => void }): JSX.Element | null {
   const { project } = useProjectRecord()
-  const { exportSnapshot } = useProjectExport()
+  // One read for the screen, shared with cell 06's line about a replacement
+  // (`useOutputs`): a Reveal that finds its file gone reads the folder again
+  // for both.
+  const {
+    outputs: { rows, read },
+  } = useProjectExport()
   const id = project?.id ?? null
-  const runState = exportSnapshot.state
-  const { rows, read } = useOutputs(id, runState)
   const sectionRef = useRef<HTMLElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
   // The heading and not another row's Reveal: the rows are a person's own

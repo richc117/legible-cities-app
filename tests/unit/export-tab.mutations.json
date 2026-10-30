@@ -30,5 +30,13 @@
     "test": "tests/unit/export-tab.test.tsx",
     "title": "asks for the presets again, saying so, when the engine has gone and come back",
     "why": "useExportTables keeping the last engine's tables while it is away (issue 433, part c): the old tables' form is drawn when it is back, before the presets are asked again."
+  },
+  {
+    "file": "src/renderer/src/notebook/useOutputs.ts",
+    "find": "  }, [read, key])",
+    "replace": "  }, [read])",
+    "test": "tests/unit/export-tab.test.tsx",
+    "title": "reads the outputs again when the destination changes, and not before (issue 563)",
+    "why": "The destination dropped from the re-read's dependencies: a press on Choose folder or Use the app's folder reads nothing, and the line beside Export describes the old folder."
   }
 ]

@@ -99,6 +99,7 @@ export function defaultProjectState(run: StandInRun = new StandInRun()): Project
     exporter,
     runSnapshot: run.snapshot,
     exportSnapshot: exporter.snapshot,
+    outputs: { rows: null, read: nothing },
     layingOut: run.snapshot.state === 'running',
     exporting: false,
     settling: false,

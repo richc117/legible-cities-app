@@ -1,8 +1,8 @@
 [
   {
     "file": "src/renderer/src/notebook/outputWords.ts",
-    "find": "row.present && row.file === file",
-    "replace": "row.file === file",
+    "find": "row.present && ",
+    "replace": "",
     "test": "tests/unit/export-run-replaces.test.tsx",
     "title": "shows if and only if a present output has the planned name",
     "why": "The present guard dropped: a sidecar whose file has gone makes cell 06 say an export would replace a file the folder no longer holds."
@@ -22,5 +22,21 @@
     "test": "tests/unit/export-run-replaces.test.tsx",
     "title": "is shown, not spoken: no live region",
     "why": "The line made a live region: it would be announced each time a plan answered, which nothing else on the screen does unprompted."
+  },
+  {
+    "file": "src/renderer/src/notebook/outputWords.ts",
+    "find": "row.file.toLowerCase() === wanted",
+    "replace": "row.file === file",
+    "test": "tests/unit/export-run-replaces.test.tsx",
+    "title": "finds a name without regard to case",
+    "why": "The comparison made exact: a folder that is one file for the platform's filesystem and two for ours says nothing of a replacement."
+  },
+  {
+    "file": "src/renderer/src/notebook/useOutputs.ts",
+    "find": "  }, [read, runState, folderKey])",
+    "replace": "  }, [read, runState])",
+    "test": "tests/unit/export-run-replaces.test.tsx",
+    "title": "reads when the project opens, when a run changes state, and when the project is renamed",
+    "why": "The folder key dropped from the read's dependencies: a renamed project is read from the folder it no longer exports to."
   }
 ]

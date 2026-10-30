@@ -4,12 +4,11 @@ import { useFocusHandback } from './focusHandback'
 import Icon from './icons/Icon'
 import ProgressLine from './ProgressLine'
 import type { EngineState } from '../../shared/engine'
-import type { ExportChoice } from '../../shared/export'
+import type { ExportChoice, ExportOutput } from '../../shared/export'
 import type { ProjectRecord } from '../../shared/project/types'
 import type { ExportRun as Run } from './engine/exportRun'
 import type { Stage } from './ProgressLine'
 import Time from './notebook/Time'
-import { useOutputs } from './notebook/useOutputs'
 import { KEEP_BOTH, replacedBy } from './notebook/outputWords'
 import { useSnapshot } from './useSnapshot'
 
@@ -36,6 +35,7 @@ export default function ExportRun({
   engine,
   choice,
   planned = null,
+  outputs = null,
   disabled = false,
 }: {
   run: Run
@@ -49,6 +49,11 @@ export default function ExportRun({
    */
   planned?: string | null
   /**
+   * What the project's folder holds (`ProjectState.outputs`), or null before
+   * it is read; the line says what `planned` would replace among these.
+   */
+  outputs?: readonly ExportOutput[] | null
+  /**
    * True while something else, such as a layout run, is changing the
    * project, or while the choice is one the engine has refused.
    */
@@ -56,8 +61,7 @@ export default function ExportRun({
 }): JSX.Element {
   const { state, stages, message, announced, error, file, left, refused } = useSnapshot(run)
   const begin = (): void => run.start(project, engine, choice)
-  const { rows } = useOutputs(project.id, state)
-  const replaced = replacedBy(rows, planned)
+  const replaced = replacedBy(outputs, planned)
   // "Export" gives way to Cancel, and Cancel to "Reveal" or "Export" again
   // when the export ends; focus on the one that went goes to the one that
   // came (A6-07).

@@ -40,7 +40,11 @@ export function replacedBy(
   file: string | null,
 ): ExportOutput | undefined {
   if (rows === null || file === null) return undefined
-  return rows.find((row) => row.present && row.file === file)
+  // Without regard to case: a folder on macOS or Windows is one file where
+  // another's would be two, and on Linux a line that wrongly says "replaces"
+  // is the safer mistake than one that says nothing.
+  const wanted = file.toLowerCase()
+  return rows.find((row) => row.present && row.file.toLowerCase() === wanted)
 }
 
 /**

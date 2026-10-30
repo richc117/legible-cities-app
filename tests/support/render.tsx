@@ -76,8 +76,6 @@ export function defaultApi(record: () => ProjectRecord & { readOnly: boolean }):
     projects: { get: async () => record() },
     // The app's menu (issue 554): nothing chosen.
     app: { onMenuCommand: unsubscribed },
-    // Nothing exported yet: cell 06 and the rail both read the folder.
-    export: { outputs: async () => [] },
   }
 }
 
