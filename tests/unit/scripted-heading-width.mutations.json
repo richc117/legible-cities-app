@@ -44,7 +44,15 @@
     "find": "<h2 id=\"outputs-heading\" tabIndex={-1} ref={headingRef}>",
     "replace": "<h2 id=\"outputs-heading\" ref={headingRef}>",
     "test": "tests/unit/scripted-heading-width.test.ts",
-    "title": "is each one the interface draws, and this list is exact",
+    "title": "is each literal heading tag and each Disclosure with heading= the interface draws, and this list is exact",
     "why": "A scripted heading gone from the source: the list the test holds no longer matches what the interface draws, so a change in the set is seen here."
+  },
+  {
+    "file": "src/renderer/src/kit/Disclosure.tsx",
+    "find": "  const toggle = (\n    <button",
+    "replace": "  const toggle = (\n    <div><button",
+    "test": "tests/unit/scripted-heading-width.test.ts",
+    "title": "leaves a cell’s heading alone, found by its band and not by the kit’s class",
+    "why": "The toggle wrapped in another element: the cell's .cell-head is no longer the heading's direct child, so the exemption stops matching and the band shrinks to its words."
   }
 ]

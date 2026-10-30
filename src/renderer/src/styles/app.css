@@ -1019,8 +1019,9 @@ fig-button:not([icon]) > .icon {
    `.cell-head` button it holds: that row fills the cell on purpose, and the
    ring is the band's. Not every heading the kit's Disclosure draws has one:
    the layout tuning's has a toggle that is only its words. A heading whose
-   words wrap, such as a long project name, still takes its column's width,
-   since `fit-content` cannot shrink below the longest line. */
+   words wrap, such as a long project name, still takes its column's width:
+   once its words are wider than the column, `fit-content` is the column's
+   width, and a box is not narrowed to its longest wrapped line. */
 :is(h1, h2, h3)[tabindex='-1']:not(:has(> .cell-head)) {
   inline-size: fit-content;
   max-inline-size: 100%;
