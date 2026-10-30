@@ -13,6 +13,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   utimesSync,
   writeFileSync,
@@ -26,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test'
+import { replacesWords } from '../../src/renderer/src/notebook/outputWords'
 import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 
@@ -238,6 +240,52 @@ test('Outputs dates a re-exported file by the new export, with no reload', async
     // that can make the list read again.
     await expect(made).toHaveCount(0, { timeout: 20_000 })
     await expect(page.getByRole('region', { name: 'Outputs' }).locator('time')).toHaveCount(1)
+  })
+})
+
+// Issue 563: the names are deterministic, so a second export of one preset
+// replaces the first, and cell 06 says so beside Export before the press:
+// which file, when it was made, and that a filename tag keeps both. The
+// sidecar is dated 2020 and the project reopened, so the moment on screen is
+// the folder's and not this session's; nothing is said before the first
+// export, and Export is described by the line. Written, not run.
+test('a second export of one preset says, before the press, what it replaces', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, h)
+    const replaces = page.locator('#export-replaces')
+    await expect(replaces, 'nothing to replace before the first export').toHaveCount(0)
+    await exportButton(page).click()
+    await expect(
+      page.getByRole('region', { name: 'Export run', exact: true }).getByText(/^Exported /),
+    ).toHaveText(`Exported ${REEL}.`, { timeout: 45_000 })
+
+    const sidecar = `${deliverable(h)}.json`
+    const long = new Date('2020-01-01T12:00:00Z')
+    utimesSync(sidecar, long, long)
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openProject(page, 'Los Angeles')
+    await openCell(page, 'export')
+    await expect(exportButton(page)).toBeVisible({ timeout: 20_000 })
+
+    const said = replacesWords({
+      file: REEL,
+      preset: 'instagram-reel',
+      made: long.toISOString(),
+      present: true,
+    })
+    await expect(replaces).toHaveText(said, { timeout: 20_000 })
+    await expect(exportButton(page)).toHaveAccessibleDescription(said)
+
+    // A file that has gone is replaced by nothing, and the line goes with it.
+    rmSync(deliverable(h))
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openProject(page, 'Los Angeles')
+    await openCell(page, 'export')
+    await expect(exportButton(page)).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('region', { name: 'Outputs' })).toContainText('moved or deleted')
+    await expect(replaces).toHaveCount(0)
   })
 })
 

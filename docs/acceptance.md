@@ -813,6 +813,15 @@ the network drawing in", and press **Export**.
   no shaded parts to keep the clock out of the bottom right; the caption
   and the alt text are the project’s own and stay as they were. It ends with
   "Exported la-metro-rail-instagram-reel-gif.gif."
+  Above **Export**, in `--text-muted`, a line reads "Exporting replaces
+  la-metro-rail-instagram-reel-gif.gif, made `<moment>`. A filename tag
+  keeps both.", the moment written as "`<day>` `<month>` `<year>` at
+  `<time>`" in your own hour cycle and naming the time the export just
+  finished. A second press of **Export** here would replace that file,
+  as the line says; do not press it, so that step 13 still finds three
+  rows. Type `second` in **Filename tag** and press Tab: after a moment the
+  line goes, since the file the next export would write is not one the
+  folder holds. Clear the tag again.
 - For the GIF's opening: **Card** and **Draw-in** appear under **Opening**,
   showing 2 and 6, with "How long the title card stays up: 1 to 10 seconds,
   2 unless you change it." and "How long the network takes to draw itself

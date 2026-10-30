@@ -730,7 +730,11 @@ rows. It is read again whenever an export settles. A row says the preset
 and when it was made, and no path. Reveal names the file by its bare name,
 which the main process checks against what the folder holds before it joins
 the two, so a name the page invented resolves to nothing; a file moved or
-deleted since reads as gone and offers nothing to press. Because a person
+deleted since reads as gone and offers nothing to press. The read is
+`useOutputs` (`notebook/useOutputs.ts`), which cell 06's run uses as well:
+beside Export it says what a second export would replace, when a present
+row's file is the one the preview's plan named (`ExportPreview.file`, issue
+563). Because a person
 may point a destination at a folder they already use, a sidecar over
 `SIDECAR_MAX` is passed over unopened and one read opens at most
 `SCAN_MAX`.
