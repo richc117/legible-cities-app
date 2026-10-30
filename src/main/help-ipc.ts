@@ -20,9 +20,8 @@ const REPOSITORY = 'https://github.com/richc117/legible-cities-app'
 /**
  * Every Help page, by the name the menu and the page use. The guide is the
  * repository's front page, which says what the app does cell by cell.
- * Finding a feed is `docs/feeds.md`, which issue 555 writes; until it does,
- * nothing offers the name (the menu's pages are `MENU_HELP_PAGES`), so the
- * browser is never sent to a page that is not there.
+ * Finding a feed is `docs/feeds.md` (issue 555): the menu offers it and the
+ * New project sheet's button asks for it, both by this name.
  */
 export const HELP_PAGES: Readonly<Record<HelpPage, string>> = {
   guide: `${REPOSITORY}#readme`,

@@ -68,6 +68,7 @@ describe('the Help pages', () => {
       .filter((path) => path.startsWith(`${repository}/blob/main/`))
       .map((path) => decodeURIComponent(path.slice(`${repository}/blob/main/`.length)))
     expect(documents).toContain('docs/install.md')
+    expect(documents).toContain('docs/feeds.md')
     for (const document of documents)
       expect(existsSync(resolve(__dirname, '../..', document)), document).toBe(true)
   })

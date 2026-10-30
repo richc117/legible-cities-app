@@ -8,11 +8,11 @@
     "why": "The handler passing the page's argument through: the page could then send the browser anywhere."
   },
   {
-    "file": "src/main/menu.ts",
-    "find": "export const MENU_HELP_PAGES: readonly HelpPage[] = ['guide', 'install', 'report']\n",
-    "replace": "export const MENU_HELP_PAGES: readonly HelpPage[] = ['guide', 'feeds', 'install', 'report']\n",
+    "file": "src/main/help-ipc.ts",
+    "find": "  feeds: `${REPOSITORY}/blob/main/docs/feeds.md`,\n",
+    "replace": "  feeds: `${REPOSITORY}/blob/main/docs/finding-a-feed.md`,\n",
     "test": "tests/unit/help-ipc.test.ts",
     "title": "offers from the menu only documents that are in the checkout",
-    "why": "Finding a feed offered before its document has landed: the menu would send a person to a 404."
+    "why": "The menu's Finding a feed pointing at a document that is not in the checkout (issue 555 wrote docs/feeds.md): a person would be sent to a 404."
   }
 ]

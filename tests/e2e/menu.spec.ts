@@ -93,6 +93,7 @@ test('sets its own menu, with Help and the app’s commands', async () => {
     const help = bar.find((menu) => menu.label === 'Help')
     expect(help?.items).toEqual([
       'Legible Cities guide',
+      'Finding a feed',
       'Install and troubleshooting guide',
       'Report a problem',
       'Copy diagnostics',

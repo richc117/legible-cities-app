@@ -76,11 +76,12 @@ export interface MenuOptions {
 const SEPARATOR: MenuItemTemplate = { type: 'separator' }
 
 /**
- * The Help pages the menu offers, in its order. "Finding a feed" is not one
- * yet: its page, `docs/feeds.md`, comes with issue 555, which adds the item
- * with it, so the menu never opens a page that is not there.
+ * The Help pages the menu offers, in its order. Each is a document of the
+ * checkout (the repository's front page, `docs/feeds.md`, `docs/install.md`)
+ * or the tracker's form, and a test holds the documents to being there, so
+ * the menu never opens a page that is not.
  */
-export const MENU_HELP_PAGES: readonly HelpPage[] = ['guide', 'install', 'report']
+export const MENU_HELP_PAGES: readonly HelpPage[] = ['guide', 'feeds', 'install', 'report']
 
 /** The whole menu bar for one platform. */
 export function menuTemplate(options: MenuOptions): MenuItemTemplate[] {
@@ -136,6 +137,7 @@ export function menuTemplate(options: MenuOptions): MenuItemTemplate[] {
   }
   const helpItems: MenuItemTemplate[] = [
     help('guide', `${name} guide`),
+    help('feeds', 'Finding a feed'),
     help('install', 'Install and troubleshooting guide'),
     SEPARATOR,
     help('report', 'Report a problem'),
