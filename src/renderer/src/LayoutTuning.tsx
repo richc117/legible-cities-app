@@ -9,10 +9,12 @@ import {
 } from '../../shared/project/types'
 import { isGrid } from '../../shared/project/validate'
 import Icon from './icons/Icon'
+import { useFocusHandback } from './focusHandback'
 import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'
 import Select from './kit/Select'
 import TextInput from './kit/TextInput'
+import { PUT_BACK_TUNING, TUNING_RESET_SAID } from './putBackWords'
 import {
   chooseGrid,
   commitTuningField,
@@ -23,6 +25,7 @@ import {
   OWN_KEYS,
   PENALTY_LEGEND,
   PENALTY_SENTENCE,
+  putBackTuning,
   RESET_LABEL,
   resettable,
   TUNING_LABELS,
@@ -55,8 +58,8 @@ import {
 //
 // A closed disclosure under the run's controls, its toggle in an `h3`: the
 // tuning is a section of the cell, and the heading is where Reset hands
-// focus, not the toggle, where a reflexive Space would close the section a
-// person is working in (cell 04's reason, A6-07).
+// focus when no Put back comes, not the toggle, where a reflexive Space
+// would close the section a person is working in (cell 04's reason, A6-07).
 
 interface Props {
   project: ProjectRecord
@@ -71,6 +74,13 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const [view, setView] = useState<TuningView>(() => tuningViewOf(project.tuning))
   // Why the last write was refused, said once in the section; empty after.
   const [unsaved, setUnsaved] = useState<string | null>(null)
+  // Whether the last write was Reset's, with a tuning to put back (issue
+  // 561): what the section's polite line says, set by Reset alone and
+  // cleared by every other write and by a refusal, so the line is empty
+  // as the section opens and does not fill because a run ended.
+  // By the project it was said for, so a section handed another project
+  // says nothing of this one's reset.
+  const [resetSaid, setResetSaid] = useState<string | null>(null)
 
   // The tuning the last write asked for, and that write while its answer has
   // not come. The answers come back in the order the writes were sent (spec
@@ -98,12 +108,14 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const write = (next: ProjectTuning): void => {
     asked.current = next
     setUnsaved(null)
+    setResetSaid(null)
     const mine = onChange(next)
       .catch((reason: unknown) => {
         // Nothing was kept, so the fields go back to the record and say why.
         asked.current = stored.current ?? {}
         setView(tuningViewOf(stored.current))
         setUnsaved(notSaved(reason))
+        setResetSaid(null)
       })
       .finally(() => {
         if (latest.current === mine) latest.current = null
@@ -119,12 +131,40 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const type = (key: TuningKey, text: string): void =>
     setView((current) => ({ ...current, drafts: { ...current.drafts, [key]: text } }))
 
-  // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element: focus goes to the section's
-  // heading first, so it stays in the section (A6-07).
+  // The tuning the stored layout was made with, while the section shows
+  // another (issue 561): derived from the record, so nothing is kept.
+  const laid = putBackTuning(project, view.tuning)
+
+  // Reset and Put back, each the way back from the other. A button that
+  // removes the last thing it had to remove disables itself, and Chromium
+  // blurs a disabled element; Put back goes as it is pressed. Whichever
+  // held focus, it goes to the control that is there: Put back while it is
+  // offered, else Reset while it can be pressed, else the section's heading,
+  // never the toggle, where a reflexive Space would close the section
+  // (A6-07). Watched on Put back being offered and on Reset being
+  // pressable, so a write the store refuses later hands it on too
+  // (`useFocusHandback`).
+  const root = useRef<HTMLDivElement>(null)
+  const resetRef = useRef<HTMLElement>(null)
+  const putBackRef = useRef<HTMLElement>(null)
+  useFocusHandback(
+    root,
+    () => {
+      if (putBackRef.current !== null) return putBackRef.current
+      const button = resetRef.current
+      return button !== null && !button.hasAttribute('disabled') ? button : heading.current
+    },
+    `${laid !== null}/${resettable(view)}`,
+  )
   const reset = (): void => {
-    heading.current?.focus()
     show(tuningViewOf({}))
+    setResetSaid(putBackTuning(project, {}) !== null ? project.id : null)
+  }
+  // Written as any choice is, at once, and the cells below read as drawn
+  // again because the tuning and the layout agree, not because anything ran.
+  const putBack = (): void => {
+    if (laid === null) return
+    show(tuningViewOf(laid))
   }
 
   const field = (key: TuningKey): JSX.Element => {
@@ -164,7 +204,7 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   }
 
   return (
-    <div className="layout-tuning">
+    <div className="layout-tuning" ref={root}>
       <Disclosure
         className="layout-tuning-toggle"
         heading="h3"
@@ -206,10 +246,22 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
           <p className="message">{PENALTY_SENTENCE}</p>
           {PENALTY_KEYS.map(field)}
         </fieldset>
+        {/* The section's one polite line (issue 561), in the document before
+            it has anything to say, as a live region must be: the reset's
+            sentence from Reset's press while there is a tuning to put
+            back, and nothing otherwise. */}
+        <p className="message" role="status" aria-live="polite">
+          {resetSaid === project.id && laid !== null ? TUNING_RESET_SAID : ''}
+        </p>
         <div className="toolbar">
-          <Button disabled={!resettable(view)} onClick={reset}>
+          <Button ref={resetRef} disabled={!resettable(view)} onClick={reset}>
             {RESET_LABEL}
           </Button>
+          {laid !== null && (
+            <Button ref={putBackRef} onClick={putBack}>
+              {PUT_BACK_TUNING}
+            </Button>
+          )}
         </div>
         <p className="message error" role="alert" hidden={unsaved === null}>
           {unsaved}

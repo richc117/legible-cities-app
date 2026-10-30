@@ -14,6 +14,7 @@ import {
   type ExportFacts,
   type RunFacts,
 } from '../../src/renderer/src/runGraph'
+import { putBackTuning } from '../../src/renderer/src/tuningRules'
 import { type ProjectRecord } from '../../src/shared/project/types'
 import { drawnOf } from '../support/sent'
 
@@ -268,6 +269,17 @@ describe('a tuning changed since the layout was asked with it', () => {
   it('marks the cells below when the tuning is put back to LOOM’s over a tuned layout', () => {
     const reset: ProjectRecord = { ...current, laidOutWith: { gridSize: 50 } }
     expect(stalenessOf(reset, null)).toEqual([{ cell: 'process', reason: 'tuning' }])
+  })
+
+  it('reads current again once Put back writes what the layout was asked with', () => {
+    // Issue 561: the tuning's Put back clears cell 02's `tuning` source, as
+    // a derived Revert would; cell 02 is not stale, nor any cell below.
+    const reset: ProjectRecord = { ...current, laidOutWith: { gridSize: 50 } }
+    const back = putBackTuning(reset, {})
+    expect(back).toEqual({ gridSize: 50 })
+    const putBack: ProjectRecord = { ...reset, tuning: back ?? undefined }
+    expect(stalenessOf(putBack, null)).toEqual([])
+    expect(states(putBack)).toEqual(all('ready'))
   })
 
   it('compares by what would be sent, so LOOM’s own number is no change', () => {

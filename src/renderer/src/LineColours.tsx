@@ -31,9 +31,11 @@ import {
 import { useColourPanel, type ColourPanelProps } from './ColourChip'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
 import Button from './kit/Button'
+import { useFocusHandback } from './focusHandback'
 import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
 import LineOptionsDisclosure from './LineOptionsDisclosure'
 import { useCheapEdit } from './notebook/useCheapEdit'
+import { COLOURS_RESET_SAID, PUT_BACK_COLOURS } from './putBackWords'
 import { useLineOptions } from './useLineOptions'
 
 // The project's line colours: what the feed publishes, what a person chose
@@ -175,6 +177,9 @@ export default function LineColours({
     // the colour it is given moves under it, so it would never report the
     // end of the one that was cut off.
     putBack: (record) => setPalette(paletteOf(record)),
+    // What Reset every line keeps for Put back (issue 561): the colours the
+    // map on screen was drawn in, as the record's own `drawn` says.
+    drawnOf: (record) => (record.drawn === null ? null : paletteOf(record.drawn)),
   })
   const running = edit.snapshot.state === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
@@ -207,9 +212,11 @@ export default function LineColours({
   // light-dismissed it already, and one from the keyboard moved focus to the
   // button, which a panel closes on (`ColourChip.tsx`, issue 436); but a
   // press that moves no focus, a screen reader's activation in browse mode,
-  // can reach the button with a panel open, and the handback to the cell's
-  // heading that follows moves no focus either when the heading already holds
-  // it, as it does after an earlier reset. So the reset closes them itself.
+  // can reach the button with a panel open, and the section's hand-back
+  // (below) moves focus only off a control of the section that can no
+  // longer hold it - not off a chip the person is on, nor off the cell's
+  // heading - so nothing that follows closes the panel. So the reset
+  // closes them itself.
   const closePanels = (): void => {
     section.current
       ?.querySelectorAll<HTMLElement>('.colour-popover:popover-open')
@@ -233,12 +240,25 @@ export default function LineColours({
   // swatch is what they chose, and a swatch the map does not carry is the
   // disagreement this panel exists to prevent.
   const panelClosed = (): void => edit.release()
-  // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element; the cell's heading is where
-  // focus goes so a screen reader stays in the cell (A3-04 learned this).
-  const releaseAndKeepFocus = (next: Palette): void => {
-    release(next)
-    handback.current?.focus()
+
+  // Reset every line and Put back, each the way back from the other (issue
+  // 561). Their focus is the section's hand-back, below.
+  const resetRef = useRef<HTMLElement>(null)
+  const putBackRef = useRef<HTMLElement>(null)
+  const resetEvery = (): void => {
+    closePanels()
+    const next = resetAll()
+    setPalette(next)
+    edit.reset(next)
+  }
+  // The colours the map was drawn in before the reset, through the same
+  // cheap edit as any colour: one redraw, and the record written once the
+  // map carries them.
+  const putBack = (): void => {
+    const before = edit.before
+    if (before === null) return
+    setPalette(before)
+    edit.putBack(before)
   }
 
   const inspection = state.status === 'ready' ? state.inspection : null
@@ -251,6 +271,24 @@ export default function LineColours({
     [inspection, mode, agency],
   )
   const nothingToReset = isReset(palette)
+  // Reset every line removes the last thing it had to remove and disables
+  // itself, and Chromium blurs a disabled element; Put back goes as it is
+  // pressed. Whichever held focus, it goes to the control that is there:
+  // Put back while it is offered, else the reset while it can be pressed,
+  // else the cell's heading, so a screen reader stays in the cell (A3-04,
+  // A6-07). Watched on Put back being offered and on the reset being
+  // pressable, so a stop that comes later - the reset's redraw failing,
+  // Put back's refused - hands it on too; focus a person put elsewhere is
+  // theirs (`useFocusHandback`).
+  useFocusHandback(
+    section,
+    () => {
+      if (putBackRef.current !== null) return putBackRef.current
+      const reset = resetRef.current
+      return reset !== null && !reset.hasAttribute('disabled') ? reset : handback.current
+    },
+    `${edit.before !== null}/${nothingToReset}`,
+  )
   // Each line's options (issue 394), in a closed disclosure under its row:
   // the colours' kind of cheap edit, held and drawn by their own hook.
   const options = useLineOptions({
@@ -336,16 +374,22 @@ export default function LineColours({
               ))}
             </ul>
           )}
+          {/* The section's one polite line (issue 561), in the document
+              before it has anything to say, as a live region must be: the
+              reset's sentence while there is something to put back, and
+              nothing otherwise, so it is said once, as it arrives. */}
+          <p className="message" role="status" aria-live="polite">
+            {edit.before === null ? '' : COLOURS_RESET_SAID}
+          </p>
           <div className="toolbar">
-            <Button
-              disabled={nothingToReset}
-              onClick={() => {
-                closePanels()
-                releaseAndKeepFocus(resetAll())
-              }}
-            >
+            <Button ref={resetRef} disabled={nothingToReset} onClick={resetEvery}>
               Reset every line
             </Button>
+            {edit.before !== null && (
+              <Button ref={putBackRef} onClick={putBack}>
+                {PUT_BACK_COLOURS}
+              </Button>
+            )}
           </div>
         </>
       )}

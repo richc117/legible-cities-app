@@ -1,0 +1,74 @@
+[
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "      forget()\n      edit.change(next)\n",
+    "replace": "      edit.change(next)\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "goes at the next edit of the section",
+    "why": "Put back's slot not cleared by a change: it stays beside an edit made since the reset, and pressing it would silently undo that edit as well, which is a second step of history the record of issue 561 refuses."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (drawn !== null && !facts.same(drawn, next)) {\n      setKept({ id, value: drawn, going: false })\n      return\n    }\n",
+    "replace": "",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "puts back what the map was drawn from, in one redraw",
+    "why": "The reset keeping nothing: the values the map was drawn from are gone from the record and the screen at the first press, as they were before issue 561."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (unbuilt.gone) return\n    stopped()\n",
+    "replace": "    if (unbuilt.gone) return\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "goes when the reset’s own redraw stops",
+    "why": "A stopped reset leaving Put back offered: the record still holds the values, the control is back to them, and Put back offers to restore what nothing took away."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    say(false)\n    drawing(next)\n",
+    "replace": "    say(false)\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "puts back what the map was drawn from when the reset is drawn, not when it was pressed",
+    "why": "The slot kept only at the press: a reset held behind the panel's own redraw keeps the drawn from before that redraw, and Put back then undoes the change the map showed as well as the reset."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "      if (edit.unbuilt.live !== null) forget()\n",
+    "replace": "      forget()\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "stays when a panel closes with no gesture under it",
+    "why": "Every release taken as an edit: the colour panel the reset closed reports its close a task later, and Put back goes under the focus the reset handed it."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (drawn !== null && !facts.same(drawn, next))\n      setKept({ id: facts.project.id, value: drawn, going: false })\n",
+    "replace": "    setKept(\n      drawn !== null && !facts.same(drawn, next)\n        ? { id: facts.project.id, value: drawn, going: false }\n        : null,\n    )\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "keeps its values through Reset, Put back and Reset again during the first redraw",
+    "why": "The slot cleared as the reset is drawn when drawn already is the reset's own: Reset, Put back and Reset again during the first redraw loses the values kept at the first press."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (restored === null || facts.same(facts.stored(facts.project), restored)) return forget()\n",
+    "replace": "    return forget()\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "stays offered when Put back’s own redraw stops",
+    "why": "A stop of Put back's own redraw forgetting the slot: a cancelled or failed Put back loses the values before the reset for good."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    setKept((was) => (was !== null && was.id === id ? { ...was, going: false } : null))\n",
+    "replace": "    setKept(null)\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "Put back pressed, Reset again before Put back is drawn",
+    "why": "The press clearing the slot when drawn is already the reset's own: Reset, Put back and Reset again before Put back is drawn loses the values the first reset kept."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    if (restored === null || facts.same(facts.stored(facts.project), restored)) return forget()\n",
+    "replace": "    if (restored === null) return forget()\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "offers nothing when the reset’s redraw stops with Put back waiting",
+    "why": "A stop offering Put back again whatever the record holds: the reset was never drawn, the record still holds the values, and Put back is offered for nothing."
+  }
+]

@@ -23,7 +23,9 @@ import { runRowStatus } from '../runRow'
 // Both hand focus back to this cell's heading when a control that held it
 // disables itself - not to the toggle inside it, which a reflexive Space
 // after "Back to alphabetical" would collapse, and not to the section's own
-// heading, which is not a thing a person can put focus on.
+// heading, which is not a thing a person can put focus on. The one exception
+// is Reset every line with something to put back: the control that comes,
+// Put back your colours, takes the focus (issue 561).
 //
 // Neither is disabled while another run reads the project's page: the
 // change waits and builds once the way is clear, which is the rule A4-01

@@ -329,6 +329,18 @@ with "not drawn yet" in its summary.
 
 A record with `drawn: null` offers no Revert, rather than one to nothing.
 
+**Put back is not a stale-cell action** (issue 561, ADR-061), for the
+colours and the sizes: beside their resets, Put back undoes a step the map
+has already drawn, where Revert closes a gap between the record and the
+map. It raises no source, clears none, and no cell's state says it is
+offered; the two keep, at the reset's press, the section as `drawn` held
+it, in the screen's memory and never on the record. **The tuning's Put
+back is the exception**: the tuning is an expensive input, never drawn by
+a reset, and its Put back writes `laidOutWith` and keeps nothing - so it
+clears cell 02's `tuning` source, and the cells below read as drawn again,
+as a derived Revert's would. It is offered exactly while that source is
+raised over a layout made with a tuning.
+
 ## Each cell's state
 
 Per cell, in this order:

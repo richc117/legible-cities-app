@@ -122,6 +122,8 @@ you add a row, fill this column from your record's header.
 | 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted | Amends 020, 041 |
 | 058 | [Contributions carry a DCO sign-off](058-contributions-carry-a-dco-sign-off.md) | Accepted | - |
 | 059 | [Rendered unit tests run in jsdom, and the kit-facing ones in a browser](059-rendered-unit-tests-run-in-jsdom-and-the-kit-facing-ones-in-a-browser.md) | Accepted | - |
+| 060 | Reserved: issue 556's record, written in its own pull request | - | - |
+| 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its "no undo stack" |
 
 ## Amending rather than superseding
 

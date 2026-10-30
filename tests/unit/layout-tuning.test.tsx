@@ -9,6 +9,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import LayoutTuning from '../../src/renderer/src/LayoutTuning'
+import { PUT_BACK_TUNING, TUNING_RESET_SAID } from '../../src/renderer/src/putBackWords'
 import {
   askedWith,
   chooseGrid,
@@ -20,6 +21,7 @@ import {
   OWN_KEYS,
   PENALTY_LEGEND,
   PENALTY_SENTENCE,
+  putBackTuning,
   RESET_LABEL,
   resettable,
   TUNING_LABELS,
@@ -356,6 +358,57 @@ describe('the section as it is drawn', () => {
     ])
     expect(RESET_LABEL).toBe('Reset to LOOM’s defaults')
     expect(html).not.toMatch(/type="range"|fig-slider/)
+  })
+})
+
+// Put back (issue 561, ADR-061): derived from `laidOutWith`, so nothing is
+// kept for it. Mutation (`layout-tuning.mutations.json`): the guard
+// inverted - Put back is then offered while the tuning already is the
+// layout's, and not while it differs.
+describe('Put back the tuning this layout was made with', () => {
+  const LAYOUT = 'a'.repeat(64)
+  const laidOut = { layout: LAYOUT, laidOutWith: { grid: 'hexalinear' as const, deg90: 4 } }
+
+  it('is offered if and only if the tuning shown differs from a tuned layout’s', () => {
+    expect(putBackTuning(laidOut, {}), 'after a reset').toEqual({ grid: 'hexalinear', deg90: 4 })
+    expect(putBackTuning(laidOut, { grid: 'hexalinear' }), 'after one field').toEqual({
+      grid: 'hexalinear',
+      deg90: 4,
+    })
+    expect(putBackTuning(laidOut, { grid: 'hexalinear', deg90: 4 }), 'the same').toBeNull()
+    // The same as a value: a field at LOOM's own is no choice.
+    expect(putBackTuning(laidOut, { grid: 'hexalinear', deg90: 4, deg45: 2 })).toBeNull()
+  })
+
+  it('is never offered for a layout made with LOOM’s defaults, or before there is a layout', () => {
+    // A tuning that was never laid out cannot be put back: nothing kept it.
+    expect(putBackTuning({ layout: LAYOUT }, { grid: 'orthoradial' })).toBeNull()
+    expect(putBackTuning({ layout: LAYOUT, laidOutWith: {} }, { grid: 'orthoradial' })).toBeNull()
+    expect(
+      putBackTuning({ layout: LAYOUT, laidOutWith: { ...DEFAULT_TUNING } }, { deg45: 3 }),
+    ).toBeNull()
+    expect(putBackTuning({ layout: null, laidOutWith: { deg45: 3 } }, {})).toBeNull()
+  })
+
+  const shown = (tuning: ProjectTuning | undefined): string =>
+    renderToStaticMarkup(
+      <LayoutTuning
+        project={{ id: 'kq7x2mzp4dna', tuning, ...laidOut } as unknown as ProjectRecord}
+        onChange={async () => {}}
+      />,
+    )
+  const buttons = (html: string): string[] =>
+    [...html.matchAll(/<fig-button[^>]*>([^<]*)<\/fig-button>/g)].map((m) => m[1])
+
+  it('is drawn beside Reset while it is offered, with the section’s line empty as it opens', () => {
+    // The line is Reset's to fill (put-back-focus.test.tsx), never the
+    // record's: a section opened on a cleared tuning says nothing.
+    const reset = shown(undefined)
+    expect(buttons(reset)).toEqual([RESET_LABEL, PUT_BACK_TUNING])
+    expect(reset).toContain('<p class="message" role="status" aria-live="polite"></p>')
+    expect(reset).not.toContain(TUNING_RESET_SAID)
+    expect(buttons(shown({ grid: 'hexalinear' }))).toEqual([RESET_LABEL, PUT_BACK_TUNING])
+    expect(buttons(shown({ grid: 'hexalinear', deg90: 4 }))).toEqual([RESET_LABEL])
   })
 })
 

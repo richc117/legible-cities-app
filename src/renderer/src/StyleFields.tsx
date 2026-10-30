@@ -10,10 +10,12 @@ import { isStyleChoice } from '../../shared/project/validate'
 import { sameStyle } from './record'
 import { REDRAW_DELAY } from './colours'
 import type { LayoutRun as Run, RunSnapshot } from './engine/layoutRun'
+import { useFocusHandback } from './focusHandback'
 import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
 import { useCheapEdit } from './notebook/useCheapEdit'
+import { PUT_BACK_SIZES, SIZES_RESET_SAID } from './putBackWords'
 import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
   chooseIn,
@@ -147,6 +149,9 @@ export default function StyleFields({
     // A build that stopped wrote nothing, so the sizes on screen go back to
     // the record's; the run's own panel says why.
     putBack: (record) => setView(viewOf(record.style)),
+    // What the reset keeps for Put back (issue 561): the group as the map on
+    // screen was drawn with it, as the record's own `drawn` says.
+    drawnOf: (record) => record.drawn?.style ?? null,
   })
   const running = edit.snapshot.state === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
@@ -184,13 +189,38 @@ export default function StyleFields({
     if (isStyleChoice(key, value)) show(chooseIn(view, key, value))
   }
 
+  // The reset and Put back, each the way back from the other (issue 561).
   // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element; the cell's heading is where
-  // focus goes so a screen reader stays in the cell (A3-04 learned this).
+  // and Chromium blurs a disabled element; Put back goes as it is pressed.
+  // Whichever held focus, it goes to the control that is there: Put back
+  // while it is offered, else the reset while it can be pressed, else the
+  // cell's heading, so a screen reader stays in the cell (A3-04, A6-07).
+  // Watched on Put back being offered and on the reset being pressable, so
+  // a stop that comes later hands it on too (`useFocusHandback`).
+  const sectionRef = useRef<HTMLElement>(null)
+  const resetRef = useRef<HTMLElement>(null)
+  const putBackRef = useRef<HTMLElement>(null)
+  useFocusHandback(
+    sectionRef,
+    () => {
+      if (putBackRef.current !== null) return putBackRef.current
+      const reset = resetRef.current
+      return reset !== null && !reset.hasAttribute('disabled') ? reset : handback.current
+    },
+    `${edit.before !== null}/${resettable(view)}`,
+  )
   const reset = (): void => {
     setView({ style: {}, drafts: draftsOf({}), problems: {} })
-    edit.change({})
-    handback.current?.focus()
+    edit.reset({})
+  }
+  // The group as the map was drawn with it before the reset, through the
+  // same cheap edit as any size: drawn once after the delay, and written
+  // once the map carries it.
+  const putBack = (): void => {
+    const before = edit.before
+    if (before === null) return
+    setView(viewOf(before))
+    edit.putBack(before)
   }
 
   // A field in the sizes' pattern, a size's or a train's: its name, the
@@ -246,7 +276,7 @@ export default function StyleFields({
   }
 
   return (
-    <section className="style-fields" aria-label={NAME} aria-busy={busy}>
+    <section ref={sectionRef} className="style-fields" aria-label={NAME} aria-busy={busy}>
       <LookSelect style={view.style} engine={engine} onChoose={chooseLook} />
       <p className="prose">{UNIT_SENTENCE}</p>
       {STYLE_FIELDS.map(({ key, label }) => field(key, label))}
@@ -263,10 +293,22 @@ export default function StyleFields({
         <p className="message">{TRAINS_SENTENCE}</p>
         {TRAIN_FIELDS.map(({ key, label }) => field(key, label))}
       </fieldset>
+      {/* The section's one polite line (issue 561), in the document before
+          it has anything to say, as a live region must be: the reset's
+          sentence while there is something to put back, and nothing
+          otherwise, so it is said once, as it arrives. */}
+      <p className="message" role="status" aria-live="polite">
+        {edit.before === null ? '' : SIZES_RESET_SAID}
+      </p>
       <div className="toolbar">
-        <Button disabled={!resettable(view)} onClick={reset}>
+        <Button ref={resetRef} disabled={!resettable(view)} onClick={reset}>
           Reset to the engine’s sizes
         </Button>
+        {edit.before !== null && (
+          <Button ref={putBackRef} onClick={putBack}>
+            {PUT_BACK_SIZES}
+          </Button>
+        )}
       </div>
     </section>
   )

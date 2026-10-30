@@ -403,7 +403,9 @@ Press **Lay out from scratch…**, then **Cancel** in the dialog.
   **90°** (1.5), **135°** (1), **180°** (0) and **Diagonal** (0.5). Under
   each number is its range and LOOM's own ("5 to 500 metres. LOOM’s own is
   50."). There is no slider. **Reset to LOOM’s defaults** cannot be
-  pressed while nothing is chosen.
+  pressed while nothing is chosen, and no **Put back the tuning this
+  layout was made with** stands beside it: this layout was made with
+  LOOM's defaults, so there is no tuning to put back (issue 561).
 - 600 in **Merge distance** is refused under the field as soon as **Enter**
   is pressed: "tuning.merge_distance must be from 5 to 500, in metres", the
   field still says 600, and nothing is written: the row still reads "LOOM’s
@@ -513,7 +515,8 @@ the field, and then set **Interchange radius** to **9**. Choose **Beck** in
 width** and press Enter. Choose **Square** in **Interchange marker** and
 **Inter** in **Label typeface**. Type **13** into **Dot size** and press
 Enter, then **8**; type **1.5** into **Trail** and press Enter, and watch the
-map play for a moment. Press **Reset to the engine's sizes**.
+map play for a moment. Press **Reset to the engine's sizes**, then **Put
+back your sizes**, and then **Reset to the engine's sizes** once more.
 
 **See.**
 - Two cards, **Warm dark** and **Sepia**, each the engine's small picture of
@@ -537,7 +540,8 @@ map play for a moment. Press **Reset to the engine's sizes**.
   range beneath it ("1 to 24. The engine's own is 7."). Beside **Margin**:
   "The frame is padded, never cropped or rotated: a station is never cut
   off, and a tighter frame is a smaller margin." **Reset to the engine's
-  sizes** cannot be pressed while nothing has been set. Nothing in the cell
+  sizes** cannot be pressed while nothing has been set, and nothing stands
+  beside it. Nothing in the cell
   says the engine cannot be told.
 - A figure is taken when it is left or Enter is pressed, not as it is
   typed. **12** in **Line width** draws the map again from the stored
@@ -586,6 +590,14 @@ map play for a moment. Press **Reset to the engine's sizes**.
   markers to Circle and Ring, the typeface to System and the trains to 5
   and 0. It draws the map once more as it was before, leaves the theme as
   it is, and then cannot be pressed; the row reads "Warm dark" again.
+- As it goes, **Put back your sizes** comes beside it and holds the focus,
+  with "The sizes are back to the engine’s own. Put back your sizes to undo
+  it." above the two (issue 561). **Put back your sizes** draws the map
+  once more with the group as it was drawn before the reset - **Look**
+  **Custom**, a line width of 7, **Square**, **Inter**, a dot size of 8 and
+  a trail of 1.5 - goes, takes the sentence with it, and hands the focus
+  back to **Reset to the engine's sizes**, which can be pressed again. The
+  second reset puts the engine's own back as the first did.
 - **Warm dark** brings the theme back. Leave it on **Warm dark** for the
   exports, or their file names gain `-light` (step 11).
 
@@ -599,7 +611,8 @@ square and hue slider without letting go for a moment, then release outside
 the picker. Click somewhere outside the picker. Press the chip again and
 **Reset** in its panel. Choose a colour
 for the default row, "Lines with no colour in the feed", by typing a hex
-value and pressing **Use this colour**; then **Reset every line**.
+value and pressing **Use this colour**; then **Reset every line**, then
+**Put back your colours**, and then **Reset every line** once more.
 Then, under the second line's row, press **Line options**. Type **Airport
 Express** into **Name** and press Enter; then type a name of 41 characters
 and press Enter. Choose **Bold** in **Width**, **Regular** in **Casing**,
@@ -621,6 +634,13 @@ at the row and at **Line order** below. Then press **Reset line**.
 - **Reset**, inside the panel, closes it and puts the row back to "the colour in the feed, `#rrggbb`" (or
   "the default, ...") and the map follows; **Reset every line** does the
   same for all and then is unavailable.
+- As it goes, **Put back your colours** comes beside it and holds the
+  focus, with "Every line is back to its feed’s colour. Put back your
+  colours to undo it." above the two (issue 561). **Put back your colours**
+  draws the map once more with the default row's colour you typed, goes,
+  takes the sentence with it, and hands the focus back to **Reset every
+  line**, which can be pressed again; the second reset puts the default
+  back as the first did.
 - Nothing is laid out again: no "Laid out." here.
 - Under every row, a closed **Line options** reading "Default". Opened, it
   holds **Name** (empty, with the line's own label greyed in it, and the
