@@ -235,8 +235,8 @@ again.
 - In Settings, **Bundled tools** says "The bundled LOOM and ffmpeg ran.",
   with **LOOM tools** "ran (`<n>` ms)." and **ffmpeg and ffprobe**
   "ran (`<n>` ms)."
-- **Versions** lists App (the installer's version, without its `-rc.<N>` if
-  it has one), then
+- **Versions** lists App (the installer's version, its `-rc.<N>` included
+  if it has one: `1.0.0-rc.2` for the tag `v1.0.0-rc.2`), then
   Engine (the same version as the status line), Protocol `1`, Python, LOOM
   backend `native`, LOOM commit and ffmpeg, none of them blank. Copy the six
   after App into the run's issue.

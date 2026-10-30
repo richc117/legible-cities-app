@@ -199,6 +199,15 @@ const FEATURES = {
     commit: 'c6eab22768c573d61b81a6dc20e6aab319729171',
     landed: 'pull request 573',
   },
+  // The App row says a candidate's whole version, its -rc.<N> included,
+  // from the tag it was built from (issue 558); before it, package.json's.
+  // The commit is the lane's own and is moved to the one on main when it
+  // merges.
+  releaseLabel: {
+    name: "the candidate's own version in the App row",
+    commit: 'e58cfb5e40cb0e05cb150602de3d2ea08e1d0033',
+    landed: 'pull request for issue 558',
+  },
 } satisfies Record<string, Feature>
 
 /** The release under test, by its tag; the workflow names it. */
@@ -1113,7 +1122,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // when the tag is known to contain the change: a tag older than it
         // has no such row, and git answering "cannot tell" (a commit this
         // clone lacks, a shallow clone) is not a yes. It must then be the
-        // tag's version without any -rc.<N>, which is package.json's.
+        // tag's own version, -rc.<N> included, for a tag that contains the
+        // release label (issue 558), and the tag's version without any
+        // -rc.<N>, which is package.json's, for one older than it; where git
+        // cannot tell which, the row is recorded as not automated.
         const contains = TAG === '' ? null : tagContains(FEATURES.appVersionRow)
         if (TAG === '') {
           log.notAutomated(
@@ -1126,15 +1138,22 @@ test('a release, installed, through docs/acceptance.md', async () => {
               : `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.appVersionRow.commit.slice(0, 7)} (${FEATURES.appVersionRow.landed}): the commit is not in this clone, or the clone is shallow.`,
           )
         } else {
-          try {
-            const app = await read('App')
-            log.note(`App: ${app}`)
-            const expected = TAG.slice(1).replace(/-rc\.\d+$/, '')
-            if (app !== expected) wrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
-          } catch (error) {
-            wrong.push(
-              `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          const labelled = tagContains(FEATURES.releaseLabel)
+          if (labelled === null) {
+            log.notAutomated(
+              `the app's own version under Versions: git could not tell whether ${TAG} contains ${FEATURES.releaseLabel.commit.slice(0, 7)} (${FEATURES.releaseLabel.landed}), so not whether it should say its -rc.<N>.`,
             )
+          } else {
+            try {
+              const app = await read('App')
+              log.note(`App: ${app}`)
+              const expected = labelled ? TAG.slice(1) : TAG.slice(1).replace(/-rc\.\d+$/, '')
+              if (app !== expected) wrong.push(`App is ${app}, not ${expected} (from ${TAG})`)
+            } catch (error) {
+              wrong.push(
+                `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+              )
+            }
           }
         }
         if (wrong.length > 0) throw new Error(wrong.join('; '))
