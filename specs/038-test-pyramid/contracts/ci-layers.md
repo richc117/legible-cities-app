@@ -7,11 +7,13 @@ What `ci.yml` and `determinism.yml` promise after Part 1, and what branch protec
 | Job | Platforms | Runs on | Steps | Required |
 |---|---|---|---|---|
 | `ci (<os>)` | ubuntu-22.04, macos-15, windows-latest | every pull request, every push to `main` | install, Electron binary, lint, typecheck, unit tests, build | yes, all three |
-| `e2e (<os>)` | macos-15, windows-latest | every pull request, every push to `main` | decide (R3); if the change touches the app or the event is a push: install, Electron binary, build, `npm run test:e2e`, keep the failure evidence | yes, both |
+| `e2e (<os>)` | macos-15, windows-latest | every pull request, every push to `main` | decide (R3); if the change touches the app or the event is a push: install, Electron binary, build, `npm run test:e2e -- --grep-invert @quarantine`, keep the failure evidence | yes, both |
+| `e2e-quarantine (<os>)` | macos-15, windows-latest | every pull request, every push to `main` | the same steps as `e2e`, but the suite is `npm run test:e2e -- --grep @quarantine --pass-with-no-tests`, and the evidence is kept as `quarantine-results-<os>` | no; `continue-on-error: true` (issue 553) |
 
 - `e2e (<os>)` always reports. For a documentation-only pull request it passes in under two minutes with the notice "documentation only; the end-to-end suite did not run".
 - The decision step prints the changed paths it judged and the rule that matched, so a skipped run can be audited from its log.
-- Both jobs keep `timeout-minutes` (fast: 20; e2e: 60) and the per-ref `concurrency` #441 set.
+- The jobs keep `timeout-minutes` (fast: 20; e2e: 60; quarantine: 30) and the per-ref `concurrency` #441 set.
+- `e2e-quarantine (<os>)` runs the tests tagged `@quarantine` that `e2e (<os>)` leaves out, so a quarantined test stays measured. It has the same decision step and so the same documentation-only skip, a `timeout-minutes` of 30, and passes where nothing is tagged. It is never a required check: it must not be added to branch protection, and a red run of it blocks nothing. `tests/unit/quarantine.test.ts` holds the two flags and `continue-on-error` in place, the cap of three tests, and an issue annotation on every tag.
 - No job has a `paths:` or `paths-ignore:` filter.
 
 ## `determinism.yml`

@@ -2734,8 +2734,8 @@ from the tokens and described to assistive technology as one sentence.
 
 ## Checks
 
-`.github/workflows/ci.yml` has two layers, both required
-(`docs/repository-settings.md` lists the required checks, and
+`.github/workflows/ci.yml` has two layers, both required, and a third job that
+is not (`docs/repository-settings.md` lists the required checks, and
 `specs/038-test-pyramid/contracts/ci-layers.md` is their contract). `ci (<os>)` is the
 fast one, on Ubuntu, macOS and Windows for every pull request and every push
 to `main`: lint, typecheck, unit tests and a build. The tests of the mutation
@@ -2746,7 +2746,11 @@ their own after the unit tests on the runners that are not Windows, so that
 Playwright Electron suite over the built app, on macOS and Windows only; it
 always reports, and a pull request whose every changed path is documentation
 passes it without running the suite (`scripts/ci-decide.mjs`), while a push
-to `main` always runs it. Of that suite, the smoke test launches the app,
+to `main` always runs it, with `--grep-invert @quarantine`: the tests tagged
+`@quarantine` (a flaky test, with its issue; `CONTRIBUTING.md`, "Flaky tests")
+are left out of it, and the `e2e-quarantine (<os>)` job, which is not a
+required check and never blocks a merge, runs only them, and ends at its first
+step where none is tagged. Of the end-to-end suite, the smoke test launches the app,
 asserts the title, reads the empty Library, probes the origin's refusals from inside
 the page, and quits; the lifecycle test creates a project from the Library,
 relaunches on the same engine home, opens, renames and deletes it, and

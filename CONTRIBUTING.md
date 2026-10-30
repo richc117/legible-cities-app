@@ -273,16 +273,9 @@ is.
    GitHub's "Update branch" button, which merges `main` into your branch.
    The checks run again, after approval if you are new.
    **A failed check is re-run once before it is believed**
-   (`gh run rerun <id> --failed`). The end-to-end tests launch a real
-   application on shared runners, and a few of them still fail now and
-   then for reasons of their own. (The one seen most often, issue 222,
-   turned out to be a defect in the app and not in its test, so a failure
-   that goes away on a re-run is still worth its record.) A
-   failure that comes back is the change's until `main` has been run the
-   same number of times; one that does not is recorded on the issue that
-   tracks it, with the run's id, rather than forgotten. A failure's rate
-   is measured with the `e2e-loop` workflow, which repeats one spec up to
-   sixty times on one platform, with or without load, from a hand dispatch.
+   (`gh run rerun <id> --failed`). A failure that comes back is the change's
+   until `main` has been run the same number of times; one that goes away is
+   a flake, and **Flaky tests**, below, says what it gets.
 5. **Squash merge.** The maintainer merges, and `main` reads as one commit per
    issue, so your pull request's title becomes the subject line: write it as
    one. The maintainer does **not** use GitHub's default squash message, which
@@ -296,6 +289,67 @@ is.
    contributor's `Signed-off-by:` lines as they were written**, so that `main`
    records the certificate each contribution came under although the commits
    that carried it are gone.
+
+### Flaky tests
+
+The end-to-end tests launch a real application on shared runners, and a few
+of them fail now and then for reasons of their own. The rules below are what
+is done about it, and `tests/unit/quarantine.test.ts` holds the mechanical
+ones in place.
+
+- **What counts as a flake**: a check that fails and passes on a re-run, or
+  a spec with at least 1 failure in 20 repeats of the `e2e-loop` workflow run
+  under load (`load=true`, from a hand dispatch; it repeats one spec up to
+  sixty times on one platform). A failure that goes away on a re-run is still
+  worth its record: the one seen most often (issue 222) turned out to be a
+  defect in the app and not in its test.
+- **Record it**: an issue labelled `flaky`, naming the spec and the run's
+  id.
+- **Fix or quarantine within 2 working days.** A flake on a required check
+  blocks every merge, so it is not left. To quarantine an end-to-end test,
+  tag it and link the issue, and keep nothing else about it changed:
+
+  ```ts
+  test(
+    'the thing it checks',
+    {
+      tag: '@quarantine',
+      annotation: { type: 'issue', description: '<issue URL>' },
+    },
+    async () => {
+      // ...
+    },
+  )
+  ```
+
+  The required `e2e (<os>)` jobs run with `--grep-invert @quarantine`, and
+  the `e2e-quarantine (<os>)` jobs run only the tagged tests. The quarantine
+  job is not required and never blocks a merge; read its log, or the
+  `quarantine-results-<os>` artifact, to see whether a quarantined test still
+  fails. With no test tagged it ends in seconds. A quarantined test
+  therefore stays measured, which `test.fixme` and `test.skip` would not do:
+  a test that does not run cannot be seen to recover, and one that is
+  ignored is useless as a regression test.
+- **A unit test** has no tag here, and a Vitest test cannot be quarantined
+  in a job of its own. A flaky one is fixed within the same 2 working days,
+  or skipped with `it.skip` and a comment that links its issue, and the skip
+  counts towards the same cap.
+- **The cap**: at most 3 tests quarantined or skipped for flakiness at
+  once, and none for more than 7 days. A test still there after 7 days is
+  fixed or deleted, and the issue says which. A test checks the count of
+  tagged end-to-end tests and that each names an issue; the 7 days, and the
+  counting of an `it.skip` towards the cap, are kept by hand.
+- **Candidates**: no release candidate is tagged while a `flaky` issue names
+  a spec the acceptance gate relies on, unless the maintainer accepts that in
+  writing on the issue.
+- **No retries in CI.** A retry passes a flaky test and so hides the rate
+  that `e2e-loop` measures; a defect in the app, as issue 222 was, would
+  pass too. A failure is believed, re-run once by hand, and recorded.
+
+### Tests
+
+New behaviour comes with a test that fails without it. A fix comes with the
+test that would have caught it.
 
 ## Commits
 
