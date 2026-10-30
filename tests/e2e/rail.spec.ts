@@ -34,7 +34,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cellHandback, cellHeading, laidOutProject, openProject } from '../support/project'
+import {
+  cellHandback,
+  cellHeading,
+  laidOutProject,
+  openCell,
+  openProject,
+} from '../support/project'
 import { EXPORT_ONE, GONE, NOTHING_YET } from '../../src/renderer/src/notebook/outputWords'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -138,7 +144,7 @@ test('a step opens its cell, lands it clear of the header, and focuses its headi
     // short to scroll that far - and never behind it (issue 240's
     // criterion). The header is the only thing pinned since ADR-046.
     for (const { id, number, name } of [
-      { id: 'frame', number: '03', name: /^03 Frame and service day, / },
+      { id: 'frame', number: '03', name: /^03 Day, / },
       { id: 'lines', number: '05', name: /^05 Lines, / },
     ] as const) {
       await page.evaluate(() => window.scrollTo(0, 0))
@@ -171,7 +177,7 @@ test('a step opens its cell, lands it clear of the header, and focuses its headi
       const root = document.scrollingElement!
       return { wanted: top - header, room: root.scrollHeight - root.clientHeight }
     }, '03')
-    await step(page, /^03 Frame and service day, /).click()
+    await step(page, /^03 Day, /).click()
     if (geometry.wanted <= geometry.room) {
       await expect
         .poll(async () => Math.abs((await cellTop(page, '03')) - (await headerFoot(page))), {
@@ -346,6 +352,47 @@ test("the rail's headings, every step's number and Outputs start at one edge", a
     }
     for (const left of [...lefts.numbers, lefts.outputs]) {
       expect(Math.abs(left - lefts.heading)).toBeLessThanOrEqual(1)
+    }
+  })
+})
+
+// Issue 565: cell 03 was called "Frame and service day", 137 pixels in a
+// name column of 71, and its step was the one name the rail cut short. The
+// name column is narrowest beside the longest state word, "not drawn yet",
+// so the measure is taken with that word on the steps: a day chosen and not
+// drawn takes cells 04 to 06 there, and a grid chosen over a layout made
+// with another takes 03 there as well. At the two widths the window opens
+// in and the one below it, no name may be wider than its box.
+test('no step in the rail cuts its name short, even with "not drawn yet" beside it', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', PROJECT)
+
+    const frame = await openCell(page, 'frame')
+    await frame.getByLabel('Draw for another day').fill('2026-06-20')
+    for (const number of ['04', '05', '06'])
+      await expect(step(page, new RegExp(`^${number} .*, not drawn yet$`))).toBeVisible()
+
+    // A grid of another kind makes the layout stale too, which takes cell 03
+    // to the state with the longest word.
+    await openCell(page, 'process')
+    await page.getByRole('button', { name: /^Layout tuning\b/ }).click()
+    await page
+      .getByRole('group', { name: 'Layout tuning', exact: true })
+      .getByRole('combobox', { name: 'Grid' })
+      .selectOption('orthoradial')
+    await expect(step(page, /^03 Day, not drawn yet$/)).toBeVisible()
+
+    for (const width of [1024, 1280]) {
+      await page.setViewportSize({ width, height: 800 })
+      await expect(page.locator('.rail-name')).toHaveCount(6)
+      const cut = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('.rail-name')]
+          .filter((el) => el.scrollWidth > el.clientWidth)
+          .map((el) => `${el.textContent} (${el.scrollWidth}px in ${el.clientWidth}px)`),
+      )
+      expect(cut, `names cut short at ${width}px wide`).toEqual([])
     }
   })
 })
