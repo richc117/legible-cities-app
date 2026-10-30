@@ -237,10 +237,10 @@ describe('the announcement', () => {
       (then) => frames.push(then),
     )
     announce('A: Layout run, finished.')
-    announce('B: Export as x, cancelled.')
+    announce('B: Export as X post, cancelled.')
     expect(frames).toHaveLength(1)
     frames.shift()?.()
-    expect(written).toEqual(['', 'A: Layout run, finished. B: Export as x, cancelled.'])
+    expect(written).toEqual(['', 'A: Layout run, finished. B: Export as X post, cancelled.'])
   })
 })
 

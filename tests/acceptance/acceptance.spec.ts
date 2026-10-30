@@ -3190,7 +3190,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       await log.soft('the rebuilds, and the first layout run last', () => {
         const missing = [
-          new RegExp(`^${LA} Rebuild for \\d{4}-\\d{2}-\\d{2}$`),
+          new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`),
           new RegExp(`^${LA} Redraw in new colours$`),
           new RegExp(`^${LA} Redraw in a new line order$`),
         ].filter((pattern) => !titles.some((t) => pattern.test(t)))

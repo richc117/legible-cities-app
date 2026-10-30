@@ -1227,7 +1227,7 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
     const toggle = page.getByRole('button', { name: /^Jobs, / })
     await toggle.click()
     const inspector = page.getByRole('complementary', { name: 'Inspector' })
-    const job = inspector.getByRole('listitem', { name: /Rebuild for / })
+    const job = inspector.getByRole('listitem', { name: / Draw for / })
     await expect(job, 'the redraw is the one job').toHaveCount(1)
     await expect(job).toHaveAttribute('data-state', 'failed')
     await expect(job, 'with the engine’s reason').toContainText('has no stored layout')

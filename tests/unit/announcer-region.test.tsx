@@ -155,10 +155,10 @@ describe('the jobs live region, rendered', () => {
 
   it('says two ends that arrive before the frame together, in one pass through empty', () => {
     announce('A: Layout run, finished.')
-    announce('B: Export as x, cancelled.')
+    announce('B: Export as X post, cancelled.')
     expect(frames).toHaveLength(1)
     frames.shift()?.()
-    expect(written()).toEqual(['A: Layout run, finished. B: Export as x, cancelled.'])
+    expect(written()).toEqual(['A: Layout run, finished. B: Export as X post, cancelled.'])
   })
 
   it("draws no children, whatever it is given: a text of React's own would be lost to the writer", async () => {
