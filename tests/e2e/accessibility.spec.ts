@@ -658,6 +658,61 @@ test('Settings, its reset confirmation, and focus after "Use the default"', asyn
   })
 })
 
+// A heading the app focuses by script is as wide as its words, so its ring
+// is (issue 564). The ring is the same token everywhere (DESIGN.md section
+// 12); what was wrong is that a heading is a block, so the ring ran the whole
+// column and read as a text field. The measure is the box against the words
+// it holds, read from a range over its contents, with the ring and its offset
+// allowed on each side: a heading that fills its column fails it on any
+// screen wide enough to hold more than its words. Settings is opened from the
+// keyboard, because Chromium draws no ring on a script focus that follows a
+// pointer press, and then there is nothing to measure.
+test('a scripted heading takes a ring as wide as its words', async () => {
+  const p = profile()
+  await withApp(p, async (page) => {
+    const hugs = async (id: string, words: string): Promise<void> => {
+      const target = page.locator(`#${id}`)
+      await expect(target).toHaveText(words)
+      await expect
+        .poll(() => page.evaluate(() => document.activeElement?.id), {
+          message: `${words}: the heading holds focus`,
+        })
+        .toBe(id)
+      const seen = await target.evaluate((el) => {
+        const style = getComputedStyle(el)
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        return {
+          box: el.getBoundingClientRect().width,
+          words: range.getBoundingClientRect().width,
+          column: el.parentElement?.getBoundingClientRect().width ?? 0,
+          style: style.outlineStyle,
+          width: Number.parseFloat(style.outlineWidth),
+          offset: Number.parseFloat(style.outlineOffset),
+        }
+      })
+      expect(seen.style, `${words}: the ring is still drawn`).not.toBe('none')
+      expect(seen.width, `${words}: the ring is at least two pixels`).toBeGreaterThanOrEqual(2)
+      // The column must have room to spare, or the test could not tell a
+      // heading that hugs its words from one that fills a narrow column.
+      expect(seen.column, `${words}: the column is wider than the words`).toBeGreaterThan(
+        seen.words + 2 * (seen.width + seen.offset),
+      )
+      expect(
+        seen.box,
+        `${words}: the heading's box is ${seen.box}px for words ${seen.words}px wide in a column ${seen.column}px wide`,
+      ).toBeLessThanOrEqual(seen.words + 2 * (seen.width + seen.offset))
+    }
+
+    // On the Library at launch, with no pointer yet.
+    await hugs('library-heading', 'Library')
+
+    await pressWithKeyboard(page.getByRole('button', { name: 'Settings' }))
+    await expect(heading(page)).toHaveText('Settings')
+    await hugs('settings-heading', 'Settings')
+  })
+})
+
 test('the first-run dialog, and Settings with the Bundled tools rows', async () => {
   test.setTimeout(180_000)
   // A development run checks what the environment names: an empty folder as
