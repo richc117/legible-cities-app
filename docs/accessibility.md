@@ -210,7 +210,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Steps: six buttons, each "`<nn> <name>`, `<state>`", `aria-current="step"` following the scroll (A5.5-21) | swept; **a step moves focus on activation**, to its cell's heading, landing it clear of the header, the only thing pinned since ADR-046, with no smooth scroll under reduced motion (`rail.spec.ts`) | swept (a `<nav>` "Steps" under an `h2` of the project's name, issue 274; the state an icon and a word, never a colour alone) | swept | swept | pass (the state words on `--surface`, and on `--surface-hover` and `--surface-selected` the warning and error words fall back to `--text-muted`; a running step's `--accent-text` on `--surface-selected` and on `--surface-hover`, both added to the contrast test by A5.6-09) | pass (the same) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Outputs: a button "Export one in cell 06." in its empty state once laid out, a row per export, Reveal named "Reveal `<preset>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes; the empty state's button lands on cell 06's heading, `rail.spec.ts`) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, `--accent-text`, the warning icon with its words) | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
+| Outputs: a button "Export one in cell 06." in its empty state once laid out, a row per export, Reveal named "Reveal `<preset's title>`, `<file>`", a sentence for a file moved or deleted | swept (focus to the Outputs heading when a pressed Reveal goes; the empty state's button lands on cell 06's heading, `rail.spec.ts`) | swept (a region "Outputs") | swept | swept | pass (`--text`, `--text-muted`, `--accent-text`, the warning icon with its words) | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Below 900px | audit only: the rail keeps its names and clips them, and is `inert` while the inspector covers the main region | audit only | audit only | audit only | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
 ### Project: the map, and cell 06's preview
@@ -287,7 +287,7 @@ The two reader columns are a person's, recorded per run in
 | Caption, Clock corner, Alt text for the file's sidecar (issue 352) | swept: drawn on the default reel, so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks them, before and after an export; the corner select is unavailable while the clock is off, and its list changes with the preset and the title | swept (Caption and Alt text are named by a `<label for>`; Clock corner is the kit's select named by its `label`; a refused caption or alt text is `aria-invalid` and its sentence is the field's `aria-describedby` message) | swept | swept (nothing moves) | no new pair: `--text`, `--text-muted`, `--text-faint` and `--error` on `--surface-raised` and `--surface-sunken`, and the `--border-strong` edge, all held by `contrast.test.ts` | no new pair | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Opening, Card and Draw-in (issue 392) | Opening swept: it is drawn on the default reel, on "None", so `notebook-a11y.spec.ts` ("cell 06, and focus through an export") walks it; Card and Draw-in not yet swept: they are drawn only once an opening is chosen, which no sweep does (`opening.spec.ts` fills them by their labels) | Opening swept; Card and Draw-in not yet swept (Opening is the kit's select named by its `label`, its sentence after it in the reading order, since the kit's select takes no description; Card and Draw-in are named by a `<label for>`, their rule the field's `aria-describedby` message, a refused number `aria-invalid` with its sentence in the message's place) | Opening swept; Card and Draw-in not yet swept | Opening swept; Card and Draw-in not yet swept (nothing in the interface moves; the card and the draw-in are the export's frames, the engine's page's) | no new pair: `--text`, `--text-muted` and `--error` on `--surface-raised` and `--surface-sunken`, held by `contrast.test.ts` | no new pair | not yet run: a person's (new after 0.1.0) | not yet run: a person's (new after 0.1.0) |
 | Where it goes: Choose folder, and Use the app's folder once a folder is chosen (A5.5-19) | Choose folder swept; Use the app's folder not swept (it is drawn only once a folder is chosen, which no sweep does) | Choose folder swept (the sentence its description); "Where it goes" is a label's text, not a field | Choose folder swept | Choose folder swept | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13); since issue 542 the line the eye follows (a sentence per frame) is not a live region, and a polite status out of sight beside it changes at each stage and at each tenth of the frames ("Captured 30 percent of the frames."), asserted in `export-run-region.test.tsx`; since issue 570 the finish is spoken once, by the job-end announcement, which names the file ("`<project>`: Export as `<preset>`, finished: `<file>`."), and cell 06's "Exported `<file>`." is shown and is not a live region, asserted in `export-run-region.test.tsx` ("one live region changes, and it names the file") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
+| Export, its progress line, Cancel, Reveal | fixed (D2) | fixed (D13); since issue 542 the line the eye follows (a sentence per frame) is not a live region, and a polite status out of sight beside it changes at each stage and at each tenth of the frames ("Captured 30 percent of the frames."), asserted in `export-run-region.test.tsx`; since issue 570 the finish is spoken once, by the job-end announcement, which names the file ("`<project>`: Export as `<preset's title>`, finished: `<file>`."), and cell 06's "Exported `<file>`." is shown and is not a live region, asserted in `export-run-region.test.tsx` ("one live region changes, and it names the file") | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted); the row has changed since and the new part is not yet walked |
 
 ### Project: the footer
 
@@ -891,7 +891,7 @@ a table).
   moving: "`<project>`: `<job>`, `<finished, failed or cancelled>`.", such
   as "Los Angeles: Layout run, finished." (`App.tsx`, `shared/jobs.ts`).
   An export that finished names its file after it, as "Los Angeles: Export
-  as instagram-reel, finished: la-metro-rail-instagram-reel.mp4." (issue
+  as Instagram reel, finished: la-metro-rail-instagram-reel.mp4." (issue
   570). Start a second identical job and listen for the same sentence said again.
   Leave the project screen while a run is going and listen for it on the
   Library.
@@ -1011,8 +1011,8 @@ a table).
   yet." before any export, with a button "Export one in cell 06." beside
   it once the project is laid out (pressing it opens cell 06 and puts
   focus on its heading), and afterwards a row per export read as its
-  preset and when it was made, with a button "Reveal `<preset>`,
-  `<file>`". A file since moved or deleted is read as "the file has been
+  preset's title and when it was made, with a button "Reveal `<preset's
+  title>`, `<file>`". A file since moved or deleted is read as "the file has been
   moved or deleted", with no button.
 - **Skip past the map.** Tab past cells 01 and 02. Listen for a button
   "Skip past the map" and look for it appearing over the top edge of the
@@ -1353,8 +1353,8 @@ a table).
   for the pop-up buttons "Preset" (its options
   grouped by platform: listen for the group names Instagram, LinkedIn,
   Bluesky and X), "Storyboard" (for a video or GIF preset), "View" (for a
-  still), and "Quality". Choose the preset "bluesky: 1200 by 900, still,
-  JPG" and listen for "Quality" dimmed and "This preset is a JPEG still,
+  still), and "Quality". Choose the preset "Bluesky post, 1200 by 900, JPG
+  still" and listen for "Quality" dimmed and "This preset is a JPEG still,
   which the engine makes at standard quality only." after it.
 - **Frame switches, lines to keep.** Listen for the group "What the frame
   shows" with the checkboxes "Station names", "The title: city, network and
@@ -1421,7 +1421,7 @@ a table).
   the status "The choices wait until the export that is going has
   finished: it was planned from them." At the end listen for the file's
   name said once, in the job-end announcement ("`<project>`: Export as
-  `<preset>`, finished: `<file>`."), and focus on **Reveal**; the line
+  `<preset's title>`, finished: `<file>`."), and focus on **Reveal**; the line
   "Exported `<file>`." is shown and is not read aloud (issue 570).
   Press **Reveal**: the Finder or File Explorer opens, and the reader moves
   to it; switch back (Command-Tab or Alt-Tab) and listen for focus still on

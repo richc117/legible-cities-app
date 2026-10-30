@@ -151,7 +151,7 @@ test('an export started in a project is followed from Settings, to its end', asy
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Settings')
     await openInspector(page)
 
-    const job = jobNamed(page, 'Los Angeles Export as instagram-reel')
+    const job = jobNamed(page, 'Los Angeles Export as Instagram reel')
     await expect(job).toBeVisible()
     await expect(job.getByRole('img')).toHaveAccessibleName(/^Running (plan|capture|encode)\.$/)
     // The inspector's line has no labels (issue 278): the stage is said in
@@ -160,11 +160,11 @@ test('an export started in a project is followed from Settings, to its end', asy
       /^running (plan|capture|encode), [123] of 3, started /,
     )
     await expect(
-      job.getByRole('button', { name: /^Cancel: Export as instagram-reel/ }),
+      job.getByRole('button', { name: /^Cancel: Export as Instagram reel/ }),
     ).toBeVisible()
 
     // It moves as the export moves, and ends where the project screen would say it did.
-    await expect(job.getByRole('img')).toHaveAccessibleName('Export as instagram-reel finished.', {
+    await expect(job.getByRole('img')).toHaveAccessibleName('Export as Instagram reel finished.', {
       timeout: 60_000,
     })
     await expect(job.getByRole('button', { name: /^Cancel:/ })).toHaveCount(0)
@@ -173,11 +173,11 @@ test('an export started in a project is followed from Settings, to its end', asy
     // stand-in's page draws no frame counter, so the finish is unproven and
     // its sentence follows the file's name.
     await expect(announcement(page)).toHaveText(
-      /^Los Angeles: Export as instagram-reel, finished: la-metro-rail-instagram-reel\.mp4\. The frames could not be proven fresh/,
+      /^Los Angeles: Export as Instagram reel, finished: la-metro-rail-instagram-reel\.mp4\. The frames could not be proven fresh/,
     )
     // The finished layout run is listed after it: running first, then newest first.
     await expect(jobs(page)).toHaveCount(2)
-    await expect(jobs(page).nth(0)).toHaveAccessibleName('Los Angeles Export as instagram-reel')
+    await expect(jobs(page).nth(0)).toHaveAccessibleName('Los Angeles Export as Instagram reel')
     await expect(jobs(page).nth(1)).toHaveAccessibleName('Los Angeles Layout run')
   })
 })
@@ -198,7 +198,7 @@ test('jobs in two projects are listed together, running ones first', async () =>
     await expect(toggle(page)).toHaveAccessibleName('Jobs, 2 running')
     await openInspector(page)
 
-    await expect(jobNamed(page, 'Los Angeles Export as instagram-reel')).toBeVisible()
+    await expect(jobNamed(page, 'Los Angeles Export as Instagram reel')).toBeVisible()
     await expect(jobNamed(page, 'Bart Layout run')).toBeVisible()
     await expect(jobNamed(page, 'Los Angeles Layout run')).toBeVisible()
     // Whatever each has reached, no finished job is listed above a running one.

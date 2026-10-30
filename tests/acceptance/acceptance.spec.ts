@@ -2480,7 +2480,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const shown = await preset.evaluate(
           (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
         )
-        expect(shown).toBe('instagram-reel: 1080 by 1920, video, MP4')
+        expect(shown).toBe('Instagram reel, 1080 by 1920, MP4 video')
         const options = (await preset.locator('option').allTextContents()).map((o) => o.trim())
         expect(options).toHaveLength(13)
         const odd = options.filter((o) => !/^\S+: \d+ by \d+, .+$/.test(o))
@@ -2838,9 +2838,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await reveals.evaluateAll((all) => all.map((b) => b.getAttribute('aria-label') ?? ''))
         ).map((name) => name.replace(/^Reveal /, ''))
         expect(names).toEqual([
-          'instagram-reel-gif, la-metro-rail-instagram-reel-gif.gif',
-          'instagram-post, la-metro-rail-instagram-post.png',
-          'instagram-reel, la-metro-rail-instagram-reel.mp4',
+          'Instagram reel as a GIF, la-metro-rail-instagram-reel-gif.gif',
+          'Instagram post, la-metro-rail-instagram-post.png',
+          'Instagram reel, la-metro-rail-instagram-reel.mp4',
         ])
       })
       await app.evaluate(({ shell }) => {
@@ -3183,9 +3183,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect(titles.slice(0, 5)).toEqual([
           'Caltrain Layout run',
           'Feeds Feed add of Caltrain',
-          `${LA} Export as instagram-reel-gif`,
-          `${LA} Export as instagram-post`,
-          `${LA} Export as instagram-reel`,
+          `${LA} Export as Instagram reel as a GIF`,
+          `${LA} Export as Instagram post`,
+          `${LA} Export as Instagram reel`,
         ]),
       )
       await log.soft('the rebuilds, and the first layout run last', () => {

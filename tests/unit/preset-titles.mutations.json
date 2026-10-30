@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/shared/export.ts",
+    "find": "  'linkedin-gif': 'LinkedIn square GIF',\n",
+    "replace": "",
+    "test": "tests/unit/preset-titles.test.ts",
+    "title": "gives every offered preset a title of its own, and nothing else one",
+    "why": "An offered preset left without a title: the build refuses it, and at run time the screen would name it by its id again, which the mutation job can see though it does not typecheck."
+  }
+]

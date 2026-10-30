@@ -476,7 +476,7 @@ describe('the export as a job', () => {
     run.start(project(), READY, REEL)
     expect(run.job()).toMatchObject({
       kind: 'export',
-      label: 'Export as instagram-reel',
+      label: 'Export as Instagram reel',
       projectId: 'abcdefghijk1',
       state: 'running',
       ended: null,

@@ -459,7 +459,7 @@ describe('the export run, as its finish is heard', () => {
     const { before, after, ends, shown } = await finished(flags)
     expect(ends, 'the job ends once').toHaveLength(1)
     expect(changed(before, after)).toEqual([
-      ['jobs', `Los Angeles: Export as instagram-reel, finished: ${FILE}.${beside}`],
+      ['jobs', `Los Angeles: Export as Instagram reel, finished: ${FILE}.${beside}`],
     ])
     // The cell still shows the sentence, where it was, and no live region of
     // its own carries the file's name.

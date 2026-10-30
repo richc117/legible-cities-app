@@ -57,6 +57,38 @@ export function isOfferedPreset(value: unknown): value is OfferedPreset {
 }
 
 /**
+ * What a person reads for each preset the app offers (issue 559): the
+ * platform and what is made for it, where the screen used to say the
+ * engine's id, "linkedin-gif". The id stays in the file's name and in the
+ * record. A `Record` over the offered list, so a preset offered without a
+ * title is a build error, as a stage without words is (`STAGE_WORDS`).
+ */
+export const PRESET_TITLES: Record<OfferedPreset, string> = {
+  'instagram-post': 'Instagram post',
+  'instagram-square': 'Instagram square post',
+  'instagram-story': 'Instagram story',
+  'instagram-reel': 'Instagram reel',
+  'instagram-reel-gif': 'Instagram reel as a GIF',
+  linkedin: 'LinkedIn post',
+  'linkedin-link': 'LinkedIn link preview',
+  'linkedin-video': 'LinkedIn video',
+  'linkedin-gif': 'LinkedIn square GIF',
+  bluesky: 'Bluesky post',
+  'bluesky-video': 'Bluesky video',
+  'bluesky-gif': 'Bluesky GIF',
+  x: 'X post',
+}
+
+/**
+ * A preset's title, or its id for one the app does not offer: a sidecar
+ * the engine wrote for a `portfolio-*` preset, or a preset a later engine
+ * added, is named as it is rather than not at all.
+ */
+export function presetTitle(name: string): string {
+  return isOfferedPreset(name) ? PRESET_TITLES[name] : name
+}
+
+/**
  * Every storyboard the engine has, as a list the validator can read. The
  * generated `StoryboardName` is a type only; this is held equal to it by
  * `tests/unit/export.test.ts`, against the schema the type was made from.

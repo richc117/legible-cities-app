@@ -2079,7 +2079,7 @@ test('Run all draws a chosen day from the stored layout, and lays nothing out', 
     await expect(
       page
         .getByRole('complementary', { name: 'Inspector' })
-        .getByRole('listitem', { name: 'Los Angeles Rebuild for 2026-06-20' }),
+        .getByRole('listitem', { name: 'Los Angeles Draw for 20 June 2026' }),
     ).toBeVisible()
     expect((readRecord(engineHome).drawn as { date: string }).date).toBe('2026-06-20')
     expect(received(engineHome, 'graph.build'), 'nothing was laid out').toHaveLength(1)

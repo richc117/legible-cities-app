@@ -254,7 +254,7 @@ test('Outputs lists what is on disk, from files this session never wrote', async
     await openProject(page, PROJECT)
 
     const outputs = page.getByRole('region', { name: 'Outputs' })
-    await expect(outputs.getByText('instagram-reel')).toBeVisible()
+    await expect(outputs.getByText('Instagram reel', { exact: true })).toBeVisible()
     await expect(outputs.getByRole('button', { name: /^Reveal / })).toBeVisible()
     // No path, anywhere in the rail (constitution V).
     await expect(page.locator('.rail')).not.toContainText(h.exportFolder)
@@ -293,7 +293,7 @@ test('a file moved or deleted since reads as gone, and offers nothing to press',
     // because what was made is still worth saying.
     await reveal.click()
     await expect(outputs.getByText(GONE)).toBeVisible()
-    await expect(outputs.getByText('instagram-reel')).toBeVisible()
+    await expect(outputs.getByText('Instagram reel', { exact: true })).toBeVisible()
     await expect(reveal).toHaveCount(0)
     // An icon beside the sentence, never the hue by itself (principle 1).
     await expect(outputs.locator('.output-gone .icon')).toHaveCount(1)

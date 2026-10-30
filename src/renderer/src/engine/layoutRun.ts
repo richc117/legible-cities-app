@@ -15,6 +15,7 @@ import {
   type SentSet,
   type ServiceWindow,
 } from '../../../shared/project/types'
+import { dayWords } from '../dates'
 import { orderOf, paletteOf, sentSet } from '../record'
 import {
   failureOf,
@@ -95,6 +96,13 @@ export const LAYOUT_KEPT =
  * job a person watches is named as the command they pressed.
  */
 export const LAY_OUT_FROM_SCRATCH = 'Lay out from scratch'
+
+/**
+ * A rebuild for a chosen day's job, named for the button that starts it,
+ * cell 03's "Draw for this day", and with the day in words (issue 559):
+ * it was "Rebuild for 2026-09-17", a verb the screen never uses.
+ */
+export const drawForLabel = (day: string): string => `Draw for ${dayWords(day)}`
 
 export interface RunSnapshot {
   state: RunState
@@ -834,7 +842,7 @@ export class LayoutRun {
 
   /** `rebuild` once a second run has been refused: the job, the refusals, the record read. */
   #startRebuild(handed: ProjectRecord, engine: EngineState | null, date: string): void {
-    this.#open('rebuild', `Rebuild for ${date}`, handed.id)
+    this.#open('rebuild', drawForLabel(date), handed.id)
     if (handed.layout === null) {
       this.#set({
         state: 'failed',
@@ -919,7 +927,7 @@ export class LayoutRun {
     // flags, the cell that reads running - until the record is read. The
     // engine is ready, so `#begin` starts it.
     if (pressed.kind === 'rebuild') {
-      this.#open('rebuild', `Rebuild for ${pressed.date}`, handed.id)
+      this.#open('rebuild', drawForLabel(pressed.date), handed.id)
       this.#begin(engine, kindFlags({ kind: 'rebuild', day: pressed.date }))
     } else {
       // A plan of nothing goes this way too, as a layout, for as long as the
@@ -945,7 +953,7 @@ export class LayoutRun {
       }
       this.#become(
         'rebuild',
-        `Rebuild for ${plan.date}`,
+        drawForLabel(plan.date),
         kindFlags({ kind: 'rebuild', day: plan.date }),
       )
       this.#feedKey = null

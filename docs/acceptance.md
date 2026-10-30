@@ -696,13 +696,15 @@ Result: ____
 ### 11. Cell 06, Export: a reel
 
 **Do.** Open cell **06 Export**. Leave **Preset** on
-"instagram-reel: 1080 by 1920, video, MP4" (under **Instagram**) and
+"Instagram reel, 1080 by 1920, MP4 video" (under **Instagram**) and
 **Storyboard** on the preset's own. Press **Export**. Time it.
 
 **See.**
 - The **Preset** select lists thirteen presets under Instagram, LinkedIn,
-  Bluesky and X, each "`<name>`: `<width>` by `<height>`, `<what it
-  makes>`".
+  Bluesky and X, each "`<title>`, `<width>` by `<height>`, `<what it
+  makes>`", the title naming the platform and what is made for it and
+  never the engine's id (a GIF's title says GIF, and nothing follows its
+  size).
 - While the cell is open, a preview inside it shows the export's tall
   frame, with the parts Instagram covers shaded, and a caption under it,
   "9:16, 1080 x 1920." and that the shading is guidance and not in the
@@ -747,13 +749,13 @@ Result: ____
 
 ### 12. Cell 06, Export: a post and a GIF
 
-**Do.** Choose **Preset** "instagram-post: 1080 by 1350, still, PNG". In
+**Do.** Choose **Preset** "Instagram post, 1080 by 1350, PNG still". In
 **Caption** type any 60 characters and then an 81st, and read what appears
 under the field. Replace them with `Rush hour on the Red Line` and press
 Tab. In **Alt text for the file’s sidecar** type
 `A schematic of the Los Angeles rail lines.` with a space before it and one
 after, and click elsewhere. Press **Export**. Then choose
-"instagram-reel-gif: 630 by 1120, GIF", choose **Opening** "Title card, then
+"Instagram reel as a GIF, 630 by 1120", choose **Opening** "Title card, then
 the network drawing in", and press **Export**.
 
 **See.**
@@ -807,8 +809,9 @@ and press **Reveal** on the newest.
 - Closing cell 06 takes its preview away; the map, which it never touched,
   is where it was.
 - **Outputs** lists three rows, one per export of steps 11 and 12, the
-  newest first, each with its preset, when it was made and **Reveal** (a screen reader names
-  it "Reveal `<preset>`, `<file>`").
+  newest first, each with its preset's title, when it was made and
+  **Reveal** (a screen reader names it "Reveal `<preset's title>`,
+  `<file>`").
 - The platform's own file browser (the Finder, or File Explorer) opens on
   the export folder's `LA Metro Rail` folder, with that export selected.
 - The folder is at the place install.md's table gives (on Windows, inside
@@ -917,9 +920,9 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
 - The inspector's heading **Jobs** takes focus, and lists this session's
   jobs, the newest first and at most the last twenty finished: "Layout run"
   for Caltrain, the feed add ("Feed add of Caltrain"),
-  "Export as instagram-reel-gif", "Export as instagram-post",
-  "Export as instagram-reel", the rebuilds ("Redraw in a new line order",
-  "Redraw in new colours", "Rebuild for `<day>`") and "Layout run" for LA
+  "Export as Instagram reel as a GIF", "Export as Instagram post",
+  "Export as Instagram reel", the rebuilds ("Redraw in a new line order",
+  "Redraw in new colours", "Draw for `<day in words>`") and "Layout run" for LA
   Metro Rail, each "finished, started `<time>`", headed by its project's
   name, or by "Feeds" for the feed add. A job that is running says which
   stage, "running `<stage>`, `<n>` of `<total>`, started `<time>`", above a line
