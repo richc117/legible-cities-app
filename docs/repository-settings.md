@@ -81,6 +81,12 @@ access.
       pushes release tags by hand; nothing in a workflow creates, moves or
       deletes one, so the Actions token needs no bypass.
 
+## Discussions
+
+- [x] **Discussions** off (checked 29 Oct 2026). ADR-030 keeps one board, and
+      a sole maintainer would be watching a second place. `SUPPORT.md` sends
+      people to issues instead.
+
 ## Labels and milestones
 
 The issue templates and `.github/dependabot.yml` apply labels, which have to

@@ -21,6 +21,9 @@ Please do not open a public issue for a vulnerability.
 - Otherwise, contact the maintainer through the details published at
   https://www.richardcaballero.com and mention "Legible Cities security".
 
+A problem that is not a vulnerability, from someone with no GitHub account,
+goes by the same contact; `SUPPORT.md` says how.
+
 You will get an acknowledgement within a week and an honest estimate after
 that. There is no bounty programme.
 
