@@ -1,0 +1,66 @@
+[
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --source-ref \"$GITHUB_REF\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "asks for this repository, this workflow file, this ref and commit, and no self-hosted runner",
+    "why": "The verify without --source-ref: an attestation made for any ref of this repository, a branch build or v0.1.0's tag among them, would verify, and the check would pass a Release built from the wrong place."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "              --source-ref \"$GITHUB_REF\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies each installer and SHA256SUMS.txt, each against this repository, workflow, ref and commit",
+    "why": "The same deletion, caught by running the job's script with a stand-in gh: the call it makes no longer names the ref."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    permissions:\n      contents: read\n      attestations: read\n",
+    "replace": "    permissions:\n      contents: read\n      attestations: read\n      id-token: write\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "reads contents and attestations and cannot mint a token",
+    "why": "The verify job able to mint an OIDC token: checking would share a job with signing, which ADR-057 keeps apart."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " release-assets/SHA256SUMS.txt; do\n            echo \"verifying",
+    "replace": "; do\n            echo \"verifying",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies every subject the attest job signs, and nothing it does not",
+    "why": "SHA256SUMS.txt left out of the verify: the file that names every source archive would be signed and never checked."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        run: |\n          set -euo pipefail\n          for subject in release-assets/*.dmg",
+    "replace": "        run: |\n          for subject in release-assets/*.dmg",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "fails when one subject is refused, rather than going on",
+    "why": "The script without set -e: a refused installer would not stop the loop, and the job would end green on the last subject's status."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    needs: attest\n    if: ${{ !cancelled() && needs.attest.result == 'success' }}\n",
+    "replace": "    needs: release\n    if: ${{ !cancelled() && needs.release.result == 'success' }}\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "is a job of its own, after the attest job and only where that succeeded",
+    "why": "The verify running beside the attest job, not after it: it could look for an attestation that is not yet made and fail, or pass a run whose attest job failed."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "                if ! gh attestation verify \"$subject\" \\\n",
+    "replace": "                if ! true \"$subject\" \\\n",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched",
+    "why": "The acceptance run's verify call dropped: step 1 would record the attestation as verified without asking."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "                    --source-ref \"refs/tags/$TAG\" \\\n",
+    "replace": "",
+    "test": "tests/unit/release-attestation.test.ts",
+    "title": "verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched",
+    "why": "The acceptance verify without the tag: a download attested for some other ref of this repository would be recorded as verified."
+  }
+]
