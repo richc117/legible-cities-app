@@ -153,11 +153,13 @@ test('an export started in a project is followed from Settings, to its end', asy
 
     const job = jobNamed(page, 'Los Angeles Export as Instagram reel')
     await expect(job).toBeVisible()
-    await expect(job.getByRole('img')).toHaveAccessibleName(/^Running (plan|capture|encode)\.$/)
+    await expect(job.getByRole('img')).toHaveAccessibleName(
+      /^Running stage [123] of 3, (plan|capture|encode)\.$/,
+    )
     // The inspector's line has no labels (issue 278): the stage is said in
     // the words under the title, with its place among the three.
     await expect(job.locator('.job-meta')).toHaveText(
-      /^running (plan|capture|encode), [123] of 3, started /,
+      /^running stage [123] of 3, (plan|capture|encode), started /,
     )
     await expect(
       job.getByRole('button', { name: /^Cancel: Export as Instagram reel/ }),
