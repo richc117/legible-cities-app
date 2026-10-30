@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import type { FeedRecord } from '../../shared/protocol'
 import Card from './Card'
 import { placeOf } from './FeedList'
@@ -64,18 +64,35 @@ interface Props {
    * nothing - the front door knows which of its reasons it is.
    */
   sentence: string | null
+  /**
+   * What can be pressed while the engine is down (issue 562), drawn under
+   * the sentence, which is then drawn whether or not there are cards.
+   */
+  actions?: ReactNode
   onOpen: (feed: FeedRecord) => void
 }
 
-export default function SampleCities({ presets, palette, sentence, onOpen }: Props): JSX.Element {
+export default function SampleCities({
+  presets,
+  palette,
+  sentence,
+  actions,
+  onOpen,
+}: Props): JSX.Element {
   return (
     <section className="front-door-region" aria-labelledby={SAMPLES_HEADING_ID}>
       <h2 id={SAMPLES_HEADING_ID} tabIndex={-1}>
         Sample cities
       </h2>
-      {presets.length === 0 ? (
-        sentence !== null && <p className="prose">{sentence}</p>
-      ) : (
+      {/* The sentence goes with the actions whenever they are drawn, so a
+          button is never under the cards with nothing saying why it is
+          there (issue 562); and the two come before any cards, under the
+          heading. */}
+      {(presets.length === 0 || Boolean(actions)) && sentence !== null && (
+        <p className="prose">{sentence}</p>
+      )}
+      {actions}
+      {presets.length > 0 && (
         <ul className="cards" aria-label="Presets">
           {presets.map((feed) => {
             const place = placeOf(feed)

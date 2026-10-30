@@ -307,6 +307,7 @@ describe('a field the paths cannot be looked for in', () => {
       cancel: () => {},
       onState: () => () => {},
       onNotification: () => () => {},
+      retry: () => null,
     }
     const warned = vi.spyOn(log, 'warn').mockImplementation(() => {})
     // A folder that is not a string makes the scrub throw, which is how a
@@ -322,6 +323,7 @@ describe('a field the paths cannot be looked for in', () => {
       broken,
       new ProjectActivity(() => 0),
       { recordGone: async () => false },
+      () => null,
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
     await tick()
@@ -366,6 +368,7 @@ describe('both bridges hand the door their folders', () => {
       cancel: () => {},
       onState: () => () => {},
       onNotification: () => () => {},
+      retry: () => null,
     }
     registerEngineHandlers(
       ipc,
@@ -377,6 +380,7 @@ describe('both bridges hand the door their folders', () => {
       ROOTS,
       new ProjectActivity(() => 0),
       { recordGone: async () => false },
+      () => null,
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
     await tick()

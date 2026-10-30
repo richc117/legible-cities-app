@@ -11,9 +11,9 @@ type EngineState =
   | { state: 'starting'; attempt: number }                         // attempt 1 on launch; 2..4 on restarts
   | { state: 'ready'; version: string; protocol: 1 }
   | { state: 'restarting'; attempt: number; reason: string }       // attempt is the one about to run (2, 3, 4); a fourth failure in a row is `stopped`
-  | { state: 'unavailable'; reason: string }                       // no interpreter; never retried by itself
+  | { state: 'unavailable'; reason: string; retryable: boolean }    // no interpreter (not retryable), or it could not be spawned (retryable); never retried by itself
   | { state: 'mismatched'; expected: EnginePin; found: { version: string; protocol: number } }
-  | { state: 'stopped'; reason: string }                           // gave up, or the app is quitting
+  | { state: 'stopped'; reason: string; retryable: boolean }        // gave up (retryable), or the app is quitting (not)
 ```
 
 Transitions (contracts/sidecar.md has the full table): `starting → ready`
@@ -21,7 +21,10 @@ on a good handshake; `starting → mismatched` on a bad one; `starting →
 restarting` when the process ends or the handshake times out before
 `ready` and attempts remain, else `→ stopped`; `ready → restarting` on an
 unexpected exit; `restarting → starting` after the wait; anything `→
-stopped` on quit; `unavailable` is terminal for the run.
+stopped` on quit; `unavailable` is terminal for the run unless a person
+presses Try again (issue 562), which `retryable` says can help: a
+`stopped` after giving up and an `unavailable` whose interpreter could not
+be spawned go `→ starting` with the whole restart budget.
 
 `reason` is one sentence for a person, and always logged too.
 

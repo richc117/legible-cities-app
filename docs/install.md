@@ -468,9 +468,10 @@ starts it again by itself a few times, and when it gives up the Library
 leads with this sentence, then the engine's last reason and how many times in
 a row it failed:
 
-> Quit and open Legible Cities again.
+> Press Try again to start the engine once more, or quit and open Legible Cities again.
 
-Do that: only a quit and a start begins the engine afresh. If it fails again,
+Either begins the engine afresh; **Try again** is the button under the
+sentence, beside **Copy diagnostics**. If it fails again,
 report it with the diagnostics and `engine.log`.
 
 ### Where the logs are

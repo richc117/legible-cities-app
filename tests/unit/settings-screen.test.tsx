@@ -50,7 +50,7 @@ function section(html: string, name: string): string {
 describe('the Versions section', () => {
   it('names the app first, with the version the main process reported, when the engine is away', () => {
     const versions = section(
-      markup({ state: 'unavailable', reason: 'it did not start' }),
+      markup({ state: 'unavailable', reason: 'it did not start', retryable: true }),
       'Versions',
     )
     expect(versions).toContain('<dt>App</dt><dd>4.2.0-test</dd>')
@@ -68,7 +68,7 @@ describe('the Versions section', () => {
 })
 
 describe('the sections that hold the logs and the folders', () => {
-  const html = markup({ state: 'unavailable', reason: 'it did not start' })
+  const html = markup({ state: 'unavailable', reason: 'it did not start', retryable: true })
 
   it('file the logs and Copy diagnostics under a heading of their own', () => {
     const logs = section(html, 'Logs and diagnostics')
@@ -104,7 +104,7 @@ describe('the sections that hold the logs and the folders', () => {
 })
 
 describe('one glyph, one meaning', () => {
-  const html = markup({ state: 'unavailable', reason: 'it did not start' })
+  const html = markup({ state: 'unavailable', reason: 'it did not start', retryable: true })
   const FOLDER = iconMarkup('folder', 16)
   const JOBS = iconMarkup('layers', 16)
 

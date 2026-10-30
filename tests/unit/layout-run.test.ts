@@ -1010,7 +1010,10 @@ describe('the run survives the record it writes', () => {
 
 describe('the run refuses when it cannot start', () => {
   it('refuses while the engine is not ready, and calls nothing', () => {
-    const { run, calls, begin } = setup({}, { state: 'unavailable', reason: 'no interpreter' })
+    const { run, calls, begin } = setup(
+      {},
+      { state: 'unavailable', reason: 'no interpreter', retryable: false },
+    )
     begin()
     expect(calls).toHaveLength(0)
     expect(run.snapshot.state).toBe('failed')

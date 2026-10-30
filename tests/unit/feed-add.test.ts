@@ -237,7 +237,10 @@ describe('FeedAdd', () => {
     expect(calls).toHaveLength(0)
     expect(run.snapshot.error).toMatch(/starting/)
     run.reset()
-    run.start({ url: 'https://x.test/a.zip' }, { state: 'unavailable', reason: 'none' })
+    run.start(
+      { url: 'https://x.test/a.zip' },
+      { state: 'unavailable', reason: 'none', retryable: false },
+    )
     expect(run.snapshot.error).toMatch(/not ready/)
   })
 

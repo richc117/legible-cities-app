@@ -101,7 +101,9 @@
 /* A way to a cell, in a sentence: a button that reads as a link, because
    it moves focus by script and a fragment link would rewrite the window's
    address (`SkipPastMap.tsx` says the same of the skip). The map's empty
-   state uses it for cell 02 and Outputs' for cell 06. */
+   state uses it for cell 02 and Outputs' for cell 06; the Library's "How to
+   install", while the engine is down, for the way out to the install
+   document, which the main process opens (issue 562). */
 .inline-link {
   display: inline;
   margin: 0;

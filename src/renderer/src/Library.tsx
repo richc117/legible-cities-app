@@ -13,11 +13,19 @@ import { uniqueName } from './record'
 import Card from './Card'
 import { sentenceFor, type AddSnapshot, type FeedAdd } from './engine/feedAdd'
 import { forgetFeedList, forgetInspection } from './engine/inspections'
-import { engineClient, feedAdd, peekLayoutRun, subscribeToRuns } from './engine/runs'
+import {
+  engineClient,
+  feedAdd,
+  peekLayoutRun,
+  reportsInSession,
+  subscribeToRuns,
+} from './engine/runs'
 import ConfirmDialog from './ConfirmDialog'
 import NewProjectSheet, { type SheetStart } from './NewProjectSheet'
 import FeedList, { FEEDS_HEADING_ID, placeOf } from './FeedList'
 import SampleCities, { SAMPLES_HEADING_ID } from './SampleCities'
+import EngineDownActions, { downActions } from './EngineDownActions'
+import { copyDiagnostics } from './Settings'
 import { afterRendering, focusLost } from './focusHandback'
 import { projectPictureAddress, type Palette } from './frontDoorPictures'
 import Icon from './icons/Icon'
@@ -219,13 +227,27 @@ export const SAMPLES_AWAY =
  * (unavailable, mismatched, or stopped after failing too often): no promise
  * of a wait, and where to go if it keeps happening (issue 547). The reason
  * comes first, in full, since the status line cuts a long one short, and a
- * packaged app's reason leads with its own next step.
+ * packaged app's reason leads with its own next step. Copy diagnostics is
+ * under the sentence since issue 562, not two screens away in Settings.
  */
 export const SAMPLES_ENGINE_DOWN =
-  "The sample cities cannot be listed until the engine runs. If this keeps happening, open Settings, press Copy diagnostics and paste what it copies into a new issue on the project's tracker."
+  "The sample cities cannot be listed until the engine runs. If this keeps happening, press Copy diagnostics and paste what it copies into a new issue on the project's tracker."
 
-/** What a stopped engine leads with: only a quit and a start again begins it anew. */
-export const SAMPLES_STOPPED_FIRST = 'Quit and open Legible Cities again.'
+/**
+ * The same, for when the sample cities are on screen all the same, listed
+ * before the engine went down (issue 562): they are there, so the sentence
+ * does not say they cannot be listed, only that a new one cannot be opened.
+ */
+export const SAMPLES_ENGINE_DOWN_LISTED =
+  "New sample cities cannot be opened until the engine runs. If this keeps happening, press Copy diagnostics and paste what it copies into a new issue on the project's tracker."
+
+/**
+ * What a stopped engine leads with: the two ways to begin it anew, the one
+ * under the sentence first (issue 562). A stop after giving up is always
+ * retryable, so Try again is there whenever this is said.
+ */
+export const SAMPLES_STOPPED_FIRST =
+  'Press Try again to start the engine once more, or quit and open Legible Cities again.'
 
 /** What it says when the engine is ready and its answer to `feeds.list` failed. */
 export const SAMPLES_UNREAD =
@@ -239,19 +261,26 @@ export const SAMPLES_NONE = 'The engine lists no sample cities.'
  * of the three reasons it is, or nothing while the first read is still on
  * its way - a sentence saying the engine is not ready, under a status line
  * that says it is, would be the screen contradicting itself for a beat.
+ * `cards` is whether sample cards are on screen all the same, which changes
+ * what the engine being down costs (issue 562).
  */
-export function samplesSentence(engine: EngineState | null, read: FeedsRead): string | null {
+export function samplesSentence(
+  engine: EngineState | null,
+  read: FeedsRead,
+  cards = false,
+): string | null {
   if (engine !== null && isDown(engine)) {
+    const down = cards ? SAMPLES_ENGINE_DOWN_LISTED : SAMPLES_ENGINE_DOWN
     // The app's own quit stops the engine too, and is no failure to report.
     if (engine.state === 'stopped') {
       return engine.reason === QUITTING_REASON
         ? SAMPLES_AWAY
-        : `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+        : `${SAMPLES_STOPPED_FIRST} ${engine.reason} ${down}`
     }
-    if (engine.state === 'unavailable') return `${engine.reason} ${SAMPLES_ENGINE_DOWN}`
+    if (engine.state === 'unavailable') return `${engine.reason} ${down}`
     // Ended at the handshake and never restarted: it has no reason of its own,
     // the dialog says which versions, and the status line the sentence.
-    return SAMPLES_ENGINE_DOWN
+    return down
   }
   if (engine?.state !== 'ready') return SAMPLES_AWAY
   if (read === 'failed') return SAMPLES_UNREAD
@@ -624,7 +653,8 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
   }
 
   const presets = feeds.filter((feed) => feed.source === 'preset')
-  const samples = samplesSentence(engine, feedsRead)
+  const samples = samplesSentence(engine, feedsRead, presets.length > 0)
+  const down = downActions(engine)
   const addedFeeds = feeds.filter((feed) => feed.source === 'user')
   const startFrom = (feed: FeedRecord): void => {
     setFeedNotice(null)
@@ -718,6 +748,22 @@ export default function Library({ notice, onOpen }: Props): JSX.Element {
           palette={palette}
           sentence={samples}
           onOpen={(feed) => void openSample(feed)}
+          actions={
+            down !== null && (
+              <EngineDownActions
+                actions={down}
+                onRetry={() => window.api.engine.retry()}
+                onCopyDiagnostics={() =>
+                  copyDiagnostics({
+                    listProjects: () => window.api.projects.list(),
+                    reports: reportsInSession,
+                    copy: (reports) => window.api.settings.copyDiagnostics(reports),
+                  })
+                }
+                onOpenInstallGuide={() => window.api.firstRun.openInstallGuide()}
+              />
+            )
+          }
         />
       )}
       {library.status === 'ready' && addedFeeds.length > 0 && (

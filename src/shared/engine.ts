@@ -19,13 +19,44 @@ export interface EnginePin {
 /** The stopped reason the supervisor sets for the app's own quit, which is not a failure. */
 export const QUITTING_REASON = 'The app is quitting.'
 
+/**
+ * Why `Sidecar.retry` would not start the engine again (issue 562), one
+ * sentence each, for the line under the Library's buttons. The page offers
+ * the button only where the state says a retry can work, so most of these
+ * are said only when the state moved between the drawing and the press;
+ * `stillStopping` is the exception, since the state says `stopped` the
+ * moment the supervisor gives up, before the engine it gave up on has been
+ * ended, which can take some seconds.
+ */
+export const RETRY_REFUSALS = {
+  quitting: 'The app is quitting, so the engine is not started again.',
+  noInterpreter:
+    'There is no interpreter to start the engine with, so trying again would not help.',
+  mismatched:
+    'The engine is the wrong version for this app, so starting it again would find the same one.',
+  notDown: 'The engine is already running or on its way.',
+  stillStopping: 'The engine is still stopping. Try again in a moment.',
+} as const
+
+/**
+ * `retryable` on the two down states that carry it says whether a person's
+ * "Try again" can help (issue 562): true where the supervisor gave up after
+ * failing too often, or where the interpreter existed when the app opened
+ * and its spawn then failed (not executable, say, or taken away since); false
+ * where no interpreter was found at all, and for the app's own quit. The
+ * interpreter is looked for once, as the app opens, and a retry does not look
+ * again: one missing then, a runtime a scanner quarantined before the start
+ * among them, is `command: null` and offers no button. A
+ * mismatched engine has no such flag: starting it again finds the same
+ * version, and its dialog says so.
+ */
 export type EngineState =
   | { state: 'starting'; attempt: number }
   | { state: 'ready'; version: string; protocol: number }
   | { state: 'restarting'; attempt: number; reason: string }
-  | { state: 'unavailable'; reason: string }
+  | { state: 'unavailable'; reason: string; retryable: boolean }
   | { state: 'mismatched'; expected: EnginePin; found: { version: string; protocol: number } }
-  | { state: 'stopped'; reason: string }
+  | { state: 'stopped'; reason: string; retryable: boolean }
 
 // The three shapes below are the engine's, from the generated types
 // (A1-02), with the app's own two differences named rather than copied, so

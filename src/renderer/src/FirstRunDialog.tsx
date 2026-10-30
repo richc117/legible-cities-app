@@ -12,6 +12,13 @@ import Button from './kit/Button'
 // Settings keeps saying what the check found after this is dismissed.
 
 /**
+ * What "How to install" says when the install document would not open: here
+ * and on the Library while the engine is down (issue 562), the same words.
+ */
+export const installGuideNotOpened = (why: string): string =>
+  `The install document could not be opened: ${why}.`
+
+/**
  * The check's result as the main process reports it: every change as it
  * happens, and the current one for a screen that mounted after a change.
  * Null until the first answer.
@@ -228,7 +235,7 @@ export default function FirstRunDialog({
           onClick={() => {
             setSaid(null)
             window.api.firstRun.openInstallGuide().catch((error: unknown) => {
-              setSaid(`The install document could not be opened: ${messageOf(error)}.`)
+              setSaid(installGuideNotOpened(messageOf(error)))
             })
           }}
         >

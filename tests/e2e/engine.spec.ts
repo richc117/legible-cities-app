@@ -1,7 +1,8 @@
 // The built app against the stand-in engine: the status line, a request
 // from the page with the engine's answer and its error intact, a restart
-// after the engine is killed from outside, nothing left after quit, and the
-// app still usable with no engine at all. Needs a Python 3 on the PATH for
+// after the engine is killed from outside, nothing left after quit, the
+// app still usable with no engine at all, and Try again once the supervisor
+// has given up (issue 562). Needs a Python 3 on the PATH for
 // the stand-in; skips, saying so, without one.
 
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -164,6 +165,68 @@ test('says the engine is unavailable when no interpreter exists, and still works
     expect(
       await page.evaluate(() => (globalThis as unknown as Bridge).api.projects.list()),
     ).toHaveLength(1)
+  })
+})
+
+// Something to press when the engine is down (issue 562). The stand-in exits
+// at once on every launch, so the supervisor gives up after its fourth
+// start (1, 2 and 4 seconds between them); each launch reads the control
+// file again, so the test puts the engine right on disk and then presses
+// Try again, and the samples list.
+test('offers Try again and Copy diagnostics once the engine has stopped, and Try again starts it once more', async () => {
+  // Four launches and 7 s of backoff before the give-up, then a start again.
+  test.setTimeout(120_000)
+  const home = fakeHome({ exit: 'at-once' })
+  const env = {
+    SCHEMATIC_HOME: home,
+    LEGIBLE_ENGINE_PYTHON: PYTHON as string,
+    PYTHONPATH: FAKE_ENGINE,
+    // A profile of its own: the logs the copy quotes are this test's alone.
+    LEGIBLE_USER_DATA: mkdtempSync(join(tmpdir(), 'legible-cities-retry-e2e-')),
+  }
+  await withApp(env, async (page, app) => {
+    const status = page.getByRole('status', { name: 'Engine' })
+    await expect(status).toContainText(/engine stopped/i, { timeout: 30_000 })
+    const samples = page.getByRole('region', { name: 'Sample cities' })
+    await expect(samples).toContainText(/^Sample cities\s*Press Try again to start the engine/)
+    await expect(samples).not.toContainText('open Settings')
+    const retry = samples.getByRole('button', { name: 'Try again' })
+    const copy = samples.getByRole('button', { name: 'Copy diagnostics' })
+    await expect(retry).toBeVisible()
+    await expect(copy).toBeVisible()
+    await expect(samples.getByRole('button', { name: 'How to install' })).toBeVisible()
+
+    // The copy is here, not two screens away, and says so under the buttons.
+    await copy.click()
+    await expect(samples.getByRole('status')).toContainText('on the clipboard')
+    const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
+    expect(copied).toMatch(/## engine\.log/)
+
+    // Put right, and pressed from the keyboard: focus is on the region's
+    // heading before the button goes with the state that drew it.
+    writeFileSync(join(home, 'fake-engine.json'), JSON.stringify({ version: PINNED_ENGINE }))
+    await retry.focus()
+    await page.keyboard.press('Enter')
+    await expect(samples.getByRole('heading', { name: 'Sample cities' })).toBeFocused()
+    await expect(status).toHaveText(`Engine ready (${PINNED_ENGINE}).`, { timeout: 15_000 })
+    await expect(samples.getByRole('list', { name: 'Presets' })).toBeVisible()
+    await expect(samples.getByRole('button', { name: 'Try again' })).toHaveCount(0)
+    await expect(samples.getByRole('button', { name: 'Copy diagnostics' })).toHaveCount(0)
+    await expect(samples.getByRole('heading', { name: 'Sample cities' })).toBeFocused()
+  })
+})
+
+// With no interpreter at all, a start cannot help, so Try again is not
+// offered; the help is.
+test('offers no Try again when there is no interpreter to start, only the help', async () => {
+  const home = fakeHome()
+  const missing = join(home, 'nowhere', process.platform === 'win32' ? 'python.exe' : 'python')
+  await withApp({ SCHEMATIC_HOME: home, LEGIBLE_ENGINE_PYTHON: missing }, async (page) => {
+    await expect(page.getByRole('status', { name: 'Engine' })).toContainText(/engine unavailable/i)
+    const samples = page.getByRole('region', { name: 'Sample cities' })
+    await expect(samples.getByRole('button', { name: 'Copy diagnostics' })).toBeVisible()
+    await expect(samples.getByRole('button', { name: 'How to install' })).toBeVisible()
+    await expect(samples.getByRole('button', { name: 'Try again' })).toHaveCount(0)
   })
 })
 

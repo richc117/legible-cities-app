@@ -12,9 +12,17 @@ const states: Record<EngineState['state'], EngineState> = {
   starting: { state: 'starting', attempt: 1 },
   ready: { state: 'ready', version: '1.0.0', protocol: 1 },
   restarting: { state: 'restarting', attempt: 2, reason: 'It exited.' },
-  unavailable: { state: 'unavailable', reason: 'The engine could not be started.' },
+  unavailable: {
+    state: 'unavailable',
+    reason: 'The engine could not be started.',
+    retryable: true,
+  },
   mismatched: { state: 'mismatched', expected: pin, found: { version: '0.9.0', protocol: 1 } },
-  stopped: { state: 'stopped', reason: 'It exited. The engine failed 3 times in a row.' },
+  stopped: {
+    state: 'stopped',
+    reason: 'It exited. The engine failed 3 times in a row.',
+    retryable: true,
+  },
 }
 
 const table: ReadonlyArray<{ state: EngineState['state']; down: boolean; settled: boolean }> = [

@@ -304,6 +304,13 @@
   margin: var(--space-4-6) 0 var(--space-4-3);
 }
 
+/* "How to install" beside the kit's buttons while the engine is down
+   (issue 562): a link in its looks, a target in its size (WCAG 2.5.8),
+   which also gives it the row's centre line the buttons are drawn on. */
+.front-door-region .toolbar .inline-link {
+  min-block-size: var(--target-min);
+}
+
 /* The front door's cards (A5.6-02, ADR-047): "Your projects" and "Sample
    cities" are one gallery of one card, as many to a row as fit at
    `--card-min-width`, each one native button (`Card.tsx`). The picture area

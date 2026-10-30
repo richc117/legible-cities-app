@@ -47,6 +47,9 @@ links are inline, with no images and no reference-style links.
   will replace and that a filename tag keeps both.
 - [What 1.0 keeps](docs/compatibility.md) says which of your files a later
   1.x will still read.
+- When the engine stops and does not come back, the Library offers **Try
+  again**, **Copy diagnostics** and **How to install** under its sentence,
+  so starting it again no longer needs a quit.
 
 ### Changed
 

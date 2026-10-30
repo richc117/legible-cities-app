@@ -27,7 +27,11 @@ interface Deferred {
   reject(error: unknown): void
 }
 
-function harness(topFrame = true, guard?: (method: string) => Promise<string | null>) {
+function harness(
+  topFrame = true,
+  guard?: (method: string) => Promise<string | null>,
+  resetting: () => string | null = () => null,
+) {
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -47,6 +51,9 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
   let notificationListener: ((n: Notification) => void) | null = null
   let nextId = 1
   let state: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
+  // What the supervisor's retry answers, and how many times it was asked.
+  let retryAnswer: string | null = null
+  const retries = { count: 0 }
   const engine: EngineSource = {
     get state() {
       return state
@@ -61,6 +68,10 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     onNotification: (l) => {
       notificationListener = l
       return () => {}
+    },
+    retry: () => {
+      retries.count += 1
+      return retryAnswer
     },
   }
   const defaultRequest = (
@@ -91,6 +102,7 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     NO_ROOTS,
     new ProjectActivity(() => 0),
     { recordGone: async () => false },
+    resetting,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
@@ -110,21 +122,32 @@ function harness(topFrame = true, guard?: (method: string) => Promise<string | n
     setEngineRequest: (request: typeof defaultRequest) => {
       engineRequest = request
     },
+    retries,
+    setRetryAnswer: (answer: string | null) => {
+      retryAnswer = answer
+    },
   }
 }
 
 describe('registerEngineHandlers', () => {
-  it('registers the three channels and nothing else', () => {
+  it('registers the four channels and nothing else', () => {
     const { handlers } = harness()
     expect([...handlers.keys()].sort()).toEqual(
-      [CHANNELS.engineState, CHANNELS.engineRequest, CHANNELS.engineCancel].sort(),
+      [
+        CHANNELS.engineState,
+        CHANNELS.engineRequest,
+        CHANNELS.engineCancel,
+        CHANNELS.engineRetry,
+      ].sort(),
     )
   })
   it('refuses a caller that is not the top frame', async () => {
-    const { call, requests } = harness(false)
+    const { call, requests, retries } = harness(false)
     await expect(call(CHANNELS.engineState)).rejects.toThrow('forbidden')
     await expect(call(CHANNELS.engineRequest, 't1', 'engine.info')).rejects.toThrow('forbidden')
     expect(requests).toEqual([])
+    await expect(call(CHANNELS.engineRetry)).rejects.toThrow('forbidden')
+    expect(retries.count, 'a subframe never reaches the supervisor').toBe(0)
   })
   it('answers the state and sends each change to the window', async () => {
     const { call, sent, setState } = harness()
@@ -215,7 +238,7 @@ describe('registerEngineHandlers', () => {
   })
   it('passes a refusal from the supervisor through as a settled error', async () => {
     const { call, setState, sent } = harness()
-    setState({ state: 'unavailable', reason: 'no engine' })
+    setState({ state: 'unavailable', reason: 'no engine', retryable: false })
     expect(await call(CHANNELS.engineRequest, 'tok', 'engine.info')).toEqual({ accepted: true })
     await tick()
     const settled = sent.find((m) => m.channel === CHANNELS.engineSettled)
@@ -704,5 +727,35 @@ describe('a request has no deadline of its own (issue 351)', () => {
       accepted: boolean
     }
     expect(again.accepted).toBe(true)
+  })
+})
+
+// The Library's "Try again" (issue 562): the supervisor is asked only from
+// the top frame and never while the engine's data is being reset.
+describe('the retry', () => {
+  const RESETTING = 'The engine data is being reset; wait for it to finish.'
+
+  it('asks the supervisor and answers null once the engine is starting again', async () => {
+    const h = harness()
+    expect(await h.call(CHANNELS.engineRetry)).toBeNull()
+    expect(h.retries.count).toBe(1)
+  })
+
+  it('passes the supervisor’s refusal through, and logs it', async () => {
+    const h = harness()
+    h.setRetryAnswer('The engine is already running or on its way.')
+    expect(await h.call(CHANNELS.engineRetry)).toBe('The engine is already running or on its way.')
+    expect(h.log.some((line) => line.includes('refused a retry'))).toBe(true)
+  })
+
+  it('is refused while the engine data is being reset, with the reset’s sentence, and the supervisor is never asked', async () => {
+    let resetting: string | null = RESETTING
+    const h = harness(true, undefined, () => resetting)
+    expect(await h.call(CHANNELS.engineRetry)).toBe(RESETTING)
+    expect(h.retries.count, 'nothing started under the reset').toBe(0)
+
+    resetting = null
+    expect(await h.call(CHANNELS.engineRetry)).toBeNull()
+    expect(h.retries.count).toBe(1)
   })
 })

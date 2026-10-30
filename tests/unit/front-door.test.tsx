@@ -16,6 +16,7 @@ import Library, {
   ProjectCards,
   SAMPLES_AWAY,
   SAMPLES_ENGINE_DOWN,
+  SAMPLES_ENGINE_DOWN_LISTED,
   SAMPLES_NONE,
   SAMPLES_STOPPED_FIRST,
   SAMPLES_UNREAD,
@@ -28,6 +29,7 @@ import SampleCities, {
   sampleName,
   sampleStatus,
 } from '../../src/renderer/src/SampleCities'
+import EngineDownActions, { downActions } from '../../src/renderer/src/EngineDownActions'
 import { samplePicture } from '../../src/renderer/src/samplePictures'
 import { summarise } from '../../src/main/record/helpers'
 import { type DrawnFrom, type ProjectRecord } from '../../src/shared/project/types'
@@ -157,10 +159,12 @@ describe('what the samples region says when it has no presets to draw', () => {
   const unavailable: EngineState = {
     state: 'unavailable',
     reason: 'The engine could not be started.',
+    retryable: true,
   }
   const stopped: EngineState = {
     state: 'stopped',
     reason: 'It exited. The engine failed 3 times in a row.',
+    retryable: true,
   }
 
   it('says the engine is on its way while it is starting or restarting, or not yet heard from', () => {
@@ -190,12 +194,18 @@ describe('what the samples region says when it has no presets to draw', () => {
     expect(samplesSentence(mismatched, 'unread')).toBe(SAMPLES_ENGINE_DOWN)
   })
 
-  it('leads a stopped engine with the one thing that begins it anew', () => {
-    expect(
-      samplesSentence(stopped, 'unread')?.startsWith('Quit and open Legible Cities again. '),
-    ).toBe(true)
-    // Not an engine that can still start by itself.
-    expect(samplesSentence(unavailable, 'unread')).not.toContain('Quit and open')
+  it('leads a stopped engine with the two things that begin it anew, the button first (issue 562)', () => {
+    expect(samplesSentence(stopped, 'unread')?.startsWith(`${SAMPLES_STOPPED_FIRST} `)).toBe(true)
+    expect(SAMPLES_STOPPED_FIRST).toBe(
+      'Press Try again to start the engine once more, or quit and open Legible Cities again.',
+    )
+    // An engine that could not be started leads with its own reason.
+    expect(samplesSentence(unavailable, 'unread')).not.toContain(SAMPLES_STOPPED_FIRST)
+  })
+
+  it('names the button under it, not Settings, for the diagnostics (issue 562)', () => {
+    expect(SAMPLES_ENGINE_DOWN).toContain('press Copy diagnostics')
+    expect(SAMPLES_ENGINE_DOWN).not.toContain('Settings')
   })
 
   it('carries the whole reason, first, which the status line cuts short', () => {
@@ -206,7 +216,7 @@ describe('what the samples region says when it has no presets to draw', () => {
   })
 
   it('does not report the app’s own quit as a failure', () => {
-    const quitting: EngineState = { state: 'stopped', reason: QUITTING_REASON }
+    const quitting: EngineState = { state: 'stopped', reason: QUITTING_REASON, retryable: false }
     expect(samplesSentence(quitting, 'unread')).toBe(SAMPLES_AWAY)
     expect(samplesSentence(quitting, 'listed')).toBe(SAMPLES_AWAY)
   })
@@ -741,7 +751,7 @@ describe('the samples region’s sentence, state by state (issue 595)', () => {
     ['ready, listed', { state: 'ready', version: '1.0.0', protocol: 1 }, 'listed', SAMPLES_NONE],
     [
       'unavailable',
-      { state: 'unavailable', reason: 'Reinstall the app.' },
+      { state: 'unavailable', reason: 'Reinstall the app.', retryable: true },
       'unread',
       `Reinstall the app. ${SAMPLES_ENGINE_DOWN}`,
     ],
@@ -753,13 +763,13 @@ describe('the samples region’s sentence, state by state (issue 595)', () => {
     ],
     [
       'stopped',
-      { state: 'stopped', reason: 'It exited.' },
+      { state: 'stopped', reason: 'It exited.', retryable: true },
       'unread',
       `${SAMPLES_STOPPED_FIRST} It exited. ${SAMPLES_ENGINE_DOWN}`,
     ],
     [
       'stopped by the app’s own quit',
-      { state: 'stopped', reason: QUITTING_REASON },
+      { state: 'stopped', reason: QUITTING_REASON, retryable: false },
       'unread',
       SAMPLES_AWAY,
     ],
@@ -767,5 +777,147 @@ describe('the samples region’s sentence, state by state (issue 595)', () => {
 
   it.each(rows)('%s', (_name, engine, read, sentence) => {
     expect(samplesSentence(engine, read)).toBe(sentence)
+  })
+})
+
+// Something to press when the engine is down (issue 562): Try again only
+// where a start can help, which the state's own `retryable` says, and Copy
+// diagnostics and How to install whenever the engine is not coming back by
+// itself - but not for the app's own quit, which is no failure.
+describe('what the samples region offers while the engine is down (issue 562)', () => {
+  const pin = { repo: 'https://github.com/x/y', tag: 'v1.0.0', version: '1.0.0', protocol: 1 }
+  const rows: ReadonlyArray<[string, EngineState | null, { retry: boolean } | null]> = [
+    ['not yet heard from', null, null],
+    ['starting', { state: 'starting', attempt: 1 }, null],
+    ['restarting', { state: 'restarting', attempt: 2, reason: 'It exited.' }, null],
+    ['ready', { state: 'ready', version: '1.0.0', protocol: 1 }, null],
+    [
+      'stopped after giving up',
+      { state: 'stopped', reason: 'It exited.', retryable: true },
+      { retry: true },
+    ],
+    [
+      'stopped by the app’s own quit',
+      { state: 'stopped', reason: QUITTING_REASON, retryable: false },
+      null,
+    ],
+    [
+      'unavailable, its interpreter not spawned',
+      { state: 'unavailable', reason: 'Reinstall the app.', retryable: true },
+      { retry: true },
+    ],
+    [
+      'unavailable, no interpreter at all',
+      { state: 'unavailable', reason: 'No engine to run.', retryable: false },
+      { retry: false },
+    ],
+    [
+      'mismatched',
+      { state: 'mismatched', expected: pin, found: { version: '0.9.0', protocol: 1 } },
+      { retry: false },
+    ],
+  ]
+
+  it.each(rows)('%s', (_name, engine, offered) => {
+    expect(downActions(engine)).toEqual(offered)
+  })
+
+  const drawn = (retry: boolean): string =>
+    renderToStaticMarkup(
+      <EngineDownActions
+        actions={{ retry }}
+        onRetry={async () => null}
+        onCopyDiagnostics={async () => ''}
+        onOpenInstallGuide={async () => undefined}
+      />,
+    )
+
+  it('draws Try again, Copy diagnostics and How to install where a start can help', () => {
+    const html = drawn(true)
+    expect(html).toContain('Try again')
+    expect(html).toContain('Copy diagnostics')
+    expect(html).toContain('How to install')
+    // Try again first: the next step before the help.
+    expect(html.indexOf('Try again')).toBeLessThan(html.indexOf('Copy diagnostics'))
+  })
+
+  it('draws no Try again where the state says it cannot help', () => {
+    const html = drawn(false)
+    expect(html).not.toContain('Try again')
+    expect(html).toContain('Copy diagnostics')
+    expect(html).toContain('How to install')
+  })
+
+  it('draws How to install as a link-styled button, and the copy’s result in a status line under them', () => {
+    const html = drawn(true)
+    expect(html).toMatch(/<button type="button" class="inline-link">How to install<\/button>/)
+    expect(html).toMatch(/<\/div><p class="message" role="status" aria-live="polite"><\/p>$/)
+  })
+
+  it('is drawn under the sentence, inside the Sample cities region', () => {
+    const html = renderToStaticMarkup(
+      <SampleCities
+        presets={[]}
+        palette="dark"
+        sentence={samplesSentence(
+          { state: 'stopped', reason: 'It exited.', retryable: true },
+          'unread',
+        )}
+        actions={<p>the actions</p>}
+        onOpen={() => undefined}
+      />,
+    )
+    expect(html.indexOf('Sample cities')).toBeLessThan(html.indexOf(SAMPLES_STOPPED_FIRST))
+    expect(html.indexOf(SAMPLES_STOPPED_FIRST)).toBeLessThan(html.indexOf('the actions'))
+    expect(html.endsWith('<p>the actions</p></section>')).toBe(true)
+  })
+
+  it('says over cards that a new sample cannot be opened, not that none can be listed', () => {
+    const pin = { repo: 'https://github.com/x/y', tag: 'v1.0.0', version: '1.0.0', protocol: 1 }
+    const down: EngineState[] = [
+      { state: 'stopped', reason: 'It exited.', retryable: true },
+      { state: 'unavailable', reason: 'Reinstall the app.', retryable: true },
+      { state: 'mismatched', expected: pin, found: { version: '0.9.0', protocol: 1 } },
+    ]
+    for (const engine of down) {
+      const over = samplesSentence(engine, 'listed', true)
+      expect(over?.endsWith(SAMPLES_ENGINE_DOWN_LISTED), engine.state).toBe(true)
+      expect(over).not.toContain('cannot be listed')
+      // With no cards, the sentence it always said.
+      expect(samplesSentence(engine, 'listed')?.endsWith(SAMPLES_ENGINE_DOWN)).toBe(true)
+    }
+    expect(SAMPLES_ENGINE_DOWN_LISTED).toContain('press Copy diagnostics')
+  })
+
+  it('draws the sentence with the actions even over cards, never the buttons alone', () => {
+    const sentence = samplesSentence(
+      { state: 'stopped', reason: 'It exited.', retryable: true },
+      'unread',
+      true,
+    ) as string
+    const html = renderToStaticMarkup(
+      <SampleCities
+        presets={[feed()]}
+        palette="dark"
+        sentence={sentence}
+        actions={<p>the actions</p>}
+        onOpen={() => undefined}
+      />,
+    )
+    // Its first sentence: the whole one carries an apostrophe the markup escapes.
+    expect(html).toContain(SAMPLES_STOPPED_FIRST)
+    // Under the heading: the sentence, then the actions, then the cards.
+    expect(html.indexOf(SAMPLES_STOPPED_FIRST)).toBeLessThan(html.indexOf('the actions'))
+    expect(html.indexOf('the actions')).toBeLessThan(html.indexOf('aria-label="Presets"'))
+    // With cards and no actions, the cards speak for themselves.
+    const quiet = renderToStaticMarkup(
+      <SampleCities
+        presets={[feed()]}
+        palette="dark"
+        sentence={sentence}
+        onOpen={() => undefined}
+      />,
+    )
+    expect(quiet).not.toContain(SAMPLES_STOPPED_FIRST)
   })
 })

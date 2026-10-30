@@ -45,6 +45,7 @@ engine: {
 | `engine:state` | invoke | — | `EngineState` |
 | `engine:request` | invoke | `token, method, params` | `{ accepted: true }` once the request is on its way, or `{ accepted: false, error: { code, message, data? } }` for a call refused before it started (resolved, never rejected, so `data` survives the trip) |
 | `engine:cancel` | invoke | `token` | `undefined` |
+| `engine:retry` | invoke | — | `null` once the engine is starting again, else the sentence for why not (a reset of the engine's data under way, or `Sidecar.retry`'s refusal); issue 562 |
 | `engine:state-changed` | send | `EngineState` | — |
 | `engine:progress` | send | `JobProgress` | — |
 | `engine:log` | send | `JobLog` | — |

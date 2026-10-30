@@ -299,7 +299,14 @@ are removed to the end, and the answer carries `cancel_too_late`. An exit
 nobody asked for
 rejects the requests in flight, restarts the engine after 1, 2 and 4 s, and
 gives up after three consecutive failures; the count starts afresh once
-the engine has answered a request or been ready for 30 s. On quit the app
+the engine has answered a request or been ready for 30 s. Once it has given
+up, or when the interpreter it was handed could not be spawned, the state
+says `retryable` and the Library offers **Try again** (issue 562): the
+supervisor's `retry()` forgives the failures and starts it with the whole
+budget again, refused while quitting, with no interpreter at all, for a
+mismatched engine, in every other state, and while the engine it gave up on
+is still being ended, and the bridge refuses it while the engine's data is
+being reset. On quit the app
 asks (`engine.shutdown`, 3 s), terminates (the group on POSIX, the tree with
 `taskkill /T /F` on Windows, 3 s), then kills, and only then exits. The
 state is one line in the interface's header, a polite live region.

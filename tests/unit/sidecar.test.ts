@@ -3,9 +3,12 @@
 // the bounds, restart, backoff, shutdown. Needs a Python 3 on the PATH to
 // run the stand-in; skips, saying so, without one.
 
+import type { ChildProcess } from 'node:child_process'
+import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { PassThrough } from 'node:stream'
 import { afterEach, describe, expect, it } from 'vitest'
 import { engineEnvironment } from '../../src/main/interpreter'
 import {
@@ -20,6 +23,7 @@ import {
 import {
   describeState,
   ERROR_CODES,
+  RETRY_REFUSALS,
   type EngineError,
   type EnginePin,
   type EngineState,
@@ -378,6 +382,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(none.state).toEqual({
       state: 'unavailable',
       reason: 'No engine to run: set LEGIBLE_ENGINE_CHECKOUT.',
+      retryable: false,
     })
     await expect(none.request('engine.info').result).rejects.toMatchObject({
       code: ERROR_CODES.notReady,
@@ -805,7 +810,11 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await rejected
     expect(Date.now() - started).toBeLessThan(1_500)
     expect(alive(pid)).toBe(false)
-    expect(h.sidecar.state).toEqual({ state: 'stopped', reason: 'The app is quitting.' })
+    expect(h.sidecar.state).toEqual({
+      state: 'stopped',
+      reason: 'The app is quitting.',
+      retryable: false,
+    })
     expect(h.log.some((l) => l.startsWith('ended on request'))).toBe(true)
     const again = Date.now()
     await h.sidecar.stop()
@@ -879,6 +888,154 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(error.message).toContain('restarting')
   })
 
+  // A person's "Try again" on the Library (issue 562).
+  describe('a retry', () => {
+    const attempts = (states: EngineState[]): string[] =>
+      states.map((s) =>
+        s.state === 'starting' || s.state === 'restarting' ? `${s.state} ${s.attempt}` : s.state,
+      )
+
+    it('after giving up, starts again with the whole restart budget', async () => {
+      const h = harness({ exit: 'at-once' })
+      h.sidecar.start()
+      const gaveUp = await h.until((s) => s.state === 'stopped')
+      expect(gaveUp).toMatchObject({ state: 'stopped', retryable: true })
+      const before = h.states.length
+      expect(h.sidecar.retry()).toBeNull()
+      // Each launch reads the stand-in's control file again; it still exits.
+      await h.until((s) => s.state === 'stopped' && h.states.length > before)
+      // Four starts again, three restarts between them, as a first start has:
+      // the failures that ended in giving up were forgiven.
+      expect(attempts(h.states.slice(before))).toEqual([
+        'starting 1',
+        'restarting 2',
+        'starting 2',
+        'restarting 3',
+        'starting 3',
+        'restarting 4',
+        'starting 4',
+        'stopped',
+      ])
+      expect(h.log).toContain('trying again, as a person asked')
+    })
+
+    it('after giving up, reaches ready when the engine has been put right', async () => {
+      const h = harness({ exit: 'at-once' })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      writeFileSync(join(h.home, 'fake-engine.json'), JSON.stringify({}))
+      expect(h.sidecar.retry()).toBeNull()
+      await h.until(ready)
+    })
+
+    it('starts an interpreter that could not be spawned once more, and says so again', async () => {
+      const states: EngineState[] = []
+      const missing = new Sidecar({
+        command: ['no-such-interpreter-xyz', '-m', 'schematic.serve'],
+        env: { PATH: process.env.PATH ?? '' },
+        pin: PIN,
+        log: () => {},
+        bounds: FAST,
+      })
+      missing.onState((s) => states.push(s))
+      missing.start()
+      await eventually(() => missing.state.state === 'unavailable', 5_000, 'unavailable')
+      expect(missing.state).toMatchObject({ state: 'unavailable', retryable: true })
+      expect(missing.retry()).toBeNull()
+      await eventually(
+        () => states.filter((s) => s.state === 'unavailable').length === 2,
+        5_000,
+        'unavailable again',
+      )
+      expect(attempts(states)).toEqual(['starting 1', 'unavailable', 'starting 1', 'unavailable'])
+      await missing.stop()
+    })
+
+    // The supervisor says stopped the moment it gives up, and only then ends
+    // the engine it gave up on. A handshake that timed out leaves that engine
+    // alive, and one that answers nothing takes the whole shutdown bound to
+    // end: a retry meanwhile would start a second engine on the same home.
+    it('is refused while the engine it gave up on is still being ended, and starts once it has gone', async () => {
+      const h = harness(
+        { mute: true },
+        // No restarts, so the first failure is the give-up. Bounds long
+        // enough for a cold interpreter on a slow runner to have written its
+        // pid before the handshake gives up, and to be alive well after.
+        { handshakeMs: 3_000, shutdownMs: 6_000, restartDelaysMs: [] },
+      )
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      // A cold interpreter can take a while to write its pid.
+      const pidFile = join(h.home, 'fake-engine.pid')
+      // The file can exist and still be empty, and `Number('')` is 0, which
+      // `process.kill(0, 0)` would call alive on POSIX.
+      await eventually(
+        () => existsSync(pidFile) && h.pid() > 0,
+        5_000,
+        'the engine to write its pid',
+      )
+      const pid = h.pid()
+      expect(alive(pid), 'the engine given up on is still running').toBe(true)
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
+      expect(h.pid(), 'no second engine wrote its pid').toBe(pid)
+
+      await eventually(() => !alive(pid), 15_000, 'the first engine to end')
+      // Its ending settles a moment after the exit is seen.
+      await eventually(() => h.sidecar.retry() === null, 5_000, 'a retry to start')
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(2)
+      // Past the describe's 20 seconds: up to 3 for the handshake, 6 for the
+      // shutdown and 15 for the end, on a slow runner.
+    }, 45_000)
+
+    it('is refused with no interpreter at all, which is not retryable', () => {
+      const none = new Sidecar({ command: null, env: {}, pin: PIN, log: () => {} })
+      none.start()
+      expect(none.state).toMatchObject({ state: 'unavailable', retryable: false })
+      expect(none.retry()).toBe(RETRY_REFUSALS.noInterpreter)
+      expect(none.state.state).toBe('unavailable')
+    })
+
+    it('is refused for a mismatched engine, which would answer the same version', async () => {
+      const h = harness({ version: '0.1.0' })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'mismatched')
+      const launches = h.states.filter((s) => s.state === 'starting').length
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.mismatched)
+      expect(h.sidecar.state.state).toBe('mismatched')
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(launches)
+    })
+
+    it('is refused while the engine is ready, or on its way, so no second engine starts', async () => {
+      const h = harness()
+      expect(h.sidecar.retry(), 'before the first start').toBe(RETRY_REFUSALS.notDown)
+      h.sidecar.start()
+      expect(h.sidecar.retry(), 'starting').toBe(RETRY_REFUSALS.notDown)
+      await h.until(ready)
+      const pid = h.pid()
+      expect(h.sidecar.retry(), 'ready').toBe(RETRY_REFUSALS.notDown)
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
+      expect(h.pid()).toBe(pid)
+    })
+
+    it('is refused once the app is quitting, after giving up as before it', async () => {
+      const h = harness({ exit: 'at-once' })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      await h.sidecar.stop()
+      const states = h.states.length
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.quitting)
+      expect(h.states).toHaveLength(states)
+
+      const quit = harness()
+      quit.sidecar.start()
+      await quit.until(ready)
+      await quit.sidecar.stop()
+      expect(quit.sidecar.state).toMatchObject({ state: 'stopped', retryable: false })
+      expect(quit.sidecar.retry()).toBe(RETRY_REFUSALS.quitting)
+    })
+  })
+
   it('does not restart while stopping', async () => {
     const h = harness({ exit: 'after-handshake' }, { restartDelaysMs: [500, 500, 500] })
     h.sidecar.start()
@@ -887,6 +1044,77 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     await sleep(700)
     expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
     expect(h.sidecar.state.state).toBe('stopped')
+  })
+})
+
+// A child that outlives the last wait after SIGKILL (issue 562): one in
+// uninterruptible sleep on a disk that stopped answering. No real child can
+// be made to do that on cue, so the supervisor is handed a stand-in for
+// `spawn`: a child with pipes and no process id, which answers nothing,
+// takes no signal (with no id there is none to send) and exits only when
+// the test says. Needs no Python.
+describe('a retry beside a child that outlived the kill', () => {
+  interface Fake {
+    child: ChildProcess
+    exit(): void
+  }
+
+  function fakeChild(): Fake {
+    const emitter = new EventEmitter()
+    const child = Object.assign(emitter, {
+      stdin: new PassThrough(),
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      pid: undefined,
+      exitCode: null as number | null,
+      signalCode: null as NodeJS.Signals | null,
+      kill: () => true,
+    })
+    return {
+      child: child as unknown as ChildProcess,
+      exit: () => {
+        child.signalCode = 'SIGKILL'
+        child.emit('exit', null, 'SIGKILL')
+        child.stdout.end()
+        child.stderr.end()
+        child.emit('close', null, 'SIGKILL')
+      },
+    }
+  }
+
+  it('is refused while that child lives, and starts once its exit is seen', async () => {
+    const spawned: Fake[] = []
+    const log: string[] = []
+    const sidecar = new Sidecar({
+      command: ['stand-in-interpreter', '-m', 'schematic.serve'],
+      env: {},
+      pin: PIN,
+      log: (m) => log.push(m),
+      platform: 'linux',
+      // The handshake goes unanswered, the first failure is the give-up, and
+      // every wait of the shutdown is short.
+      bounds: { handshakeMs: 50, shutdownMs: 20, terminateMs: 20, restartDelaysMs: [] },
+      spawn: (() => {
+        const fake = fakeChild()
+        spawned.push(fake)
+        return fake.child
+      }) as never,
+    })
+    sidecar.start()
+    await eventually(
+      () => log.some((line) => line.includes('it is still there')),
+      5_000,
+      'the last wait after the kill to lapse',
+    )
+    expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+    expect(sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
+    expect(spawned, 'no second engine beside the one still there').toHaveLength(1)
+
+    spawned[0]!.exit()
+    expect(sidecar.retry()).toBeNull()
+    expect(spawned).toHaveLength(2)
+    spawned[1]!.exit()
+    await sidecar.stop()
   })
 })
 
@@ -915,7 +1143,9 @@ describe('describeState', () => {
     expect(describeState({ state: 'ready', version: '0.2.0', protocol: 1 })).toBe(
       'Engine ready (0.2.0).',
     )
-    expect(describeState({ state: 'unavailable', reason: 'x.' })).toBe('Engine unavailable: x.')
+    expect(describeState({ state: 'unavailable', reason: 'x.', retryable: false })).toBe(
+      'Engine unavailable: x.',
+    )
     expect(
       describeState({
         state: 'mismatched',
