@@ -25,7 +25,7 @@ own), never `shell`. The interpreter is `resolveInterpreter()`'s answer
 | `ready` | process ends or framing error | `restarting(2, reason)` | every request in flight rejects with `-32002` |
 | `restarting(n)` | wait elapsed (1 s, 2 s, 4 s for n = 2, 3, 4) | `starting(n)` | |
 | any but `unavailable`/`stopped` | `stop()` (quit) | `stopped('quitting')` | the shutdown sequence; nothing restarts |
-| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched`, and in every other state; the bridge refuses it too while the engine's data is being reset |
+| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched`, in every other state, and while the engine given up on is still being ended (the state says `stopped` before that ends); the bridge refuses it too while the engine's data is being reset |
 
 `onState` listeners are called after each transition with the new state.
 Every transition is logged with the reason.
