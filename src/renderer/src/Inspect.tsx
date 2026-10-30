@@ -137,6 +137,13 @@ interface Props {
    * this exists to keep, and the type refuses the omission.
    */
   handback: RefObject<HTMLElement | null>
+  /**
+   * Told whether the panel is showing a refused choice's sentence, each
+   * time that changes. While it is, the pickers show what was chosen and
+   * not what the record holds, so cell 01's field list says the stored
+   * mode and operator again (issue 560).
+   */
+  onRefused?: (refused: boolean) => void
 }
 
 type State =
@@ -154,6 +161,7 @@ export default function Inspect({
   registry = null,
   disabled = false,
   handback,
+  onRefused,
 }: Props): JSX.Element {
   const ready = engine?.state === 'ready'
   const [state, setState] = useState<State>(WAITING)
@@ -169,6 +177,10 @@ export default function Inspect({
   const [custom, setCustom] = useState(false)
   const [agency, setAgency] = useState<string | null>(project.agency)
   const [message, setMessage] = useState<string | null>(null)
+  const refused = message !== null
+  useEffect(() => {
+    onRefused?.(refused)
+  }, [refused, onRefused])
   const modeRef = useRef<HTMLElement>(null)
   const typedRef = useRef<HTMLElement>(null)
   const operatorRef = useRef<HTMLElement>(null)

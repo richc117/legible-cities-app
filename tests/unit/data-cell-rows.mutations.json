@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/notebook/cells/DataCell.tsx",
+    "find": "  if (!ready && inspection !== null) setInspection(null)\n",
+    "replace": "",
+    "test": "tests/unit/data-cell-rows.test.tsx",
+    "title": "lists the mode and the operator again while the engine is back and the feed is read again",
+    "why": "The cell keeps its reading through a restart: back and reading again, it leaves the rows out for pickers the panel does not draw, and the mode and the operator are said nowhere."
+  },
+  {
+    "file": "src/renderer/src/notebook/cells/DataCell.tsx",
+    "find": "      () => {\n        if (!left) setInspection(null)\n      },\n",
+    "replace": "      () => undefined,\n",
+    "test": "tests/unit/data-cell-rows.test.tsx",
+    "title": "lists them again once a read of the feed is refused",
+    "why": "A refused read keeps the reading before it: the rows stay out while the panel shows its refusal and no picker."
+  },
+  {
+    "file": "src/renderer/src/notebook/cells/DataCell.tsx",
+    "find": "              onRefused={setRefused}\n",
+    "replace": "",
+    "test": "tests/unit/data-cell-rows.test.tsx",
+    "title": "lists the stored mode and operator while a refused choice is said",
+    "why": "The panel's refusal not handed to the cell: the pickers show the refused choice and the stored mode is said nowhere."
+  }
+]

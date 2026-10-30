@@ -118,23 +118,22 @@ describe("cell 01's field list beside the pickers", () => {
   })
 
   it('draws the pickers once the feed is read with the engine ready, and never for a read-only project', () => {
-    expect(pickersDrawn(false, true, LA, null)).toEqual({ mode: true, operator: false })
-    expect(pickersDrawn(false, true, MANY, null)).toEqual({ mode: true, operator: true })
-    expect(pickersDrawn(false, true, LA, 'LACMTA'), 'a stored operator').toEqual({
+    const facts = { readOnly: false, ready: true, inspection: LA, agency: null, refused: false }
+    expect(pickersDrawn(facts)).toEqual({ mode: true, operator: false })
+    expect(pickersDrawn({ ...facts, inspection: MANY })).toEqual({ mode: true, operator: true })
+    expect(pickersDrawn({ ...facts, agency: 'LACMTA' }), 'a stored operator').toEqual({
       mode: true,
       operator: true,
     })
-    expect(pickersDrawn(false, true, null, 'LACMTA'), 'the feed not read yet').toEqual({
-      mode: false,
-      operator: false,
-    })
-    expect(pickersDrawn(false, false, MANY, 'LACMTA'), 'the engine away').toEqual({
-      mode: false,
-      operator: false,
-    })
-    expect(pickersDrawn(true, true, MANY, 'LACMTA'), 'read-only').toEqual({
-      mode: false,
-      operator: false,
-    })
+    const none = { mode: false, operator: false }
+    const tuned = { ...facts, inspection: MANY, agency: 'LACMTA' }
+    expect(pickersDrawn({ ...tuned, inspection: null }), 'the feed not read yet').toEqual(none)
+    expect(pickersDrawn({ ...tuned, ready: false }), 'the engine away').toEqual(none)
+    expect(pickersDrawn({ ...tuned, readOnly: true }), 'read-only').toEqual(none)
+  })
+
+  it('draws none while the panel says a choice was refused, so the stored values are listed', () => {
+    const facts = { readOnly: false, ready: true, inspection: LA, agency: 'LACMTA', refused: true }
+    expect(pickersDrawn(facts)).toEqual({ mode: false, operator: false })
   })
 })
