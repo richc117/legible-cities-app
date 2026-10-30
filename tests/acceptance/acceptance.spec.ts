@@ -67,6 +67,12 @@ import {
   type Page,
 } from '@playwright/test'
 import { dayWords } from '../../src/renderer/src/dates'
+import {
+  COLOURS_RESET_SAID,
+  PUT_BACK_COLOURS,
+  PUT_BACK_SIZES,
+  SIZES_RESET_SAID,
+} from '../../src/renderer/src/putBackWords'
 import { OFFERED_PRESETS } from '../../src/shared/export'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import {
@@ -2167,6 +2173,35 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await expect(trail).toHaveValue('0')
         },
       )
+      // Put back, then the reset again, so the steps after this one see the
+      // engine's own sizes as they always did (issue 561).
+      const putBackSizes = sizes.getByRole('button', { name: PUT_BACK_SIZES, exact: true })
+      await log.soft('Put back your sizes comes beside the reset, with the focus', async () => {
+        await expect(putBackSizes).toBeFocused()
+        await expect(sizes.getByRole('status')).toHaveText(SIZES_RESET_SAID)
+      })
+      await putBackSizes.click()
+      await until(
+        async () => {
+          const { dotRadius, trail: behind } = (await recordOf(window, LA)).style
+          return dotRadius === 8 && behind === 1.5 ? true : undefined
+        },
+        REBUILD_MS,
+        () => 'Put back your sizes never put the sizes before the reset back',
+      )
+      await log.soft('Put back hands the focus back to the reset, and goes', async () => {
+        await expect(
+          sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }),
+        ).toBeFocused()
+        await expect(putBackSizes).toHaveCount(0)
+      })
+      await sizes.getByRole('button', { name: 'Reset to the engine’s sizes', exact: true }).click()
+      await until(
+        async () =>
+          Object.keys((await recordOf(window, LA)).style).length === 0 ? true : undefined,
+        REBUILD_MS,
+        () => 'the second Reset never put the sizes back to the engine’s own',
+      )
       log.notAutomated(
         'whether the page looks sepia and then warm dark, and whether a line width of 12 draws the lines visibly thicker with no station moved.',
       )
@@ -2288,6 +2323,33 @@ test('a release, installed, through docs/acceptance.md', async () => {
         () => 'Reset every line was never written to the project',
       )
       await log.soft('Reset every line is then unavailable', () => expect(resetAll).toBeDisabled())
+      // Put back, then the reset again, so the steps after this one see the
+      // feed's own colours as they always did (issue 561).
+      const putBackColours = panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })
+      await log.soft('Put back your colours comes beside the reset, with the focus', async () => {
+        await expect(putBackColours).toBeFocused()
+        await expect(
+          panel.locator('section.line-colours').getByRole('status').filter({
+            hasText: COLOURS_RESET_SAID,
+          }),
+        ).toHaveCount(1)
+      })
+      await putBackColours.click()
+      await until(
+        async () => ((await recordOf(window, LA)).defaultColor === '#123456' ? true : undefined),
+        REBUILD_MS,
+        () => 'Put back your colours never put the default colour back',
+      )
+      await log.soft('Put back hands the focus back to the reset, and goes', async () => {
+        await expect(resetAll).toBeFocused()
+        await expect(putBackColours).toHaveCount(0)
+      })
+      await resetAll.click()
+      await until(
+        async () => ((await recordOf(window, LA)).defaultColor === '#888888' ? true : undefined),
+        REBUILD_MS,
+        () => 'the second Reset every line was never written to the project',
+      )
       await log.soft('nothing was laid out', async () => {
         const said = (await saidSoFar(window)).slice(mark)
         expect(said.filter((s) => s.startsWith('Laid out'))).toEqual([])
