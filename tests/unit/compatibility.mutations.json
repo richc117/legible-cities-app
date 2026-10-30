@@ -30,5 +30,37 @@
     "test": "tests/unit/compatibility.test.ts",
     "title": "leaves out a setting it does not know when it saves, and keeps the ones it does",
     "why": "The same spread seen on disk: the saved file would carry a later build's keys through an earlier build's save."
+  },
+  {
+    "file": "src/shared/export.ts",
+    "find": "  'day',\n  'run',\n] as const satisfies readonly StoryboardName[]",
+    "replace": "  'day',\n  'run',\n  'later',\n] as const satisfies readonly StoryboardName[]",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "has not widened or changed a set without moving RECORD_VERSION",
+    "why": "A storyboard added to the list the record accepts without the version moving: an earlier 1.x would read a project's export choice with it as a fault and give the whole choice up for the reel."
+  },
+  {
+    "file": "src/shared/project/types.ts",
+    "find": "export const THEMES = ['warm-dark', 'sepia'] as const satisfies readonly Theme[]",
+    "replace": "export const THEMES = ['warm-dark', 'sepia', 'dusk'] as const satisfies readonly Theme[]",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "has not widened or changed a set without moving RECORD_VERSION",
+    "why": "A map theme added without the version moving: an earlier 1.x would read the project as warm-dark and write it back so."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "    if (readOnly) return record\n",
+    "replace": "    if (false) return record\n",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "leaves a project a newer build made exactly as it was",
+    "why": "Opening a project a newer build made writing its record as this build's: the promise that a later 1.x's project is never damaged would not hold for a project that was only looked at."
+  },
+  {
+    "file": "docs/compatibility.md",
+    "find": "raises the\nversion number.** An earlier version keeps",
+    "replace": "is kept.** An earlier version keeps",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "still states the rules this file holds",
+    "why": "The document's value-set rule changed while the snapshot test stays: the document would promise what the code does not do."
   }
 ]
