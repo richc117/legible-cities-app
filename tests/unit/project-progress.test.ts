@@ -69,18 +69,14 @@ describe('how far a project has got, in words', () => {
 
   it('stops at the cell holding a change the map does not show yet', () => {
     // A day chosen and not drawn: 03 holds it, 04 and 05 are behind.
-    expect(progressWords({ ...current, date: '2026-09-20' }, null)).toBe(
-      'finished up to 03 Frame and service day',
-    )
+    expect(progressWords({ ...current, date: '2026-09-20' }, null)).toBe('finished up to 03 Day')
     // The mode moved since the layout: everything from 02 down is behind.
     expect(progressWords({ ...current, mode: 'subway' }, null)).toBe('finished up to 01 Data')
   })
 
   it('names a cell that is running or failed rather than counting past it', () => {
     expect(progressWords(current, run('running'))).toBe('02 Process running')
-    expect(progressWords(current, run('failed', { rebuilt: true }))).toBe(
-      '03 Frame and service day failed',
-    )
+    expect(progressWords(current, run('failed', { rebuilt: true }))).toBe('03 Day failed')
   })
 
   it('never counts the export, whose outcome is not in the record', () => {

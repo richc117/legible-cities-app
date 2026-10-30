@@ -100,7 +100,7 @@ test('the row says its number, its name and its state as one name', async () => 
     for (const name of [
       /^01 Data ready/,
       /^02 Process running/,
-      /^03 Frame and service day not drawn yet/,
+      /^03 Day not drawn yet/,
       /^04 Style failed/,
     ]) {
       await expect(page.getByRole('button', { name }).first()).toBeVisible()

@@ -779,9 +779,7 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
     expect(readRecord(engineHome).date).toBe('2026-06-16')
     // The engine's own day, on cell 03's collapsed row.
     await closeCell(page, 'frame')
-    await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
-      '03 Frame and service day ready 16 June 2026',
-    )
+    await expect(cellHeading(page, 'frame')).toHaveAccessibleName('03 Day ready 16 June 2026')
     const section = await openCell(page, 'frame')
 
     await section.getByLabel('Draw for another day').fill('2026-06-20')
@@ -807,7 +805,7 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
       await expect(cellHeading(page, id)).toHaveAccessibleName(/ not drawn yet/)
     await closeCell(page, 'frame')
     await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
-      '03 Frame and service day ready 20 June 2026, not drawn yet',
+      '03 Day ready 20 June 2026, not drawn yet',
     )
     await openCell(page, 'frame')
 
@@ -887,7 +885,7 @@ test('cell 03 offers no frame control it cannot honour, and says why', async () 
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const body = page.getByRole('group', { name: '03 Frame and service day', exact: true })
+    const body = page.getByRole('group', { name: '03 Day', exact: true })
     await expect(body).toContainText(
       /margin is one of the sizes in cell 04; the frame is padded and never cropped or rotated, and a clip mask waits on a designer.s intent/,
     )

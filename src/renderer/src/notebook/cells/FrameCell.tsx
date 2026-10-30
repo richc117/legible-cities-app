@@ -17,7 +17,7 @@ import {
 import { frameFailure, frameFailureWords } from '../olderPage'
 import { runRowStatus } from '../runRow'
 
-// Cell 03, Frame and service day: the day the map is drawn for (ADR-045).
+// Cell 03, Day: the day the map is drawn for (ADR-045).
 //
 // The day itself is the footer strip's to say (`frameFooter`, A5.5-11), and
 // nothing above the strip states it as a field again (issue 209, DESIGN.md

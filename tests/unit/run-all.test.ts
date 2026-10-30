@@ -92,7 +92,7 @@ describe('what Run all starts', () => {
       ),
     ).toEqual({ kind: 'none' })
     expect(sentence({ ...current, tuning: { deg45: 3 } })).toBe(
-      '03 Frame and service day to 06 Export are not drawn yet.',
+      '03 Day to 06 Export are not drawn yet.',
     )
   })
 
@@ -199,9 +199,7 @@ describe("the header's sentence", () => {
 
   it('names the running cell', () => {
     expect(sentence(current, run('running'))).toBe('02 Process is running.')
-    expect(sentence(current, run('running', { rebuilt: true }))).toBe(
-      '03 Frame and service day is running.',
-    )
+    expect(sentence(current, run('running', { rebuilt: true }))).toBe('03 Day is running.')
   })
 
   it('names the failed cell', () => {

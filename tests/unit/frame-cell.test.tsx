@@ -1,4 +1,4 @@
-// Cell 03, Frame and service day (issue 209): what the open cell states
+// Cell 03, Day (issue 209): what the open cell states
 // about the day, and where it states it.
 //
 // The rule is cell 02's and has no exception (DESIGN.md 8.2): a fact the
@@ -136,7 +136,7 @@ const THE_DAY = '<p class="prose">The service day is 12 September 2026.</p>'
 const READ_ONLY =
   '<p class="prose">This project was made by a newer version of the app, so its service day cannot be changed here.</p>'
 
-describe('cell 03, Frame and service day, open', () => {
+describe('cell 03, Day, open', () => {
   it('states the service day once as a field, in the strip and not above it', () => {
     const { above, strip } = draw(record)
     expect(strip).toContain('<dt>Service day</dt><dd>12 September 2026</dd>')

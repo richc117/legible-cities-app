@@ -31,7 +31,7 @@ import {
 } from '../support/tab-walk'
 
 const FRAME = 'iframe "map"'
-const ASKED = 'fig-button "03 Frame and service day"'
+const ASKED = 'fig-button "03 Day"'
 
 const read = (state: StepAnswer['state'], at: string, onAimed = false): StepAnswer => ({
   state,

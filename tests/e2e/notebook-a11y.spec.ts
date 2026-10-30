@@ -135,14 +135,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await expect
       .poll(() => outline(page), { message: "the notebook's heading outline" })
       .toEqual({
-        second: [
-          '01 Data',
-          '02 Process',
-          '03 Frame and service day',
-          '04 Style',
-          '05 Lines',
-          '06 Export',
-        ],
+        second: ['01 Data', '02 Process', '03 Day', '04 Style', '05 Lines', '06 Export'],
         perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
         // Nothing inside a cell skips a level either: the rule is that a
         // panel's heading is one below the row, and a check that only
@@ -205,13 +198,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     // while its row's aria-expanded says which it is.
     const cellRow = (label: string): RegExp =>
       new RegExp(`^${label} (ready|running|not drawn yet|failed)`)
-    for (const label of [
-      '01 Data',
-      '02 Process',
-      '03 Frame and service day',
-      '04 Style',
-      '05 Lines',
-    ])
+    for (const label of ['01 Data', '02 Process', '03 Day', '04 Style', '05 Lines'])
       await expect.poll(() => controlsOf(page, cellRow(label))).toEqual([label])
     await expect.poll(() => controlsOf(page, cellRow('06 Export'))).toEqual([])
     await openCell(page, 'export')
@@ -816,14 +803,7 @@ test('cell 06, and focus through an export', async () => {
       await expect
         .poll(() => outline(page), { message: 'the heading outline, every cell open' })
         .toEqual({
-          second: [
-            '01 Data',
-            '02 Process',
-            '03 Frame and service day',
-            '04 Style',
-            '05 Lines',
-            '06 Export',
-          ],
+          second: ['01 Data', '02 Process', '03 Day', '04 Style', '05 Lines', '06 Export'],
           perCell: ['01: 1', '02: 1', '03: 1', '04: 1', '05: 1', '06: 1'],
           deeper: [],
         })

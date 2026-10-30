@@ -101,7 +101,7 @@ describe('the six cells', () => {
     expect(CELL_LIST.map((cell) => cell.name)).toEqual([
       'Data',
       'Process',
-      'Frame and service day',
+      'Day',
       'Style',
       'Lines',
       'Export',
@@ -554,7 +554,7 @@ describe('the cell label, written once for the rail, the cell rows and every sen
     expect(CELL_LIST.map((cell) => cellLabel(cell.number, cell.name))).toEqual([
       '01 Data',
       '02 Process',
-      '03 Frame and service day',
+      '03 Day',
       '04 Style',
       '05 Lines',
       '06 Export',
