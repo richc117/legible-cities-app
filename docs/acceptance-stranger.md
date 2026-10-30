@@ -168,10 +168,10 @@ Everything, with the clock time beside it. In particular:
   task and nobody tells the person it is there. Write down whether they
   stopped at it, and what they took it for. For "feed", the New project
   sheet now says what it is, under "Start from": write down whether they
-  read that sentence, and whether they pressed **Where to find a feed**. The
-  button opens a page of the repository that is neither the README nor the
-  install guide, so a press falls under the rule above about anything beyond
-  them: write down the time, and count the run as assisted from it.
+  read that sentence, and whether they pressed **Where to find a feed**. A page
+  the app itself opens (this button, and the Help menu's pages) is part of
+  the app: note the time of a press in the record, but the run stays
+  unassisted.
 - **How they started**: a sample city's card, or the **New project** card
   with a feed of their own, and whether they found the export in cell 06 without
   opening every cell first. Each sample city's card carries a small picture

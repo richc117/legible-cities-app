@@ -29,14 +29,12 @@ Start with the agency. Search the web for the agency's name and "open data" or
 The page usually offers one zip, and sometimes also an address that always
 serves the current one.
 
-If you cannot find it that way, two catalogues help. Both are kept by
-MobilityData, the organisation that looks after the format:
+If you cannot find it that way, two sites may help:
 
-- **[gtfs.org](https://gtfs.org)** is the format's own site. It describes
-  GTFS and points to where feeds are published.
+- **[gtfs.org](https://gtfs.org)** is the format's own site, kept by
+  MobilityData, the organisation that looks after the format.
 - **[The Mobility Database](https://mobilitydatabase.org)** is a catalogue of
-  feeds from agencies around the world that you can search by place or by
-  agency.
+  feeds, also kept by MobilityData.
 
 Check the terms the agency publishes the feed under before you use it for
 anything beyond trying it out. Most open-data feeds say what is allowed on the
@@ -69,4 +67,4 @@ download still stops.
 
 A feed that downloads and is then refused is usually not a GTFS zip: the file
 you saved may be a web page, or a zip of something else. Download it again
-from the agency's own page, or look for the agency in the catalogues above.
+from the agency's own page, or look for the agency on the sites above.
