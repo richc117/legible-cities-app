@@ -3580,10 +3580,15 @@ test('a release, installed, through docs/acceptance.md', async () => {
           '## Operating system',
           '## Engine',
           '## Bundled tools',
-          '## main.log, the last 200 lines',
-          '## engine.log, the last 200 lines',
+          // A copy cut to fit an issue says how many lines of each log it kept.
+          /^## main\.log, (the last \d+ lines|the last line|no lines kept)$/m,
+          /^## engine\.log, (the last \d+ lines|the last line|no lines kept)$/m,
           '## Maps drawn this session',
-        ].map((heading) => ({ heading, at: copied.indexOf(`\n${heading}\n`) }))
+        ].map((heading) => ({
+          heading: String(heading),
+          at:
+            typeof heading === 'string' ? copied.indexOf(`\n${heading}\n`) : copied.search(heading),
+        }))
         expect(at.filter((h) => h.at < 0).map((h) => h.heading)).toEqual([])
         expect(at.map((h) => h.at)).toEqual([...at.map((h) => h.at)].sort((a, b) => a - b))
         expect(version).not.toBeNull()
@@ -3604,7 +3609,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         }
       })
       log.note(
-        `App ${version ?? 'unknown'}; ${copied.split('\n').length} lines, read from the clipboard in the main process.`,
+        `App ${version ?? 'unknown'}; ${copied.split('\n').length} lines, read from the clipboard in the main process; ` +
+          `${/^Trimmed to fit a GitHub issue: /m.test(copied) ? 'the copy carried a trim line' : 'not trimmed'}.`,
       )
     })
 

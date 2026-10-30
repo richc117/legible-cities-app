@@ -95,5 +95,9 @@ describe('the bug report form', () => {
     // with the first release after it.
     expect(placeholder).not.toMatch(/\d/)
     expect(placeholder).toContain('Settings › Versions')
+    // And for a person whose app will not open, who has no Settings to read.
+    expect(version.text).toMatch(
+      /^ {6}description: .*if the app opens; if it does not, the version you downloaded\.$/m,
+    )
   })
 })

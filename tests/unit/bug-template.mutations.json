@@ -30,5 +30,13 @@
     "test": "tests/unit/bug-template.test.ts",
     "title": "keeps the diagnostics as text, which is why the logs have a field of their own",
     "why": "The diagnostics field without render: text, so a line beginning with # in the paste draws as a heading."
+  },
+  {
+    "file": ".github/ISSUE_TEMPLATE/bug.yml",
+    "find": "if the app opens; if it does not, the version you downloaded.",
+    "replace": "if the app opens.",
+    "test": "tests/unit/bug-template.test.ts",
+    "title": "still asks for the version, with an example that is no version",
+    "why": "The description saying nothing for a person whose app will not open, who has no Settings to read the version from."
   }
 ]
