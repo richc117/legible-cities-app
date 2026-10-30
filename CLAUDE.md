@@ -107,7 +107,10 @@ A second launch of the app quits at once, so `test:acceptance` never runs
 beside another. `ci.yml` runs `ci (<os>)` (lint, typecheck, test, build) on
 Ubuntu, macOS and Windows and `e2e (<os>)` on macOS and Windows for every
 pull request and push to `main` (a documentation-only pull request passes
-`e2e` without the suite; a branch with no pull request runs neither). Add a
+`e2e` without the suite; a branch with no pull request runs neither). `e2e`
+runs with `--grep-invert @quarantine`: a flaky test is quarantined by that tag
+and an issue annotation (`CONTRIBUTING.md`, "Flaky tests"), and the
+`e2e-quarantine (<os>)` job, not a required check, runs only those. Add a
 script here, and a permission rule if it is a check, at the same time.
 `gitleaks` and `pre-commit` are development tools that CI enforces again;
 the `gitleaks` hook reads only **staged** changes, so `gitleaks dir .` is
