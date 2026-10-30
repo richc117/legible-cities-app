@@ -1,0 +1,90 @@
+[
+  {
+    "file": "scripts/release.mjs",
+    "find": "  if (at === -1) {\n    throw new Error(",
+    "replace": "  if (at === -1) {\n    return ''\n    throw new Error(",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses a version with no section, naming the heading to add",
+    "why": "A tag whose version has no section answered with an empty one: a Release drafted with nothing under What changed, and no prompt to write it."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "  if (final) {\n    const security",
+    "replace": "  if (false) {\n    const security",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses a final with no Security or an empty one, and takes \"None.\"",
+    "why": "The final-needs-Security rule dropped: a release's notes can stay silent on whether it fixes a vulnerability, which release_notes_vulns asks them to say."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "  if (final && shape[1] === undefined) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses a final whose section is not dated, and a heading in neither form",
+    "why": "A final release drafted from a section that does not say when it was released, so the changelog never records the day."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": " && !/^\\[[^\\]]+\\]:\\s/.test(lines[end])",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "reads a candidate's section, dated or not, up to the next version or the links",
+    "why": "The last section runs on into the link references at the foot, so the oldest release's notes would end with the changelog's own link list."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": ".filter((part) => part.name !== 'Known issues' && part.name !== 'Security')",
+    "replace": ".filter((part) => part.name !== 'Security')",
+    "test": "tests/unit/release.test.ts",
+    "title": "fill What changed and Known issues from the tag's section, under their headings",
+    "why": "Known issues left among the changes: the notes say them twice, once under What changed."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "  const said = /^none\\.?$/i.test(security) ? NO_KNOWN_VULNERABILITY : security\n",
+    "replace": "  const said = security\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "carry a final's Security, and say none is fixed where it says None.",
+    "why": "A bare \"None.\" under Security in a release's notes, not the sentence that says no publicly known vulnerability is fixed."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "  if (known === undefined || contentOf(known) === '') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuse a section that names no change, or says nothing of its known issues",
+    "why": "A section with no Known issues fills the notes' heading with nothing, which reads as a claim that there are none."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "  const linked = (text) => absoluteLinks(text, `https://github.com/${repository}/blob/${tag}`)\n",
+    "replace": "  const linked = (text) => text\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "make the changelog's relative links absolute, at the tag",
+    "why": "The changelog's links to docs/install.md and SUPPORT.md copied as they are, which lead nowhere from the Releases page."
+  },
+  {
+    "file": ".github/release-notes.md",
+    "find": "{{known_issues}}\n\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "name the changelog's three keys once each, under their headings and before the downloads",
+    "why": "The template's Known issues heading with nothing under it: fillNotes cannot refuse a key the template no longer names."
+  },
+  {
+    "file": "CHANGELOG.md",
+    "find": "## [1.0.0]\n",
+    "replace": "## [1.0.1]\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "finds package.json's version in the committed changelog, ready for its next candidate",
+    "why": "The committed changelog with no section for package.json's version: the next candidate's tag would draft nothing, found only on the tag's run."
+  },
+  {
+    "file": "scripts/release.mjs",
+    "find": "export const CHANGELOG = join(repoRoot, 'CHANGELOG.md')",
+    "replace": "export const CHANGELOG = join(repoRoot, 'CHANGES.md')",
+    "test": "tests/unit/release.test.ts",
+    "title": "from the command line, write the filled notes to the file named",
+    "why": "The notes command reading a changelog that is not the committed one: every tag's notes refused, seen only when a tag's release job fails."
+  }
+]

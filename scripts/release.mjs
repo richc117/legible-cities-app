@@ -31,6 +31,11 @@
 //   asset this run would not attach removed, and its notes left as the
 //   maintainer may have edited them; a published Release for the tag, or
 //   more than one draft, is refused and left untouched.
+// - The notes say what changed, and what to watch for, from the tag's
+//   version's section of CHANGELOG.md (Keep a Changelog 1.1.0): a tag whose
+//   version has no section drafts nothing. A final tag's section is dated
+//   and has a Security subsection, which may say "None.", so a release's
+//   notes always say whether it fixes a vulnerability (docs/releasing.md).
 // - The assets are the three installers, SHA256SUMS.txt over every other
 //   attached file, one archive of each GPL component's Corresponding
 //   Source (ffmpeg-source, loom-source with the loom-windows-toolchain
@@ -74,6 +79,17 @@ export const DEFAULT_REPOSITORY = 'richc117/legible-cities-app'
 
 /** The notes template, committed. */
 export const NOTES_TEMPLATE = join(repoRoot, '.github', 'release-notes.md')
+
+/** The changelog the notes are filled from, committed. */
+export const CHANGELOG = join(repoRoot, 'CHANGELOG.md')
+
+/**
+ * What a release's notes say where its changelog's Security subsection is
+ * "None.": the OpenSSF criterion `release_notes_vulns` asks the notes to
+ * say which publicly known vulnerabilities a release fixes, and none is an
+ * answer.
+ */
+export const NO_KNOWN_VULNERABILITY = 'No publicly known vulnerability is fixed in this release.'
 
 /** The checksum file's name on the Release. */
 export const SUMS = 'SHA256SUMS.txt'
@@ -625,19 +641,156 @@ export function assemble({
   return { problems: [], files }
 }
 
+/** A changelog's own subsections, each `### <name>`, in the order they come. */
+function subsections(body) {
+  const found = [{ name: null, lines: [] }]
+  for (const line of body.split('\n')) {
+    const heading = /^### (.+?)\s*$/.exec(line)
+    if (heading !== null) found.push({ name: heading[1], lines: [line] })
+    else found[found.length - 1].lines.push(line)
+  }
+  return found.map((part) => ({ name: part.name, text: part.lines.join('\n').trim() }))
+}
+
+/** A subsection's text without its heading line. */
+const contentOf = (part) => part.text.replace(/^### .*(\n|$)/, '').trim()
+
 /**
- * The values the notes template is filled with.
+ * A version's section of the changelog: what follows its `## [X.Y.Z]`
+ * heading, up to the next `## ` heading or the link references at the foot
+ * (`[1.0.0]: https://...`), trimmed. Thrown, naming what to add, where the
+ * notes cannot be filled from it.
+ *
+ * A candidate's tag needs the heading, dated or not, since a candidate comes
+ * before its release day. A final tag needs it dated (`## [X.Y.Z] -
+ * YYYY-MM-DD`, with `[YANKED]` allowed after it) and a `### Security`
+ * subsection with something in it, which may be "None.": whether a release
+ * fixes a vulnerability is said every time, never left to be inferred from
+ * a missing heading.
+ *
+ * @param {string} text CHANGELOG.md
+ * @param {string} version X.Y.Z, without the `v` or a candidate's suffix
+ * @param {{ final: boolean }} options
+ * @returns {string}
+ */
+export function changelogSection(text, version, { final }) {
+  const lines = text.split(/\r?\n/)
+  const heading = `## [${version}]`
+  const at = lines.findIndex((line) => line === heading || line.startsWith(`${heading} `))
+  if (at === -1) {
+    throw new Error(
+      `CHANGELOG.md has no section for ${version}: add "${heading}" with what changed and its known issues`,
+    )
+  }
+  const shape = /^(?: - (\d{4}-\d{2}-\d{2}))?(?: \[YANKED\])?$/.exec(
+    lines[at].slice(heading.length).trimEnd(),
+  )
+  if (shape === null) {
+    throw new Error(
+      `CHANGELOG.md's heading "${lines[at]}" is neither "${heading}" nor "${heading} - YYYY-MM-DD"`,
+    )
+  }
+  if (final && shape[1] === undefined) {
+    throw new Error(
+      `CHANGELOG.md's section for ${version} is not dated, and a final release's is: write "${heading} - YYYY-MM-DD" with the day it is published`,
+    )
+  }
+  let end = at + 1
+  while (end < lines.length && !/^## /.test(lines[end]) && !/^\[[^\]]+\]:\s/.test(lines[end])) {
+    end += 1
+  }
+  const body = lines
+    .slice(at + 1, end)
+    .join('\n')
+    .trim()
+  if (final) {
+    const security = subsections(body).find((part) => part.name === 'Security')
+    if (security === undefined || contentOf(security) === '') {
+      throw new Error(
+        `CHANGELOG.md's section for ${version} has no "### Security", and a final release's notes say whether it fixes a vulnerability: add one, saying "None." if it fixes none`,
+      )
+    }
+  }
+  return body
+}
+
+/**
+ * A section split the way the notes use it: the change subsections (Added,
+ * Changed, Deprecated, Removed, Fixed, with their headings) under "What
+ * changed"; Known issues, without its heading, under its own; and Security,
+ * without its heading, or null where the section has none. Thrown where the
+ * section names no change, or says nothing of its known issues: an empty
+ * heading in a release's notes reads as nothing to say, which is a claim
+ * nobody made. Known issues, like Security, may say "None.".
+ *
+ * @returns {{ changes: string, knownIssues: string, security: string | null }}
+ */
+export function changelogParts(section, version) {
+  const parts = subsections(section)
+  const changes = parts
+    .filter((part) => part.name !== 'Known issues' && part.name !== 'Security')
+    .map((part) => part.text)
+    .filter((text) => text !== '')
+    .join('\n\n')
+  const known = parts.find((part) => part.name === 'Known issues')
+  const security = parts.find((part) => part.name === 'Security')
+  if (changes === '') {
+    throw new Error(`CHANGELOG.md's section for ${version} says nothing about what changed`)
+  }
+  if (known === undefined || contentOf(known) === '') {
+    throw new Error(
+      `CHANGELOG.md's section for ${version} has no "### Known issues": add one, saying "None." if there are none`,
+    )
+  }
+  return {
+    changes,
+    knownIssues: contentOf(known),
+    security: security === undefined ? null : contentOf(security),
+  }
+}
+
+/**
+ * A changelog's relative links made absolute, at the tag: CHANGELOG.md sits
+ * at the repository's root, so `docs/install.md` is a path from there, and
+ * a Release's notes are read on the Releases page, where a relative link
+ * leads nowhere. An address with a scheme, an anchor and a rooted path are
+ * left as they are.
+ */
+export function absoluteLinks(text, base) {
+  return text.replace(
+    /\]\((?![a-z][a-z0-9+.-]*:|#|\/)([^)\s]+)\)/gi,
+    (_, path) => `](${base}/${path})`,
+  )
+}
+
+/** The notes' Security section, from the changelog's: none to say, or what it says. */
+function securityNote(security) {
+  if (security === null || security === '') return ''
+  const said = /^none\.?$/i.test(security) ? NO_KNOWN_VULNERABILITY : security
+  return `## Security\n\n${said}\n\n`
+}
+
+/**
+ * The values the notes template is filled with. Thrown where the changelog
+ * has no section the tag's notes can be filled from (`changelogSection`).
  *
  * @param {object} input
  * @param {string} input.tag
  * @param {any} input.pins the parsed vendor/pins.json
  * @param {{ version: string, devDependencies?: Record<string, string> }} input.pkg package.json
  * @param {string} input.repository `owner/name`
+ * @param {string} input.changelog CHANGELOG.md
  */
-export function notesValues({ tag, pins, pkg, repository }) {
+export function notesValues({ tag, pins, pkg, repository, changelog }) {
   const parsed = parseTag(tag)
   if (parsed === null) throw new Error(`the tag ${tag} is not a release tag`)
+  const section = changelogSection(changelog, parsed.version, { final: parsed.rc === null })
+  const parts = changelogParts(section, parsed.version)
+  const linked = (text) => absoluteLinks(text, `https://github.com/${repository}/blob/${tag}`)
   const values = {
+    changes: linked(parts.changes),
+    known_issues: linked(parts.knownIssues),
+    security: linked(securityNote(parts.security)),
     tag,
     version: parsed.label,
     package_version: pkg.version,
@@ -924,12 +1077,18 @@ function main(argv) {
   if (command === 'notes' && args.length === 2) {
     const [tag, outFile] = args
     if (parseTag(tag) === null) return refuse(`the tag ${tag} is not a release tag`)
-    const values = notesValues({
-      tag,
-      pins,
-      pkg,
-      repository: process.env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY,
-    })
+    let values
+    try {
+      values = notesValues({
+        tag,
+        pins,
+        pkg,
+        repository: process.env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY,
+        changelog: readFileSync(CHANGELOG, 'utf8'),
+      })
+    } catch (error) {
+      return refuse(`${error.message}. No notes were written.`)
+    }
     const { text, problems } = fillNotes(readFileSync(NOTES_TEMPLATE, 'utf8'), values)
     if (problems.length > 0) return refuse(problems.join('; '))
     writeFileSync(outFile, text)

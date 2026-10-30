@@ -1,5 +1,13 @@
 {{prerelease_note}}Legible Cities turns a public transit timetable (a GTFS feed) into a schematic map and a timetable-driven animation, and exports stills, reels and GIFs. This is **{{version}}**.
 
+## What changed
+
+{{changes}}
+
+{{security}}## Known issues
+
+{{known_issues}}
+
 ## Which file to download
 
 | Your computer | Download |
