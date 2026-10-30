@@ -33,3 +33,9 @@
 .export-destination .toolbar {
   margin: var(--space-2-2) 0 0;
 }
+
+/* What an export would replace (issue 563): one muted line above the
+   buttons it is about, with the room under it a run's own lines have. */
+.export-replaces {
+  margin: 0 0 var(--space-4-3);
+}

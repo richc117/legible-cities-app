@@ -80,7 +80,7 @@ export default function ExportTab({
   // What the preview and the export are planned from: the choice, less a line
   // hidden in cell 05, which the stored choice keeps for it shown again (issue 399).
   const asked = useMemo(() => plannedChoice(choice, project.lines), [choice, project.lines])
-  const { refused, refusal, notes } = useExportPreview({
+  const { refused, refusal, notes, file } = useExportPreview({
     project,
     asked,
     active,
@@ -194,6 +194,7 @@ export default function ExportTab({
           project={project}
           engine={engine}
           choice={asked}
+          planned={file}
           disabled={layingOut || refused || read === null}
         />
       )}

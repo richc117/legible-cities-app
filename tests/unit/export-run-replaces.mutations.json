@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/notebook/outputWords.ts",
+    "find": "row.present && row.file === file",
+    "replace": "row.file === file",
+    "test": "tests/unit/export-run-replaces.test.tsx",
+    "title": "shows if and only if a present output has the planned name",
+    "why": "The present guard dropped: a sidecar whose file has gone makes cell 06 say an export would replace a file the folder no longer holds."
+  },
+  {
+    "file": "src/renderer/src/ExportRun.tsx",
+    "find": "aria-describedby={replaced === undefined ? undefined : REPLACES_ID}",
+    "replace": "",
+    "test": "tests/unit/export-run-replaces.test.tsx",
+    "title": "says which file, when it was made, and that a filename tag keeps both",
+    "why": "Export no longer described by the line: it is shown, and a screen reader reaching the button is told nothing of the replacement."
+  },
+  {
+    "file": "src/renderer/src/ExportRun.tsx",
+    "find": "className=\"message export-replaces\"",
+    "replace": "className=\"message export-replaces\" role=\"status\"",
+    "test": "tests/unit/export-run-replaces.test.tsx",
+    "title": "is shown, not spoken: no live region",
+    "why": "The line made a live region: it would be announced each time a plan answered, which nothing else on the screen does unprompted."
+  }
+]

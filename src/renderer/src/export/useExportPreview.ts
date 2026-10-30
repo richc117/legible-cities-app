@@ -38,6 +38,12 @@ export interface PreviewPlanning {
   refusal: { key: string; sentence: string } | null
   /** The engine's notes on the last plan it answered. */
   notes: string[]
+  /**
+   * The file an export of the choice as it is now would write, from its
+   * plan; null until a plan has answered for this very choice, and again
+   * after a refusal (issue 563).
+   */
+  file: string | null
 }
 
 export function useExportPreview({
@@ -68,6 +74,9 @@ export function useExportPreview({
 }): PreviewPlanning {
   const [refusal, setRefusal] = useState<{ key: string; sentence: string } | null>(null)
   const [notes, setNotes] = useState<string[]>([])
+  // Tied to the key it was planned for, as a refusal is: a choice changed a
+  // moment ago has not been planned yet, and its file is not this one's.
+  const [planned, setPlanned] = useState<{ key: string; file: string } | null>(null)
   const key = keyOf(asked, project)
   const refused = refusal !== null && refusal.key === key
 
@@ -86,6 +95,7 @@ export function useExportPreview({
         if (!active) return
         setRefusal(null)
         setNotes(preview.notes)
+        setPlanned({ key: keyOf(asked, project), file: preview.file })
         // The preset's own size, from the engine's table, for the frame's
         // ratio and the caption; the plan's may be at another scale.
         const entry = tables?.presets.find((p) => p.name === asked.preset)
@@ -99,6 +109,7 @@ export function useExportPreview({
         // The last good address stays in the frame; the sentence says why
         // this one is not there (FR-007).
         setNotes([])
+        setPlanned(null)
         setRefusal({
           key: keyOf(asked, project),
           sentence: refusalWords(preview),
@@ -142,5 +153,10 @@ export function useExportPreview({
     plan()
   }, [canPlan, key, made, planner])
 
-  return { refused, refusal, notes }
+  return {
+    refused,
+    refusal,
+    notes,
+    file: planned !== null && planned.key === key ? planned.file : null,
+  }
 }

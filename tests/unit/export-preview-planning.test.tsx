@@ -173,6 +173,35 @@ describe('cell 06’s preview, planned', () => {
     expect(drawn.state.notes).toEqual(['A note.'])
   })
 
+  it('keeps the file the plan named for the choice it was for, and for no other (issue 563)', async () => {
+    // Cell 06 says beside Export which file an export would replace, from
+    // this file. A choice changed a moment ago has not been planned, and a
+    // tag typed into it names another file, so the old name must not be
+    // said for it. Mutation (`export-preview-planning.mutations.json`): the
+    // file handed on whatever choice it was planned for - the changed
+    // choice still has the old name.
+    const drawn = draw()
+    expect(drawn.state.file, 'nothing planned yet').toBeNull()
+    await settle()
+    drawn.asked[0].resolve(ok('app://local/p?x'))
+    await answered()
+    expect(drawn.state.file).toBe('la-metro-rail-instagram-reel.mp4')
+    drawn.redraw({ asked: DRAFT })
+    expect(drawn.state.file, 'a choice not yet planned').toBeNull()
+    await settle()
+    drawn.asked[1].resolve(ok('app://local/p?y', [], 'la-metro-rail-instagram-reel-draft.mp4'))
+    await answered()
+    expect(drawn.state.file).toBe('la-metro-rail-instagram-reel-draft.mp4')
+    drawn.redraw({ asked: HIGH })
+    await settle()
+    drawn.asked[2].resolve({
+      ok: false,
+      error: { code: -32000, message: 'refused', data: { kind: 'export', detail: 'x', hint: 'y' } },
+    })
+    await answered()
+    expect(drawn.state.file, 'a refusal names no file').toBeNull()
+  })
+
   it.each<[string, Partial<Given>]>([
     ['the cell is closed', { active: false }],
     ['a run rewrites the page', { layingOut: true }],

@@ -22,5 +22,13 @@
     "test": "tests/unit/export-preview-planning.test.tsx",
     "title": "plans again for the layout laid out again under the same id",
     "why": "`made` dropped from the planning effect's dependencies (issue 433, part c): a layout laid out again under the same id is never planned."
+  },
+  {
+    "file": "src/renderer/src/export/useExportPreview.ts",
+    "find": "planned !== null && planned.key === key ? planned.file : null",
+    "replace": "planned?.file ?? null",
+    "test": "tests/unit/export-preview-planning.test.tsx",
+    "title": "keeps the file the plan named for the choice it was for, and for no other (issue 563)",
+    "why": "The file handed on whatever choice it was planned for: a choice changed since still names the old file, and cell 06 says an export would replace a file it would not."
   }
 ]
