@@ -60,7 +60,8 @@ Put back, one step, in two forms.
 - **Cells 04 and 05: a slot held in the screen.** At the reset's press, the
   cheap edits' hook (`notebook/useCheapEdit.ts`) keeps the section's values
   as the record's own `drawn` holds them: provably what the map on screen
-  was drawn from. Beside the disabled reset, **Put back your colours** or
+  was drawn from. It takes them again as the reset is drawn, so a reset
+  held behind the panel's own redraw follows the `drawn` that redraw wrote. Beside the disabled reset, **Put back your colours** or
   **Put back your sizes** restores them through the same cheap edit as any
   change: one redraw, and the record written once, when the map carries
   them. The slot is component memory, as a half-typed field is, and is
@@ -79,9 +80,9 @@ Put back, one step, in two forms.
   goes); Put back goes as it is pressed and hands focus back to the reset.
   A reset with nothing to put back hands focus to its heading, as before.
   Each section says one polite sentence while Put back is offered: "Every
-  line is back to its feed's colour. Put back your colours to undo it.",
-  "The sizes are back to the engine's own. Put back your sizes to undo
-  it." and, while the tuning is LOOM's own, "The tuning is back to LOOM's
+  line is back to its feed’s colour. Put back your colours to undo it.",
+  "The sizes are back to the engine’s own. Put back your sizes to undo
+  it." and, while the tuning is LOOM's own, "The tuning is back to LOOM’s
   defaults. Put back the tuning this layout was made with to undo it."
 
 Put back is not a stale-cell action and not a Revert: Revert closes a gap

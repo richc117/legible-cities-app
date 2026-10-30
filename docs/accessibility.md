@@ -1273,7 +1273,7 @@ a table).
   engine's sizes** and listen for focus on the button **Put back your
   sizes**, which came beside it, since the reset cannot be pressed once
   nothing is left to reset, and for the polite line "The sizes are back to
-  the engine's own. Put back your sizes to undo it." Press **Put back your
+  the engine’s own. Put back your sizes to undo it." Press **Put back your
   sizes**: listen for focus back on **Reset to the engine's sizes**, which
   can be pressed again, and for the field you typed a figure into to read
   that figure again (issue 561). A reset with nothing drawn to put back hands focus to the

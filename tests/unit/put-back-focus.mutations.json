@@ -14,5 +14,21 @@
     "test": "tests/unit/put-back-focus.test.tsx",
     "title": "hands focus to Put back, and Put back hands it back to the reset",
     "why": "Put back not handing focus back as it goes: the button is removed under the focus it held, and Chromium puts focus on the body, the A6-07 defect."
+  },
+  {
+    "file": "src/renderer/src/StyleFields.tsx",
+    "find": "    if (edit.reset({})) focusTo.current = 'put back'\n    else handback.current?.focus()\n",
+    "replace": "    edit.reset({})\n    handback.current?.focus()\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus to Put back, and Put back hands it back to the reset",
+    "why": "The sizes' reset handing focus to the cell's heading whatever comes: Put back your sizes stands below it unannounced as the place to go."
+  },
+  {
+    "file": "src/renderer/src/LayoutTuning.tsx",
+    "find": "    if (putBackTuning(project, {}) !== null) focusTo.current = 'put back'\n    else heading.current?.focus()\n",
+    "replace": "    heading.current?.focus()\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus to Put back for a layout made with a tuning",
+    "why": "The tuning's reset handing focus to the section's heading on a layout made with a tuning, where Put back the tuning this layout was made with is the control that came."
   }
 ]

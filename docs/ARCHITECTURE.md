@@ -597,7 +597,15 @@ takes it over, so two editors never hold one panel's whole value - the
 palette, the order, the style, the lines - at once. A start refused then is
 said on the project's status line, after the cell's failure, because the
 control that would have gone back is gone (`sayRefusedGone`, read by
-`useProjectState` as `refused`). The hook neither writes the record nor orders a write, so it
+`useProjectState` as `refused`). **Put back** (issue 561, ADR-061), which
+is not the put-back above: a panel with a reset hands the hook `drawnOf`,
+its fields as the record's own `drawn` holds them, and makes the reset with
+`reset`. The hook keeps those values, what the map on screen was drawn from,
+in one slot of the panel's own state - at the press, and again from the
+record as the reset is drawn, since a reset held behind the panel's own
+redraw must follow the `drawn` that redraw writes - offers them as `before`, and drops
+them at the section's next change, at a stop of the panel's own redraw and
+with the panel; Put back is `change(before)`. The hook neither writes the record nor orders a write, so it
 needs nothing from `beforeStart`: a cheap edit waiting when another run is
 pressed is not part of that run, and is drawn after it. Its rows are
 `tests/unit/cheap-edit.test.tsx`, one table per panel rendered through the

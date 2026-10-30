@@ -60,7 +60,8 @@ import { useSnapshot } from '../useSnapshot'
 //   and nothing of what was there before, because a cheap edit is never
 //   stale and so has no Revert (issue 164). So at the reset's press the
 //   hook keeps one thing: the section's values as the record's own `drawn`
-//   holds them, which are provably what the map on screen was drawn from.
+//   holds them, which are provably what the map on screen was drawn from,
+//   and again as the reset is drawn, for a reset held behind a redraw.
 //   The panel offers them back, through the same cheap edit as any change.
 //   It is one step and no history: the slot goes at the section's next
 //   edit (Put back's own included), at a stop of the panel's own redraw -
@@ -211,6 +212,8 @@ function editor<V>(
   saidWaiting: (waiting: boolean) => void,
   /** The panel's own redraw stopped, or its start was refused: Put back has nothing to undo. */
   stopped: () => void,
+  /** A change is past its hold and about to be compared and drawn, with the record as it is now. */
+  drawing: (next: V) => void,
 ): {
   unbuilt: Unbuilt<V>
   change: (next: V) => void
@@ -279,6 +282,7 @@ function editor<V>(
     }
     unbuilt.held = null
     say(false)
+    drawing(next)
     if (facts.same(next, facts.stored(facts.project))) return
     if (refusedAtStart(facts.run, facts.own, () => facts.draw(facts.project, facts.engine, next)))
       putBack()
@@ -489,8 +493,29 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
   // the panel draws Put back from it; the panel's, so it goes with the
   // panel and is never written anywhere.
   const [kept, setKept] = useState<{ id: string; value: V } | null>(null)
-  const forget = (): void => setKept(null)
-  const [edit] = useState(() => editor(latest, setWaiting, forget))
+  // The reset waiting to be drawn, by reference, so the slot can be taken
+  // again from the record as it stands when the reset is drawn: a reset
+  // pressed while another redraw of the panel's goes is held, and that
+  // redraw writes a `drawn` the slot must follow, or Put back would undo
+  // two steps (the review of issue 561).
+  const resetting = useRef<V | null>(null)
+  const forget = (): void => {
+    resetting.current = null
+    setKept(null)
+  }
+  const keepFor = (next: V): boolean => {
+    const facts = latest.current
+    const drawn = facts.drawnOf?.(facts.project) ?? null
+    const keep = drawn !== null && !facts.same(drawn, next)
+    setKept(keep ? { id: facts.project.id, value: drawn } : null)
+    return keep
+  }
+  const drawing = (next: V): void => {
+    if (resetting.current === null || !Object.is(resetting.current, next)) return
+    resetting.current = null
+    keepFor(next)
+  }
+  const [edit] = useState(() => editor(latest, setWaiting, forget, drawing))
   // A person's edit of the section is the next step, and Put back's slot
   // goes with it: one step back, never two.
   const [api] = useState(() => ({
@@ -502,17 +527,20 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
       forget()
       edit.follow(next)
     },
+    // A panel closing calls this whether or not a gesture was going under
+    // it (the colour panel's `toggle`, a task after the reset that closed
+    // it), and only a gesture released is an edit.
     release: (): void => {
-      forget()
+      if (edit.unbuilt.live !== null) forget()
       edit.release()
     },
-    // Kept first and drawn second, so a start refused at once - which puts
-    // the control back and drops the slot - has the last word.
+    // Kept at the press, so Put back is there to take the focus the reset
+    // drops, and kept again from the record when the reset is drawn. Kept
+    // first and drawn second, so a start refused at once - which puts the
+    // control back and drops the slot - has the last word.
     reset: (next: V): boolean => {
-      const facts = latest.current
-      const drawn = facts.drawnOf?.(facts.project) ?? null
-      const keep = drawn !== null && !facts.same(drawn, next)
-      setKept(keep ? { id: facts.project.id, value: drawn } : null)
+      const keep = keepFor(next)
+      resetting.current = next
       edit.change(next)
       return keep
     },

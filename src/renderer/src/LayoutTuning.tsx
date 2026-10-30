@@ -141,7 +141,10 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
     if (to === null) return
     focusTo.current = null
     const target = to === 'put back' ? putBackRef.current : resetRef.current
-    ;(target ?? heading.current)?.focus()
+    // A target that went or is disabled after all - Put back's start
+    // refused, its write refused - cannot hold focus: the heading can.
+    const able = target !== null && target.isConnected && !target.hasAttribute('disabled')
+    ;(able ? target : heading.current)?.focus()
   })
   const reset = (): void => {
     if (putBackTuning(project, {}) !== null) focusTo.current = 'put back'

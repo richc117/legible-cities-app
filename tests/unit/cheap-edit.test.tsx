@@ -1000,6 +1000,10 @@ interface Reset {
   /** The same, for the reset and for the values before it. */
   resetValue: unknown
   beforeValue: unknown
+  /** A change made just before the reset, what it is drawn with, and the record it leaves. */
+  step: () => void
+  stepValue: unknown
+  stepRecord: Partial<ProjectRecord>
 }
 
 const COLOURS_RESET: Reset = {
@@ -1014,6 +1018,9 @@ const COLOURS_RESET: Reset = {
   sent: () => run.recolour.mock.calls.map(([, , palette]) => palette),
   resetValue: { colors: {}, defaultColor: DEFAULT_COLOR },
   beforeValue: { colors: { A: '#111111', B: '#222222' }, defaultColor: '#444444' },
+  step: () => COLOURS.make('#333333'),
+  stepValue: { colors: { A: '#333333', B: '#222222' }, defaultColor: '#444444' },
+  stepRecord: { colors: { A: '#333333', B: '#222222' } },
 }
 
 const SIZES_RESET: Reset = {
@@ -1028,6 +1035,9 @@ const SIZES_RESET: Reset = {
   sent: () => run.restyle.mock.calls.map(([, , style]) => style),
   resetValue: {},
   beforeValue: { stationShape: 'tick', lineWidth: 12 },
+  step: () => SIZES.make('square'),
+  stepValue: { stationShape: 'square', lineWidth: 12 },
+  stepRecord: { style: { stationShape: 'square', lineWidth: 12 } },
 }
 
 /** Is a button of this name drawn? */
@@ -1096,6 +1106,29 @@ describe.each([COLOURS_RESET, SIZES_RESET])('$name: Put back', (reset) => {
     expect(saidIn(reset)).toBe('')
   })
 
+  it('puts back what the map was drawn from when the reset is drawn, not when it was pressed', async () => {
+    // A reset pressed while the panel's own redraw of the change before it
+    // goes is held, and that redraw writes a `drawn` of its own first.
+    // Mutation (`cheap-edit.mutations.json`): the slot not taken again as
+    // the reset is drawn - Put back would undo the change as well.
+    await openDrawn(reset)
+    reset.step()
+    firstTry(reset.panel)
+    expect(run.snapshot.state).toBe('running')
+    press(reset.reset)
+    firstTry(reset.panel)
+    expect(reset.sent(), 'the reset is held behind the change').toEqual([reset.stepValue])
+    drawnNow(reset, reset.stepRecord)
+    wait(REDRAW_DELAY)
+    expect(reset.sent()).toEqual([reset.stepValue, reset.resetValue])
+    drawnNow(reset, reset.after)
+    press(reset.putBack)
+    firstTry(reset.panel)
+    expect(reset.sent().at(-1), 'the change, which the map showed before the reset').toEqual(
+      reset.stepValue,
+    )
+  })
+
   it('goes when the reset’s own redraw stops, the record still holding what it had', async () => {
     await openDrawn(reset)
     press(reset.reset)
@@ -1125,5 +1158,22 @@ describe.each([COLOURS_RESET, SIZES_RESET])('$name: Put back', (reset) => {
     for (const map of Object.values(leaves)) map.clear()
     await open(reset.panel.cell, left)
     expect(offered(reset.putBack)).toBe(false)
+  })
+})
+
+describe('Put back your colours and a colour panel', () => {
+  it('stays when a panel closes with no gesture under it, and goes with a gesture released', async () => {
+    // The panel's `toggle` reaches the hook as a release, a task after the
+    // reset that closed it (the review of issue 561). Mutation
+    // (`cheap-edit.mutations.json`): every release taken as an edit - Put
+    // back goes under the focus the reset gave it.
+    await openDrawn(COLOURS_RESET)
+    press(COLOURS_RESET.reset)
+    drawnNow(COLOURS_RESET, COLOURS_RESET.after)
+    gesture(() => prop<() => void>(leaves.chips, A, 'onClosed')())
+    expect(offered(PUT_BACK_COLOURS), 'a panel closed is not an edit').toBe(true)
+    gesture(() => prop<(hex: string) => void>(leaves.chips, A, 'onPick')('#555555'))
+    gesture(() => prop<() => void>(leaves.chips, A, 'onClosed')())
+    expect(offered(PUT_BACK_COLOURS), 'a gesture released is').toBe(false)
   })
 })

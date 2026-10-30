@@ -204,7 +204,10 @@ export default function StyleFields({
     if (to === null) return
     focusTo.current = null
     const target = to === 'put back' ? putBackRef.current : resetRef.current
-    ;(target ?? handback.current)?.focus()
+    // A target that went or is disabled after all - Put back's start
+    // refused, its write refused - cannot hold focus: the heading can.
+    const able = target !== null && target.isConnected && !target.hasAttribute('disabled')
+    ;(able ? target : handback.current)?.focus()
   })
   const reset = (): void => {
     setView({ style: {}, drafts: draftsOf({}), problems: {} })

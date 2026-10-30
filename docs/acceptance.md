@@ -591,7 +591,7 @@ back your sizes**, and then **Reset to the engine's sizes** once more.
   and 0. It draws the map once more as it was before, leaves the theme as
   it is, and then cannot be pressed; the row reads "Warm dark" again.
 - As it goes, **Put back your sizes** comes beside it and holds the focus,
-  with "The sizes are back to the engine's own. Put back your sizes to undo
+  with "The sizes are back to the engine’s own. Put back your sizes to undo
   it." above the two (issue 561). **Put back your sizes** draws the map
   once more with the group as it was drawn before the reset - **Look**
   **Custom**, a line width of 7, **Square**, **Inter**, a dot size of 8 and
@@ -635,7 +635,7 @@ at the row and at **Line order** below. Then press **Reset line**.
   "the default, ...") and the map follows; **Reset every line** does the
   same for all and then is unavailable.
 - As it goes, **Put back your colours** comes beside it and holds the
-  focus, with "Every line is back to its feed's colour. Put back your
+  focus, with "Every line is back to its feed’s colour. Put back your
   colours to undo it." above the two (issue 561). **Put back your colours**
   draws the map once more with the default row's colour you typed, goes,
   takes the sentence with it, and hands the focus back to **Reset every
