@@ -471,6 +471,10 @@ function setAppMenu(help: HelpIpcDeps): void {
     app.setAboutPanelOptions({
       applicationName: PRODUCT_NAME,
       applicationVersion: __RELEASE_LABEL__,
+      // The build version too: left out, AppKit reads CFBundleVersion,
+      // package.json's 1.0.0, and shows it in brackets beside a label
+      // that differs ("1.0.0-rc.2 (1.0.0)").
+      version: __RELEASE_LABEL__,
       copyright: 'Licensed under GPL-3.0-or-later.',
     })
   }

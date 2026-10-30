@@ -30,7 +30,8 @@ links are inline, with no images and no reference-style links.
 - The Library's cards show a picture of each map.
 - Settings shows the app's version, as do the diagnostics and, on a Mac,
   the About box. A release candidate says which one it is
-  ("1.0.0-rc.2"), and a build that is not a release names its commit.
+  ("1.0.0-rc.2"), and a build from a checkout that is not a release names
+  its commit.
 - The window opens where you left it, on a display that is still attached.
 - Each installer and `SHA256SUMS.txt` has a signed attestation, which
   [the install guide](docs/install.md#check-who-built-it-optional) shows how

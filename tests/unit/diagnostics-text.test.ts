@@ -108,6 +108,9 @@ describe('the composed text', () => {
     expect(index).toContain('declare const __RELEASE_LABEL__: string')
     expect(index).toContain('app: { name: PRODUCT_NAME, version: __RELEASE_LABEL__ },')
     expect(index).not.toMatch(/\bgetVersion\s*\(/)
+    // Mutation: either line gone, and AppKit falls back to the bundle's 1.0.0.
+    expect(index).toContain('applicationVersion: __RELEASE_LABEL__,')
+    expect(index).toMatch(/^\s+version: __RELEASE_LABEL__,$/m)
     const config = await readFile(join(__dirname, '../../electron.vite.config.ts'), 'utf8')
     expect(config).toContain('process.env.LEGIBLE_RELEASE_REF')
     expect(config).toContain('define: { __RELEASE_LABEL__: JSON.stringify(RELEASE_LABEL) },')
