@@ -359,40 +359,53 @@ test("the rail's headings, every step's number and Outputs start at one edge", a
 // Issue 565: cell 03 was called "Frame and service day", 137 pixels in a
 // name column of 71, and its step was the one name the rail cut short. The
 // name column is narrowest beside the longest state word, "not drawn yet",
-// so the measure is taken with that word on the steps: a day chosen and not
-// drawn takes cells 04 to 06 there, and a grid chosen over a layout made
-// with another takes 03 there as well. At the two widths the window opens
-// in and the one below it, no name may be wider than its box.
+// so the measure is taken with that word on the steps: a grid chosen over a
+// layout made with another takes cells 03 to 06 there. At 1024 and 1280
+// pixels wide, the widest of the six names, set in the current step's bold
+// weight, must fit the narrowest name box a stale step leaves it.
 test('no step in the rail cuts its name short, even with "not drawn yet" beside it', async () => {
   test.setTimeout(120_000)
   const h = home()
   await withApp(h, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', PROJECT)
 
-    const frame = await openCell(page, 'frame')
-    await frame.getByLabel('Draw for another day').fill('2026-06-20')
-    for (const number of ['04', '05', '06'])
-      await expect(step(page, new RegExp(`^${number} .*, not drawn yet$`))).toBeVisible()
-
-    // A grid of another kind makes the layout stale too, which takes cell 03
-    // to the state with the longest word.
     await openCell(page, 'process')
     await page.getByRole('button', { name: /^Layout tuning\b/ }).click()
     await page
       .getByRole('group', { name: 'Layout tuning', exact: true })
       .getByRole('combobox', { name: 'Grid' })
       .selectOption('orthoradial')
-    await expect(step(page, /^03 Day, not drawn yet$/)).toBeVisible()
+    for (const number of ['03', '04', '05', '06'])
+      await expect(step(page, new RegExp(`^${number} .*, not drawn yet$`))).toBeVisible()
 
     for (const width of [1024, 1280]) {
       await page.setViewportSize({ width, height: 800 })
       await expect(page.locator('.rail-name')).toHaveCount(6)
-      const cut = await page.evaluate(() =>
-        [...document.querySelectorAll<HTMLElement>('.rail-name')]
-          .filter((el) => el.scrollWidth > el.clientWidth)
-          .map((el) => `${el.textContent} (${el.scrollWidth}px in ${el.clientWidth}px)`),
-      )
-      expect(cut, `names cut short at ${width}px wide`).toEqual([])
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const names = [...document.querySelectorAll<HTMLElement>('.rail-name')]
+              const stale = [
+                ...document.querySelectorAll<HTMLElement>(
+                  '.rail-step[data-state="stale"] .rail-name',
+                ),
+              ]
+              // The current step's name is bold, and bold is wider; the
+              // worst case is every name in that weight.
+              const bold = getComputedStyle(document.documentElement)
+                .getPropertyValue('--weight-strong')
+                .trim()
+              const was = names.map((el) => el.style.fontWeight)
+              names.forEach((el) => (el.style.fontWeight = bold))
+              const widest = Math.max(...names.map((el) => el.scrollWidth))
+              const room = Math.min(...stale.map((el) => el.clientWidth))
+              names.forEach((el, n) => (el.style.fontWeight = was[n]))
+              return { staleSteps: stale.length, cut: widest > room, widest, room }
+            }),
+          { message: `the widest name fits the narrowest box at ${width}px wide` },
+        )
+        .toMatchObject({ staleSteps: 4, cut: false })
     }
   })
 })
