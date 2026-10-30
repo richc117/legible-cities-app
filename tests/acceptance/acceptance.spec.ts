@@ -25,9 +25,10 @@
 //                             without it nothing is refused
 //
 // Steps 1, 2 and 21 (download, install, uninstall) are the workflow's
-// (.github/workflows/acceptance.yml). What a machine cannot judge - a drag's
-// feel, whether a window came to the front, whether a picture is the map - is
-// written as not automated, never as passed.
+// (.github/workflows/acceptance.yml), and step 22, the update over 0.1.0, is
+// a person's. What a machine cannot judge - a drag's feel, whether a window
+// came to the front, whether a picture is the map - is written as not
+// automated, never as passed.
 //
 // A failed step does not end the run: it is recorded, with the sentence the
 // app showed and a screenshot, and the steps that do not need it go on. A step
@@ -698,6 +699,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
     }
   }
+  // The update over 0.1.0 installs two versions, one over the other, and the
+  // workflow installs one; it stays a person's (docs/acceptance.md, step 22).
+  record.fieldUnlessSet('Previous version installed', "not automated: step 22 is a person's")
+  record.step(
+    22,
+    'not automated',
+    "A person's: it installs 0.1.0, makes a project and an export, and installs this release over them.",
+  )
   record.anythingElse(
     "Automated: a Playwright driver launched the installed app with a temporary profile (--user-data-dir) and LEGIBLE_EXPORT_FOLDER set to a temporary folder. The stranger's timed run, the screen-reader walkthrough and the Gatekeeper or SmartScreen clicks are a person's.",
   )

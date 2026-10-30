@@ -3,7 +3,9 @@
 The release gate's run over an installed app (issue A6-04): one person, one
 machine, an installer from a GitHub Release draft, and
 [`install.md`](install.md) open beside it. Run it once on a Windows PC and
-once on a clean Mac, a Mac that has never had Legible Cities on it. The
+once on a clean Mac, a Mac that has never had Legible Cities on it.
+[Step 22](#22-update-over-010), the update over 0.1.0, is made on one of
+the two runs, a Mac on one release and Windows on the next. The
 stranger's timed run is a separate document,
 [`acceptance-stranger.md`](acceptance-stranger.md); the screen-reader
 walkthrough is in [`accessibility.md`](accessibility.md#walking-it-with-a-screen-reader).
@@ -113,6 +115,9 @@ What it cannot do stays a person's, and the record says so step by step
   where it lands), and whether the Finder or File Explorer came to
   the front with the file selected (the spec records what the app asked
   the system to show or open, and checks those files).
+- **Step 22**: the run installs the one version under test on a runner
+  that has never had another, so the update over 0.1.0 is recorded as not
+  automated, and so is **Previous version installed**.
 - **Places**: the profile and export folder are temporary, so the folders
   in `install.md`'s tables are checked only in step 21.
 - **Older than the checklist**: a release tagged before the front door and
@@ -1136,6 +1141,49 @@ name.
 
 Result: ____
 
+### 22. Update over 0.1.0
+
+Made on one of the two runs; the other writes "not run" in this step's row
+and names the run that made it. Step 21 has left the machine without the
+app, as it was before the run.
+
+**Do.**
+1. From the 0.1.0 Release on the
+   [Releases page](https://github.com/richc117/legible-cities-app/releases),
+   download the file for this machine and install it, as steps 1 and 2 of
+   [the checklist at v0.1.0](https://github.com/richc117/legible-cities-app/blob/v0.1.0/docs/acceptance.md)
+   say. Write "0.1.0" in **Previous version installed**.
+2. Press the **LA Metro Rail** card under **Sample cities** and wait for
+   the run to end. Open cell **02 Process** and write down the **Layout**
+   and **Made** in its footer.
+3. In cell **06 Export**, choose **Preset** "instagram-post: 1080 by 1350,
+   still, PNG" and press **Export**, and wait for "Exported
+   la-metro-rail-instagram-post.png."
+4. Quit the app (on a Mac, Legible Cities › Quit; on Windows, close the
+   window).
+5. Install this release over it, as
+   [Updating from an earlier release](install.md#updating-from-an-earlier-release)
+   says (on a Mac, choose **Replace**), and open it past the warning as in
+   step 2.
+6. Open **LA Metro Rail** from **Your projects**, and open cell **02
+   Process**. Then quit, open the app again and open the project again.
+
+**See.**
+- The map is redrawn once, as the project first opens: cell 03 runs, then
+  cell 02's run line reads "Drawn for `<day>` from the stored layout. The
+  stations have not moved."
+- **Layout** and **Made** in cell 02's footer are the ones you wrote down.
+- **Outputs** lists the post made in 0.1.0, and its **Reveal** opens the
+  Finder or File Explorer with `la-metro-rail-instagram-post.png` selected.
+- The second time the project opens, nothing runs, and the sentence under
+  the heading is "The map is drawn from every cell."
+- **check:** the stations are where 0.1.0 drew them; the names may be
+  placed differently, as install.md's "The engine is newer" says.
+
+Then uninstall the app again, as step 21 says.
+
+Result: ____
+
 ## Failures
 
 Every failure becomes an issue of its own, one per defect, even when two
@@ -1163,6 +1211,7 @@ Copy everything in the block below into a new issue titled
 | OS and version | (e.g. macOS 15.6, Windows 11 24H2) |
 | Machine | (model, chip or processor, memory) |
 | Clean machine? | (never had Legible Cities installed: yes / no) |
+| Previous version installed | (step 22: the version installed before this one, 0.1.0; none where step 22 was not run) |
 | Date | |
 | Run by | |
 | Installer file name | |
@@ -1197,6 +1246,7 @@ Copy everything in the block below into a new issue titled
 | 19 | Licences | pass / fail | |
 | 20 | Reset engine data | pass / fail | |
 | 21 | Uninstall, and what is left | pass / fail | |
+| 22 | Update over 0.1.0 | pass / fail | |
 
 ## Versions from Settings
 
