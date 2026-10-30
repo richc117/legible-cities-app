@@ -82,6 +82,8 @@ links are inline, with no images and no reference-style links.
   under the project's header.
 - Choices made one after another in cells 04 and 05 are no longer lost.
 - A screen reader announces a status sentence again when it repeats.
+- A heading the app moves focus to, such as the Library's, draws its focus
+  ring round its words, not across the whole column like a text field.
 
 ### Security
 

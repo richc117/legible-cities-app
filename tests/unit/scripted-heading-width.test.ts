@@ -123,6 +123,8 @@ describe('a heading the app focuses by script', () => {
       'Library.tsx: h1',
       'SampleCities.tsx: h2',
       'Settings.tsx: h1',
+      'Settings.tsx: h2',
+      'Settings.tsx: h2',
       'notebook/Cell.tsx: Disclosure h2 | h3',
       'notebook/Outputs.tsx: h2',
       'notebook/ProjectHeader.tsx: h1',
