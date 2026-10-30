@@ -34,9 +34,9 @@ import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Locator, type Page } from '@playwright/test'
+import { PUT_BACK_SIZES } from '../../src/renderer/src/putBackWords'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
-  cellHandback,
   cellHeading,
   closeCell,
   laidOutProject,
@@ -327,9 +327,12 @@ test('Reset puts every size back to the engine’s own, and the next build carri
     await expect(reset(page)).toBeEnabled()
 
     await reset(page).click()
-    // The button disables itself with nothing left to reset, so focus went to
-    // the cell's heading first and not to the page (A6-07).
-    await expect(cellHandback(page, 'style')).toBeFocused()
+    // The button disables itself with nothing left to reset, so focus went
+    // to the control that came, Put back your sizes, and not to the page
+    // (A6-07, issue 561): the map was drawn with sizes to put back.
+    await expect(
+      sizes(page).getByRole('button', { name: PUT_BACK_SIZES, exact: true }),
+    ).toBeFocused()
     await expect(field(page, 'Line width')).toHaveValue('7')
     await expect(reset(page)).toBeDisabled()
 

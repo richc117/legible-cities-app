@@ -21,6 +21,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { COLOURS_RESET_SAID, PUT_BACK_COLOURS } from '../../src/renderer/src/putBackWords'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import {
   cell,
@@ -246,6 +247,77 @@ test('reset puts a line back to the feed, and reset for all clears everything', 
     await expect.poll(() => readRecord(engineHome).colors, { timeout: 30_000 }).toEqual({})
     expect(readRecord(engineHome).defaultColor).toBe('#888888')
     await expect(panel.getByRole('button', { name: 'Reset every line' })).toBeDisabled()
+  })
+})
+
+test('Put back after Reset every line draws the colours the map had, and drawn is the earlier one again', async () => {
+  // Issue 561: two overrides drawn, one reset for all, and Put back. The
+  // colours come back in one build, the record's drawn is what it was before
+  // the reset, focus goes to Put back and back to the reset, and the section
+  // says the reset's sentence while Put back is offered.
+  const engineHome = home()
+  await withApp(engineHome, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    const panel = cell(page, 'lines')
+    for (const [line, hex] of [
+      ['A', '#ff0000'],
+      ['B', '#00ff00'],
+    ] as const) {
+      await panel
+        .getByRole('button', { name: new RegExp(`^Choose the colour of line ${line}`) })
+        .click()
+      const one = panel.getByRole('group', { name: `Colour for line ${line}` })
+      await one.getByLabel('Hex value').fill(hex)
+      await one.getByRole('button', { name: 'Use this colour' }).click()
+      await expect(page.getByText(/Drawn in the colours you chose/)).toBeVisible({
+        timeout: 30_000,
+      })
+    }
+    await expect
+      .poll(() => (readRecord(engineHome).drawn as { colors?: unknown } | null)?.colors, {
+        timeout: 30_000,
+      })
+      .toEqual({ A: '#ff0000', B: '#00ff00' })
+    const earlier = readRecord(engineHome).drawn
+    const resetAll = panel.getByRole('button', { name: 'Reset every line' })
+    const putBack = panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })
+    const said = panel.locator('section.line-colours').getByRole('status').filter({
+      hasText: COLOURS_RESET_SAID,
+    })
+    await expect(putBack, 'nothing to put back before the reset').toHaveCount(0)
+
+    await resetAll.click()
+    await expect(putBack, 'the reset hands focus to Put back').toBeFocused()
+    await expect(said).toHaveCount(1)
+    await expect.poll(() => readRecord(engineHome).colors, { timeout: 30_000 }).toEqual({})
+    await expect
+      .poll(() => (readRecord(engineHome).drawn as { colors?: unknown } | null)?.colors, {
+        timeout: 30_000,
+      })
+      .toEqual({})
+    const builds = received(engineHome, 'map.build').length
+
+    await putBack.click()
+    await expect(resetAll, 'Put back hands focus back to the reset').toBeFocused()
+    await expect(putBack, 'one step: Put back goes').toHaveCount(0)
+    await expect(said).toHaveCount(0)
+    await expect
+      .poll(() => readRecord(engineHome).colors, { timeout: 30_000 })
+      .toEqual({ A: '#ff0000', B: '#00ff00' })
+    await expect
+      .poll(() => readRecord(engineHome).drawn, {
+        timeout: 30_000,
+        message: 'the map is drawn from what it was drawn from before the reset',
+      })
+      .toEqual(earlier)
+    const maps = received(engineHome, 'map.build')
+    expect(maps, 'one build for Put back').toHaveLength(builds + 1)
+    expect(maps[maps.length - 1]).toContain('"#ff0000"')
+    expect(maps[maps.length - 1]).toContain('"#00ff00"')
+    expect(
+      received(engineHome, 'graph.build'),
+      'a colour is a render: nothing was laid out again',
+    ).toHaveLength(1)
   })
 })
 
@@ -878,12 +950,13 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     // Reset every line pressed with a panel open and focus still on its chip,
     // as an assistive technology's click presses it: no pointer event
     // light-dismisses the panel and no key has moved focus off the chip, so
-    // what closes it is the reset handing focus to cell 05's heading (a
-    // panel closes when focus lands outside it and its chip, issue 436), and
-    // no empty box is left in the top layer.
+    // what closes it is the reset handing focus on - since issue 561 to Put
+    // back your colours, the control that came, as the map was drawn in a
+    // colour of the person's own (a panel closes when focus lands outside it
+    // and its chip, issue 436) - and no empty box is left in the top layer.
     //
-    // Mutation: drop `handback.current?.focus()` from `releaseAndKeepFocus`
-    // (LineColours.tsx) and the panel stays open here.
+    // Mutation: drop both of `resetEvery`'s focus hand-offs (LineColours.tsx)
+    // and the panel stays open here.
     await chipOf('A').click()
     const one = panel.getByRole('group', { name: 'Colour for line A' })
     await one.getByLabel('Hex value').fill('#ff0000')
@@ -896,21 +969,23 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     const resetAll = panel.getByRole('button', { name: 'Reset every line' })
     await resetAll.evaluate((el) => (el as HTMLElement).click())
     await expect(one).toBeHidden()
-    await expect(cellHandback(page, 'lines'), 'the reset handed focus back').toBeFocused()
+    const putBack = panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })
+    await expect(putBack, 'the reset handed focus to Put back').toBeFocused()
     expect(
       await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
       'no panel left open',
     ).toBe(0)
     await expect(chipOf('A')).toHaveAttribute('aria-expanded', 'false')
 
-    // And with focus already on cell 05's heading, where that reset left it:
-    // a panel opened by a press that moves no focus (a screen reader's
-    // activation in browse mode), then Reset every line pressed the same
-    // way. Neither press moves focus and the handback has nowhere to move
-    // it, so no focus closes the panel: the reset closes it itself.
-    //
-    // Mutation: remove the reset's `closePanels()` (LineColours.tsx) and the
-    // panel stays open here.
+    // And with focus already on cell 05's heading: a panel opened by a press
+    // that moves no focus (a screen reader's activation in browse mode), then
+    // Reset every line pressed the same way. Neither press moves focus; the
+    // reset's hand-off to Put back does, and the panel closes with it. The
+    // reset's own `closePanels()` is what closes a panel when the reset has
+    // nothing to put back and the heading already holds focus, so the
+    // hand-off moves none: a map drawn in the reset's own colours with a
+    // colour still to draw, which this stand-in cannot hold still long
+    // enough to press into.
     const busy = panel.locator('section.line-colours')
     await expect(busy, 'the reset’s redraw has finished').toHaveAttribute('aria-busy', 'false', {
       timeout: 30_000,
@@ -929,8 +1004,12 @@ test('a chip opens its picker in a floating panel that moves no row, and the las
     await expect(one).toBeVisible()
     await expect(heading05, 'opening the panel moved no focus').toBeFocused()
     await resetAll.evaluate((el) => (el as HTMLElement).click())
-    await expect(one, 'the reset closed the panel itself').toBeHidden()
-    await expect(heading05).toBeFocused()
+    await expect(one, 'the panel is closed').toBeHidden()
+    await expect(putBack).toBeFocused()
+    expect(
+      await panel.evaluate((el) => el.querySelectorAll('.colour-popover:popover-open').length),
+      'no panel left open',
+    ).toBe(0)
   })
 })
 
