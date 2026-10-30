@@ -20,7 +20,7 @@
     "find": "    help('feeds', 'Finding a feed'),\n",
     "replace": "",
     "test": "tests/unit/menu.test.ts",
-    "title": "puts Help’s pages in one order",
+    "title": "put Help’s pages in one order",
     "why": "Finding a feed left out of Help (issue 555): the page is written and the menu, the one place that offers it on every screen, does not say so."
   }
 ]
