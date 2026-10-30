@@ -1038,6 +1038,17 @@ into a plain text editor.
   and **Maps drawn this session**.
 - Your user name does not appear in any path in it: the home folder is
   written as `~`.
+- A copy that would be too long for an issue is cut to fit (48,000
+  characters at most): where a run's logs and reports made it so, the line
+  under the heading reads "Trimmed to fit a GitHub issue: main.log keeps
+  its last `<N>` lines, engine.log `<M>`, and `<K>` of `<R>` map reports.
+  The whole logs are in the logs folder (Settings › Open logs folder);
+  attach them to the report." with the oldest lines gone and the newest
+  kept, the five sections from **App** to **Bundled tools** whole, and no
+  such line in a copy that was not cut. A short session is not cut, so
+  write down whether this run's copy was; "not trimmed" is a result, and
+  the trimmed case is judged by `tests/unit/diagnostics-text.test.ts`, not
+  by this step.
 
 Result: ____
 
