@@ -13,7 +13,12 @@ import ExportTab from '../../src/renderer/src/ExportTab'
 import { ExportRun } from '../../src/renderer/src/engine/exportRun'
 import { forgetExportTables, PREVIEW_DELAY } from '../../src/renderer/src/exportChoice'
 import { EngineError } from '../../src/shared/engine'
-import type { ExportChoice, ExportPreview, ExportResult } from '../../src/shared/export'
+import type {
+  ExportChoice,
+  ExportOutput,
+  ExportPreview,
+  ExportResult,
+} from '../../src/shared/export'
 import type { Preset, Storyboard } from '../../src/shared/protocol'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import { answered, BASE, byName, cleanup, READY, renderPanel } from '../support/render'
@@ -76,7 +81,13 @@ const exporter = (): ExportRun =>
 
 /** Cell 06's panel under a heading of its own, as the cell draws it. */
 async function draw(
-  over: { project?: Project; engine?: typeof READY | null; preview?: ExportPreview } = {},
+  over: {
+    project?: Project
+    engine?: typeof READY | null
+    preview?: ExportPreview
+    /** What the folder holds, as the screen's one read of it gives it. */
+    outputs?: ExportOutput[] | null
+  } = {},
 ) {
   const run = exporter()
   const heading = createRef<HTMLHeadingElement>()
@@ -94,7 +105,7 @@ async function draw(
   )
   const onChoice = vi.fn<(choice: ExportChoice) => Promise<void>>(async () => undefined)
   const readOutputs = vi.fn()
-  const outputs = { rows: null, read: readOutputs }
+  const outputs = { rows: over.outputs ?? null, read: readOutputs }
   function Cell({ engine = over.engine === undefined ? READY : over.engine }): JSX.Element {
     return (
       <section>
@@ -230,6 +241,30 @@ describe('cell 06’s composition', () => {
     expect(form?.nextElementSibling?.className).toBe('focus-region')
     expect(byName('button', 'Export')).toBeTruthy()
     expect(byName('button', 'Choose folder')).toBeTruthy()
+  })
+
+  it('says what a second export replaces when the folder holds the file the plan named (issue 563)', async () => {
+    // The wiring from the screen's rows and the preview's plan to the line
+    // beside Export. Mutation: the plan's file not handed to the run - the
+    // line is never drawn.
+    vi.useFakeTimers()
+    const file = 'la-metro-rail-instagram-reel.mp4'
+    const made = '2026-09-30T02:16:00.000Z'
+    const held = (over: Partial<ExportOutput> = {}): ExportOutput[] => [
+      { file, preset: 'instagram-reel', made, present: true, ...over },
+    ]
+    await draw({ outputs: held() })
+    expect(document.getElementById('export-replaces'), 'before the plan answers').toBeNull()
+    await act(() => vi.advanceTimersByTimeAsync(PREVIEW_DELAY))
+    await answered()
+    expect(document.getElementById('export-replaces')?.textContent).toMatch(
+      /^Exporting replaces la-metro-rail-instagram-reel\.mp4, made .+\. A filename tag keeps both\.$/,
+    )
+    cleanup()
+    await draw({ outputs: held({ present: false }) })
+    await act(() => vi.advanceTimersByTimeAsync(PREVIEW_DELAY))
+    await answered()
+    expect(document.getElementById('export-replaces'), 'a file that has gone').toBeNull()
   })
 
   it('reads the outputs again when the destination changes, and not before (issue 563)', async () => {

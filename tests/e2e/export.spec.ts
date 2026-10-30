@@ -203,7 +203,7 @@ test('exports the reel from one click: three stages, a file, its sidecar, and no
 // so the row on screen reads that date and no read has happened since;
 // the second export then has to move it, with no reload, as soon as the
 // run says it is done. The mutation to watch it fail under: take
-// `runState` out of the effect's dependencies in `Outputs.tsx`.
+// `runState` out of the effect's dependencies in `useOutputs.ts`.
 test('Outputs dates a re-exported file by the new export, with no reload', async () => {
   test.setTimeout(120_000)
   const h = home()
