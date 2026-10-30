@@ -15,8 +15,9 @@ import { describe, expect, it } from 'vitest'
 //    root, a test by a title that is a `test(`, `it(` or `describe(` in it;
 // 2. no row of a screen's table says, in a machine column (keyboard, labels,
 //    focus, motion, contrast), that a spec has not run. CI runs every spec in
-//    tests/e2e/ (ci.yml, `e2e`), so such a cell is wrong the day the spec
-//    exists. The reader columns are the last two of the nine and are judged
+//    tests/e2e/ (ci.yml: `e2e`, which leaves out a test tagged
+//    `@quarantine`, and `e2e-quarantine`, which runs only those), so such a
+//    cell is wrong the day the spec exists. The reader columns are the last two of the nine and are judged
 //    by position: they are a person's, and no spec answers them;
 // 3. every spec a table row names exists, so a renamed spec cannot take its
 //    row out of the rule above by no longer being found.
@@ -89,12 +90,30 @@ const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\
  * `.fixme` or `.todo` is not a test that runs.
  */
 function isATitle(source: string, title: string): boolean {
-  return new RegExp(
+  return titleCall(title).test(source)
+}
+
+/** The opening of a live test call, up to and with the quoted title. */
+const titleCall = (title: string): RegExp =>
+  new RegExp(
     String.raw`^[ \t]*(?:test\.describe|test|it|describe)(?:\.(?:only|serial|parallel))?\(\s*(['"` +
       '`' +
       String.raw`])${escaped(title)}\1`,
     'm',
-  ).test(source)
+  )
+
+/**
+ * Is the test titled `title` in `source` tagged `@quarantine`? A tag sits
+ * between the title and the function that is the test's body, so that span is
+ * read (in any case, as Playwright reads the tag). The required end-to-end
+ * job leaves such a test out, so the record cannot cite it as run.
+ */
+function isQuarantined(source: string, title: string): boolean {
+  const call = titleCall(title).exec(source)
+  if (!call) return false
+  const rest = source.slice(call.index + call[0].length)
+  const body = rest.search(/=>|\bfunction\b/)
+  return /@quarantine/i.test(body < 0 ? rest : rest.slice(0, body))
 }
 
 describe('the accessibility record maps WCAG 2.2', () => {
@@ -170,6 +189,10 @@ describe('the accessibility record maps WCAG 2.2', () => {
             isATitle(source, m[2]!),
             `${id}: ${m[1]} has a test(), it() or describe() titled "${m[2]}"`,
           ).toBe(true)
+          expect(
+            isQuarantined(source, m[2]!),
+            `${id}: the test "${m[2]}" is tagged @quarantine, which the required end-to-end job leaves out; cite another or drop it`,
+          ).toBe(false)
         }
       })
     })
@@ -197,6 +220,18 @@ describe('the accessibility record maps WCAG 2.2', () => {
     expect(isATitle("  test.describe.serial('a suite', () => {})", 'a suite')).toBe(true)
   })
 
+  it('tells a quarantined test from one that is not, in any case of the tag', () => {
+    const tagged = "test('a title', { tag: '@quarantine' }, async () => {})"
+    expect(isQuarantined(tagged, 'a title')).toBe(true)
+    expect(
+      isQuarantined("test('a title', { tag: ['@x', '@Quarantine'] }, () => {})", 'a title'),
+    ).toBe(true)
+    expect(isQuarantined("test('a title', async () => {})", 'a title')).toBe(false)
+    // Another test's tag, further down, is not this test's.
+    expect(isQuarantined(`test('a title', () => {})\n${tagged}`, 'a title')).toBe(false)
+    expect(isQuarantined(tagged, 'another title')).toBe(false)
+  })
+
   it('reads a status exactly', () => {
     for (const ok of ['pass', 'partial (a limit)', 'not applicable (no sign-in)', 'finding F7'])
       expect(STATUS.test(ok), ok).toBe(true)
@@ -213,12 +248,16 @@ describe('the accessibility record maps WCAG 2.2', () => {
 })
 
 describe('the record does not say a check CI runs has not run', () => {
-  // CI's end-to-end job runs the whole of tests/e2e/ on two systems for every
-  // pull request and push to main. The rule below is only as good as that.
+  // CI's two end-to-end jobs run the whole of tests/e2e/ between them, on two
+  // systems for every pull request and push to main: `e2e` all but the tests
+  // tagged `@quarantine` (which block a merge), `e2e-quarantine` those. The
+  // rule below is only as good as that.
   it('rests on CI running every spec under tests/e2e/', () => {
     const ci = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
     // The required leg leaves the quarantined tests out (issue 553), and
-    // the job beside it runs them; together they are every spec.
+    // the job beside it runs them; together they are every spec. A test the
+    // record cites is not quarantined, below, since the required job would
+    // not run it.
     expect(ci).toMatch(/^\s+run: npm run test:e2e -- --grep-invert @quarantine\s*$/m)
     const config = readFileSync(join(root, 'playwright.config.ts'), 'utf8')
     expect(config).toMatch(/testDir: 'tests\/e2e'/)

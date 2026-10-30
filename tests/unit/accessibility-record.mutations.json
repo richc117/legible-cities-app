@@ -1,0 +1,10 @@
+[
+  {
+    "file": "tests/e2e/order.spec.ts",
+    "find": "test('a move redraws the map once, is stored, and is there on the next open', async () => {",
+    "replace": "test('a move redraws the map once, is stored, and is there on the next open', { tag: '@quarantine' }, async () => {",
+    "test": "tests/unit/accessibility-record.test.ts",
+    "title": "names files and tests that exist",
+    "why": "The record cites as evidence a test that the required end-to-end job no longer runs, so a pass in it rests on a test that can fail unseen."
+  }
+]

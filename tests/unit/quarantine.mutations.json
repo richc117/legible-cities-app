@@ -62,5 +62,61 @@
     "test": "tests/unit/quarantine.test.ts",
     "title": "does not take a comment for a use of the tag, as the scan does not",
     "why": "A comment that names the tag, as this repository's own do, would start the whole quarantine job, which is the cost the first step is there to save."
+  },
+  {
+    "file": "tests/unit/quarantine.test.ts",
+    "find": "new RegExp(TAG, 'gi')",
+    "replace": "new RegExp(TAG, 'g')",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "counts the tag in any case, as Playwright matches it",
+    "why": "Playwright matches --grep-invert without regard to case, so a test tagged @Quarantine is left out of the required suite while the scan, matching case, never counts it against the cap or asks it for an issue."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "grep -rhi '@quarantine' tests/e2e",
+    "replace": "grep -rh '@quarantine' tests/e2e",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "says a test is tagged where the tag is in another case",
+    "why": "A test tagged @Quarantine is left out of the required suite, yet the look step says nothing is tagged and the quarantine job skips every step, so the test is not measured at all."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "grep -rhi '@quarantine' tests/e2e",
+    "replace": "grep -rhi --include='*.spec.ts' '@quarantine' tests/e2e",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "looks in every file under tests/e2e, not only in *.spec.ts",
+    "why": "A tag in a .spec.tsx or .test.ts file, which Playwright runs, is left out of the required suite and never looked for by the quarantine job."
+  },
+  {
+    "file": "tests/unit/quarantine.test.ts",
+    "find": "text.slice(object[0], at)",
+    "replace": "text.slice(lineStart, at)",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "accepts a tag in an array wrapped over several lines",
+    "why": "A tag on a line of its own in a wrapped array is refused as being outside the tag option, so a correct quarantine fails the unit suite."
+  },
+  {
+    "file": "tests/unit/quarantine.test.ts",
+    "find": "if (call?.[1]?.includes('describe')) {",
+    "replace": "if (false) {",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "refuses the tag in a title and on a describe",
+    "why": "A tag on a describe, which quarantines every test inside it and counts as one against the cap, is accepted."
+  },
+  {
+    "file": "tests/unit/quarantine.test.ts",
+    "find": "if (!inTagOption || !object) {",
+    "replace": "if (!object) {",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "refuses the tag in a title and on a describe",
+    "why": "A tag in a test's title, where it can carry no issue annotation and is counted once for many tests, is accepted."
+  },
+  {
+    "file": "tests/unit/quarantine.test.ts",
+    "find": "return entry.isDirectory() ? filesUnder(path) : [path]",
+    "replace": "return entry.isDirectory() ? filesUnder(path) : entry.name.endsWith('.spec.ts') ? [path] : []",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "scans every file under the folder, not only *.spec.ts",
+    "why": "A tag in a .spec.tsx or .test.ts file, which Playwright runs, is never counted against the cap or asked for an issue."
   }
 ]

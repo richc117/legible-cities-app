@@ -194,8 +194,8 @@ jobs:
     # (CONTRIBUTING.md, "Flaky tests"). Its first step looks for a tagged
     # test and, with none, every later step is skipped, so the job ends in
     # seconds and costs no install or build for a state that is the usual one.
-    # A job that is set to continue on error reads as passed in the checks
-    # list: its log, or the artifact it keeps, says whether a test failed.
+    # The job is not required and never blocks a merge; its log, or the
+    # artifact it keeps, says whether a quarantined test still fails.
     continue-on-error: true
     timeout-minutes: 30
     strategy:
@@ -211,14 +211,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # A line that only comments on the tag is not a use of it, which is the
-      # rule tests/unit/quarantine.test.ts scans by; a line with the tag
-      # after code on it is counted, as there.
+      # Any file under tests/e2e, in any case (Playwright matches a tag
+      # without regard to case, so `@Quarantine` is the tag). A line that only
+      # comments on the tag is not a use of it, which is the rule
+      # tests/unit/quarantine.test.ts scans by; a line with the tag after code
+      # on it is counted, as there.
       - name: Look for quarantined tests
         id: look
         shell: bash
         run: |
-          if grep -rh --include='*.spec.ts' '@quarantine' tests/e2e | grep -vE '^[[:space:]]*(//|/?\*)' > /dev/null; then
+          if grep -rhi '@quarantine' tests/e2e | grep -vE '^[[:space:]]*(//|/?\*)' > /dev/null; then
             echo "tagged=true" >> "$GITHUB_OUTPUT"
             echo "A test is tagged @quarantine; the suite runs."
           else

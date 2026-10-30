@@ -15,20 +15,26 @@ import { afterEach, describe, expect, it } from 'vitest'
 const repo = resolve(__dirname, '../..')
 const CAP = 3
 const TAG = '@quarantine'
+// Playwright builds the regexp of `--grep` and `--grep-invert` with the `i`
+// flag, so `@Quarantine` is the tag to it, and is left out of the required
+// suite: the scan and the workflow's first step must see it too.
 
 interface Found {
   where: string
   problems: string[]
 }
 
-/** The `*.spec.ts` files under a folder, in a stable order. */
-function specsUnder(dir: string): string[] {
+/**
+ * Every file under a folder, in a stable order. Not only the `*.spec.ts`
+ * files: Playwright finds a test in `.spec.tsx`, `.test.ts` and the rest of
+ * its default pattern, and a tag in a helper there is not one to overlook.
+ */
+function filesUnder(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true })
     .sort((a, b) => a.name.localeCompare(b.name))
     .flatMap((entry) => {
       const path = join(dir, entry.name)
-      if (entry.isDirectory()) return specsUnder(path)
-      return entry.name.endsWith('.spec.ts') ? [path] : []
+      return entry.isDirectory() ? filesUnder(path) : [path]
     })
 }
 
@@ -65,9 +71,9 @@ function enclosingObject(text: string, at: number): [number, number] | null {
  */
 function quarantined(dir: string): Found[] {
   const found: Found[] = []
-  for (const file of specsUnder(dir)) {
+  for (const file of filesUnder(dir)) {
     const text = readFileSync(file, 'utf8')
-    for (const hit of text.matchAll(new RegExp(TAG, 'g'))) {
+    for (const hit of text.matchAll(new RegExp(TAG, 'gi'))) {
       const at = hit.index
       const lineStart = text.lastIndexOf('\n', at) + 1
       const line = text.slice(
@@ -78,7 +84,10 @@ function quarantined(dir: string): Found[] {
       if (/^\s*(\/\/|\/?\*)/.test(line)) continue
       const problems: string[] = []
       const object = enclosingObject(text, at)
-      if (!/\btag:\s*\[?[^\]{}]*$/.test(text.slice(lineStart, at)) || !object) {
+      // From the details object's opening to the tag: the `tag` option's
+      // value, which may be an array wrapped over several lines.
+      const inTagOption = object && /\btag:\s*\[?[^\]{}:]*$/.test(text.slice(object[0], at))
+      if (!inTagOption || !object) {
         problems.push(`${where}: ${TAG} is not in a test's \`tag\` option`)
       } else {
         const details = text.slice(...object)
@@ -123,6 +132,18 @@ describe('the scan', () => {
     expect(found.flatMap((f) => f.problems)).toEqual([])
   })
 
+  it('counts the tag in any case, as Playwright matches it', () => {
+    const found = quarantined(join(fixtures, 'mixed-case'))
+    expect(found).toHaveLength(1)
+    expect(found.flatMap((f) => f.problems)).toEqual([])
+  })
+
+  it('accepts a tag in an array wrapped over several lines', () => {
+    const found = quarantined(join(fixtures, 'wrapped-array'))
+    expect(found).toHaveLength(1)
+    expect(found.flatMap((f) => f.problems)).toEqual([])
+  })
+
   it('refuses a tag with no issue annotation, or one that is not an issue', () => {
     const found = quarantined(join(fixtures, 'unannotated'))
     expect(found).toHaveLength(2)
@@ -135,6 +156,22 @@ describe('the scan', () => {
     expect(found.map((f) => f.problems.length)).toEqual([1, 1])
     expect(found[0].problems[0]).toContain('is not in a test')
     expect(found[1].problems[0]).toContain('describe')
+  })
+
+  it('scans every file under the folder, not only *.spec.ts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'quarantine-scan-'))
+    try {
+      const tagged = "test('a', { tag: '@quarantine' }, async () => {})\n"
+      for (const name of ['a.spec.tsx', 'a.test.ts', 'helper.ts'])
+        writeFileSync(join(dir, name), tagged)
+      expect(quarantined(dir).map((f) => f.where)).toEqual([
+        'a.spec.tsx:1',
+        'a.test.ts:1',
+        'helper.ts:1',
+      ])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('counts every tag, so that the cap can bite', () => {
@@ -208,17 +245,18 @@ describe('the quarantine job’s first step', () => {
   })
 
   /** What the step writes as its output, over a checkout holding one spec. */
-  function answer(spec: string): string {
+  function answer(spec: string, name = 'a.spec.ts'): string {
     const dir = mkdtempSync(join(tmpdir(), 'quarantine-look-'))
     dirs.push(dir)
     mkdirSync(join(dir, 'tests', 'e2e'), { recursive: true })
-    writeFileSync(join(dir, 'tests', 'e2e', 'a.spec.ts'), spec)
+    writeFileSync(join(dir, 'tests', 'e2e', name), spec)
     const output = join(dir, 'output')
     writeFileSync(output, '')
     const run = spawnSync('bash', ['-c', script ?? 'exit 99'], {
       cwd: dir,
       env: { ...process.env, GITHUB_OUTPUT: output },
       encoding: 'utf8',
+      timeout: 10_000,
     })
     expect(run.status, run.stderr).toBe(0)
     return readFileSync(output, 'utf8').trim()
@@ -230,6 +268,17 @@ describe('the quarantine job’s first step', () => {
 
   posix('says a test is tagged where a line uses the tag', () => {
     expect(answer("test('a', { tag: '@quarantine' }, async () => {})\n")).toBe('tagged=true')
+  })
+
+  posix('says a test is tagged where the tag is in another case, as Playwright matches it', () => {
+    expect(answer("test('a', { tag: '@Quarantine' }, async () => {})\n")).toBe('tagged=true')
+  })
+
+  posix('looks in every file under tests/e2e, not only in *.spec.ts', () => {
+    const tagged = "test('a', { tag: '@quarantine' }, async () => {})\n"
+    expect(answer(tagged, 'a.spec.tsx')).toBe('tagged=true')
+    expect(answer(tagged, 'a.test.ts')).toBe('tagged=true')
+    expect(answer(tagged, 'helper.ts')).toBe('tagged=true')
   })
 
   posix('says nothing is tagged where no line has the tag', () => {
