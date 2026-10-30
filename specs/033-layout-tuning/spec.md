@@ -61,11 +61,13 @@ As someone who has changed the tuning, I want the notebook to say the map on scr
 
 **Acceptance Scenarios**:
 
-1. **Given** a laid-out project whose record's tuning differs from the tuning its layout was asked with, **Then** cells 03 to 06 read **not drawn yet**, the header says "03 Frame and service day to 06 Export are not drawn yet." and offers **Run all**, cell 02 says "Lay out again to use this tuning: the map on screen was laid out with LOOM’s defaults." (or "… with another tuning.", or "Lay out again to use LOOM’s defaults: …" after a reset), and the map stays exactly where it was.
+1. **Given** a laid-out project whose record's tuning differs from the tuning its layout was asked with, **Then** cells 03 to 06 read **not drawn yet**, the header says "03 Day to 06 Export are not drawn yet." and offers **Run all**, cell 02 says "Lay out again to use this tuning: the map on screen was laid out with LOOM’s defaults." (or "… with another tuning.", or "Lay out again to use LOOM’s defaults: …" after a reset), and the map stays exactly where it was.
 2. **Given** that state, **Then** nothing lays out by itself.
 3. **Given** that state, **When** **Lay out again** or **Run all** runs and finishes, **Then** the run was sent the record's tuning, the cells read **ready**, and cell 02's sentence is gone.
 4. **Given** that state, **When** a colour, the order, a size, the theme or the service day is changed, or an export is made, **Then** each does what it did before, from the stored layout, and the staleness stays until the layout is run again.
 5. **Given** **Re-layout**, **Then** its warning (ADR-033) is the one it was, word for word.
+
+*As of 29 Oct 2026 (issue 565):* cell 03 is called "Day", and scenario 1 above quotes the header with that name. When this was written the header said "03 Frame and service day to 06 Export are not drawn yet."; the rail cut that name short.
 
 ---
 

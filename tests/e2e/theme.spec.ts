@@ -1179,7 +1179,7 @@ async function openedAndRefused(
     })
     .toBe(drawn + 1)
   await expect(cellHeading(page, 'frame'), 'the run is cell 03’s, failed').toHaveAccessibleName(
-    /^03 Frame and service day failed/,
+    /^03 Day failed/,
     { timeout: 20_000 },
   )
   return opened
@@ -1215,9 +1215,9 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
 
     // Announced once: the header's alert, and nothing in the cell beside it.
     const alerts = page.getByRole('alert')
-    const failure = alerts.filter({ hasText: 'Frame and service day failed' })
+    const failure = alerts.filter({ hasText: 'Day failed' })
     await expect(failure, 'one alert says the cell failed').toHaveCount(1)
-    await expect(failure).toHaveText('03 Frame and service day failed.')
+    await expect(failure).toHaveText('03 Day failed.')
     await expect(
       alerts.filter({ hasText: OPENING_REDRAW_FAILED }),
       'the cell’s words are not a second announcement of it',
@@ -1275,9 +1275,7 @@ test('a redraw on open the engine refuses says so in cell 03, and the fallback s
     // Once, after all of that: nothing redrew it again or laid anything out.
     expect(received(h, 'map.build'), 'the redraw was asked once').toHaveLength(drawn + 1)
     expect(received(h, 'graph.build'), 'and nothing was laid out').toHaveLength(laidOut)
-    await expect(failure, 'and the alert still says it, unchanged').toHaveText(
-      '03 Frame and service day failed.',
-    )
+    await expect(failure, 'and the alert still says it, unchanged').toHaveText('03 Day failed.')
   })
 })
 

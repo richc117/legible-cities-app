@@ -236,7 +236,7 @@ test('a grid and a penalty are written at once, the cells below read not drawn y
     for (const id of ['frame', 'style', 'lines', 'export'] as const)
       await expect(cellHeading(page, id), id).toContainText('not drawn yet')
     await expect(cellHeading(page, 'process')).toContainText('ready')
-    await expect(said(page)).toHaveText('03 Frame and service day to 06 Export are not drawn yet.')
+    await expect(said(page)).toHaveText('03 Day to 06 Export are not drawn yet.')
     await expect(page.getByRole('button', { name: 'Run all' })).toBeEnabled()
 
     // And nothing ran for it: the map is the one it was, from the same layout.

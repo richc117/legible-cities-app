@@ -81,6 +81,8 @@ replace, then writing them again.
 
 ## Decision
 
+*29 Oct 2026: cell 03 was renamed Day (issue 565).*
+
 **The project screen becomes a notebook of six cells** - 01 Data, 02
 Process, 03 Frame and service day, 04 Style, 05 Lines, 06 Export - in one
 scrolling column, always in the document, never hidden by the rail or by a

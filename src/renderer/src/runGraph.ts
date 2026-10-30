@@ -50,7 +50,7 @@ export const cellLabel = (number: number, name: string): string => `${cellNumber
 export const CELL_LIST: readonly Cell[] = [
   { id: 'data', number: 1, name: 'Data' },
   { id: 'process', number: 2, name: 'Process' },
-  { id: 'frame', number: 3, name: 'Frame and service day' },
+  { id: 'frame', number: 3, name: 'Day' },
   { id: 'style', number: 4, name: 'Style' },
   { id: 'lines', number: 5, name: 'Lines' },
   { id: 'export', number: 6, name: 'Export' },

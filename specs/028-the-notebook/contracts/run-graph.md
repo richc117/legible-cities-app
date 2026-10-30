@@ -15,7 +15,7 @@ in `tests/unit/run-graph.test.ts`.
 | --- | --- | --- | --- |
 | 01 | `data` | Data | the feed, the mode and the operator (A5.5-09), the geographic view, and the feed's download (issue 178) |
 | 02 | `process` | Process | the layout run and its stages (A5.5-10), the layout's tuning (issue 385), the engine's log and the diagnostics |
-| 03 | `frame` | Frame and service day | the service day (A5.5-15), the transport (A5.5-16) and the trip (issue 272) |
+| 03 | `frame` | Day | the service day (A5.5-15), the transport (A5.5-16) and the trip (issue 272) |
 | 04 | `style` | Style | the project's map theme (A5.5-17), the map's sizes (issue 350), and the looks, markers, label face and trains (issue 391) |
 | 05 | `lines` | Lines | the line colours and the line order (A5.5-18), and each line's options (issue 394) |
 | 06 | `export` | Export | the presets, the options, the opening (issue 392), where the file goes, the cell's own preview (ADR-046), and the export (A5.5-19) |
@@ -479,7 +479,7 @@ rebuild whose map was drawn and whose record then would not keep it
 (`unkept`) says nothing in cell 03: neither sentence is true of a map that
 was drawn, and cell 02's own sentence for it is. The state is unchanged -
 `error` in cell 03, `upstream` below it, the job listed as failed, and the
-header's alert "03 Frame and service day failed." the one announcement, so
+header's alert "03 Day failed." the one announcement, so
 the cell's words are not a live region. Which failure is the opening's is
 derived, not stored: the screen keeps the id of the job its redraw started,
 and the opening's words are said only while the run's latest attempt is that

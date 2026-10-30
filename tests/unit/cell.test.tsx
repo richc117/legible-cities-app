@@ -17,14 +17,7 @@ const STATES: CellState[] = ['ready', 'running', 'stale', 'error']
 
 const draw = (props: Partial<Parameters<typeof Cell>[0]> = {}): string =>
   renderToStaticMarkup(
-    <Cell
-      number={3}
-      name="Frame and service day"
-      state="ready"
-      open={false}
-      onToggle={() => {}}
-      {...props}
-    >
+    <Cell number={3} name="Day" state="ready" open={false} onToggle={() => {}} {...props}>
       <p>the controls</p>
     </Cell>,
   )
@@ -45,7 +38,7 @@ describe('a cell', () => {
   it('opens its row on a chevron that is decorative, so the name does not hold it', () => {
     // The first thing in the button, before the number: it says the row
     // toggles and which way it is (issue 279). `Icon` hides an unlabelled
-    // glyph from the tree, so the row's name is still "03 Frame ...".
+    // glyph from the tree, so the row's name is still "03 Day ...".
     const row = /<button[^>]*class="cell-head"[^>]*>(.*?)<\/button>/.exec(draw())?.[1] ?? ''
     expect(row).toMatch(/^<span class="icon cell-chevron"[^>]*aria-hidden="true"/)
     expect(row.indexOf('cell-chevron')).toBeLessThan(row.indexOf('cell-number'))
@@ -94,7 +87,7 @@ describe('a cell', () => {
         /<button[^>]*aria-label/,
       )
       expect(html).toContain('03')
-      expect(html).toContain('Frame and service day')
+      expect(html).toContain('<span class="cell-name">Day</span>')
       expect(html).toContain(stateWord(state))
     }
   })
@@ -102,9 +95,9 @@ describe('a cell', () => {
   it('names the group its controls sit in, without the state', () => {
     // The group's name must not move as a run does, or a screen reader
     // re-announces it every time a stage finishes.
-    expect(cellLabel(3, 'Frame and service day')).toBe('03 Frame and service day')
+    expect(cellLabel(3, 'Day')).toBe('03 Day')
     for (const state of STATES) {
-      expect(draw({ state, open: true })).toContain('aria-label="03 Frame and service day"')
+      expect(draw({ state, open: true })).toContain('aria-label="03 Day"')
     }
   })
 

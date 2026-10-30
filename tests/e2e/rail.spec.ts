@@ -34,7 +34,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { cellHandback, cellHeading, laidOutProject, openProject } from '../support/project'
+import {
+  cellHandback,
+  cellHeading,
+  laidOutProject,
+  openCell,
+  openProject,
+} from '../support/project'
 import { EXPORT_ONE, GONE, NOTHING_YET } from '../../src/renderer/src/notebook/outputWords'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -138,7 +144,7 @@ test('a step opens its cell, lands it clear of the header, and focuses its headi
     // short to scroll that far - and never behind it (issue 240's
     // criterion). The header is the only thing pinned since ADR-046.
     for (const { id, number, name } of [
-      { id: 'frame', number: '03', name: /^03 Frame and service day, / },
+      { id: 'frame', number: '03', name: /^03 Day, / },
       { id: 'lines', number: '05', name: /^05 Lines, / },
     ] as const) {
       await page.evaluate(() => window.scrollTo(0, 0))
@@ -171,7 +177,7 @@ test('a step opens its cell, lands it clear of the header, and focuses its headi
       const root = document.scrollingElement!
       return { wanted: top - header, room: root.scrollHeight - root.clientHeight }
     }, '03')
-    await step(page, /^03 Frame and service day, /).click()
+    await step(page, /^03 Day, /).click()
     if (geometry.wanted <= geometry.room) {
       await expect
         .poll(async () => Math.abs((await cellTop(page, '03')) - (await headerFoot(page))), {
@@ -346,6 +352,79 @@ test("the rail's headings, every step's number and Outputs start at one edge", a
     }
     for (const left of [...lefts.numbers, lefts.outputs]) {
       expect(Math.abs(left - lefts.heading)).toBeLessThanOrEqual(1)
+    }
+  })
+})
+
+// Issue 565: cell 03 was called "Frame and service day", 137 pixels in a
+// name column of 71, and its step was the one name the rail cut short. The
+// name column is narrowest beside the longest state word, "not drawn yet",
+// so the measure is taken with that word on the steps: a grid chosen over a
+// layout made with another takes cells 03 to 06 there. At 1024 and 1280
+// pixels wide, the widest of the six names, set in the current step's bold
+// weight, must fit the narrowest name box a stale step leaves it. That is
+// stricter than the app needs for cell 01, which has nothing above it, is
+// never stale and reads "running" at its longest, but a name that fits
+// beside "not drawn yet" fits beside any word a step shows.
+test('no step in the rail cuts its name short, even with "not drawn yet" beside it', async () => {
+  test.setTimeout(120_000)
+  const h = home()
+  await withApp(h, async (page) => {
+    await laidOutProject(page, 'LA Metro Rail', PROJECT)
+
+    await openCell(page, 'process')
+    await page.getByRole('button', { name: /^Layout tuning\b/ }).click()
+    await page
+      .getByRole('group', { name: 'Layout tuning', exact: true })
+      .getByRole('combobox', { name: 'Grid' })
+      .selectOption('orthoradial')
+    for (const number of ['03', '04', '05', '06'])
+      await expect(step(page, new RegExp(`^${number} .*, not drawn yet$`))).toBeVisible()
+
+    for (const width of [1024, 1280]) {
+      await page.setViewportSize({ width, height: 800 })
+      await expect(page.locator('.rail-name')).toHaveCount(6)
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const names = [...document.querySelectorAll<HTMLElement>('.rail-name')]
+              const stale = [
+                ...document.querySelectorAll<HTMLElement>(
+                  '.rail-step[data-state="stale"] .rail-name',
+                ),
+              ]
+              // The current step's name is bold, and bold is wider; the
+              // worst case is every name in that weight.
+              const bold = getComputedStyle(document.documentElement)
+                .getPropertyValue('--weight-strong')
+                .trim()
+              const was = names.map((el) => el.style.fontWeight)
+              names.forEach((el) => (el.style.fontWeight = bold))
+              // The text's own width, not `scrollWidth`: a name box is
+              // `flex: 1`, so its `scrollWidth` is never less than its own
+              // box, and the widest box (a ready step's, beside a shorter
+              // word) would read as a name wider than a stale step's.
+              const text = names.map((el) => {
+                const range = document.createRange()
+                range.selectNodeContents(el)
+                return { name: el.textContent ?? '', px: range.getBoundingClientRect().width }
+              })
+              const room = Math.min(...stale.map((el) => el.clientWidth))
+              names.forEach((el, n) => (el.style.fontWeight = was[n]))
+              const widest = text.reduce((a, b) => (b.px > a.px ? b : a))
+              return {
+                staleSteps: stale.length,
+                cut: Math.ceil(widest.px) > room,
+                widest: widest.name,
+                widestPx: widest.px,
+                narrowestBox: room,
+                widths: text.map((t) => `${t.name} ${t.px.toFixed(1)}`),
+              }
+            }),
+          { message: `the widest name fits the narrowest box at ${width}px wide` },
+        )
+        .toMatchObject({ staleSteps: 4, cut: false })
     }
   })
 })

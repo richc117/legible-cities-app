@@ -280,13 +280,13 @@ export default function Transport({
           sections make that judgement differently, on purpose.
 
           The day is named by the cell's own heading, and takes the
-          `aria-label` form. The cell is *called* "Frame and service day":
-          a heading reading "Service day" directly beneath one reading
-          "Frame and service day" repeats its parent and adds a level to
-          walk for nothing. It is also where the day's focus handback
-          lands - a control that disables itself under a person's hands
-          gives focus to the cell's heading - and that only reads as the
-          right place because that heading is the day's own name.
+          `aria-label` form. The cell is *called* "Day": a heading reading
+          "Service day" directly beneath one reading "Day" repeats its
+          parent and adds a level to walk for nothing. It is also where
+          the day's focus handback lands - a control that disables itself
+          under a person's hands gives focus to the cell's heading - and
+          that only reads as the right place because that heading is the
+          day's own name.
 
           The transport is named by this `h3`, because nothing above names
           it: the cell's heading is about what the project keeps, and this

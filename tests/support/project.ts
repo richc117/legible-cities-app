@@ -44,7 +44,7 @@ import { READY_DEADLINE_MS } from './ready'
 const CELLS = {
   data: { number: 1, name: 'Data', panel: 'In the feed' },
   process: { number: 2, name: 'Process', panel: 'Layout run' },
-  frame: { number: 3, name: 'Frame and service day', panel: 'Service day' },
+  frame: { number: 3, name: 'Day', panel: 'Service day' },
   style: { number: 4, name: 'Style', panel: 'Theme' },
   lines: { number: 5, name: 'Lines', panel: null },
   export: { number: 6, name: 'Export', panel: null },
