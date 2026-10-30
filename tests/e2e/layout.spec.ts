@@ -780,7 +780,7 @@ test('a chosen day is written at once, starts nothing, and takes the cells below
     // The engine's own day, on cell 03's collapsed row.
     await closeCell(page, 'frame')
     await expect(cellHeading(page, 'frame')).toHaveAccessibleName(
-      '03 Frame and service day ready 2026-06-16',
+      '03 Frame and service day ready 16 June 2026',
     )
     const section = await openCell(page, 'frame')
 
