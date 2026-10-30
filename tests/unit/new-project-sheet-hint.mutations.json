@@ -1,7 +1,7 @@
 [
   {
     "file": "src/renderer/src/NewProjectSheet.tsx",
-    "find": "          aria-describedby={field('source-hint')}\n",
+    "find": "          aria-describedby={`${ids}-source-hint`}\n",
     "replace": "",
     "test": "tests/unit/new-project-sheet-hint.test.tsx",
     "title": "says what a feed and GTFS are, and describes the Start from group by it",
@@ -17,7 +17,7 @@
   },
   {
     "file": "src/renderer/src/NewProjectSheet.tsx",
-    "find": "                  setHelpSaid(`The feeds page could not be opened: ${fullStopped(messageOf(error))}`)\n",
+    "find": "                  setHelpSaid(\n                    `The feeds page could not be opened: ${fullStopped(messageOf(error))}`,\n                  )\n",
     "replace": "                  void error\n",
     "test": "tests/unit/new-project-sheet-hint.test.tsx",
     "title": "says so, under the button, when the page would not open",
