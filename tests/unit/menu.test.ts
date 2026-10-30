@@ -172,9 +172,11 @@ describe('the app’s own items', () => {
   })
 
   it.each(PLATFORMS)('put Help’s pages in one order on %s', (platform) => {
+    // Mutation (`menu.mutations.json`): Finding a feed left out of Help.
     const help = menu(menuTemplate({ platform, packaged: true, name: NAME }), 'Help')
     expect((help.submenu ?? []).filter((i) => i.type !== 'separator').map((i) => i.label)).toEqual([
       `${NAME} guide`,
+      'Finding a feed',
       'Install and troubleshooting guide',
       'Report a problem',
       'Copy diagnostics',

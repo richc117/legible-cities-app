@@ -835,6 +835,21 @@ dialog .source-choice legend {
   margin: 0 0 var(--space-2-2);
 }
 
+/* What a feed is, and the button to the page that says where to find one
+   (issue 555): the sentence, then the button under it at the start edge,
+   and under that the line that says when the page would not open. The
+   sentences' own margins go, so the gaps are the grid's and the row's. */
+dialog .source-help {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2-2);
+}
+
+dialog .source-help p,
+dialog .source-choice > .message {
+  margin: 0;
+}
+
 dialog::backdrop {
   background: var(--surface);
   opacity: var(--backdrop-opacity);

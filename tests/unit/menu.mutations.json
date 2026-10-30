@@ -14,5 +14,13 @@
     "test": "tests/unit/menu.test.ts",
     "title": "keeps the Edit menu’s role",
     "why": "The Edit menu's role deleted: copy and paste in a text field stop working on macOS, and nothing else would say so."
+  },
+  {
+    "file": "src/main/menu.ts",
+    "find": "    help('feeds', 'Finding a feed'),\n",
+    "replace": "",
+    "test": "tests/unit/menu.test.ts",
+    "title": "put Help’s pages in one order",
+    "why": "Finding a feed left out of Help (issue 555): the page is written and the menu, the one place that offers it on every screen, does not say so."
   }
 ]

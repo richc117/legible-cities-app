@@ -50,6 +50,9 @@ links are inline, with no images and no reference-style links.
 - When the engine stops and does not come back, the Library offers **Try
   again**, **Copy diagnostics** and **How to install** under its sentence,
   so starting it again no longer needs a quit.
+- The New project sheet says what a feed is, and **Where to find a feed**
+  under it opens [Finding a feed](docs/feeds.md), which the Help menu also
+  offers.
 
 ### Changed
 

@@ -146,7 +146,13 @@ Write down the time and what they opened or asked, and count the run as
 **assisted** from that moment, exactly as if you had given a hint. Links
 that the README and the install guide themselves lead to on the same page
 (the Releases page, the install guide's own sections) are within bounds;
-following a link out of them to any other document is not.
+following a link out of them to any other document is not. The pages the
+app itself opens are part of the app and are within bounds: the Help menu's
+pages, and **Where to find a feed** in the New project sheet, which opens
+"Finding a feed". Write down the time of a press, and the run stays
+unassisted. A link the person follows out of one of those pages, or a web
+search it suggests, is beyond the app, and counts the run as **assisted**
+from that moment.
 
 ### What to write down
 
@@ -166,7 +172,9 @@ Everything, with the clock time beside it. In particular:
   caption is the line of words the export draws under its title, such as the
   place and the hour; the reel does not need one, so it is not part of the
   task and nobody tells the person it is there. Write down whether they
-  stopped at it, and what they took it for.
+  stopped at it, and what they took it for. For "feed", the New project
+  sheet now says what it is, under "Start from": write down whether they
+  read that sentence, and whether they pressed **Where to find a feed**.
 - **How they started**: a sample city's card, or the **New project** card
   with a feed of their own, and whether they found the export in cell 06 without
   opening every cell first. Each sample city's card carries a small picture
@@ -233,6 +241,8 @@ Copy everything in the block below into a new issue titled
 
 - README: (sections opened, sections skipped)
 - install.md: (sections opened, sections skipped)
+- feeds.md, "Finding a feed", if the person opened it from the app: (when,
+  sections opened, and whether they followed a link out of it)
 
 ## In their words
 

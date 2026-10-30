@@ -930,6 +930,7 @@ if (!hasLock) {
     const helpDeps: HelpIpcDeps = {
       openExternal: (url) => shell.openExternal(url),
       log: (message) => log.info('help', message),
+      warn: (message) => log.warn('help', message),
     }
     registerHelpHandlers(ipcMain, helpDeps, isTopFrame)
     registerMenuHandlers(ipcMain, menuCommands, isTopFrame)
