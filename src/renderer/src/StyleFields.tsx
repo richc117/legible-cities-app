@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type JSX, type RefObject } from 'react'
+import { useEffect, useId, useRef, useState, type JSX, type RefObject } from 'react'
 import type { EngineState } from '../../shared/engine'
 import {
   type ChoiceKey,
@@ -14,6 +14,7 @@ import Button from './kit/Button'
 import TextInput from './kit/TextInput'
 import { chooseValue, type Look } from './looks'
 import { useCheapEdit } from './notebook/useCheapEdit'
+import { PUT_BACK_SIZES, SIZES_RESET_SAID } from './putBackWords'
 import { ChoiceSelect, LookSelect } from './StyleLooks'
 import {
   chooseIn,
@@ -147,6 +148,9 @@ export default function StyleFields({
     // A build that stopped wrote nothing, so the sizes on screen go back to
     // the record's; the run's own panel says why.
     putBack: (record) => setView(viewOf(record.style)),
+    // What the reset keeps for Put back (issue 561): the group as the map on
+    // screen was drawn with it, as the record's own `drawn` says.
+    drawnOf: (record) => record.drawn?.style ?? null,
   })
   const running = edit.snapshot.state === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
@@ -185,12 +189,37 @@ export default function StyleFields({
   }
 
   // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element; the cell's heading is where
-  // focus goes so a screen reader stays in the cell (A3-04 learned this).
+  // and Chromium blurs a disabled element. Focus goes to the control that
+  // came, Put back, when there is something to put back, and else to the
+  // cell's heading, so a screen reader stays in the cell (A3-04 learned
+  // this). Put back goes as it is pressed and hands focus back to the reset
+  // (issue 561). Both are asked for at the press and given once the
+  // controls they name are drawn, after the kit's own effects, so the reset
+  // is no longer disabled when it is asked.
+  const resetRef = useRef<HTMLElement>(null)
+  const putBackRef = useRef<HTMLElement>(null)
+  const focusTo = useRef<'put back' | 'reset' | null>(null)
+  useEffect(() => {
+    const to = focusTo.current
+    if (to === null) return
+    focusTo.current = null
+    const target = to === 'put back' ? putBackRef.current : resetRef.current
+    ;(target ?? handback.current)?.focus()
+  })
   const reset = (): void => {
     setView({ style: {}, drafts: draftsOf({}), problems: {} })
-    edit.change({})
-    handback.current?.focus()
+    if (edit.reset({})) focusTo.current = 'put back'
+    else handback.current?.focus()
+  }
+  // The group as the map was drawn with it before the reset, through the
+  // same cheap edit as any size: drawn once after the delay, and written
+  // once the map carries it.
+  const putBack = (): void => {
+    const before = edit.before
+    if (before === null) return
+    focusTo.current = 'reset'
+    setView(viewOf(before))
+    edit.change(before)
   }
 
   // A field in the sizes' pattern, a size's or a train's: its name, the
@@ -263,10 +292,22 @@ export default function StyleFields({
         <p className="message">{TRAINS_SENTENCE}</p>
         {TRAIN_FIELDS.map(({ key, label }) => field(key, label))}
       </fieldset>
+      {/* The section's one polite line (issue 561), in the document before
+          it has anything to say, as a live region must be: the reset's
+          sentence while there is something to put back, and nothing
+          otherwise, so it is said once, as it arrives. */}
+      <p className="message" role="status" aria-live="polite">
+        {edit.before === null ? '' : SIZES_RESET_SAID}
+      </p>
       <div className="toolbar">
-        <Button disabled={!resettable(view)} onClick={reset}>
+        <Button ref={resetRef} disabled={!resettable(view)} onClick={reset}>
           Reset to the engine’s sizes
         </Button>
+        {edit.before !== null && (
+          <Button ref={putBackRef} onClick={putBack}>
+            {PUT_BACK_SIZES}
+          </Button>
+        )}
       </div>
     </section>
   )

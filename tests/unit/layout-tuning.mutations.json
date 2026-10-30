@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/tuningRules.ts",
+    "find": "return sameTuning(shown, laid) ? null : settledTuning(laid)",
+    "replace": "return !sameTuning(shown, laid) ? null : settledTuning(laid)",
+    "test": "tests/unit/layout-tuning.test.tsx",
+    "title": "is offered if and only if the tuning shown differs from a tuned layout",
+    "why": "The guard inverted: Put back the tuning this layout was made with is offered while the tuning already is the layout's, where it would write nothing, and not after a reset, where it is the way back."
+  }
+]

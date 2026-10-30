@@ -34,6 +34,7 @@ import Button from './kit/Button'
 import { choiceOf, hidesEveryLine, isHidden } from './lineOptions'
 import LineOptionsDisclosure from './LineOptionsDisclosure'
 import { useCheapEdit } from './notebook/useCheapEdit'
+import { COLOURS_RESET_SAID, PUT_BACK_COLOURS } from './putBackWords'
 import { useLineOptions } from './useLineOptions'
 
 // The project's line colours: what the feed publishes, what a person chose
@@ -175,6 +176,9 @@ export default function LineColours({
     // the colour it is given moves under it, so it would never report the
     // end of the one that was cut off.
     putBack: (record) => setPalette(paletteOf(record)),
+    // What Reset every line keeps for Put back (issue 561): the colours the
+    // map on screen was drawn in, as the record's own `drawn` says.
+    drawnOf: (record) => (record.drawn === null ? null : paletteOf(record.drawn)),
   })
   const running = edit.snapshot.state === 'running'
   // Something else is reading or rewriting the project's page. Nothing here
@@ -233,12 +237,39 @@ export default function LineColours({
   // swatch is what they chose, and a swatch the map does not carry is the
   // disagreement this panel exists to prevent.
   const panelClosed = (): void => edit.release()
-  // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element; the cell's heading is where
-  // focus goes so a screen reader stays in the cell (A3-04 learned this).
-  const releaseAndKeepFocus = (next: Palette): void => {
-    release(next)
-    handback.current?.focus()
+
+  // Reset every line removes the last thing it had to remove and disables
+  // itself, and Chromium blurs a disabled element. Focus goes to the
+  // control that came, Put back, when there is something to put back, and
+  // else to the cell's heading, so a screen reader stays in the cell (A3-04
+  // learned this). Put back goes as it is pressed, and hands focus back to
+  // the reset, which is pressable again (issue 561). Both are asked for at
+  // the press and given once the controls they name are drawn: after the
+  // kit's own effects, so the reset is no longer disabled when it is asked.
+  const resetRef = useRef<HTMLElement>(null)
+  const putBackRef = useRef<HTMLElement>(null)
+  const focusTo = useRef<'put back' | 'reset' | null>(null)
+  useEffect(() => {
+    const to = focusTo.current
+    if (to === null) return
+    focusTo.current = null
+    const target = to === 'put back' ? putBackRef.current : resetRef.current
+    ;(target ?? handback.current)?.focus()
+  })
+  const resetEvery = (): void => {
+    closePanels()
+    const next = resetAll()
+    setPalette(next)
+    if (edit.reset(next)) focusTo.current = 'put back'
+    else handback.current?.focus()
+  }
+  // The colours the map was drawn in before the reset, through the same
+  // cheap edit as any colour: one redraw, and the record written once the
+  // map carries them.
+  const putBack = (): void => {
+    if (edit.before === null) return
+    focusTo.current = 'reset'
+    release(edit.before)
   }
 
   const inspection = state.status === 'ready' ? state.inspection : null
@@ -336,16 +367,22 @@ export default function LineColours({
               ))}
             </ul>
           )}
+          {/* The section's one polite line (issue 561), in the document
+              before it has anything to say, as a live region must be: the
+              reset's sentence while there is something to put back, and
+              nothing otherwise, so it is said once, as it arrives. */}
+          <p className="message" role="status" aria-live="polite">
+            {edit.before === null ? '' : COLOURS_RESET_SAID}
+          </p>
           <div className="toolbar">
-            <Button
-              disabled={nothingToReset}
-              onClick={() => {
-                closePanels()
-                releaseAndKeepFocus(resetAll())
-              }}
-            >
+            <Button ref={resetRef} disabled={nothingToReset} onClick={resetEvery}>
               Reset every line
             </Button>
+            {edit.before !== null && (
+              <Button ref={putBackRef} onClick={putBack}>
+                {PUT_BACK_COLOURS}
+              </Button>
+            )}
           </div>
         </>
       )}

@@ -280,6 +280,24 @@ export function tuningNotice(
 }
 
 /**
+ * What Put back writes (issue 561, ADR-061): the tuning the stored layout
+ * was laid out with, while the section shows another and that layout was
+ * made with a tuning of its own; null otherwise. Derived from the record,
+ * which keeps `laidOutWith` beside the layout, so nothing is kept for it and
+ * issue 164's rule holds here as written. It follows that a tuning that was
+ * never laid out cannot be put back, and that a layout made with LOOM's
+ * defaults offers none: Reset is already the way back to those.
+ */
+export function putBackTuning(
+  record: Pick<ProjectRecord, 'layout' | 'laidOutWith'>,
+  shown: ProjectTuning,
+): ProjectTuning | null {
+  const laid = record.laidOutWith
+  if (record.layout === null || laid === undefined || !tuningIsSet(laid)) return null
+  return sameTuning(shown, laid) ? null : settledTuning(laid)
+}
+
+/**
  * The screen's project once `projects.setTuning` has answered: the record
  * it wrote laid over it, the two tunings included where the record holds
  * neither, so the screen keeps only what it adds of its own (whether the

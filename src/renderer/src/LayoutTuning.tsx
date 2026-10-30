@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX } from 'react'
-import { sameTuning } from '../../shared/project/helpers'
+import { sameTuning, tuningIsSet } from '../../shared/project/helpers'
 import {
   DEFAULT_TUNING,
   PENALTY_KEYS,
@@ -13,6 +13,7 @@ import Button from './kit/Button'
 import Disclosure from './kit/Disclosure'
 import Select from './kit/Select'
 import TextInput from './kit/TextInput'
+import { PUT_BACK_TUNING, TUNING_RESET_SAID } from './putBackWords'
 import {
   chooseGrid,
   commitTuningField,
@@ -23,6 +24,7 @@ import {
   OWN_KEYS,
   PENALTY_LEGEND,
   PENALTY_SENTENCE,
+  putBackTuning,
   RESET_LABEL,
   resettable,
   TUNING_LABELS,
@@ -55,8 +57,8 @@ import {
 //
 // A closed disclosure under the run's controls, its toggle in an `h3`: the
 // tuning is a section of the cell, and the heading is where Reset hands
-// focus, not the toggle, where a reflexive Space would close the section a
-// person is working in (cell 04's reason, A6-07).
+// focus when no Put back comes, not the toggle, where a reflexive Space
+// would close the section a person is working in (cell 04's reason, A6-07).
 
 interface Props {
   project: ProjectRecord
@@ -119,12 +121,39 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
   const type = (key: TuningKey, text: string): void =>
     setView((current) => ({ ...current, drafts: { ...current.drafts, [key]: text } }))
 
+  // The tuning the stored layout was made with, while the section shows
+  // another (issue 561): derived from the record, so nothing is kept.
+  const laid = putBackTuning(project, view.tuning)
+
   // A button that removes the last thing it had to remove disables itself,
-  // and Chromium blurs a disabled element: focus goes to the section's
-  // heading first, so it stays in the section (A6-07).
+  // and Chromium blurs a disabled element. When the layout was made with a
+  // tuning, Put back is the control that comes, and focus goes to it; else
+  // to the section's heading first, so it stays in the section (A6-07). Put
+  // back goes as it is pressed and hands focus back to the reset. Both are
+  // asked for at the press and given once the controls they name are
+  // drawn, after the kit's own effects, so the reset is no longer disabled
+  // when it is asked.
+  const resetRef = useRef<HTMLElement>(null)
+  const putBackRef = useRef<HTMLElement>(null)
+  const focusTo = useRef<'put back' | 'reset' | null>(null)
+  useEffect(() => {
+    const to = focusTo.current
+    if (to === null) return
+    focusTo.current = null
+    const target = to === 'put back' ? putBackRef.current : resetRef.current
+    ;(target ?? heading.current)?.focus()
+  })
   const reset = (): void => {
-    heading.current?.focus()
+    if (putBackTuning(project, {}) !== null) focusTo.current = 'put back'
+    else heading.current?.focus()
     show(tuningViewOf({}))
+  }
+  // Written as any choice is, at once, and the cells below read as drawn
+  // again because the tuning and the layout agree, not because anything ran.
+  const putBack = (): void => {
+    if (laid === null) return
+    focusTo.current = 'reset'
+    show(tuningViewOf(laid))
   }
 
   const field = (key: TuningKey): JSX.Element => {
@@ -206,10 +235,22 @@ export default function LayoutTuning({ project, onChange }: Props): JSX.Element 
           <p className="message">{PENALTY_SENTENCE}</p>
           {PENALTY_KEYS.map(field)}
         </fieldset>
+        {/* The section's one polite line (issue 561), in the document before
+            it has anything to say, as a live region must be: the reset's
+            sentence while the tuning is LOOM's own and the layout was made
+            with another, and nothing otherwise. */}
+        <p className="message" role="status" aria-live="polite">
+          {laid !== null && !tuningIsSet(view.tuning) ? TUNING_RESET_SAID : ''}
+        </p>
         <div className="toolbar">
-          <Button disabled={!resettable(view)} onClick={reset}>
+          <Button ref={resetRef} disabled={!resettable(view)} onClick={reset}>
             {RESET_LABEL}
           </Button>
+          {laid !== null && (
+            <Button ref={putBackRef} onClick={putBack}>
+              {PUT_BACK_TUNING}
+            </Button>
+          )}
         </div>
         <p className="message error" role="alert" hidden={unsaved === null}>
           {unsaved}

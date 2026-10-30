@@ -55,6 +55,19 @@ import { useSnapshot } from '../useSnapshot'
 //   start refused after the panel went is said on the project's status line
 //   (`sayRefusedGone`), since the control that would have gone back is not
 //   there.
+// - **Put back** (issue 561, ADR-061), which is not the put-back above. A
+//   panel's reset, once drawn, leaves the record holding the reset values
+//   and nothing of what was there before, because a cheap edit is never
+//   stale and so has no Revert (issue 164). So at the reset's press the
+//   hook keeps one thing: the section's values as the record's own `drawn`
+//   holds them, which are provably what the map on screen was drawn from.
+//   The panel offers them back, through the same cheap edit as any change.
+//   It is one step and no history: the slot goes at the section's next
+//   edit (Put back's own included), at a stop of the panel's own redraw -
+//   the reset was then never drawn and the record still holds the values -
+//   and with the panel, so a project screen that closes takes it along.
+//   It is never written to the record, and never travels with a change
+//   flushed as its panel goes.
 //
 // Nothing here writes the record, and nothing orders writes: the redraw
 // reads the record from the store at its start, and its completion writes
@@ -111,6 +124,13 @@ export interface CheapEditOptions<V> {
    * after its panel has gone: through the bridge unless a test hands its own.
    */
   readNow?: (id: string) => Promise<[ProjectRecord, EngineState | null]>
+  /**
+   * The panel's fields as the record's own `drawn` holds them - what the map
+   * on screen was drawn from - or null for a record with nothing drawn: what
+   * a reset keeps for Put back (issue 561). A panel with no reset leaves it
+   * out, and its `reset` keeps nothing.
+   */
+  drawnOf?: (project: ProjectRecord) => V | null
 }
 
 /**
@@ -141,6 +161,18 @@ export interface CheapEdit<V> {
   release: () => void
   /** A change is held for the way to clear: a run, an export or a read-back has the page. */
   waiting: boolean
+  /**
+   * The panel's reset, made as a change is, with what the map was drawn from
+   * kept for Put back. True when something was kept, so the panel knows
+   * Put back is coming and can hand it the focus the reset is about to drop.
+   */
+  reset: (next: V) => boolean
+  /**
+   * What Put back offers: the section as the map was drawn from it when the
+   * reset was pressed, until the section's next edit; null when there is
+   * nothing to put back. Put back itself is `change` with it.
+   */
+  before: V | null
 }
 
 /** What the hook reads at the moment it acts, from the latest render. */
@@ -177,6 +209,8 @@ const orphans = new WeakMap<LayoutRun, Map<unknown, Orphan>>()
 function editor<V>(
   latest: { readonly current: Facts<V> },
   saidWaiting: (waiting: boolean) => void,
+  /** The panel's own redraw stopped, or its start was refused: Put back has nothing to undo. */
+  stopped: () => void,
 ): {
   unbuilt: Unbuilt<V>
   change: (next: V) => void
@@ -215,7 +249,9 @@ function editor<V>(
     unbuilt.held = null
     unbuilt.live = null
     say(false)
-    if (!unbuilt.gone) latest.current.putBack(latest.current.project)
+    if (unbuilt.gone) return
+    stopped()
+    latest.current.putBack(latest.current.project)
   }
 
   /** The delay ran out, or a held change is asked again, with the panel there. */
@@ -448,7 +484,39 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
   useLayoutEffect(() => {
     latest.current = { ...options, snapshot }
   })
-  const [edit] = useState(() => editor(latest, setWaiting))
+  // Put back's one slot (issue 561): the section as the map was drawn from
+  // it when the reset was pressed, by the project it was kept for. State, so
+  // the panel draws Put back from it; the panel's, so it goes with the
+  // panel and is never written anywhere.
+  const [kept, setKept] = useState<{ id: string; value: V } | null>(null)
+  const forget = (): void => setKept(null)
+  const [edit] = useState(() => editor(latest, setWaiting, forget))
+  // A person's edit of the section is the next step, and Put back's slot
+  // goes with it: one step back, never two.
+  const [api] = useState(() => ({
+    change: (next: V): void => {
+      forget()
+      edit.change(next)
+    },
+    follow: (next: V): void => {
+      forget()
+      edit.follow(next)
+    },
+    release: (): void => {
+      forget()
+      edit.release()
+    },
+    // Kept first and drawn second, so a start refused at once - which puts
+    // the control back and drops the slot - has the last word.
+    reset: (next: V): boolean => {
+      const facts = latest.current
+      const drawn = facts.drawnOf?.(facts.project) ?? null
+      const keep = drawn !== null && !facts.same(drawn, next)
+      setKept(keep ? { id: facts.project.id, value: drawn } : null)
+      edit.change(next)
+      return keep
+    },
+  }))
 
   usePutBack(snapshot.state, options.own(snapshot), edit.putBack)
 
@@ -469,7 +537,14 @@ export function useCheapEdit<V>(options: CheapEditOptions<V>): CheapEdit<V> {
     return () => edit.leave()
   }, [edit])
 
-  return { snapshot, change: edit.change, follow: edit.follow, release: edit.release, waiting }
+  return {
+    snapshot,
+    ...api,
+    waiting,
+    // Only for the project it was kept for: a panel handed another project
+    // has nothing of this one's to put back.
+    before: kept !== null && kept.id === project.id ? kept.value : null,
+  }
 }
 
 // What a cheap edit's flush was refused with after its panel had gone

@@ -16,7 +16,9 @@ import { runRowStatus } from '../runRow'
 // the markers, the label face and the trains after the eight sizes, one
 // group with one Reset (spec 034) - both drawn headless: the cell's own heading is the section's
 // heading, and its focus handback lands there - on the heading, not on the
-// toggle inside it, which a press after the handback would collapse. Each
+// toggle inside it, which a press after the handback would collapse (but
+// for a reset with something to put back, whose focus goes to Put back your
+// sizes, the control that comes, issue 561). Each
 // names its region by an `aria-label` ("Theme", "Sizes") and not by a
 // heading: the cell is called Style and holds nothing else, so a heading
 // beneath it would only repeat the label a screen reader has already said.

@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "      forget()\n      edit.change(next)\n",
+    "replace": "      edit.change(next)\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "goes at the next edit of the section",
+    "why": "Put back's slot not cleared by a change: it stays beside an edit made since the reset, and pressing it would silently undo that edit as well, which is a second step of history the record of issue 561 refuses."
+  }
+]

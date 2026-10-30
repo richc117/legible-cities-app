@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/LineColours.tsx",
+    "find": "    if (edit.reset(next)) focusTo.current = 'put back'\n    else handback.current?.focus()\n",
+    "replace": "    edit.reset(next)\n    handback.current?.focus()\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus to Put back, and Put back hands it back to the reset",
+    "why": "Reset every line handing focus to the cell's heading whatever comes: a keyboard or screen reader user is left on the heading with Put back somewhere below, unannounced as the place to go."
+  },
+  {
+    "file": "src/renderer/src/LineColours.tsx",
+    "find": "    focusTo.current = 'reset'\n    release(edit.before)\n",
+    "replace": "    release(edit.before)\n",
+    "test": "tests/unit/put-back-focus.test.tsx",
+    "title": "hands focus to Put back, and Put back hands it back to the reset",
+    "why": "Put back not handing focus back as it goes: the button is removed under the focus it held, and Chromium puts focus on the body, the A6-07 defect."
+  }
+]
