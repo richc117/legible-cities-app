@@ -494,8 +494,9 @@ of both, with your home folder written as `~`; read it before you share it.
    written as `~`, and web addresses lose their query values, their
    fragments and any user name or password in them. Nothing is sent
    anywhere. A copy has to fit in an issue, so when the logs and reports
-   are long the oldest lines and reports are left out, and a line under the
-   heading says so.
+   are long, the oldest log lines and the reports of the projects you
+   opened first in the session are left out, and a line under the heading
+   says so.
 2. Open a [bug report](https://github.com/richc117/legible-cities-app/issues/new?template=bug.yml)
    on the repository, say what you did and what happened, and paste the
    diagnostics into it. **Read what you paste first**, and remove anything
