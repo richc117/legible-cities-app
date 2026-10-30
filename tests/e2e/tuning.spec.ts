@@ -349,6 +349,34 @@ test('Reset clears the record’s tuning, says LOOM’s defaults, and hands focu
     // The button disables itself with nothing left to reset, so focus went
     // to the section's heading first and not to the page (A6-07).
     await expect(handback(page)).toBeFocused()
+    // The heading is as wide as its words, so its ring is (issue 564). Its
+    // toggle has no band, so the rule that fits scripted headings applies
+    // here, unlike the notebook's cell headings. The ring is not asserted: a
+    // script focus after a pointer press draws none, and the box is what the
+    // rule decides. The allowance is the ring's width and offset on each side.
+    const hugging = await handback(page).evaluate((el) => {
+      const range = document.createRange()
+      range.selectNodeContents(el)
+      const root = getComputedStyle(document.documentElement)
+      const token = (name: string): number => Number.parseFloat(root.getPropertyValue(name))
+      const parent = el.parentElement as HTMLElement
+      const box = getComputedStyle(parent)
+      return {
+        box: el.getBoundingClientRect().width,
+        words: range.getBoundingClientRect().width,
+        column:
+          parent.clientWidth -
+          Number.parseFloat(box.paddingLeft) -
+          Number.parseFloat(box.paddingRight),
+        ring: token('--focus-ring-width') + token('--focus-ring-offset'),
+      }
+    })
+    expect(hugging.column, 'the section is wider than its heading’s words').toBeGreaterThan(
+      hugging.words + 2 * hugging.ring,
+    )
+    expect(hugging.box, 'the heading is as wide as its words, not its column').toBeLessThanOrEqual(
+      hugging.words + 2 * hugging.ring,
+    )
     await expect
       .poll(() => readRecord(engineHome), { message: 'the key itself is gone' })
       .not.toHaveProperty('tuning')

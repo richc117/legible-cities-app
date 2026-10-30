@@ -685,7 +685,17 @@ test('a scripted heading takes a ring as wide as its words', async () => {
         return {
           box: el.getBoundingClientRect().width,
           words: range.getBoundingClientRect().width,
-          column: el.parentElement?.getBoundingClientRect().width ?? 0,
+          // The column's content box: the room the heading has to fill.
+          column: (() => {
+            const parent = el.parentElement
+            if (parent === null) return 0
+            const box = getComputedStyle(parent)
+            return (
+              parent.clientWidth -
+              Number.parseFloat(box.paddingLeft) -
+              Number.parseFloat(box.paddingRight)
+            )
+          })(),
           style: style.outlineStyle,
           width: Number.parseFloat(style.outlineWidth),
           offset: Number.parseFloat(style.outlineOffset),
