@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import type { FeedRecord } from '../../shared/protocol'
 import Card from './Card'
 import { placeOf } from './FeedList'
@@ -64,10 +64,18 @@ interface Props {
    * nothing - the front door knows which of its reasons it is.
    */
   sentence: string | null
+  /** What can be pressed while the engine is down (issue 562), drawn under the sentence. */
+  actions?: ReactNode
   onOpen: (feed: FeedRecord) => void
 }
 
-export default function SampleCities({ presets, palette, sentence, onOpen }: Props): JSX.Element {
+export default function SampleCities({
+  presets,
+  palette,
+  sentence,
+  actions,
+  onOpen,
+}: Props): JSX.Element {
   return (
     <section className="front-door-region" aria-labelledby={SAMPLES_HEADING_ID}>
       <h2 id={SAMPLES_HEADING_ID} tabIndex={-1}>
@@ -94,6 +102,7 @@ export default function SampleCities({ presets, palette, sentence, onOpen }: Pro
           })}
         </ul>
       )}
+      {actions}
     </section>
   )
 }

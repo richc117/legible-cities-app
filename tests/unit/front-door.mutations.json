@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/EngineDownActions.tsx",
+    "find": "    return { retry: engine.retryable }\n",
+    "replace": "    return { retry: true }\n",
+    "test": "tests/unit/front-door.test.tsx",
+    "title": "what the samples region offers while the engine is down",
+    "why": "Try again offered whatever the state says (issue 562): with no interpreter at all it is drawn, and every press is refused, since there is nothing a start could find."
+  }
+]
