@@ -1,0 +1,58 @@
+[
+  {
+    "file": "src/shared/first-run.ts",
+    "find": "      return `${subject} did not answer in time, so ${stops}.`\n",
+    "replace": "      return `${subject} did not respond in time, so ${stops}.`\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "One sentence of the first-run dialog reworded in the code: the install guide still quotes the old one, and the test compares the guide with the code's own export."
+  },
+  {
+    "file": "src/main/interpreter.ts",
+    "find": "    reason: 'Reinstall the app. The bundled Python runtime is missing.',\n",
+    "replace": "    reason: 'Reinstall the app; the bundled Python runtime is missing.',\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "The engine-unavailable reason for an installed app reworded in the code: the guide's quotation of it must follow."
+  },
+  {
+    "file": "src/renderer/src/DownloadLine.tsx",
+    "find": "export const NOT_LAID_OUT = 'Nothing was laid out: the feed did not download. Cell 01 says why.'",
+    "replace": "export const NOT_LAID_OUT = 'Nothing was laid out: the feed did not download. Cell 01 says why it stopped.'",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes every sentence it promises, word for word",
+    "why": "Cell 02's sentence for a feed that did not download reworded in the code: the guide quotes it for a person who sees it."
+  },
+  {
+    "file": "docs/install.md",
+    "find": "These mean the same for ffmpeg as the three sentences above mean for LOOM.\n",
+    "replace": "> Reinstall everything.\n\nThese mean the same for ffmpeg as the three sentences above mean for LOOM.\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "quotes no sentence the app does not draw",
+    "why": "A quotation added to the guide that no code draws: the reverse check must refuse it, or a half-remembered sentence could stand in the guide as the app's."
+  },
+  {
+    "file": "docs/install.md",
+    "find": "\n## Troubleshooting\n",
+    "replace": "\n## Troubleshooting a problem\n",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "links only files and headings that exist",
+    "why": "The Troubleshooting heading renamed: SUPPORT.md's first link would land on nothing."
+  },
+  {
+    "file": "docs/install.md",
+    "find": "[Install on Windows](#install-on-windows) says. Reinstalling",
+    "replace": "[Install on Windows](#install-on-windowz) says. Reinstalling",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "has every in-page link of the install guide land on a heading",
+    "why": "An in-page link of the guide with a misspelt anchor: it would scroll nowhere."
+  },
+  {
+    "file": "README.md",
+    "find": "[`SUPPORT.md`](SUPPORT.md)",
+    "replace": "SUPPORT.md",
+    "test": "tests/unit/install-guide-sentences.test.ts",
+    "title": "is linked from the README and from CONTRIBUTING.md",
+    "why": "The README's line about SUPPORT.md losing its link: GitHub suggests the link there, and a reader would have nowhere to go."
+  }
+]
