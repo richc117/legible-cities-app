@@ -81,8 +81,13 @@ export function askedWith(tuning: ProjectTuning | undefined): { tuning?: Project
 /** What the section is called: its row's name and the name of what it discloses. */
 export const TUNING_NAME = 'Layout tuning'
 
-/** What the row says while the record holds no tuning (spec 033, FR-001). */
-export const LOOM_DEFAULTS = 'LOOM’s defaults'
+/**
+ * What the row says while the record holds no tuning (spec 033, FR-001).
+ * "The defaults" and not LOOM's: the section's lead names LOOM once, as
+ * the layout engine, and a word a person has not met is not made a fact
+ * about their project (issue 560).
+ */
+export const LOOM_DEFAULTS = 'the defaults'
 
 /** What the row says while it holds one. */
 export const TUNED = 'tuned'
@@ -96,9 +101,15 @@ export const TUNED = 'tuned'
 export const tuningWord = (tuning: ProjectTuning | undefined): string =>
   tuningIsSet(tuning) ? TUNED : LOOM_DEFAULTS
 
-/** The section's first sentence: what the tuning is, and that nothing moves until a layout run. */
+/**
+ * The section's first sentence: what the tuning is, and that nothing moves
+ * until a layout run. The one place the cells name LOOM, and it says what
+ * LOOM is as it names it: the grid's names below are LOOM's documented
+ * words, and a person who looks them up needs the name to look under
+ * (issue 560; `tests/unit/vocabulary.test.ts` allows it here alone).
+ */
 export const TUNING_SENTENCE =
-  'LOOM’s own settings for laying this project out. A tuned layout is a layout of its own: the map keeps the layout it has until you lay out again.'
+  'The settings LOOM, the layout engine, lays this project out with. A tuned layout is a layout of its own: the map keeps the layout it has until you lay out again.'
 
 /** The penalties' group, whose fields' names say nothing on their own. */
 export const PENALTY_LEGEND = 'Bend penalties'
@@ -108,27 +119,32 @@ export const PENALTY_SENTENCE =
   'What octi pays where a line bends by each angle, and for running on a diagonal: the higher the cost, the more it avoids them. A cost has no unit.'
 
 /** The button that puts every field and the grid back. */
-export const RESET_LABEL = 'Reset to LOOM’s defaults'
+export const RESET_LABEL = 'Reset to the defaults'
 
 /** The grid select's name. */
 export const GRID_LABEL = 'Grid'
 
 /**
- * The four grids as the select offers them: the engine's word, then a gloss
- * saying what the lattice looks like (DESIGN.md 11), LOOM's own marked as
- * such. The engine's words because they are what LOOM and the engine call
- * them, and what a person reading LOOM's own documentation will find.
+ * The four grids as the select offers them: what the lattice looks like in
+ * plain words, then the engine's word in a bracket, the default marked as
+ * such (issue 560). The plain words first, because they are what a person
+ * choosing reads; the engine's word kept, because it is what LOOM and the
+ * engine call the grid and what a person reading LOOM's own documentation
+ * will find, which is the one reason an engine word is bracketed in a cell.
  */
 export const GRID_GLOSSES: Readonly<Record<Grid, string>> = {
-  octilinear: 'eight directions; LOOM’s own',
-  ortholinear: 'four directions',
-  orthoradial: 'rings and spokes',
-  hexalinear: 'six directions',
+  octilinear: 'Eight directions',
+  ortholinear: 'Four directions',
+  orthoradial: 'Rings and spokes',
+  hexalinear: 'Six directions',
 }
 
 /** One option of the grid select: its value and what it says. */
 export const gridOptions = (): { grid: Grid; label: string }[] =>
-  GRIDS.map((grid) => ({ grid, label: `${grid} (${GRID_GLOSSES[grid]})` }))
+  GRIDS.map((grid) => ({
+    grid,
+    label: `${GRID_GLOSSES[grid]} (${grid}${grid === DEFAULT_TUNING.grid ? '; the default' : ''})`,
+  }))
 
 /** Each number's name on the screen, in the order the section draws them. */
 export const TUNING_LABELS: Readonly<Record<TuningKey, string>> = {
@@ -158,7 +174,7 @@ export function describeTuningField(key: TuningKey): string {
       : key === 'gridSize'
         ? `${low} to ${high} percent of the distance between adjacent stations`
         : `${low} to ${high}`
-  return `${range}. LOOM’s own is ${DEFAULT_TUNING[key]}.`
+  return `${range}. The default is ${DEFAULT_TUNING[key]}.`
 }
 
 /** What a field shows: the number the tuning holds, else LOOM's own. */

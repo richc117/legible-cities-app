@@ -13,7 +13,6 @@ import { type Palette, type ProjectRecord } from '../../shared/project/types'
 import { inspectionFailure } from './engine/inspections'
 import { paletteOf } from './record'
 import {
-  feedWords,
   hasOverride,
   isReset,
   linesOf,
@@ -315,10 +314,9 @@ export default function LineColours({
           what names the region. */}
       <h3 id="line-colours-heading">{NAME}</h3>
       <p className="prose">
-        A line is drawn in the colour its feed publishes. Choose another here and the map, the chips
-        over it and the time chart all follow. The stations do not move: the stored layout is drawn
-        again, never laid out again. Under each line, Line options gives it a name, leaves it off
-        the map, or draws it bolder, cased or dashed, the same way.
+        A line is drawn in the colour its feed publishes. Choose another and the map follows without
+        moving a station. Under each line, Line options renames it, hides it, or draws it bolder,
+        cased or dashed.
       </p>
       {state.status === 'waiting' && (
         <p className="hint" role="status">
@@ -491,8 +489,7 @@ function LineRow({
         }}
       >
         <span className="line-name">{line.label}</span>
-        <span className="line-feed">{feedWords(line)}</span>
-        <span className="line-source">{sourceWords(shown)}</span>
+        <span className="line-source">{sourceWords(line, shown)}</span>
       </ColourControl>
       {options}
     </li>

@@ -115,16 +115,7 @@ const readRecord = (engineHome: string): Record<string, unknown> => {
  * engine's own names are asserted where they belong, against the real
  * engine, by `tests/unit/layout-real.test.ts`.
  */
-const STAGE_WORDS = [
-  'parse',
-  'collapse',
-  'order',
-  'octilinear',
-  'trips',
-  'draw',
-  'animate',
-  'write',
-]
+const STAGE_WORDS = ['read', 'simplify', 'sort', 'straighten', 'trips', 'draw', 'animate', 'save']
 
 test('lays a project out, reports every stage, and records what it was drawn from', async () => {
   const engineHome = home({ map_draws: true, progress_delay_ms: 10 })
@@ -195,7 +186,7 @@ test('shows no path on the screen, whatever the engine says', async () => {
 
 // The diagnostics panel (A3-03): the engine's numbers, its caveat
 // sentences and its score, for the build that just ran. The stand-in
-// answers a fudged network here and its clean default below, which are the
+// answers a network with caveats here and its clean default below, which are the
 // two cases the panel has to get right.
 const FUDGED = {
   map_draws: true,
@@ -223,51 +214,51 @@ const FUDGED = {
   map_issues: 0.2137,
 }
 
-test("shows what the build had to fudge, in the engine's own words and figures", async () => {
+test("shows what the layout had to compromise on, in the engine's own words and figures", async () => {
   const engineHome = home(FUDGED)
   await withApp(engineHome, async (page, app) => {
     await openNewProject(page, 'Los Angeles')
-    const fudge = panel(page, 'What the build had to fudge')
+    const compromises = panel(page, 'What the layout had to compromise on')
     // Nothing to say about a build that has not happened.
-    await expect(fudge).toHaveCount(0)
+    await expect(compromises).toHaveCount(0)
 
     await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    await expect(fudge).toBeVisible()
+    await expect(compromises).toBeVisible()
 
     // The caveat is the engine's sentence, word for word, and the score is
     // the number it sent.
     await expect(
-      fudge.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
+      compromises.getByText('4 of 116 stops could not be placed on the map', { exact: false }),
     ).toBeVisible()
-    await expect(fudge).toContainText('issues score of 0.2137')
+    await expect(compromises).toContainText("The layout's issues score is 0.2137")
     // Every figure is the block's, formatted and never derived.
-    await expect(fudge).toContainText('99.4%')
-    await expect(fudge).toContainText('112 of 116 (97%)')
-    await expect(fudge).toContainText('80122, 80123')
+    await expect(compromises).toContainText('99.4%')
+    await expect(compromises).toContainText('112 of 116 (97%)')
+    await expect(compromises).toContainText('80122, 80123')
     for (const figure of ['114', '121', '135', '40', '26', '19']) {
-      await expect(fudge).toContainText(figure)
+      await expect(compromises).toContainText(figure)
     }
 
     // An explanation is reachable from the keyboard, and says what the
     // engine's word means.
-    const trigger = fudge.getByRole('button', { name: 'What trips on borrowed track means' })
+    const trigger = compromises.getByRole('button', { name: 'What trips on borrowed track means' })
     await trigger.focus()
-    await expect(fudge.getByText(/neighbouring line's track/)).toBeVisible()
+    await expect(compromises.getByText(/neighbouring line's track/)).toBeVisible()
 
     // And to a press, which is how a touch user asks; the control says
     // whether the explanation it controls is showing.
-    const pressed = fudge.getByRole('button', { name: 'What labels dropped means' })
+    const pressed = compromises.getByRole('button', { name: 'What labels dropped means' })
     await expect(pressed).toHaveAttribute('aria-expanded', 'false')
     await pressed.click()
     await expect(pressed).toHaveAttribute('aria-expanded', 'true')
-    await expect(fudge.getByText(/nowhere to sit without overlapping/)).toBeVisible()
+    await expect(compromises.getByText(/nowhere to sit without overlapping/)).toBeVisible()
     await pressed.click()
     await expect(pressed).toHaveAttribute('aria-expanded', 'false')
 
     // "Copy as text" hands over what is on the screen.
-    await fudge.getByRole('button', { name: 'Copy as text' }).click()
-    await expect(fudge.getByText(/on the clipboard/)).toBeVisible()
+    await compromises.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(compromises.getByText(/on the clipboard/)).toBeVisible()
     const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
     expect(copied).toContain('Los Angeles — the map drawn for')
     expect(copied).toContain('Trips on borrowed track: 26')
@@ -277,7 +268,7 @@ test("shows what the build had to fudge, in the engine's own words and figures",
     )
     // The result's files are paths under the engine home; none reaches the
     // screen or the clipboard (constitution V).
-    expect(await fudge.innerText()).not.toMatch(/[/\\]/)
+    expect(await compromises.innerText()).not.toMatch(/[/\\]/)
   })
 })
 
@@ -294,17 +285,17 @@ test('a clean network says there are no caveats and a score of 0', async () => {
     await openNewProject(page, 'Los Angeles')
     await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
     await expect(page.getByText(/^Laid out/)).toBeVisible({ timeout: 30_000 })
-    const fudge = panel(page, 'What the build had to fudge')
-    await expect(fudge).toContainText('No caveats')
-    await expect(fudge).toContainText('the issues score is 0.')
-    await expect(fudge).toContainText('100.0%')
-    await expect(fudge).toContainText('3 of 3 (100%)')
+    const compromises = panel(page, 'What the layout had to compromise on')
+    await expect(compromises).toContainText('No caveats')
+    await expect(compromises).toContainText('its issues score is 0.')
+    await expect(compromises).toContainText('100.0%')
+    await expect(compromises).toContainText('3 of 3 (100%)')
     // The named figure, and the rest of its sub-block as the stand-in has
     // it: merged a level down rather than replaced, or the stand-in would
     // answer a shape the engine cannot produce. The copied block says
     // which figure is which without guessing at a row.
-    await fudge.getByRole('button', { name: 'Copy as text' }).click()
-    await expect(fudge.getByText(/on the clipboard/)).toBeVisible()
+    await compromises.getByRole('button', { name: 'Copy as text' }).click()
+    await expect(compromises.getByText(/on the clipboard/)).toBeVisible()
     const copied = await app.evaluate(({ clipboard }) => clipboard.readText())
     expect(copied).toContain('Trips: 9')
     expect(copied).toContain('Distinct paths: 1')
@@ -325,7 +316,7 @@ test('a run that did not finish leaves no figures on the screen', async () => {
     await expect(cell(page, 'process').getByText(/was cancelled/i)).toBeVisible({
       timeout: 20_000,
     })
-    await expect(panel(page, 'What the build had to fudge')).toHaveCount(0)
+    await expect(panel(page, 'What the layout had to compromise on')).toHaveCount(0)
   })
 })
 

@@ -68,6 +68,16 @@ export function routesOf(routes: Route[], agency: string | null): Route[] {
   return agency === null ? routes : routes.filter((r) => r.agency_id === agency)
 }
 
+/**
+ * Whether the panel offers the Operator picker: once the feed has been read,
+ * for a feed of more than one operator, or for a project that names one, so
+ * a stored operator can always be cleared. Exported because cell 01's field
+ * list leaves out its Operator row where this picker says it (issue 560).
+ */
+export function offersOperator(inspection: Inspection | null, agency: string | null): boolean {
+  return agency !== null || (inspection !== null && inspection.agencies.length > 1)
+}
+
 /** What the handback reads of a control: whether it holds the element that has focus. */
 export interface Holds<E> {
   contains(element: E): boolean
@@ -299,7 +309,7 @@ export default function Inspect({
   const agencyOptions = [...(inspection?.agencies ?? [])]
   if (agency !== null && !agencyOptions.some((a) => a.agency_id === agency))
     agencyOptions.push({ agency_id: agency, agency_name: `${agency} (not in this feed)` })
-  const offerOperator = agency !== null || (inspection !== null && inspection.agencies.length > 1)
+  const offerOperator = offersOperator(inspection, agency)
 
   const heading = (key: SortKey, label: string): JSX.Element => {
     const active = sort.key === key

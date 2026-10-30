@@ -269,7 +269,7 @@ const GROUNDS: Record<string, Ground[]> = {
   // A line's chip, in its row on the cell's ground.
   'panels.css :: .colour-chip': ['surface', 'raised'],
   // A hidden line's words, on the cell's ground ("4.5 on the cell's ground").
-  'panels.css :: .line-row-group[data-hidden] .line-name (+2)': ['surface'],
+  'panels.css :: .line-row-group[data-hidden] .line-name (+1)': ['surface'],
   'panels.css :: .card-picture': ['sunken'],
   "panels.css :: .histogram tr[data-kept='false'] td": ['surface'],
   'panels.css :: .explain-trigger': ['surface', 'raised'],

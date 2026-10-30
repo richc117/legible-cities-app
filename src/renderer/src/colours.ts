@@ -165,16 +165,20 @@ export function readHex(text: string): string | null {
   return /^[0-9a-f]{6}$/.test(body) ? `#${body}` : null
 }
 
-/** Where this line's colour came from, for a person and for a screen reader. */
-export function sourceWords(shown: Shown): string {
-  if (shown.source === 'override') return `your colour, ${shown.color}`
-  if (shown.source === 'feed') return `the colour in the feed, ${shown.color}`
-  return `the default, ${shown.color}`
-}
-
-/** What the feed publishes for this line, in words. */
-export function feedWords(line: Line): string {
-  return line.feed === null ? 'no colour in feed' : line.feed
+/**
+ * The colour a line is drawn in and where it came from, for a person and for
+ * a screen reader, with what the feed publishes said only where it is not
+ * the colour already named: "the feed’s colour, #0072bc", "your colour,
+ * #d6402a; the feed’s is #0072bc", "the default, #888888; the feed has
+ * none". One clause per fact, so a feed-coloured row prints its hex once
+ * (issue 560): the row used to say the feed's colour and then the colour it
+ * was drawn in, the same hex twice, a fact stated twice on one line.
+ */
+export function sourceWords(line: Line, shown: Shown): string {
+  if (shown.source === 'feed') return `the feed’s colour, ${shown.color}`
+  const feed = line.feed === null ? 'the feed has none' : `the feed’s is ${line.feed}`
+  if (shown.source === 'override') return `your colour, ${shown.color}; ${feed}`
+  return `the default, ${shown.color}; ${feed}`
 }
 
 /** Two palettes with the same overrides and the same default; nothing is rebuilt for a change that is not one. */

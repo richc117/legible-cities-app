@@ -86,7 +86,7 @@ const GRID_SIZE_RANGE =
 
 /** What cell 02 says under its run while the layout is of another tuning. */
 const STALE_FROM_DEFAULTS =
-  'Lay out again to use this tuning: the map on screen was laid out with LOOM’s defaults.'
+  'Lay out again to use this tuning: the map on screen was laid out with the defaults.'
 
 function home(control: Record<string, unknown> = {}): string {
   const dir = mkdtempSync(join(tmpdir(), 'legible-cities-tuning-'))
@@ -139,7 +139,7 @@ const section = (page: Page): Locator =>
 const field = (page: Page, name: string): Locator => section(page).getByLabel(name, { exact: true })
 const grid = (page: Page): Locator => section(page).getByRole('combobox', { name: 'Grid' })
 const reset = (page: Page): Locator =>
-  section(page).getByRole('button', { name: 'Reset to LOOM’s defaults', exact: true })
+  section(page).getByRole('button', { name: 'Reset to the defaults', exact: true })
 /** Where Reset hands focus: the heading the toggle sits in, not the toggle. */
 const handback = (page: Page): Locator =>
   page.locator('h3.disclosure-heading').filter({ has: toggle(page) })
@@ -160,14 +160,14 @@ async function laidOutAndOpen(page: Page): Promise<void> {
   await expect(section(page)).toBeVisible()
 }
 
-test('the section starts closed and says LOOM’s defaults, and a project never tuned sends no tuning', async () => {
+test('the section starts closed and says the defaults, and a project never tuned sends no tuning', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
 
     // Closed, under the run's controls, its toggle in a level-3 heading.
     await expect(toggle(page)).toHaveAttribute('aria-expanded', 'false')
-    await expect(toggle(page)).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+    await expect(toggle(page)).toHaveAccessibleName('Layout tuning the defaults')
     await expect(section(page)).toBeHidden()
     await expect(page.getByRole('heading', { level: 3, name: /^Layout tuning\b/ })).toBeVisible()
 
@@ -185,23 +185,23 @@ test('the section starts closed and says LOOM’s defaults, and a project never 
     await expect(grid(page)).toHaveValue('octilinear')
     const options = await grid(page).locator('option').allTextContents()
     expect(options).toEqual([
-      'octilinear (eight directions; LOOM’s own)',
-      'ortholinear (four directions)',
-      'orthoradial (rings and spokes)',
-      'hexalinear (six directions)',
+      'Eight directions (octilinear; the default)',
+      'Four directions (ortholinear)',
+      'Rings and spokes (orthoradial)',
+      'Six directions (hexalinear)',
     ])
     const shown: [string, string, string][] = [
-      ['Merge distance', '50', '5 to 500 metres. LOOM’s own is 50.'],
+      ['Merge distance', '50', '5 to 500 metres. The default is 50.'],
       [
         'Grid size',
         '100',
-        '25 to 400 percent of the distance between adjacent stations. LOOM’s own is 100.',
+        '25 to 400 percent of the distance between adjacent stations. The default is 100.',
       ],
-      ['45°', '2', '0 to 10. LOOM’s own is 2.'],
-      ['90°', '1.5', '0 to 10. LOOM’s own is 1.5.'],
-      ['135°', '1', '0 to 10. LOOM’s own is 1.'],
-      ['180°', '0', '0 to 10. LOOM’s own is 0.'],
-      ['Diagonal', '0.5', '0 to 10. LOOM’s own is 0.5.'],
+      ['45°', '2', '0 to 10. The default is 2.'],
+      ['90°', '1.5', '0 to 10. The default is 1.5.'],
+      ['135°', '1', '0 to 10. The default is 1.'],
+      ['180°', '0', '0 to 10. The default is 0.'],
+      ['Diagonal', '0.5', '0 to 10. The default is 0.5.'],
     ]
     for (const [name, value, description] of shown) {
       await expect(field(page, name), name).toHaveValue(value)
@@ -323,7 +323,7 @@ test('a number outside its range is refused beside the field in the engine’s s
     )
 
     // Nothing was written, and the row still says so.
-    await expect(toggle(page)).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+    await expect(toggle(page)).toHaveAccessibleName('Layout tuning the defaults')
     expect(readRecord(engineHome)).not.toHaveProperty('tuning')
     expect(requests(engineHome, 'graph.build')).toHaveLength(1)
 
@@ -336,7 +336,7 @@ test('a number outside its range is refused beside the field in the engine’s s
   })
 })
 
-test('Reset clears the record’s tuning, says LOOM’s defaults, and hands focus to the section’s heading', async () => {
+test('Reset clears the record’s tuning, says the defaults, and hands focus to the section’s heading', async () => {
   const engineHome = home()
   await withApp(engineHome, async (page) => {
     await laidOutAndOpen(page)
@@ -380,7 +380,7 @@ test('Reset clears the record’s tuning, says LOOM’s defaults, and hands focu
     await expect
       .poll(() => readRecord(engineHome), { message: 'the key itself is gone' })
       .not.toHaveProperty('tuning')
-    await expect(toggle(page)).toHaveAccessibleName('Layout tuning LOOM’s defaults')
+    await expect(toggle(page)).toHaveAccessibleName('Layout tuning the defaults')
     await expect(grid(page)).toHaveValue('octilinear')
     await expect(field(page, '90°')).toHaveValue('1.5')
     await expect(reset(page)).toBeDisabled()

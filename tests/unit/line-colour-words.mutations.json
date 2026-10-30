@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/LineColours.tsx",
+    "find": "        <span className=\"line-source\">{sourceWords(line, shown)}</span>\n",
+    "replace": "        <span className=\"line-feed\">{line.feed ?? 'no colour in feed'}</span>\n        <span className=\"line-source\">{sourceWords(line, shown)}</span>\n",
+    "test": "tests/unit/line-colour-words.test.tsx",
+    "title": "holds a feed-coloured line’s hex once",
+    "why": "The feed's hex drawn again beside the words: a feed-coloured row prints its hex twice."
+  },
+  {
+    "file": "src/renderer/src/colours.ts",
+    "find": "  if (shown.source === 'feed') return `the feed’s colour, ${shown.color}`\n",
+    "replace": "  if (shown.source === 'feed') return `the feed’s colour, ${shown.color}; the feed’s is ${line.feed}`\n",
+    "test": "tests/unit/line-colour-words.test.tsx",
+    "title": "holds a feed-coloured line’s hex once",
+    "why": "The feed's clause said for a feed-coloured line too: its hex twice in one sentence."
+  },
+  {
+    "file": "src/renderer/src/colours.ts",
+    "find": "  return `the default, ${shown.color}; ${feed}`\n",
+    "replace": "  return `the default, ${shown.color}`\n",
+    "test": "tests/unit/line-colour-words.test.tsx",
+    "title": "says your colour and the feed’s where they differ, and the default where the feed has none",
+    "why": "The default's row no longer says the feed has no colour, the fact the dropped feed column carried."
+  }
+]

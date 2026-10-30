@@ -125,7 +125,7 @@ const PANELS: {
     ),
   },
   {
-    name: 'What the build had to fudge',
+    name: 'What the layout had to compromise on',
     cell: { number: 2, name: 'Process' },
     id: 'diagnostics-heading',
     panel: <DiagnosticsReport name="Los Angeles" report={report} />,

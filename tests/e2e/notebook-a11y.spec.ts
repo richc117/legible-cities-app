@@ -109,7 +109,9 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     await expect(page.getByRole('button', { name: 'Lay out again', exact: true })).toBeFocused()
 
     await expect(page.getByRole('region', { name: 'Line colours' })).toBeVisible()
-    await expect(page.getByRole('region', { name: 'What the build had to fudge' })).toBeVisible()
+    await expect(
+      page.getByRole('region', { name: 'What the layout had to compromise on' }),
+    ).toBeVisible()
     await expect(page.getByRole('group', { name: /^The gtfs2graph stage/ })).toBeVisible()
 
     // The heading outline (issue 197). A screen reader walks a long document
@@ -151,7 +153,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
     for (const name of [
       'In the feed',
       'Where the routes run',
-      'What the build had to fudge',
+      'What the layout had to compromise on',
       'Trip',
       'Line colours',
       'Line order',
@@ -303,7 +305,7 @@ test('the notebook, Inspect, the geographic view, the inspector and its dialogs'
 
     // An explanation shown on focus is sent away with Escape, and comes back
     // once focus has left its row and returned.
-    const panel = page.getByRole('region', { name: 'What the build had to fudge' })
+    const panel = page.getByRole('region', { name: 'What the layout had to compromise on' })
     const trigger = panel.getByRole('button', { name: /^What .* means$/ }).first()
     const tooltip = page.locator(`[id="${await trigger.getAttribute('aria-describedby')}"]`)
     await trigger.focus()

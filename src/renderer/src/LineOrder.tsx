@@ -505,9 +505,8 @@ export default function LineOrder({
           cell's heading is where focus is handed (A5.5-18). */}
       <h3 id="line-order-heading">{NAME}</h3>
       <p className="prose">
-        Where two lines share track the map draws the later of them over the earlier, and the page
-        lists them in this order too. The stations do not move: the stored layout is drawn again,
-        never laid out again.
+        Where two lines share track, the later one is drawn over the earlier, and the map lists its
+        lines in this order.
       </p>
       {state.status === 'waiting' && (
         <p className="hint" role="status">

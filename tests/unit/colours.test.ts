@@ -8,7 +8,6 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
   feedColour,
-  feedWords,
   hasOverride,
   isReset,
   linesOf,
@@ -162,8 +161,6 @@ describe('shownColour: the override, then the feed, then the default', () => {
   })
   it('shows the default for a line the feed leaves uncoloured', () => {
     expect(shownColour(blank, palette())).toEqual({ color: DEFAULT_COLOR, source: 'default' })
-    expect(feedWords(blank)).toBe('no colour in feed')
-    expect(feedWords(coloured)).toBe('#0072bc')
   })
   it('shows the override over both', () => {
     const chosen = palette({ colors: { A: '#112233', K: '#445566' } })
@@ -178,10 +175,19 @@ describe('shownColour: the override, then the feed, then the default', () => {
       '#00ff00',
     )
   })
-  it('says in words where a colour came from', () => {
-    expect(sourceWords({ color: '#0072bc', source: 'feed' })).toContain('in the feed')
-    expect(sourceWords({ color: '#112233', source: 'override' })).toContain('your colour')
-    expect(sourceWords({ color: DEFAULT_COLOR, source: 'default' })).toContain('the default')
+  it('says in words where a colour came from, and what the feed publishes where that is another', () => {
+    expect(sourceWords(coloured, { color: '#0072bc', source: 'feed' })).toBe(
+      'the feed’s colour, #0072bc',
+    )
+    expect(sourceWords(coloured, { color: '#d6402a', source: 'override' })).toBe(
+      'your colour, #d6402a; the feed’s is #0072bc',
+    )
+    expect(sourceWords(blank, { color: '#d6402a', source: 'override' })).toBe(
+      'your colour, #d6402a; the feed has none',
+    )
+    expect(sourceWords(blank, { color: '#888888', source: 'default' })).toBe(
+      'the default, #888888; the feed has none',
+    )
   })
   it('ignores a stored override that is not a colour, rather than drawing it', () => {
     const broken = { colors: { A: 'rgb(1,2,3)' }, defaultColor: DEFAULT_COLOR }

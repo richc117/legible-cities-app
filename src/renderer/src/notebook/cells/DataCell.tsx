@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import type { Inspection } from '../../../../shared/protocol'
 import { revealOf } from '../../engine/stages'
-import Inspect from '../../Inspect'
+import Inspect, { offersOperator } from '../../Inspect'
 import StageView from '../../StageView'
 import DownloadLine from '../../DownloadLine'
 import Cell from '../Cell'
@@ -16,7 +16,9 @@ import { EVERY_OPERATOR } from '../../record'
 // Inspect view that chooses the last two (A2-02), and the geographic view
 // of the stages the engine ran (A2-03). The three fields come from the
 // `<dl class="fields">` the project screen carried whole; it is split at
-// placement rather than left for three branches to share.
+// placement rather than left for three branches to share. The mode and the
+// operator are listed only where Inspect does not draw their pickers below,
+// since a picker shows its value and one fact is said once (issue 560).
 //
 // Nothing here is re-authored: `Inspect` and `StageView` are the panels
 // that were on the screen before, with the props they had.
@@ -39,27 +41,64 @@ import { EVERY_OPERATOR } from '../../record'
 // would have to know what every cell is made of, and each new one would
 // edit the file all six share (A5.5-09).
 
+/** Which of the mode's and the operator's pickers `Inspect` draws below the field list. */
+export interface Pickers {
+  mode: boolean
+  operator: boolean
+}
+
+const NO_PICKERS: Pickers = { mode: false, operator: false }
+
 /**
- * The cell's field list: the feed, the mode and the operator the project
- * is drawn from. The row is called Operator, as the picker below it is.
+ * Which pickers `Inspect` draws, by its own rules: none for a read-only
+ * project, which has no `Inspect`, or before the feed has been read with
+ * the engine ready, which is when the panel draws its controls; then the
+ * mode always, and the operator where `offersOperator` says. Derived from
+ * the same inspection the panel is answered with (one request per feed,
+ * `engine/inspections.ts`), so the row and the picker change in one render.
+ */
+export function pickersDrawn(
+  readOnly: boolean,
+  ready: boolean,
+  inspection: Inspection | null,
+  agency: string | null,
+): Pickers {
+  if (readOnly || !ready || inspection === null) return NO_PICKERS
+  return { mode: true, operator: offersOperator(inspection, agency) }
+}
+
+/**
+ * The cell's field list: the feed, and the mode and the operator the
+ * project is drawn from where no picker below says them (issue 560). The
+ * row is called Operator, as the picker below it is.
  */
 export function DataFields({
   feed,
   mode,
   agency,
+  pickers = NO_PICKERS,
 }: {
   feed: string
   mode: string
   agency: string | null
+  pickers?: Pickers
 }): JSX.Element {
   return (
     <dl className="fields">
       <dt>Feed</dt>
       <dd>{feed}</dd>
-      <dt>Mode</dt>
-      <dd>{mode}</dd>
-      <dt>Operator</dt>
-      <dd>{agency ?? EVERY_OPERATOR}</dd>
+      {!pickers.mode && (
+        <>
+          <dt>Mode</dt>
+          <dd>{mode}</dd>
+        </>
+      )}
+      {!pickers.operator && (
+        <>
+          <dt>Operator</dt>
+          <dd>{agency ?? EVERY_OPERATOR}</dd>
+        </>
+      )}
     </dl>
   )
 }
@@ -126,7 +165,8 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
   const { project, engine, registry } = useProjectRecord()
   const { inspect, setInputs, readStage } = useProjectActions()
   const { layingOut, exporting, run, runSnapshot, settling } = useProjectRuns()
-  const inspection = useInspection(project?.feed ?? null, engine?.state === 'ready', inspect)
+  const ready = engine?.state === 'ready'
+  const inspection = useInspection(project?.feed ?? null, ready, inspect)
   const heading = useRef<HTMLHeadingElement>(null)
   // The run's job id is its identity for the drawings it asks for, one per
   // attempt; `revealOf` says whether it is a layout run with a layout named.
@@ -144,7 +184,12 @@ export default function DataCell({ cell, state, open, onToggle }: CellViewProps)
     >
       {project !== null && (
         <>
-          <DataFields feed={project.feed} mode={project.mode} agency={project.agency} />
+          <DataFields
+            feed={project.feed}
+            mode={project.mode}
+            agency={project.agency}
+            pickers={pickersDrawn(project.readOnly, ready, inspection, project.agency)}
+          />
           {/* The feed's download, when the layout run is fetching it
               (issue 178): here, with the feed, not in cell 02. */}
           <DownloadLine run={run} />

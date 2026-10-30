@@ -199,12 +199,17 @@ export function metrics(d: Diagnostics): Metric[] {
   return rows
 }
 
-/** What the caveats line says, with the score the atlas is ordered by. */
+/**
+ * What the caveats line says, with the score the atlas is ordered by. The
+ * score is said as the layout's and what 0 means is said with it, because
+ * "issues score" is the engine's term and a person meets it here first
+ * (issue 560).
+ */
 export function caveatsSentence(report: RunReport): string {
-  const clean = `No caveats: nothing was fudged, and the issues score is ${score(report.issues)}.`
+  const clean = `No caveats: the layout compromised on nothing, and its issues score is ${score(report.issues)}.`
   if (report.caveats.length === 0) return clean
   const n = report.caveats.length
-  return `${count(n)} caveat${n === 1 ? '' : 's'}, and an issues score of ${score(report.issues)}, where 0 is clean.`
+  return `${count(n)} caveat${n === 1 ? '' : 's'}. The layout's issues score is ${score(report.issues)}, where 0 means it compromised on nothing.`
 }
 
 /**

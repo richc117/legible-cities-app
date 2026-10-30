@@ -309,7 +309,10 @@ test('creates, opens, renames and deletes a project, and serves its output', asy
     const heading = window.getByRole('heading', { level: 1 })
     await expect(heading).toHaveText('Los Angeles')
     await expect(definition(window, 'Feed')).toHaveText('la-metro-rail')
-    await expect(definition(window, 'Mode')).toHaveText('all')
+    // The mode is said by its picker once the feed has been read, and the
+    // field list then leaves its row out: one fact, said once (issue 560).
+    await expect(window.getByRole('combobox', { name: 'Mode' })).toHaveValue('all')
+    await expect(window.locator('dl dt', { hasText: /^Mode$/ })).toHaveCount(0)
     // Cells 02 and 03 say what they hold in a sentence each until there is
     // a layout. Neither has a field list (issue 209: a fact the footer
     // strip states is not stated again above it), and neither has a strip

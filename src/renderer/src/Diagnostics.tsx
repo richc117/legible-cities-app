@@ -13,8 +13,8 @@ import { keepDismissed, keyOf, useDismissalWatch } from './dismissal'
 import Icon from './icons/Icon'
 import { useSnapshot } from './useSnapshot'
 
-// What the build had to fudge: the engine's caveat sentences word for
-// word, its issue score, and the figures of its diagnostics block, each
+// What the layout had to compromise on: the engine's caveat sentences word
+// for word, its issue score, and the figures of its diagnostics block, each
 // row saying what it means to anyone who asks (specs/017). Nothing here is
 // computed from the engine's numbers; the panel formats them and stops.
 //
@@ -190,7 +190,7 @@ export function DiagnosticsReport({
           (A5.5-18, issue 197). The run's own panel above it carries no
           heading, which is the ordinary shape: what a cell holds before its
           first subsection belongs to the cell. */}
-      <h3 id="diagnostics-heading">What the build had to fudge</h3>
+      <h3 id="diagnostics-heading">What the layout had to compromise on</h3>
       <p className="prose" role="status">
         {caveatsSentence(report)}
       </p>

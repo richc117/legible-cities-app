@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/notebook/cells/DataCell.tsx",
+    "find": "      {!pickers.mode && (\n",
+    "replace": "      {(true || !pickers.mode) && (\n",
+    "test": "tests/unit/data-cell.test.ts",
+    "title": "leaves out each row whose picker is drawn, and keeps the feed",
+    "why": "The Mode row drawn whatever its picker does: the mode is said twice, in the list and by the picker below it."
+  },
+  {
+    "file": "src/renderer/src/notebook/cells/DataCell.tsx",
+    "find": "  if (readOnly || !ready || inspection === null) return NO_PICKERS\n",
+    "replace": "  if (!ready || inspection === null) return NO_PICKERS\n",
+    "test": "tests/unit/data-cell.test.ts",
+    "title": "draws the pickers once the feed is read with the engine ready, and never for a read-only project",
+    "why": "A read-only project, which has no Inspect and so no picker, would lose its Mode and Operator rows and say neither anywhere."
+  }
+]

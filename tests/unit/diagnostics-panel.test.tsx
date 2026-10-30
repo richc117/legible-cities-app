@@ -58,7 +58,7 @@ describe('the panel itself', () => {
   it('says there are no caveats, and the score, when the build was clean', () => {
     const html = markup({ caveats: [], issues: 0 })
     expect(html).toContain('No caveats')
-    expect(html).toContain('the issues score is 0.')
+    expect(html).toContain('its issues score is 0.')
     expect(html).not.toContain('aria-label="Caveats"')
   })
 

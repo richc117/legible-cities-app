@@ -240,7 +240,7 @@ describe('what a running or failed cell says on its row', () => {
 
   it('names the stage and its place while a layout runs, on cell 02 alone', () => {
     const going = run({}, ['done', 'running'])
-    expect(runRowStatus(going, 'process')).toBe('running collapse, 2 of 8')
+    expect(runRowStatus(going, 'process')).toBe('running stage 2 of 8, simplify')
     for (const other of ['data', 'frame', 'style', 'lines', 'export'] as const)
       expect(runRowStatus(going, other), other).toBeNull()
   })
@@ -248,7 +248,7 @@ describe('what a running or failed cell says on its row', () => {
   it('says where a failed run stopped, without anything opening', () => {
     expect(
       runRowStatus(run({ state: 'failed' }, ['done', 'done', 'done', 'failed']), 'process'),
-    ).toBe('failed at octilinear, 4 of 8')
+    ).toBe('failed at stage 4 of 8, straighten')
   })
 
   it('belongs to the cell the run is for: a rebuild to 03, a recolour to 05', () => {

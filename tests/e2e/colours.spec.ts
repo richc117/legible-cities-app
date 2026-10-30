@@ -115,7 +115,7 @@ test('lists the feed lines with the colours the feed publishes', async () => {
     // The engine's route_color, hashed and lower-cased, and where the
     // colour came from said in words.
     await expect(rows.nth(0)).toContainText('#0072bc')
-    await expect(rows.nth(0)).toContainText('the colour in the feed')
+    await expect(rows.nth(0)).toContainText('the feed’s colour')
     // Nothing to reset yet: Reset is in the chip's panel (issue 284), and
     // disabled there until the line has a colour of its own.
     await panel.getByRole('button', { name: /^Choose the colour of line A/ }).click()
@@ -224,7 +224,7 @@ test('reset puts a line back to the feed, and reset for all clears everything', 
     await expect.poll(() => readRecord(engineHome).colors, { timeout: 30_000 }).toEqual({})
     await expect(
       panel.getByRole('list', { name: 'Lines' }).getByRole('listitem').nth(0),
-    ).toContainText('the colour in the feed, #0072bc')
+    ).toContainText('the feed’s colour, #0072bc')
 
     // Two overrides, then one reset for all.
     for (const [line, hex] of [
@@ -347,7 +347,7 @@ test('the default colour is offered and reaches the engine as default_color', as
     // A line the feed does colour is untouched by the default.
     await expect(
       panel.getByRole('list', { name: 'Lines' }).getByRole('listitem').nth(0),
-    ).toContainText('the colour in the feed, #0072bc')
+    ).toContainText('the feed’s colour, #0072bc')
   })
 })
 
@@ -1095,7 +1095,7 @@ test('a colour chosen after a cancelled redraw waits for an export, and a rename
       const layoutRun = await openCell(page, 'process')
       await layoutRun.getByRole('button', { name: 'Cancel', exact: true }).click()
       await expect(page.getByText(/^The redraw was cancelled\./)).toBeVisible({ timeout: 30_000 })
-      await expect(lineA).toContainText('the colour in the feed, #0072bc')
+      await expect(lineA).toContainText('the feed’s colour, #0072bc')
       expect(readRecord(engineHome).colors).toEqual({})
 
       // An export now holds the page.
@@ -1241,6 +1241,6 @@ test('a colour put back while its build runs is drawn once that build has writte
     await expect.poll(() => readRecord(engineHome).colors, { timeout: 30_000 }).toEqual({})
     await expect(
       panel.getByRole('list', { name: 'Lines' }).getByRole('listitem').nth(0),
-    ).toContainText('the colour in the feed, #0072bc')
+    ).toContainText('the feed’s colour, #0072bc')
   })
 })

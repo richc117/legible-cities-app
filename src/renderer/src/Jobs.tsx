@@ -14,7 +14,7 @@ import { timeWords } from './dates'
 import Icon from './icons/Icon'
 import Button from './kit/Button'
 import ProgressLine from './ProgressLine'
-import { inWords } from './stages'
+import { inWords, stagePlace } from './stages'
 
 // The jobs the inspector lists (A1-03, specs/024-jobs): each one the run's
 // own stages on the progress line, its last sentence, Cancel while it runs,
@@ -51,29 +51,35 @@ export async function copyLog(job: Job, copy: (text: string) => Promise<void>): 
 
 /**
  * Where a job is, in words, for the line under its title: the state, and
- * for a running or failed one the stage and its place among the stages -
- * "running collapse, 2 of 8", "failed at octilinear, 4 of 8". The compact
- * line has no labels, so this is what names the station that is ringed
- * (issue 278; principle 1 of docs/DESIGN.md section 10).
+ * for a running or failed one the stage's place among the stages and its
+ * word - "running stage 2 of 8, simplify", "failed at stage 4 of 8,
+ * straighten". The compact line has no labels, so this is what names the
+ * station that is ringed (issue 278; principle 1 of docs/DESIGN.md section
+ * 10).
  */
 export function describeProgress(job: Job): string {
   const stages = inWords(job.stages)
   const running = stages.findIndex((s) => s.state === 'running')
   const failed = stages.findIndex((s) => s.state === 'failed')
   if (job.state === 'running' && running !== -1) {
-    return `running ${stages[running].label}, ${running + 1} of ${stages.length}`
+    return `running ${stagePlace(stages, running)}`
   }
   if (job.state === 'failed' && failed !== -1) {
-    return `failed at ${stages[failed].label}, ${failed + 1} of ${stages.length}`
+    return `failed at ${stagePlace(stages, failed)}`
   }
   return describeJobState(job.state)
 }
 
-/** One sentence for a job's whole line, for a screen reader. */
+/**
+ * One sentence for a job's whole line, for a screen reader. A running one
+ * says its stage as the line under the title does, place first: "Running
+ * read." or "Running save." would not read as a step (issue 560).
+ */
 export function describeJob(job: Job): string {
   if (job.state === 'running') {
-    const current = inWords(job.stages).find((s) => s.state === 'running')
-    return current === undefined ? `${job.label} is running.` : `Running ${current.label}.`
+    const stages = inWords(job.stages)
+    const at = stages.findIndex((s) => s.state === 'running')
+    return at === -1 ? `${job.label} is running.` : `Running ${stagePlace(stages, at)}.`
   }
   return `${job.label} ${describeJobState(job.state)}.`
 }

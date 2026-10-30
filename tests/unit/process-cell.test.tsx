@@ -283,7 +283,7 @@ describe('cell 02, Process, and its layout tuning', () => {
     // then silent over a layout of another tuning.
     const stale = draw({ ...record, tuning: { grid: 'orthoradial' } }).above
     const sentence =
-      '<p class="prose" role="status">Lay out again to use this tuning: the map on screen was laid out with LOOM’s defaults.</p>'
+      '<p class="prose" role="status">Lay out again to use this tuning: the map on screen was laid out with the defaults.</p>'
     expect(count(stale, sentence)).toBe(1)
     expect(stale.indexOf(sentence)).toBeLessThan(stale.indexOf('Lay out again</fig-button>'))
     const current = draw({
