@@ -75,15 +75,18 @@ export const plays = playsStoryboard
 
 /**
  * A preset as the chooser lists it: its title, its size and what it makes,
- * "Instagram post, 1080 by 1350, PNG still" (issue 559). A GIF's title
- * already says it is one, so it adds nothing after the size.
+ * "Instagram post, 1080 by 1350, PNG still" (issue 559). A video's title
+ * says what it is for and its container says it moves, "LinkedIn video,
+ * 1200 by 1200, MP4"; a GIF's title already says it is one, so it adds
+ * nothing after the size (`preset-titles.test.ts` holds every GIF's title
+ * to that).
  */
 export function presetWords(preset: Preset): string {
   const made =
     preset.format === 'gif'
       ? ''
       : preset.kind === 'video'
-        ? `, ${preset.format.toUpperCase()} video`
+        ? `, ${preset.format.toUpperCase()}`
         : `, ${preset.format.toUpperCase()} still`
   return `${presetTitle(preset.name)}, ${preset.width} by ${preset.height}${made}`
 }

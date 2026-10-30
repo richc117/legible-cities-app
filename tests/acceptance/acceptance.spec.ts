@@ -67,6 +67,7 @@ import {
   type Page,
 } from '@playwright/test'
 import { dayWords } from '../../src/renderer/src/dates'
+import { OFFERED_PRESETS } from '../../src/shared/export'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import {
   cell,
@@ -2480,11 +2481,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const shown = await preset.evaluate(
           (select) => (select as HTMLSelectElement).selectedOptions[0]?.textContent?.trim() ?? '',
         )
-        expect(shown).toBe('Instagram reel, 1080 by 1920, MP4 video')
+        expect(shown).toBe('Instagram reel, 1080 by 1920, MP4')
         const options = (await preset.locator('option').allTextContents()).map((o) => o.trim())
         expect(options).toHaveLength(13)
-        const odd = options.filter((o) => !/^\S+: \d+ by \d+, .+$/.test(o))
+        // "<title>, <width> by <height>", then the container for a video and
+        // "<format> still" for a still; a GIF's title says GIF (issue 559).
+        const odd = options.filter(
+          (o) => !/^[A-Z][^,:]*, \d+ by \d+(, [A-Z0-9]+( still)?)?$/.test(o),
+        )
         expect(odd).toEqual([])
+        // And never the engine's id, which is the file's name and not a person's.
+        const named = (o: string, id: string): boolean =>
+          new RegExp(`(^|[^A-Za-z-])${id}($|[^A-Za-z-])`).test(o)
+        expect(options.filter((o) => OFFERED_PRESETS.some((id) => named(o, id)))).toEqual([])
         expect(
           await preset
             .locator('optgroup')

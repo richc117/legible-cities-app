@@ -6,5 +6,13 @@
     "test": "tests/unit/preset-titles.test.ts",
     "title": "gives every offered preset a title of its own, and nothing else one",
     "why": "An offered preset left without a title: the build refuses it, and at run time the screen would name it by its id again, which the mutation job can see though it does not typecheck."
+  },
+  {
+    "file": "src/shared/export.ts",
+    "find": "  'bluesky-gif': 'Bluesky GIF',\n",
+    "replace": "  'bluesky-gif': 'Bluesky animation',\n",
+    "test": "tests/unit/preset-titles.test.ts",
+    "title": "says GIF in the title of every GIF, since the chooser says nothing after its size",
+    "why": "A GIF titled without the word: the chooser drops a GIF's format after its size, so the option would read as a still."
   }
 ]

@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { OFFERED_PRESETS, PRESET_TITLES, presetTitle } from '../../src/shared/export'
 import { outputName, UNNAMED_PRESET } from '../../src/renderer/src/notebook/outputWords'
+import type { Preset } from '../../src/shared/protocol'
 
 // A preset is named by its title on screen, never by the engine's id
 // (issue 559). The `Record` type makes a missing title a build error; this
@@ -17,6 +20,22 @@ describe('the presets’ titles', () => {
     }
     const titles = Object.values(PRESET_TITLES)
     expect(new Set(titles).size, 'no two presets share a title').toBe(titles.length)
+  })
+
+  it('says GIF in the title of every GIF, since the chooser says nothing after its size', () => {
+    // `presetWords` drops a GIF's format on the strength of this, so a GIF
+    // titled without it would read as a still. The engine's own table says
+    // which presets are GIFs.
+    const table = JSON.parse(
+      readFileSync(resolve(__dirname, '../fixtures/export-tables-v0.8.2.json'), 'utf8'),
+    ) as { presets: Preset[] }
+    const offered = table.presets.filter((preset) =>
+      (OFFERED_PRESETS as readonly string[]).includes(preset.name),
+    )
+    expect(offered.map((preset) => preset.name).sort()).toEqual([...OFFERED_PRESETS].sort())
+    const gifs = offered.filter((preset) => preset.format === 'gif')
+    expect(gifs.length, 'the table has GIFs to hold').toBeGreaterThan(0)
+    for (const gif of gifs) expect(presetTitle(gif.name), gif.name).toContain('GIF')
   })
 
   it('says a preset the app does not offer by its id, as it was', () => {

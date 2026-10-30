@@ -696,13 +696,14 @@ Result: ____
 ### 11. Cell 06, Export: a reel
 
 **Do.** Open cell **06 Export**. Leave **Preset** on
-"Instagram reel, 1080 by 1920, MP4 video" (under **Instagram**) and
+"Instagram reel, 1080 by 1920, MP4" (under **Instagram**) and
 **Storyboard** on the preset's own. Press **Export**. Time it.
 
 **See.**
 - The **Preset** select lists thirteen presets under Instagram, LinkedIn,
-  Bluesky and X, each "`<title>`, `<width>` by `<height>`, `<what it
-  makes>`", the title naming the platform and what is made for it and
+  Bluesky and X, each "`<title>`, `<width>` by `<height>`", then
+  "`<container>`" for a video ("MP4") or "`<format>` still" for a still
+  ("PNG still"), the title naming the platform and what is made for it and
   never the engine's id (a GIF's title says GIF, and nothing follows its
   size).
 - While the cell is open, a preview inside it shows the export's tall

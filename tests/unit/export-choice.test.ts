@@ -114,7 +114,7 @@ describe('what is offered', () => {
   it('names a preset with its size and what it makes, and a storyboard with its views and length', () => {
     // By its title, never its id (issue 559); a GIF's title already says GIF.
     expect(presetWords(PRESETS[0])).toBe('Instagram post, 1080 by 1350, PNG still')
-    expect(presetWords(PRESETS[2])).toBe('Instagram reel, 1080 by 1920, MP4 video')
+    expect(presetWords(PRESETS[2])).toBe('Instagram reel, 1080 by 1920, MP4')
     expect(presetWords(PRESETS[3])).toBe('LinkedIn square GIF, 1080 by 1920')
     // A preset the app does not offer keeps its id, rather than no name.
     expect(presetWords({ ...PRESETS[3], name: 'portfolio-gif' })).toBe(
