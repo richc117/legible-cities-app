@@ -158,6 +158,8 @@ jobs:
 
       - name: Build the app
         run: npm run build
+        env:
+          LEGIBLE_RELEASE_REF: ${{ github.ref }}
 
       # Each into its own folder, named as vendor.yml uploads it. A missing
       # artefact does not end the job here: the check below names it.

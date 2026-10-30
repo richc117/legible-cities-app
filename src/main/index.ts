@@ -69,6 +69,13 @@ import { messageOf } from '../shared/errors'
 
 export const PRODUCT_NAME = 'Legible Cities'
 
+// The version the app reports, fixed at build time by electron.vite.config.ts
+// from scripts/release.mjs's releaseLabel (issue 558): a candidate's tag
+// says `1.0.0-rc.2`, any other build `1.0.0+<commit>`. Electron's own idea
+// of the version is package.json's X.Y.Z, without the -rc.N, so nothing
+// here asks Electron for it.
+declare const __RELEASE_LABEL__: string
+
 // The log, from the first line. Until the app knows where its log folder
 // is, lines are held in memory - the first lines of a launch that goes
 // wrong are the ones worth having - and, in development, mirrored to
@@ -693,7 +700,7 @@ if (!hasLock) {
       // diagnostics panel's handler writes it. Nothing leaves the machine.
       diagnostics: {
         about: () => ({
-          app: { name: PRODUCT_NAME, version: app.getVersion() },
+          app: { name: PRODUCT_NAME, version: __RELEASE_LABEL__ },
           versions: {
             electron: process.versions.electron,
             chrome: process.versions.chrome,

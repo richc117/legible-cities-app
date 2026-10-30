@@ -89,6 +89,28 @@ describe('the composed text', () => {
     expect(text).toContain('The engine is not running.')
     expect(text).toContain('No map has been drawn since the app started.')
   })
+
+  it("names the app by the version the build gave it, a candidate's -rc.N and a commit kept", () => {
+    for (const version of ['1.0.0-rc.2', '1.0.0', '1.0.0+abc1234']) {
+      const text = composeDiagnostics(input({ app: { name: 'Legible Cities', version } }))
+      expect(text).toContain(`\n## App\n\nLegible Cities ${version}\n`)
+    }
+  })
+
+  // The label is fixed at build time (issue 558), so what the main process
+  // hands Settings and the diagnostics is held here from the source: both
+  // read about().app.version, and it must be the label, not Electron's
+  // app.getVersion(), which is package.json's X.Y.Z without the -rc.N.
+  it("is handed the build's release label for the app, not Electron's version", async () => {
+    // Mutation: about() back on app.getVersion(), so a candidate says 1.0.0.
+    const index = await readFile(join(__dirname, '../../src/main/index.ts'), 'utf8')
+    expect(index).toContain('declare const __RELEASE_LABEL__: string')
+    expect(index).toContain('app: { name: PRODUCT_NAME, version: __RELEASE_LABEL__ },')
+    expect(index).not.toMatch(/\bgetVersion\s*\(/)
+    const config = await readFile(join(__dirname, '../../electron.vite.config.ts'), 'utf8')
+    expect(config).toContain('process.env.LEGIBLE_RELEASE_REF')
+    expect(config).toContain('define: { __RELEASE_LABEL__: JSON.stringify(RELEASE_LABEL) },')
+  })
 })
 
 describe('the home folder', () => {

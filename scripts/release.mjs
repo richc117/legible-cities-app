@@ -23,6 +23,11 @@
 // - A tag is `v<X.Y.Z>` or `v<X.Y.Z>-rc.<N>`, and X.Y.Z is package.json's
 //   version exactly. An `-rc.N` tag drafts a prerelease. Anything else is
 //   refused before anything is drafted, naming both versions.
+// - The app built from a release tag reports the tag's version, its `-rc.N`
+//   included; any other build reports package.json's with the commit as
+//   build metadata, `X.Y.Z+<sha7>` (`releaseLabel`, which
+//   electron.vite.config.ts reads, so a tag for another version fails the
+//   build itself).
 // - The tag still names, on the remote, the commit this run built: a run
 //   for a tag since moved or deleted drafts nothing. And that commit is
 //   reachable from main: a Release is made only from main's history.
@@ -115,6 +120,77 @@ export function parseTag(tag) {
   return { version: match[1], rc, label: tag.slice(1) }
 }
 
+const COMMIT = /^[0-9a-f]{7,64}$/
+
+/**
+ * The version the app reports, in Settings, Copy diagnostics and so the bug
+ * report (issue 558): a release tag's own version, `1.0.0-rc.2` for
+ * `refs/tags/v1.0.0-rc.2` and `1.0.0` for `refs/tags/v1.0.0`, so a
+ * candidate says which candidate it is while package.json, which the tag
+ * rules and the Windows installer's version read, stays X.Y.Z. Any other
+ * build - a branch, a pull request, a local build, a tag that is not a
+ * release tag - reports package.json's version with the commit as SemVer
+ * build metadata, `1.0.0+abc1234`, so an installer from main says which
+ * commit it is, or the bare version when no commit is known. A release tag
+ * for another version than package.json's throws, which fails the build,
+ * as `decide` would refuse its Release.
+ *
+ * @param {string} pkgVersion package.json's version, X.Y.Z
+ * @param {string | null | undefined} ref the ref built, as GitHub names it
+ *   (`refs/tags/<tag>`, `refs/heads/<branch>`), or nothing
+ * @param {string | null | undefined} [commit] the commit built, in hex
+ * @returns {string}
+ */
+export function releaseLabel(pkgVersion, ref, commit = null) {
+  if (typeof pkgVersion !== 'string' || !VERSION.test(pkgVersion)) {
+    throw new Error(
+      `package.json's version is ${JSON.stringify(pkgVersion)}, not X.Y.Z, so the app has no version to report`,
+    )
+  }
+  const tag =
+    typeof ref === 'string' && ref.startsWith('refs/tags/')
+      ? parseTag(ref.slice('refs/tags/'.length))
+      : null
+  if (tag !== null) {
+    if (tag.version !== pkgVersion) {
+      throw new Error(
+        `the tag ${ref.slice('refs/tags/'.length)} is for version ${tag.version}, and package.json says ${pkgVersion}; an app built from it would report a version it is not`,
+      )
+    }
+    return tag.label
+  }
+  if (commit === null || commit === undefined || commit === '') return pkgVersion
+  if (typeof commit !== 'string' || !COMMIT.test(commit)) {
+    throw new Error(`the commit built is ${JSON.stringify(commit)}, not a commit id in hex`)
+  }
+  return `${pkgVersion}+${commit.slice(0, 7)}`
+}
+
+/** A build asks git for its commit for this long at most. */
+const LOOKUP_TIMEOUT_MS = 10 * 1000
+
+/**
+ * The commit a build is of, for `releaseLabel`: GITHUB_SHA in a workflow,
+ * else HEAD of the checkout at `cwd` when `cwd` is itself a checkout (a
+ * folder holding `.git`, a worktree's file included), else null. The
+ * folder is checked first so that an unpacked source archive sitting
+ * inside some other repository does not take that repository's commit;
+ * git missing, or failing, is null too, and the build reports the bare
+ * version.
+ *
+ * @param {Record<string, string | undefined>} env
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+export function buildCommit(env, cwd) {
+  if (typeof env.GITHUB_SHA === 'string' && env.GITHUB_SHA !== '') return env.GITHUB_SHA
+  if (!existsSync(join(cwd, '.git'))) return null
+  const result = git(cwd, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], LOOKUP_TIMEOUT_MS)
+  if (result.error || result.status !== 0) return null
+  const commit = result.stdout.trim()
+  return COMMIT.test(commit) ? commit : null
+}
+
 /**
  * Whether a tag may draft a Release, and what the draft is.
  *
@@ -188,11 +264,11 @@ export function decide({ tag, packageVersion, onMain, tagNow }) {
   }
 }
 
-function git(cwd, args) {
+function git(cwd, args, timeout = CHILD_TIMEOUT_MS) {
   return spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
-    timeout: CHILD_TIMEOUT_MS,
+    timeout,
     windowsHide: true,
   })
 }
@@ -801,7 +877,7 @@ export function notesValues({ tag, pins, pkg, repository, changelog }) {
     prerelease_note:
       parsed.rc === null
         ? ''
-        : `> **A release candidate.** This is rehearsal ${parsed.rc} of ${pkg.version}: the app inside reports version ${pkg.version}. Use it to test the release, not to keep.\n\n`,
+        : `> **A release candidate.** This is rehearsal ${parsed.rc} of ${pkg.version}: the app inside reports version ${parsed.label}. Use it to test the release, not to keep.\n\n`,
     electron_version: pkg.devDependencies?.electron ?? 'unknown',
     engine_repo: pins.engine.repo,
     engine_tag: pins.engine.tag,

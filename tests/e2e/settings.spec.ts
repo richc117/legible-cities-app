@@ -160,9 +160,14 @@ test('names the app’s own version, and files the logs and diagnostics under a 
   await withApp(profile(), async (page) => {
     await open(page)
     // The app's version is the main process's own answer, the first row
-    // under Versions; the engine's rows come after it (issue 544).
+    // under Versions; the engine's rows come after it (issue 544). A build
+    // of no release tag reports package.json's version with its commit as
+    // build metadata, `+<sha7>`, and without it where no commit is known
+    // (issue 558).
     const versions = page.getByRole('region', { name: 'Versions' })
-    await expect(definition(page, 'App')).toHaveText(appVersion)
+    await expect(definition(page, 'App')).toHaveText(
+      new RegExp(`^${appVersion.replaceAll('.', '\\.')}(\\+[0-9a-f]{7})?$`),
+    )
     await expect(versions.locator('dt').first()).toHaveText('App')
 
     // The logs and Copy diagnostics are a section with its own heading, and

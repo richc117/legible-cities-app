@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import { figuiGuard } from './scripts/figui-guard'
+import { buildCommit, releaseLabel } from './scripts/release.mjs'
 
 // The renderer is never loaded from the dev server's own URL: the main
 // process proxies it through app://local so the origin is the same in
@@ -12,9 +14,22 @@ import { figuiGuard } from './scripts/figui-guard'
 // electron-vite exports in step with this configuration.
 const DEV_PORT = 5173
 
+// The version the app reports (issue 558): a release tag's own, so a
+// candidate says `1.0.0-rc.2`, and anything else package.json's with the
+// commit, `1.0.0+abc1234`. build.yml names the ref built in
+// LEGIBLE_RELEASE_REF; a tag for another version than package.json's
+// throws here and fails the build. The main process reads it as
+// __RELEASE_LABEL__, in place of app.getVersion(), which stays X.Y.Z.
+const RELEASE_LABEL = releaseLabel(
+  (JSON.parse(readFileSync(resolve('package.json'), 'utf8')) as { version: string }).version,
+  process.env.LEGIBLE_RELEASE_REF,
+  buildCommit(process.env, resolve('.')),
+)
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: { __RELEASE_LABEL__: JSON.stringify(RELEASE_LABEL) },
     build: {
       rollupOptions: {
         // Two entries: the app, and the capture on its own, which the

@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/main/index.ts",
+    "find": "version: __RELEASE_LABEL__ },",
+    "replace": "version: app.getVersion() },",
+    "test": "tests/unit/diagnostics-text.test.ts",
+    "title": "is handed the build's release label for the app, not Electron's version",
+    "why": "Settings and Copy diagnostics read Electron's version, package.json's 1.0.0, so a candidate never says which candidate it is."
+  }
+]
