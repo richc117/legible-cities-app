@@ -207,13 +207,13 @@ describe('ci.yml keeps the quarantine apart from the required suite', () => {
 
   it('leaves the quarantined tests out of the required e2e job, which cannot be allowed to fail', () => {
     const block = job(ci, 'e2e')
-    expect(suiteRuns(block)).toEqual([`npm run test:e2e -- --grep-invert ${TAG}`])
+    expect(suiteRuns(block)).toEqual([`npm run test:e2e -- --grep-invert '${TAG}'`])
     expect(block).not.toMatch(/^ {4}continue-on-error:/m)
   })
 
   it('runs only the quarantined tests in a job that passes where there are none, and cannot fail the run', () => {
     const block = job(ci, 'e2e-quarantine')
-    expect(suiteRuns(block)).toEqual([`npm run test:e2e -- --grep ${TAG} --pass-with-no-tests`])
+    expect(suiteRuns(block)).toEqual([`npm run test:e2e -- --grep '${TAG}' --pass-with-no-tests`])
     expect(block).toMatch(/^ {4}continue-on-error: true$/m)
     expect(block).toMatch(/^ {4}timeout-minutes: \d+$/m)
   })

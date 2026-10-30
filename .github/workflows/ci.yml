@@ -174,7 +174,9 @@ jobs:
 
       - name: End-to-end suite
         if: steps.decide.outputs.run != 'false'
-        run: npm run test:e2e -- --grep-invert @quarantine
+        # Quoted: on Windows this step runs in PowerShell, which reads a bare
+        # @quarantine as a variable to splat and fails before npm is reached.
+        run: npm run test:e2e -- --grep-invert '@quarantine'
         env:
           CI: 'true'
 
@@ -261,7 +263,7 @@ jobs:
       # test is tagged; this is for a tag it counts that Playwright does not.
       - name: Quarantined end-to-end tests
         if: steps.look.outputs.tagged == 'true' && steps.decide.outputs.run != 'false'
-        run: npm run test:e2e -- --grep @quarantine --pass-with-no-tests
+        run: npm run test:e2e -- --grep '@quarantine' --pass-with-no-tests
         env:
           CI: 'true'
 

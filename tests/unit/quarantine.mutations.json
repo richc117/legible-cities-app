@@ -1,7 +1,15 @@
 [
   {
     "file": ".github/workflows/ci.yml",
-    "find": "        run: npm run test:e2e -- --grep-invert @quarantine\n",
+    "find": "        run: npm run test:e2e -- --grep-invert '@quarantine'\n",
+    "replace": "        run: npm run test:e2e -- --grep-invert @quarantine\n",
+    "test": "tests/unit/quarantine.test.ts",
+    "title": "leaves the quarantined tests out of the required e2e job",
+    "why": "The tag unquoted: on the Windows runner the step runs in PowerShell, which reads @quarantine as a variable to splat, and the whole suite fails before Playwright starts (PR 641's first run)."
+  },
+  {
+    "file": ".github/workflows/ci.yml",
+    "find": "        run: npm run test:e2e -- --grep-invert '@quarantine'\n",
     "replace": "        run: npm run test:e2e\n",
     "test": "tests/unit/quarantine.test.ts",
     "title": "leaves the quarantined tests out of the required e2e job",
@@ -9,8 +17,8 @@
   },
   {
     "file": ".github/workflows/ci.yml",
-    "find": "--grep @quarantine --pass-with-no-tests\n",
-    "replace": "--grep @quarantine\n",
+    "find": "--grep '@quarantine' --pass-with-no-tests\n",
+    "replace": "--grep '@quarantine'\n",
     "test": "tests/unit/quarantine.test.ts",
     "title": "runs only the quarantined tests in a job that passes where there are none",
     "why": "Playwright exits with an error when its filter matches nothing, so the quarantine job would fail on every run in which no test is tagged, which is the usual state."

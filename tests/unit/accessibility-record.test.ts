@@ -258,7 +258,7 @@ describe('the record does not say a check CI runs has not run', () => {
     // the job beside it runs them; together they are every spec. A test the
     // record cites is not quarantined, below, since the required job would
     // not run it.
-    expect(ci).toMatch(/^\s+run: npm run test:e2e -- --grep-invert @quarantine\s*$/m)
+    expect(ci).toMatch(/^\s+run: npm run test:e2e -- --grep-invert '@quarantine'\s*$/m)
     const config = readFileSync(join(root, 'playwright.config.ts'), 'utf8')
     expect(config).toMatch(/testDir: 'tests\/e2e'/)
   })
