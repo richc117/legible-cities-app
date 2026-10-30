@@ -35,25 +35,39 @@ number.
 - **The later version stored it under a higher version number.** The earlier
   version opens it **read-only**: the Library marks it `read-only`, and the
   earlier version cannot change, rename, lay out or export it. It can still
-  delete it. Nothing in the record is written, not even the moment you
-  opened it, so the later version finds it exactly as it left it.
-- **The later version stored a few more things under the same version
-  number.** The earlier version edits the project as usual, and keeps what
-  it does not know. When it saves the project it writes those things back as
-  it found them, so the later version still has them. The one exception is
-  the notes a record keeps of how its map was laid out and drawn: when the
-  earlier version lays the map out or draws it again, it writes those notes
-  afresh, and anything the later version had put in them is replaced, because
-  the notes would otherwise describe a map that has since been drawn again.
+  delete it, and **Reset engine data** removes it with every other project.
+  Nothing in the record is written, not even the moment you opened it, so
+  the later version finds it exactly as it left it.
+- **The later version stored a few more settings of the project under the
+  same version number.** The earlier version edits the project as usual, and
+  keeps the settings it has no name for. When it saves the project it writes
+  those back as it found them, so the later version still has them. The one
+  exception is the notes a record keeps of how its map was laid out and
+  drawn: when the earlier version lays the map out or draws it again, it
+  writes those notes afresh, and anything the later version had put in them
+  is replaced, because the notes would otherwise describe a map that has
+  since been drawn again.
 
-**The version number may move within 1.x.** When a later 1.x stores
-something that an earlier 1.x could not keep safely, it raises the number,
-and from then on the earlier one opens that project read-only, as above.
-That is the reason the promise runs one way: a project that you change in a
-newer 1.x may be one that an older 1.x can only look at, and that is how it
-avoids damaging it. It is not a break of the promise. A 1.x that cannot open
-a project made by an earlier 1.x, or that damages one made by a later 1.x,
-would be.
+**A new choice for a setting an earlier version already has raises the
+version number.** An earlier version keeps a setting it has no name for, but
+it cannot keep a choice it has no name for in a setting it does know: a
+preset, a storyboard or a map theme that it does not offer, for example. It
+would read that setting as unset and write it back that way, and for the
+export that means the whole export choice. So a later 1.x that lets a person
+choose something new, or widens a range, in a setting the earlier version has
+raises the version number, and the earlier version opens that project
+read-only instead. A test holds this: it lists the choices a record can hold
+today, and fails when one of them grows until the number moves.
+
+**The version number may move within 1.x.** That is allowed, because an
+earlier 1.x then opens the project read-only and cannot damage it. It is the
+reason the promise runs one way: a project that you open or change in a newer
+1.x may be one that an older 1.x can only look at. Opening can be enough: a
+newer 1.x with a newer engine draws an older map again when you open the
+project, and that writes the record (see
+[Updating from an earlier release](install.md#updating-from-an-earlier-release)).
+It is not a break of the promise. A 1.x that cannot open a project made by an
+earlier 1.x, or that damages one made by a later 1.x, would be.
 
 ## Your settings
 
@@ -65,23 +79,29 @@ engine data folder, the export folder, the interface's theme, and where the
 app's window was left.
 
 A version reads each of them on its own. A setting that is missing, or that
-it cannot use, takes its default and the rest are kept, so a file that was
-edited by hand or half written still starts the app.
+it cannot use, takes its default and the rest are kept. A file that is not
+settings at all, such as one that is not valid JSON, starts the app with every
+setting at its default.
 
-A version also keeps only the settings it knows. When an earlier version
-saves its settings, which it does when you change one and when you move or
-resize its window, it writes the settings it knows and leaves the rest out.
-A setting that only a later version has is therefore reset to its default
-the next time that later version reads the file. If you go back and forth
-between versions, expect to choose such a setting again.
+A version also keeps only the settings it knows, and only the values it knows
+for them. When an earlier version saves its settings, which it does when you
+change one, when you move or resize its window and when you close it, it
+writes what it knows and leaves the rest out. A setting that only a later
+version has is therefore reset to its default the next time that later
+version reads the file, and so is a value that only a later version has for a
+setting both have, such as a new theme. If you go back and forth between
+versions, expect to choose such a setting again.
 
 ## Your exports
 
 Your stills, reels and GIFs are yours, and the app does not take them back.
-They go into your export folder, in a folder for each project, and no update
-removes or changes them. Deleting a project does not remove its exports, and
-neither does **Reset engine data**, which refuses to run while a folder you
-export to is in its way. An export made again under the same name replaces the earlier one.
+They go into your export folder, or into the folder you gave a project of
+its own, and there into a folder named for the project. No update removes or
+changes them. Deleting a project does not remove its exports, and neither
+does **Reset engine data**, which refuses to run while a folder you export to
+is in its way. The folder is named for the project's name, so two projects
+with the same name share one, and an export whose file is already there
+replaces it.
 
 What is not promised is what the files are called, and the small `.json`
 file that is written beside each export. The engine writes both, so they can
