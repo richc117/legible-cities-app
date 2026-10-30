@@ -33,6 +33,8 @@ on:
 
 permissions:
   contents: read
+  # gh attestation verify asks the attestations API for the installer's.
+  attestations: read
 
 jobs:
   acceptance:
@@ -100,9 +102,14 @@ jobs:
             echo "ASSET=Legible-Cities-${TAG#v}-$SUFFIX"
           } >> "$GITHUB_ENV"
 
+      # ATTESTED_SINCE is the commit that brought the attest job (pull request
+      # 449, ADR-057). A tag that does not contain it, v0.1.0 among them, has
+      # no attestation to verify, and a failed verify cannot say whether one
+      # never existed or was refused, so git is asked which it is.
       - name: Step 1, download the installer and check it
         env:
           GH_TOKEN: ${{ github.token }}
+          ATTESTED_SINCE: 8d37d20ea4a97190104bbbadaf88b70eb83d570f
         run: |
           set -euo pipefail
           cli=tests/acceptance/record-cli.mjs
@@ -118,13 +125,48 @@ jobs:
           node "$cli" prior "$PRIOR" field 'Its SHA-256' "$actual"
           if expected=$(node "$cli" sums "$DOWNLOAD/SHA256SUMS.txt" "$ASSET") && [ "$expected" = "$actual" ]; then
             node "$cli" prior "$PRIOR" field 'Matches SHA256SUMS.txt?' yes
-            node "$cli" prior "$PRIOR" step 1 pass "$ASSET, SHA-256 $actual, matches its line in SHA256SUMS.txt. Downloaded with the GitHub CLI, not a browser."
           else
             node "$cli" prior "$PRIOR" field 'Matches SHA256SUMS.txt?' no
             node "$cli" prior "$PRIOR" step 1 fail "$ASSET has SHA-256 $actual; SHA256SUMS.txt says ${expected:-nothing}."
             echo "::error::$ASSET does not match SHA256SUMS.txt"
             exit 1
           fi
+          checked="$ASSET, SHA-256 $actual, matches its line in SHA256SUMS.txt. Downloaded with the GitHub CLI, not a browser."
+
+          # The same check a person makes with install.md's gh attestation
+          # verify, asking for this repository, the build workflow, and the
+          # tag under test (issue 557, ADR-057). Both files: the installer,
+          # and SHA256SUMS.txt that names it.
+          contains=0
+          git merge-base --is-ancestor "$ATTESTED_SINCE" "refs/tags/$TAG" || contains=$?
+          case "$contains" in
+            0)
+              for subject in "$DOWNLOAD/$ASSET" "$DOWNLOAD/SHA256SUMS.txt"; do
+                if ! gh attestation verify "$subject" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+                    --source-ref "refs/tags/$TAG" \
+                    --deny-self-hosted-runners; then
+                  node "$cli" prior "$PRIOR" field 'Attestation verified?' no
+                  node "$cli" prior "$PRIOR" step 1 fail "$checked But gh attestation verify refused $(basename "$subject") for refs/tags/$TAG."
+                  echo "::error::$(basename "$subject") has no attestation from this repository's build workflow for $TAG"
+                  exit 1
+                fi
+              done
+              node "$cli" prior "$PRIOR" field 'Attestation verified?' yes
+              node "$cli" prior "$PRIOR" step 1 pass "$checked Attestation verified for $ASSET and SHA256SUMS.txt: built by this repository's build workflow from refs/tags/$TAG, on a GitHub-hosted runner."
+              ;;
+            1)
+              node "$cli" prior "$PRIOR" field 'Attestation verified?' 'not attested (before 1.0)'
+              node "$cli" prior "$PRIOR" step 1 'pass, part not automated' "$checked Not automated: $TAG was tagged before the commit that brought attestations (${ATTESTED_SINCE:0:7}, ADR-057), so it has none to verify."
+              ;;
+            *)
+              node "$cli" prior "$PRIOR" field 'Attestation verified?' no
+              node "$cli" prior "$PRIOR" step 1 fail "$checked Git could not tell whether $TAG contains ${ATTESTED_SINCE:0:7}, so whether it should have an attestation is unknown."
+              echo "::error::git could not tell whether $TAG contains the commit that brought attestations"
+              exit 1
+              ;;
+          esac
 
       - name: Step 2, install on macOS
         if: runner.os == 'macOS'
