@@ -1,5 +1,5 @@
-# Two layers, each a required check (docs/repository-settings.md,
-# specs/038-test-pyramid/contracts/ci-layers.md).
+# Two layers, each a required check, and a third that is not
+# (docs/repository-settings.md, specs/038-test-pyramid/contracts/ci-layers.md).
 #
 # `ci (<os>)` is the fast layer, on Ubuntu, macOS and Windows for every pull
 # request and every push to `main`: style, types, unit tests and a build. It
@@ -15,6 +15,13 @@
 # later step is skipped and the job passes in under two minutes with a
 # notice. A push to `main` always runs the suite. There is no Ubuntu leg of
 # it; determinism.yml and e2e-loop.yml keep Ubuntu as an option.
+#
+# `e2e-quarantine (<os>)` runs only the tests tagged `@quarantine` (the flaky
+# test policy in CONTRIBUTING.md, issue 553), on the same two platforms and
+# with the same steps. It is not a required check and never fails the run, so
+# a quarantined test stays measured without blocking a merge; the required
+# `e2e` job leaves those tests out with `--grep-invert @quarantine`.
+# tests/unit/quarantine.test.ts holds both flags in place.
 name: ci
 
 on:
@@ -167,7 +174,7 @@ jobs:
 
       - name: End-to-end suite
         if: steps.decide.outputs.run != 'false'
-        run: npm run test:e2e
+        run: npm run test:e2e -- --grep-invert @quarantine
         env:
           CI: 'true'
 
@@ -176,5 +183,68 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-${{ matrix.os }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  e2e-quarantine:
+    name: e2e-quarantine (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Not a required check, and a red run is a record, not a block: the
+    # tests tagged `@quarantine` are the ones the required job leaves out
+    # (CONTRIBUTING.md, "Flaky tests"). With no test tagged, the suite finds
+    # nothing and passes in a minute or two.
+    continue-on-error: true
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, windows-latest]
+    steps:
+      # The same steps as `e2e`, so that a documentation-only pull request
+      # skips this job's suite by the same rule.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Decide whether the suite runs
+        id: decide
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci-decide.mjs --event "$EVENT_NAME" --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Install
+        if: steps.decide.outputs.run != 'false'
+        run: npm ci
+
+      - name: Fetch the Electron binary
+        if: steps.decide.outputs.run != 'false'
+        run: npx install-electron --no
+
+      - name: Build
+        if: steps.decide.outputs.run != 'false'
+        run: npm run build
+
+      # `--pass-with-no-tests`: Playwright exits with an error when a filter
+      # matches nothing, and nothing tagged is the usual state.
+      - name: Quarantined end-to-end tests
+        if: steps.decide.outputs.run != 'false'
+        run: npm run test:e2e -- --grep @quarantine --pass-with-no-tests
+        env:
+          CI: 'true'
+
+      - name: Keep the failure evidence
+        if: failure() && steps.decide.outputs.run != 'false'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: quarantine-results-${{ matrix.os }}
           path: test-results/
           if-no-files-found: ignore

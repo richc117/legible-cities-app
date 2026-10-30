@@ -63,6 +63,12 @@ Direct commits to `main` ended with the commit that ticked these boxes; see
       `specs/038-test-pyramid/contracts/ci-layers.md`'s; a change to the
       jobs' names in `ci.yml` is a change here and to the setting, in the
       same hour.
+      The `e2e-quarantine (<os>)` jobs, which run the end-to-end tests
+      tagged `@quarantine` and are set `continue-on-error`, are **not**
+      required checks and are never added to this list: a required check
+      that cannot fail would prove nothing, and one that could would block
+      every merge on a test already known to be flaky (`CONTRIBUTING.md`,
+      "Flaky tests").
 - [x] Require branches to be up to date before merging.
 - [x] Block force pushes.
 - [x] Block deletions.

@@ -217,7 +217,9 @@ describe('the record does not say a check CI runs has not run', () => {
   // pull request and push to main. The rule below is only as good as that.
   it('rests on CI running every spec under tests/e2e/', () => {
     const ci = readFileSync(join(root, '.github', 'workflows', 'ci.yml'), 'utf8')
-    expect(ci).toMatch(/^\s+run: npm run test:e2e\s*$/m)
+    // The required leg leaves the quarantined tests out (issue 553), and
+    // the job beside it runs them; together they are every spec.
+    expect(ci).toMatch(/^\s+run: npm run test:e2e -- --grep-invert @quarantine\s*$/m)
     const config = readFileSync(join(root, 'playwright.config.ts'), 'utf8')
     expect(config).toMatch(/testDir: 'tests\/e2e'/)
   })
