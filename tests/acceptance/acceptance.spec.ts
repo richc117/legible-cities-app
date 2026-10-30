@@ -67,6 +67,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test'
+import { HELP_PAGES } from '../../src/main/help-ipc'
 import { dayWords } from '../../src/renderer/src/dates'
 import {
   COLOURS_RESET_SAID,
@@ -75,6 +76,7 @@ import {
   SIZES_RESET_SAID,
 } from '../../src/renderer/src/putBackWords'
 import { OFFERED_PRESETS } from '../../src/shared/export'
+import { FIND_A_FEED, SOURCE_HINT } from '../../src/shared/feedHelp'
 import type { ProjectRecord } from '../../src/shared/project/types'
 import {
   cell,
@@ -3112,6 +3114,39 @@ test('a release, installed, through docs/acceptance.md', async () => {
           dialog.getByRole('radio', { name: 'A GTFS zip on this computer' }),
         ).toBeVisible()
         await expect(dialog.getByRole('radio', { name: 'A feed at an address' })).toBeVisible()
+        // What a feed is, said where the choice is made, and the group
+        // described by it (issue 555).
+        await expect(dialog.getByText(SOURCE_HINT, { exact: true })).toBeVisible()
+        await expect(dialog.getByRole('group', { name: 'Start from' })).toHaveAccessibleDescription(
+          SOURCE_HINT,
+        )
+        await expect(dialog.getByRole('button', { name: FIND_A_FEED })).toBeVisible()
+      })
+      const app = session.app as ElectronApplication
+      // The button asks for the feeds page by name. The platform's browser
+      // cannot be driven from here, so the main process's own opener is
+      // replaced, as it is for Reveal and the notices below; the app's
+      // handler still runs.
+      await app.evaluate(({ shell }) => {
+        const asked: string[] = []
+        ;(globalThis as { __asked?: string[] }).__asked = asked
+        shell.openExternal = (async (url: string) => {
+          asked.push(url)
+        }) as typeof shell.openExternal
+      })
+      await dialog.getByRole('button', { name: FIND_A_FEED }).click()
+      const asked = await until(
+        async () => {
+          const urls = await app.evaluate(
+            () => (globalThis as { __asked?: string[] }).__asked ?? [],
+          )
+          return urls.length > 0 ? urls : undefined
+        },
+        SHORT_MS,
+        () => '"Where to find a feed" asked the platform to open nothing',
+      )
+      await log.soft('Where to find a feed opens the feeds page', () => {
+        expect(asked).toEqual([HELP_PAGES.feeds])
       })
       await dialog.getByRole('radio', { name: 'A feed at an address' }).check()
       await dialog.getByLabel('Feed address').fill(CALTRAIN_URL)

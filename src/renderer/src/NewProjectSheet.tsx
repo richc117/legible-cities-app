@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 're
 import type { CreateProjectInput, PickedZip } from '../../shared/api'
 import type { EngineState } from '../../shared/engine'
 import { fullStopped, messageOf } from '../../shared/errors'
+import { FIND_A_FEED, SOURCE_HINT } from '../../shared/feedHelp'
 import { isFeedUrl } from '../../shared/feeds'
 import { validateFeedKey, validateName } from '../../shared/project/validate'
 import { DEFAULT_FEED, uniqueName } from './record'
@@ -48,13 +49,6 @@ import { useSnapshot } from './useSnapshot'
 // opens and remembers. Its answer does come back inward, as `feeds.add`'s
 // source, and what makes that safe is the guard in the main process that
 // takes only a path its own dialog answered, once - unchanged here.
-
-/** What a feed and GTFS are, once, beside the choice of where a feed comes from (issue 555). */
-export const SOURCE_HINT =
-  'A feed is a transit agency’s timetable, published in a format called GTFS, usually as a zip on its open-data page.'
-
-/** The button beside it, which opens the Help page "Finding a feed". */
-export const FIND_A_FEED = 'Where to find a feed'
 
 /** Where a new project's feed comes from. */
 export type Source = 'feed' | 'zip' | 'address'

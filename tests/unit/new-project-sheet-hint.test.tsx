@@ -9,7 +9,8 @@
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { FeedAdd, type AddClient } from '../../src/renderer/src/engine/feedAdd'
-import NewProjectSheet, { FIND_A_FEED, SOURCE_HINT } from '../../src/renderer/src/NewProjectSheet'
+import NewProjectSheet from '../../src/renderer/src/NewProjectSheet'
+import { FIND_A_FEED, SOURCE_HINT } from '../../src/shared/feedHelp'
 import { answered, byName, cleanup, press, READY, renderPanel } from '../support/render'
 
 vi.mock('../../src/renderer/src/kit/Button', async () =>
