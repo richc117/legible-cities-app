@@ -1075,7 +1075,8 @@ a table).
   term with its value, until the feed has been read; then Mode, and
   Operator wherever its pop-up button is offered, are said by their pop-up
   buttons below and not by the list (issue 560), so listen for Feed and,
-  for Los Angeles, Operator "every operator".
+  for Los Angeles, Operator "every operator". While a refused choice's
+  sentence is up, the list says the stored Mode and Operator again.
 - **Inspect: mode, operator, the feed's entry.** Listen for the heading
   "In the feed", the status "Reading the feed, and downloading it first if
   it is not on this machine yet…" if it is still reading, and the pop-up
@@ -1200,7 +1201,7 @@ a table).
 - **Diagnostics panel.** After a run in this session, listen for the heading
   "What the layout had to compromise on", the status sentence ("No
   caveats: the layout compromised on nothing, and its issues score is
-  `<n>`." or "`<n>` caveats. The layout's issues score is `<n>`, where 0
+  `<n>`." or "`<n>` caveats. The layout’s issues score is `<n>`, where 0
   means it compromised on nothing."), and the table "What the
   engine measured drawing the map for `<day>`". Tab to a button
   "What `<measure>` means", collapsed, and listen for its explanation read
@@ -1331,9 +1332,10 @@ a table).
   sentence saying the colour it is drawn in and where it comes from, with
   the feed's colour only where it is another, so a hex is heard once ("the
   feed’s colour, `#rrggbb`", "your colour, `#rrggbb`; the feed’s is
-  `#rrggbb`", "the default, `#rrggbb`; the feed has none"; issue 560). The button "Reset line `<label>` to the colour in the feed" is
-  in the chip's panel, dimmed until the line has a colour of its own (issue
-  284). Before the list, not inside it, is the row
+  `#rrggbb`", "the default, `#rrggbb`; the feed has none"; issue 560). The
+  button "Reset line `<label>` to the feed’s colour" is in the chip's
+  panel, dimmed until the line has a colour of its own (issue 284). Before
+  the list, not inside it, is the row
   "Lines with no colour in the feed", with the button "Choose the colour of
   lines the feed leaves uncoloured". After a colour of your own has been
   drawn, press **Reset every line**: listen for focus on the button **Put

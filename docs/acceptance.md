@@ -435,7 +435,7 @@ Press **Lay out from scratch…**, then **Cancel** in the dialog.
   lines, where the draw reads the layout the run has just made; none of
   them names a folder.
 - The diagnostics open with either "No caveats: the layout compromised on
-  nothing, and its issues score is `<n>`." or "`<n>` caveats. The layout's
+  nothing, and its issues score is `<n>`." or "`<n>` caveats. The layout’s
   issues score is `<n>`, where 0 means it compromised on nothing.", a table
   captioned "What the engine measured
   drawing the map for `<day>`", and an explanation that appears on the

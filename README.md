@@ -44,7 +44,7 @@ with the map between cells 02 and 03:
 | Cell | What you do there |
 | --- | --- |
 | 01 Data | Read what is in the feed: its routes, operators and service window, and the network drawn where it really runs. Choose which mode and operator to keep. |
-| 02 Process | Lay the network out, stage by stage, tune the layout (the grid it is laid on and the grid's cell, how far apart two stretches of track may be and still merge, and what each bend costs), and read what the build had to fudge. |
+| 02 Process | Lay the network out, stage by stage, tune the layout (the grid it is laid on and the grid's cell, how far apart two stretches of track may be and still merge, and what each bend costs), and read what the layout had to compromise on. |
 | 03 Day | Pick the day the map is drawn for, scrub its clock, play the day and set the speed, and find the trip between two stations. |
 | 04 Style | Choose the map's theme (Warm dark or Sepia), one of the engine's looks or sizes of your own, the station and interchange markers, the label typeface, and how the trains are drawn. |
 | 05 Lines | Set each line's colour and the order the lines stack in, and under each line its own options: a name, whether it is hidden, a width, a casing and a dash. |

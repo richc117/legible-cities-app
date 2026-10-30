@@ -22,7 +22,7 @@ Three resets write at once, with no confirmation:
 - **Reset every line**, cell 05's line colours (`LineColours.tsx`).
 - **Reset to the engine's sizes**, cell 04's sizes with their looks,
   markers, label face and trains (`StyleFields.tsx`).
-- **Reset to LOOM's defaults**, cell 02's layout tuning
+- **Reset to the defaults**, cell 02's layout tuning
   (`LayoutTuning.tsx`).
 
 Issue 164 decided "No undo stack, and no history": Revert writes back what
@@ -79,7 +79,7 @@ Put back, one step, in two forms.
   layout was made with** writes `laidOutWith`. It is offered while the
   tuning shown differs from a `laidOutWith` that is itself tuned. It
   cannot recover a tuning that was never laid out, and a layout made with
-  LOOM's defaults offers none, since Reset is already the way back to
+  the defaults offers none, since Reset is already the way back to
   those. Unlike the other two it writes an expensive input: the tuning and
   `laidOutWith` agree again, so cell 02's `tuning` source is cleared and
   the cells below read as drawn, as a derived Revert's would.
@@ -92,8 +92,8 @@ Put back, one step, in two forms.
   Put back is offered: "Every line is back to its feed’s colour. Put back
   your colours to undo it." and "The sizes are back to the engine’s own.
   Put back your sizes to undo it." The tuning's says "The tuning is back
-  to LOOM’s defaults. Put back the tuning this layout was made with to
-  undo it." from Reset's press until the next write.
+  to the defaults. Put back the tuning this layout was made with to undo
+  it." from Reset's press until the next write.
 
 For the colours and the sizes, Put back is not a stale-cell action and not
 a Revert: Revert closes a gap between the record and the map, and Put back

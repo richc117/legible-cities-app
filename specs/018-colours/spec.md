@@ -278,6 +278,12 @@ most likely to fail it.
   finishes.
 - **SC-003**: A line the feed leaves uncoloured reads "no colour in feed"
   and follows the default; an override on it wins over the default.
+  - *As of 30 Oct 2026 (issue 560):* a row is one sentence and prints its
+    hex once, so an uncoloured line reads "the default, `#888888`; the feed
+    has none" (or "your colour, `#d6402a`; the feed has none" with an
+    override), and a feed-coloured one "the feed’s colour, `#0072bc`". The
+    separate "no colour in feed" column is gone. A line's reset is "Reset
+    line `<label>` to the feed’s colour".
 - **SC-004**: The main-side validator refuses a malformed colour map, and
   a unit test proves it before the store is reached.
 - **SC-005**: The design tokens still clear the contrast test, no component
