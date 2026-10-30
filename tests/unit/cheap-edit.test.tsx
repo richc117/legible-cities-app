@@ -1075,6 +1075,9 @@ describe.each([COLOURS_RESET, SIZES_RESET])('$name: Put back', (reset) => {
     expect(offered(reset.putBack), 'nothing to put back before the reset').toBe(false)
     expect(saidIn(reset), 'the line is there, saying nothing').toBe('')
     press(reset.reset)
+    // At the press, before a debounced reset is drawn: Put back is there to
+    // take the focus the reset drops.
+    expect(offered(reset.putBack), 'offered at the press').toBe(true)
     firstTry(reset.panel)
     expect(reset.sent(), 'the reset is drawn').toEqual([reset.resetValue])
     drawnNow(reset, reset.after)
