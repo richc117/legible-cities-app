@@ -1148,24 +1148,28 @@ and names the run that made it. Step 21 has left the machine without the
 app, as it was before the run.
 
 **Do.**
-1. From the 0.1.0 Release on the
+1. Move the export folder's `LA Metro Rail` folder, which step 21 left
+   with the exports of steps 11 and 12 in it, out of the export folder (or
+   delete it), so the only export this step finds is its own. Step 13 says
+   where the folder is.
+2. From the 0.1.0 Release on the
    [Releases page](https://github.com/richc117/legible-cities-app/releases),
    download the file for this machine and install it, as steps 1 and 2 of
    [the checklist at v0.1.0](https://github.com/richc117/legible-cities-app/blob/v0.1.0/docs/acceptance.md)
    say. Write "0.1.0" in **Previous version installed**.
-2. Press the **LA Metro Rail** card under **Sample cities** and wait for
+3. Press the **LA Metro Rail** card under **Sample cities** and wait for
    the run to end. Open cell **02 Process** and write down the **Layout**
    and **Made** in its footer.
-3. In cell **06 Export**, choose **Preset** "instagram-post: 1080 by 1350,
+4. In cell **06 Export**, choose **Preset** "instagram-post: 1080 by 1350,
    still, PNG" and press **Export**, and wait for "Exported
    la-metro-rail-instagram-post.png."
-4. Quit the app (on a Mac, Legible Cities › Quit; on Windows, close the
+5. Quit the app (on a Mac, Legible Cities › Quit; on Windows, close the
    window).
-5. Install this release over it, as
+6. Install this release over it, as
    [Updating from an earlier release](install.md#updating-from-an-earlier-release)
    says (on a Mac, choose **Replace**), and open it past the warning as in
    step 2.
-6. Open **LA Metro Rail** from **Your projects**, and open cell **02
+7. Open **LA Metro Rail** from **Your projects**, and open cell **02
    Process**. Then quit, open the app again and open the project again.
 
 **See.**
@@ -1173,8 +1177,9 @@ app, as it was before the run.
   cell 02's run line reads "Drawn for `<day>` from the stored layout. The
   stations have not moved."
 - **Layout** and **Made** in cell 02's footer are the ones you wrote down.
-- **Outputs** lists the post made in 0.1.0, and its **Reveal** opens the
-  Finder or File Explorer with `la-metro-rail-instagram-post.png` selected.
+- **Outputs** lists one row, the post made in 0.1.0, and its **Reveal**
+  opens the Finder or File Explorer with `la-metro-rail-instagram-post.png`
+  selected.
 - The second time the project opens, nothing runs, and the sentence under
   the heading is "The map is drawn from every cell."
 - **check:** the stations are where 0.1.0 drew them; the names may be
