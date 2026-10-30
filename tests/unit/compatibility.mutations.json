@@ -1,0 +1,34 @@
+[
+  {
+    "file": "src/main/record/parse.ts",
+    "find": "readOnly: version > RECORD_VERSION,",
+    "replace": "readOnly: version > RECORD_VERSION + 1,",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "marks a record from a later version read-only",
+    "why": "The read-only comparison allowing one version more: a record one version ahead of this build would open as editable, and the first write would drop what this build does not know (docs/compatibility.md, \"Your projects\")."
+  },
+  {
+    "file": "src/main/record/parse.ts",
+    "find": "readOnly: version > RECORD_VERSION,",
+    "replace": "readOnly: version > RECORD_VERSION + 1,",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "refuses a record from a later version and leaves it as it was",
+    "why": "The same comparison seen from the write: a rename of a record from the next version would be accepted and the file rewritten."
+  },
+  {
+    "file": "src/shared/settings.ts",
+    "find": "  return {\n    version,\n    engineFolder: isStorableFolder(value.engineFolder) ? value.engineFolder : null,",
+    "replace": "  return {\n    ...value,\n    version,\n    engineFolder: isStorableFolder(value.engineFolder) ? value.engineFolder : null,",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "reads the settings it knows and none that it does not",
+    "why": "The input spread into the parser's result: a key the build does not know would be kept, and docs/compatibility.md (\"Your settings\") would be describing what no longer happens."
+  },
+  {
+    "file": "src/shared/settings.ts",
+    "find": "  return {\n    version,\n    engineFolder: isStorableFolder(value.engineFolder) ? value.engineFolder : null,",
+    "replace": "  return {\n    ...value,\n    version,\n    engineFolder: isStorableFolder(value.engineFolder) ? value.engineFolder : null,",
+    "test": "tests/unit/compatibility.test.ts",
+    "title": "leaves out a setting it does not know when it saves, and keeps the ones it does",
+    "why": "The same spread seen on disk: the saved file would carry a later build's keys through an earlier build's save."
+  }
+]
