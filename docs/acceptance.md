@@ -12,7 +12,7 @@ walkthrough is in [`accessibility.md`](accessibility.md#walking-it-with-a-screen
 
 The steps follow what a person does with the app: install it, open a
 sample city and watch it download and lay out, go down the project's six
-cells - the feed, the layout and what it had to fudge, the day and the
+cells - the feed, the layout and what it had to compromise on, the day and the
 clock, the style, the lines, the export - then add a feed of their own,
 reopen, rename, delete, reset and uninstall. The project screen is the
 notebook of ADR-045 and ADR-046: six numbered cells with the map between
@@ -283,9 +283,9 @@ run.
   the time and the other three can pass in a moment); when the run ends,
   the view is the one step 5 describes.
 - In cell **02 Process**, a progress line of eight named stages, in this
-  order: `parse`, `collapse`, `order`, `octilinear`, `trips`, `draw`,
-  `animate`, `write`. These are the app's words for the engine's eight
-  stages, one each, in the engine's own order (A5.5-10). Each stage's
+  order: `read`, `simplify`, `sort`, `straighten`, `trips`, `draw`,
+  `animate`, `save`. These are the app's words for the engine's eight
+  stages, one each, in the engine's own order (A5.5-10, issue 560). Each stage's
   station is filled as the engine finishes it, and the sentence beside the
   line is the engine's for the last stage that finished. **Cancel** is
   beside it while it runs.
@@ -307,7 +307,7 @@ run.
 - While the feed downloads, cell **01 Data** shows a line of one station,
   `download`, with "downloaded `<n>` of `<n>` bytes" beside it counting up,
   and reads **running**; cell 02 says "Waiting for the feed to download
-  (cell 01)." and its line waits at `parse`. **In the feed** fills in only
+  (cell 01)." and its line waits at `read`. **In the feed** fills in only
   once the download is done (issue 178, engine v0.10.0).
 
 Result: ____
@@ -325,8 +325,10 @@ it. Press Tab on through cell 02 until **Skip past the map** appears over the
 map's top edge, and then **Enter**.
 
 **See.**
-- The fields say Feed `la-metro-rail`, Mode `<the card's mode>` and Operator
-  `every operator`.
+- The fields say Feed `la-metro-rail` and Operator `every operator`; the
+  mode is said by the **Mode** select below, showing `<the card's mode>`,
+  and not listed beside the feed as well (issue 560). Before the feed has
+  been read the fields list Mode too.
 - **In the feed**: **Operators**, **Stops**, **Trips** and **Service**
   filled in; Service reads "`<start>` to `<end>`; the engine would draw
   `<day>`".
@@ -380,12 +382,12 @@ map's top edge, and then **Enter**.
 
 Result: ____
 
-### 6. Cell 02, Process: the layout and what the build had to fudge
+### 6. Cell 02, Process: the layout and what it had to compromise on
 
 **Do.** Read cell **02 Process**. Open **Layout tuning**, read it, type
 600 in **Merge distance** and press **Enter**, then press **Layout
 tuning** again to close it. Open **Engine log** and press **Copy
-log**. Read **What the build had to fudge**, press the
+log**. Read **What the layout had to compromise on**, press the
 information button beside one measure (a screen reader names it
 "What `<measure>` means"), press **Escape**, and press **Copy as text**.
 Press **Lay out from scratch…**, then **Cancel** in the dialog.
@@ -398,22 +400,23 @@ Press **Lay out from scratch…**, then **Cancel** in the dialog.
   same as the status line). Write the Layout and the Made down for step 17.
 - **Layout tuning**, under **Lay out again** and **Lay out from
   scratch…**, is closed
-  until opened, its row reading "Layout tuning" and "LOOM’s defaults"
-  (issue 385). Open, it says "LOOM’s own settings for laying this project
-  out. A tuned layout is a layout of its own: the map keeps the layout it
-  has until you lay out again.", then a **Grid** select showing
-  "octilinear (eight directions; LOOM’s own)" and offering ortholinear,
-  orthoradial and hexalinear, each with its gloss; **Merge distance** (50)
+  until opened, its row reading "Layout tuning" and "the defaults"
+  (issue 385). Open, it says "The settings LOOM, the layout engine, lays
+  this project out with. A tuned layout is a layout of its own: the map
+  keeps the layout it has until you lay out again.", then a **Grid** select
+  showing "Eight directions (octilinear; the default)" and offering "Four
+  directions (ortholinear)", "Rings and spokes (orthoradial)" and "Six
+  directions (hexalinear)"; **Merge distance** (50)
   and **Grid size** (100); and under **Bend penalties**, **45°** (2),
   **90°** (1.5), **135°** (1), **180°** (0) and **Diagonal** (0.5). Under
-  each number is its range and LOOM's own ("5 to 500 metres. LOOM’s own is
-  50."). There is no slider. **Reset to LOOM’s defaults** cannot be
+  each number is its range and the default ("5 to 500 metres. The default
+  is 50."). There is no slider. **Reset to the defaults** cannot be
   pressed while nothing is chosen, and no **Put back the tuning this
   layout was made with** stands beside it: this layout was made with
-  LOOM's defaults, so there is no tuning to put back (issue 561).
+  the defaults, so there is no tuning to put back (issue 561).
 - 600 in **Merge distance** is refused under the field as soon as **Enter**
   is pressed: "tuning.merge_distance must be from 5 to 500, in metres", the
-  field still says 600, and nothing is written: the row still reads "LOOM’s
+  field still says 600, and nothing is written: the row still reads "the
   defaults", no cell changes its state, and no run starts. (A tuned layout
   is a layout of its own, so a tuning committed here would make cells 03 to
   06 **not drawn yet** until the project is laid out again; this step
@@ -431,9 +434,10 @@ Press **Lay out from scratch…**, then **Cancel** in the dialog.
   "[info] layout `<8 characters>`: read from the store" before the draw's
   lines, where the draw reads the layout the run has just made; none of
   them names a folder.
-- The diagnostics open with either "No caveats: nothing was fudged, and
-  the issues score is `<n>`." or "`<n>` caveats, and an issues score of
-  `<n>`, where 0 is clean.", a table captioned "What the engine measured
+- The diagnostics open with either "No caveats: the layout compromised on
+  nothing, and its issues score is `<n>`." or "`<n>` caveats. The layout's
+  issues score is `<n>`, where 0 means it compromised on nothing.", a table
+  captioned "What the engine measured
   drawing the map for `<day>`", and an explanation that appears on the
   press and goes on **Escape**. **Copy as text** says "The figures and the
   caveats are on the clipboard."
@@ -630,14 +634,15 @@ at the row and at **Line order** below. Then press **Reset line**.
   foot of the window it opens above. It **stays open for the whole drag** and
   while you release; it closes on the click outside it, not before (issue
   87), and on Escape, with focus back on the chip.
-- The line's row says "your colour, `#rrggbb`", and the chip follows the
+- The line's row says "your colour, `#rrggbb`; the feed’s is `#rrggbb`"
+  (or "…; the feed has none"), and the chip follows the
   colour while you drag. **Cell 02 does not run, and the map does not change,
   while the button is down, however long you hold it**; when you let go,
   cell 02's progress line runs once and says "Drawn in the colours you chose,
   from the stored layout. The stations have not moved." The map shows the new
   colour on the line, its chips and the time chart.
-- **Reset**, inside the panel, closes it and puts the row back to "the colour in the feed, `#rrggbb`" (or
-  "the default, ...") and the map follows; **Reset every line** does the
+- **Reset**, inside the panel, closes it and puts the row back to "the feed’s colour, `#rrggbb`" (or
+  "the default, `#rrggbb`; the feed has none"), the hex said once, and the map follows; **Reset every line** does the
   same for all and then is unavailable.
 - As it goes, **Put back your colours** comes beside it and holds the
   focus, with "Every line is back to its feed’s colour. Put back your
@@ -954,9 +959,11 @@ Metro** under **Feed**, leave the name, and press **Create**. Open it from
 foot of the notebook and **Delete** in the confirmation.
 
 **See.**
-- The sheet names it "Mexico City Metro". Its fields say Operator `METRO`,
-  and **In the feed** has an **Operator** select whose first option is
-  "every operator", followed by the feed's operators. The routes table's
+- The sheet names it "Mexico City Metro". **In the feed** has an
+  **Operator** select showing `METRO`, whose first option is "every
+  operator", followed by the feed's operators; the fields above list the
+  feed alone, since the two pickers say the mode and the operator (issue
+  560). The routes table's
   caption reads "Routes of METRO: `<n>`".
 - Nothing is laid out: the sentence under the heading is "Nothing has been
   laid out yet." On the front door, after **Create** and before the
@@ -986,7 +993,7 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
   "Redraw in new colours", "Draw for `<day in words>`") and "Layout run" for LA
   Metro Rail, each "finished, started `<time>`", headed by its project's
   name, or by "Feeds" for the feed add. A job that is running says which
-  stage, "running `<stage>`, `<n>` of `<total>`, started `<time>`", above a line
+  stage, "running stage `<n>` of `<total>`, `<stage>`, started `<time>`", above a line
   of stations with no labels; the line fits the inspector with no
   sideways scroll, and its title, line and buttons start where the heading
   does.
@@ -1259,7 +1266,7 @@ Copy everything in the block below into a new issue titled
 | 3 | First run: the front door, the engine and the bundled tools | pass / fail | |
 | 4 | Open a sample city, and watch it download and lay out (___ s) | pass / fail | |
 | 5 | Cell 01, Data: the feed and where its routes run | pass / fail | |
-| 6 | Cell 02, Process: the layout and what the build had to fudge | pass / fail | |
+| 6 | Cell 02, Process: the layout and what it had to compromise on | pass / fail | |
 | 7 | Cell 03, Day: pick a day, scrub the clock | pass / fail | |
 | 8 | Cell 04, Style: the theme and the sizes | pass / fail | |
 | 9 | Cell 05, Lines: colours, by dragging | pass / fail | |

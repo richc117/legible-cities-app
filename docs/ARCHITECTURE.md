@@ -994,7 +994,7 @@ which is the run graph's `tuning` source, and cell 02 says so under its run
 a tuning touches neither the page nor the stored layout, and a run already
 going sends what it was started with.
 
-### What the build had to fudge
+### What the layout had to compromise on
 
 `map.build` answers three things beside its files, and A3-03 keeps them:
 `diagnostics`, the build's numbers as data; `caveats`, the same numbers as
@@ -2919,7 +2919,7 @@ Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 | Run all running the export | `runAll.ts`: an export writes a named file and can take minutes, so a button that promises everything must not do that as a side effect |
 | A Revert in cells 04 and 05 | `specs/028-the-notebook/contracts/run-graph.md`, "Revert": their choices are written with `drawn` once the map carries them, so there is nothing to go back to |
 | A trip in the record | ADR-048, spec 030: a trip is view state, and kept it would be an input to exports that never asked for it |
-| The build's diagnostics in the record | A3-03, `specs/017-diagnostics`: the figures go stale when another project re-lays out the set ("What the build had to fudge") |
+| The build's diagnostics in the record | A3-03, `specs/017-diagnostics`: the figures go stale when another project re-lays out the set ("What the layout had to compromise on") |
 | `topo` and `octi` offered in the geographic view; they are drawn only while a run solves | Issue 282 |
 | Counts on the sample cities' cards, or any feed fetched to draw one | ADR-047: a card asks the engine for the list and nothing else |
 | LOOM's optional solvers | ADR-019: the layout passes no optimisation flags, so the binaries are built without them |

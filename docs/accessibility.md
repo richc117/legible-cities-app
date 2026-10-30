@@ -235,7 +235,7 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| Fields | n/a | pass (a definition list) | n/a | n/a | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Fields | n/a | pass (a definition list) | n/a | n/a | pass | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | In the feed: mode, operator, the feed's entry | fixed (D7, D12) | pass | pass | pass | fixed (C2) | fixed (C1, C2) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | In the feed: the two tables | pass | pass (captions, `th scope`, `aria-sort`) | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | In the feed: sortable headers | fixed (D11) | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
@@ -246,11 +246,11 @@ The two reader columns are a person's, recorded per run in
 
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
-| The layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| The layout run and its progress line | fixed (D1) | pass | pass | pass (the marks' transitions off) | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Lay out from scratch… warning | fixed (D1, D8) | pass | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
-| Layout tuning: a closed disclosure, the grid, seven numeric fields and Reset to LOOM’s defaults (issue 385) | by construction: the toggle a native button in an `h3`, one Tab stop while closed; open, the grid the kit's native select and each number a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus as it disables itself to **Put back the tuning this layout was made with** where the layout was made with a tuning, which hands it back to Reset as it goes, and else to the section's `h3` (issue 561; asserted in `put-back-focus.test.tsx`); Enter commits a field, asserted in `tuning.spec.ts`, which CI's `e2e` job runs (the spec clicks and fills, and Enter is its only key); Tab reach is swept, open and in both themes, since issue 436 (`notebook-a11y.spec.ts`, "the project with the layout tuning and one line's options open") | by construction: the toggle named by its row, "Layout tuning" and "LOOM’s defaults" or "tuned", over a group named "Layout tuning"; the select named "Grid", each option the engine's word and its gloss; each number named by its label and described by its range and LOOM's own, the five penalties in a fieldset whose legend is "Bend penalties"; a refusal an alert and `aria-invalid` on the field; asserted in `layout-tuning.test.tsx` and `tuning.spec.ts`, the latter run by CI's `e2e` job; swept open | by construction (the app's ring on the toggle, the kit's on the fields); swept open, each ring measured (issue 436) | by construction (the chevron's turn is a transition only where motion is allowed); swept open | by construction (`--text`, `--text-muted` on `--surface`, `.message` and `.message.error` and the kit's field, pairs the contrast test already holds) | by construction, as Night | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
+| Layout tuning: a closed disclosure, the grid, seven numeric fields and Reset to the defaults (issue 385) | by construction: the toggle a native button in an `h3`, one Tab stop while closed; open, the grid the kit's native select and each number a labelled text field in the Tab order, committed on Enter or on leaving it, Reset handing focus as it disables itself to **Put back the tuning this layout was made with** where the layout was made with a tuning, which hands it back to Reset as it goes, and else to the section's `h3` (issue 561; asserted in `put-back-focus.test.tsx`); Enter commits a field, asserted in `tuning.spec.ts`, which CI's `e2e` job runs (the spec clicks and fills, and Enter is its only key); Tab reach is swept, open and in both themes, since issue 436 (`notebook-a11y.spec.ts`, "the project with the layout tuning and one line's options open") | by construction: the toggle named by its row, "Layout tuning" and "the defaults" or "tuned", over a group named "Layout tuning"; the select named "Grid", each option its plain words and the engine's word in a bracket (issue 560); each number named by its label and described by its range and the default, the five penalties in a fieldset whose legend is "Bend penalties"; a refusal an alert and `aria-invalid` on the field; asserted in `layout-tuning.test.tsx` and `tuning.spec.ts`, the latter run by CI's `e2e` job; swept open | by construction (the app's ring on the toggle, the kit's on the fields); swept open, each ring measured (issue 436) | by construction (the chevron's turn is a transition only where motion is allowed); swept open | by construction (`--text`, `--text-muted` on `--surface`, `.message` and `.message.error` and the kit's field, pairs the contrast test already holds) | by construction, as Night | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
 | Engine log: a closed disclosure, the box of lines, Copy log (A5.5-13) | swept, open and closed (the box `tabindex="0"`, scrolled by its own `scrollTop`) | swept (the disclosure "The engine's log for this run" and the box "Log lines" named apart; a unit test refuses two elements in the panel sharing a name) | swept | swept | pass (`--text`, `--text-muted` on `--surface-sunken`) | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| What the build had to fudge | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| What the layout had to compromise on | fixed (D9) | pass | pass | pass (the tooltip's fade off) | pass | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 
 ### Cell 03, Day
 
@@ -276,7 +276,7 @@ The two reader columns are a person's, recorded per run in
 | Line colours | pass; since issue 561 Reset every line hands focus to **Put back your colours** where there are colours to put back, which hands it back to the reset as it goes (asserted in `put-back-focus.test.tsx`) | pass (every control names its line) | pass | pass | pass | fixed (C1) | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Colour picker | pass (sliders take the arrows; hex field) | pass; the chip controls its panel, an auto popover, by `aria-controls` and `popovertarget` (F6, issue 284) | fixed (D10) | pass | pass | fixed (C1) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Line options: a disclosure under each colour row, its name, Shown, Width, Casing with its colour, Dash and Reset line (issue 394, spec 036) | by construction: the disclosure a native button, closed, Space and Enter toggling it; the name a labelled text field committed on Enter or on leaving it; Shown the platform's checkbox read as a switch, Space toggling it; each select the kit's native select, one Tab stop, the arrow keys moving the choice; the casing's chip the colour picker's own (above); Reset line handing focus to the cell's heading as it disables itself; set programmatically in `line-options.spec.ts` (`fill`, `click`, `selectOption`), which CI's `e2e` job runs; swept open for one line, in both themes, since issue 436 (`notebook-a11y.spec.ts`, "the project with the layout tuning and one line's options open") | by construction: the toggle named "Line options for line `<label>`, `<summary>`" (the line in a visually hidden part) and its group "Line options for line `<label>`"; the name's field described by its sentence, a refusal an alert and `aria-invalid` on it; the switch "Shown", on or off, described by its sentence and, when the last line is refused, by the engine's sentence; each select named by its own label and described by its sentence, the name beside it hidden from the tree; the casing's chip "Choose the casing colour of line `<label>`" and its panel "Casing colour for line `<label>`"; Reset line "Reset line `<label>`'s options"; the names, options, sentences and the switch's state asserted in `line-options-cell.test.tsx`, the descriptions written in effects only in `line-options.spec.ts`, which CI's `e2e` job runs; names swept open | by construction (the toggle's ring is the app's own, as the layout tuning's; the kit's ring elsewhere); swept open, each ring measured (issue 436) | by construction (the chevron turns only where motion is allowed; nothing else moves); swept open | by construction (`--text`, `--text-muted`, `--text-faint` for a hidden line's words, `.message`, `.message.error`, the kit's field, select and checkbox and the chip's `--border-strong` edge, pairs the contrast test already holds) | by construction, as Night | not yet run: a person's (this part changed after 0.1.0) | not yet run: a person's (this part changed after 0.1.0) |
-| Line order, and its drag (issue 283) | pass (the arrows are every move the grip makes; the grip takes no focus) | pass (the arrows keep "Move line `<label>` up" and "down" and carry them as tooltips on hover and focus, which Escape dismisses; the grip is `aria-hidden` and has no name; asserted in `order.spec.ts`) | pass | pass (the rows the carried line passes step aside with no transition; the drag still works) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Line order, and its drag (issue 283) | pass (the arrows are every move the grip makes; the grip takes no focus) | pass (the arrows keep "Move line `<label>` up" and "down" and carry them as tooltips on hover and focus, which Escape dismisses; the grip is `aria-hidden` and has no name; asserted in `order.spec.ts`) | pass | pass (the rows the carried line passes step aside with no transition; the drag still works) | pass | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 
 ### Cell 06, Export
 
@@ -315,7 +315,7 @@ The two reader columns are a person's, recorded per run in
 | Part | Keyboard | Labels | Focus visible | Reduced motion | Contrast (Night) | Contrast (Parchment) | VoiceOver (macOS) | Narrator (Windows) |
 |---|---|---|---|---|---|---|---|---|
 | Toggle, heading, Close, Escape | pass; the toggle controls the Inspector while it is open (F6) | pass | pass (the Jobs heading was already as wide as its words, a flex item beside the Close button, so its ring is round them) | pass (no slide at any setting) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
-| Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job; the compact line has no labels, so the state line under the title names the stage and its place, "running collapse, 2 of 8", issue 278) | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| Jobs: progress line, Cancel, Copy log, Details | pass | pass (each names its job; the compact line has no labels, so the state line under the title names the stage and its place, "running stage 2 of 8, simplify", issue 278; the place first since issue 560) | pass | pass | pass | pass | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked | pass as it stood at 0.1.0 (the maintainer's walk, reported 8 Oct 2026; no issue noted, the reader's version not recorded); the row has changed since and the new part is not yet walked |
 | Below 900px, over the main region | audit only (the main region `inert`; not in the sweep) | audit only | audit only | audit only | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 
 ### First-run dialog (A6-02)
@@ -1072,7 +1072,10 @@ a table).
 #### Cell 01, Data
 
 - **Fields.** Listen for a description list: Feed, Mode and Operator, each
-  term with its value.
+  term with its value, until the feed has been read; then Mode, and
+  Operator wherever its pop-up button is offered, are said by their pop-up
+  buttons below and not by the list (issue 560), so listen for Feed and,
+  for Los Angeles, Operator "every operator".
 - **Inspect: mode, operator, the feed's entry.** Listen for the heading
   "In the feed", the status "Reading the feed, and downloading it first if
   it is not on this machine yet…" if it is still reading, and the pop-up
@@ -1148,9 +1151,9 @@ a table).
   draws the eight stages at rest (A5.5-10): listen for an image named "The
   layout run's 8 stages, none started." on a project never laid out, or
   "The layout run's 8 stages." on one already laid out. The stations carry
-  the app's words - `parse`, `collapse`, `order`, `octilinear`, `trips`,
-  `draw`, `animate`, `write` - while the sentences spoken beside them stay
-  the engine's own. Then press **Lay out again** (or
+  the app's words - `read`, `simplify`, `sort`, `straighten`, `trips`,
+  `draw`, `animate`, `save` (issue 560) - while the sentences spoken beside
+  them stay the engine's own. Then press **Lay out again** (or
   **Lay out**). Listen for focus moving to **Cancel** (D1), a region
   "Layout run", an image named "Running: `<sentence>`", and the polite
   status reading the engine's sentence for each stage as it finishes. At the
@@ -1163,28 +1166,28 @@ a table).
   out from scratch**: the dialog closes and the run starts with focus on
   **Cancel** (D1, D8).
 - **Layout tuning.** Under **Lay out again** and **Lay out from
-  scratch…**, a level-3 heading holding a button "Layout tuning LOOM’s
+  scratch…**, a level-3 heading holding a button "Layout tuning the
   defaults", collapsed (issue 385). Press it: listen for expanded, a group "Layout tuning", the sentence
-  "LOOM’s own settings for laying this project out. A tuned layout is a
-  layout of its own: the map keeps the layout it has until you lay out
-  again.", a select "Grid" reading "octilinear (eight directions; LOOM’s
-  own)", then the fields "Merge distance" and "Grid size", each followed by
-  its range and LOOM's own as its description ("5 to 500 metres. LOOM’s own
-  is 50."), and a group "Bend penalties" with its sentence and the fields
+  "The settings LOOM, the layout engine, lays this project out with. A
+  tuned layout is a layout of its own: the map keeps the layout it has
+  until you lay out again.", a select "Grid" reading "Eight directions
+  (octilinear; the default)", then the fields "Merge distance" and "Grid
+  size", each followed by its range and the default as its description
+  ("5 to 500 metres. The default is 50."), and a group "Bend penalties" with its sentence and the fields
   "45°", "90°", "135°", "180°" and "Diagonal". Type 600 in "Merge distance"
   and press Enter: listen for "tuning.merge_distance must be from 5 to 500,
   in metres" spoken once, with no focus move and the field invalid. Type 50
-  and press Enter: the sentence goes. Choose "orthoradial" in "Grid" and
+  and press Enter: the sentence goes. Choose "Rings and spokes (orthoradial)" in "Grid" and
   listen, under the run, for "Lay out again to use this tuning: the map on
-  screen was laid out with LOOM’s defaults."; then press **Reset to LOOM’s
+  screen was laid out with the defaults."; then press **Reset to the
   defaults** and listen for focus on the section's heading, "Layout
   tuning", not on nothing, and for the sentence under the run to go; read
-  the heading again and it says "LOOM’s defaults". Focus goes to the
-  heading here because this layout was made with LOOM’s defaults: on a
+  the heading again and it says "the defaults". Focus goes to the
+  heading here because this layout was made with the defaults: on a
   layout made with a tuning, Reset hands focus to the button **Put back
   the tuning this layout was made with**, the polite line "The tuning is
-  back to LOOM’s defaults. Put back the tuning this layout was made with to
-  undo it." is heard, and Put back hands focus back to **Reset to LOOM’s
+  back to the defaults. Put back the tuning this layout was made with to
+  undo it." is heard, and Put back hands focus back to **Reset to the
   defaults** as it goes (issue 561).
 - **The engine log.** Under the stages, a button "Engine log" with its
   line count, collapsed, which opens a group named "The engine's log for
@@ -1195,9 +1198,10 @@ a table).
   your home folder written as ~." Listen that the box's name and the
   disclosure's are not heard nested in each other.
 - **Diagnostics panel.** After a run in this session, listen for the heading
-  "What the build had to fudge", the status sentence ("No caveats: nothing
-  was fudged, and the issues score is `<n>`." or "`<n>` caveats, and an
-  issues score of `<n>`, where 0 is clean."), and the table "What the
+  "What the layout had to compromise on", the status sentence ("No
+  caveats: the layout compromised on nothing, and its issues score is
+  `<n>`." or "`<n>` caveats. The layout's issues score is `<n>`, where 0
+  means it compromised on nothing."), and the table "What the
   engine measured drawing the map for `<day>`". Tab to a button
   "What `<measure>` means", collapsed, and listen for its explanation read
   as its description; press it (expanded), press Escape, and check that the
@@ -1323,9 +1327,11 @@ a table).
 
 - **Line colours.** Listen for the heading "Line colours", the list
   "Lines", and in each row first the colour chip, which is the button "Choose
-  the colour of line `<label>`", collapsed, then the line's label, the feed's
-  colour and where the shown colour comes from ("the colour in the feed,
-  `#rrggbb`"). The button "Reset line `<label>` to the colour in the feed" is
+  the colour of line `<label>`", collapsed, then the line's label and one
+  sentence saying the colour it is drawn in and where it comes from, with
+  the feed's colour only where it is another, so a hex is heard once ("the
+  feed’s colour, `#rrggbb`", "your colour, `#rrggbb`; the feed’s is
+  `#rrggbb`", "the default, `#rrggbb`; the feed has none"; issue 560). The button "Reset line `<label>` to the colour in the feed" is
   in the chip's panel, dimmed until the line has a colour of its own (issue
   284). Before the list, not inside it, is the row
   "Lines with no colour in the feed", with the button "Choose the colour of
@@ -1557,7 +1563,8 @@ a table).
 - **Jobs: progress line, Cancel, Copy log, Details.** Open it after a few
   jobs. Each job is a list item named by its project and label
   ("Los Angeles Layout run"), with "`<finished>`, started `<time>`", an
-  image "`<label>` finished." (or "Running `<stage>`." while it runs), and
+  image "`<label>` finished." (or "Running stage `<n>` of `<total>`,
+  `<stage>`." while it runs), and
   the buttons "Copy log: `<label>`, `<project>`" and, while it runs,
   "Cancel: `<label>`, `<project>`"; a feed add is named by "Feeds" in
   place of a project. A failed job whose detail says more than its hint has
