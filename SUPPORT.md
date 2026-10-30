@@ -35,7 +35,7 @@ says the same under "Supported versions".
 A report that cannot be filed as an issue because you have no account can go
 to the maintainer by the contact route that
 [`SECURITY.md`](SECURITY.md#reporting-a-vulnerability) publishes for anyone
-not using GitHub's private reporting. Say at the start that it is a problem report and not a
-security one. The maintainer opens an issue from it, with your consent, so
-that it has a place on the board. That route and an issue are the only two:
+not using GitHub's private reporting. Say at the start that it is a problem
+report and not a security one. The maintainer opens an issue from it, with
+your consent, so that it has a place on the board. That route and an issue are the only two:
 there is no other mailbox, chat or forum.

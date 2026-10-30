@@ -279,9 +279,10 @@ do these in order.
    engine data**. It removes the four folders the app and the engine keep
    in the engine data folder, `projects`, `out`, `data` and `frames`: every
    project, every downloaded feed, every stored layout and everything drawn
-   from them. It leaves anything else in that folder alone, and it does not
-   touch your exports unless they are inside one of those four folders. It
-   cannot be undone. Then quit the app.
+   from them. It leaves anything else in that folder alone. If your export
+   folder, or a project's own export folder, is inside one of those four, the
+   reset refuses and says so; exports left there from an earlier choice are
+   removed with it. It cannot be undone. Then quit the app.
 2. **Remove the app.**
    - **Mac**: quit Legible Cities, then drag it from Applications to the
      Trash.
@@ -304,10 +305,11 @@ do these in order.
      these folders: after step 1, delete it yourself if nothing else of yours
      is in it.
 4. **Your exports** are yours and are not removed by any of this, unless
-   they were inside one of the four folders step 1 removes. Delete
-   the `Legible Cities` folder on your desktop (inside OneDrive, if OneDrive
-   backs up your desktop), or the export folder you chose, if you no longer
-   want them.
+   some were left inside one of the four folders step 1 removes by an
+   earlier choice of export folder (the reset refuses while the current one
+   is there). Delete the `Legible Cities` folder on your desktop (inside
+   OneDrive, if OneDrive backs up your desktop), or the export folder you
+   chose, if you no longer want them.
 
 ## Troubleshooting
 
@@ -376,30 +378,39 @@ and install it over the old one, as [Install on a Mac](#install-on-a-mac) or
 your projects. Settings keeps what the check found, under **Bundled tools**, after
 you press **OK**, and **Copy diagnostics** includes it.
 
-### Your antivirus quarantined ffmpeg or loom
+### Your antivirus quarantined ffmpeg or LOOM
 
 Security software sometimes takes a program it does not know out of the
-folder it is in, and the app then says, in the sentences above, that the tool
-is missing or did not run. The installers are not signed (see the start of
-this page), which makes a flag more likely. It is usually a false alarm, and
-you can [check the download](#check-the-download-optional) before you install
-to know the file is the one the release was built with.
+folder it is in. The tools it may take are `gtfs2graph`, `topo`, `loom` and
+`octi` (the LOOM tools) and `ffmpeg` and `ffprobe`, each with `.exe` after its
+name on Windows. The start-up check runs `gtfs2graph`, `ffmpeg` and `ffprobe`,
+so if one of those is taken the app says, in the sentences above, that a tool
+is missing or did not run. If one of the others is taken, the check passes,
+and a layout or an export fails later instead: cell 02 (Process) or cell 06
+(Export) says so, with the engine's reason, which may name the file.
 
-1. Open your security software and find its list of quarantined or blocked
-   items. On Windows with Microsoft Defender, that is **Windows Security**,
-   then **Virus & threat protection**, then **Protection history**. Open the
-   entry for ffmpeg or one of the LOOM tools, and choose **Actions**, then
-   **Restore** (or **Allow on device**).
-2. Restore it, then start Legible Cities again. If the files were removed and
+The installers are not signed (see the start of this page), which makes a
+flag more likely. If the download's checksum matched, a flag on these tools
+is most likely a false alarm. In this order:
+
+1. **Check the download** first, as
+   [Check the download](#check-the-download-optional) and
+   [Check who built it](#check-who-built-it-optional) say. If it does not
+   match, delete it and do not open it.
+2. **Allow that one detection.** Open your security software and find its
+   list of quarantined or blocked items. On Windows with Microsoft Defender,
+   that is **Windows Security**, then **Virus & threat protection**, then
+   **Protection history**. Open the entry for the file and choose
+   **Actions**, then **Allow on device**, which restores it and allows
+   that detection. Allow the file, not the app's folder: that folder is
+   one you can write to, and a folder exclusion would hide whatever else
+   is put there. Then start Legible Cities again. If a file was removed and
    cannot be restored, reinstall the app.
-3. If your software keeps flagging them, add the app's folder (the first row
-   of the table for your system in
-   [What the app writes, and where](#what-the-app-writes-and-where)) to its
-   exclusions.
-
-If you think a file was wrongly flagged, Microsoft takes submissions at
-[its file submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission),
-and other vendors have a similar form.
+3. **Submit the file** as a false positive. Microsoft takes submissions at
+   [its file submission portal](https://www.microsoft.com/en-us/wdsi/filesubmission),
+   and other vendors have a similar form.
+4. **[Report it](#report-a-problem)** here too, saying which tool and which
+   software, so that it is known.
 
 ### A feed will not download
 
@@ -409,14 +420,18 @@ download first, and the app cannot make the agency's server answer.
 - **The app refuses the address before it tries.** Two of its sentences are
   worth knowing:
 
-  > Paste the whole address, starting with http:// or https://; a feed address must be a URL with its scheme.
+  > Use an address that starts with http:// or https://.
 
   > Use an address on a public host; a feed cannot be fetched from this machine or its network.
 
-  The second means the address names your own computer or a private network,
-  such as `localhost` or an address that begins `192.168.`. The app downloads
-  feeds from public servers only. If you have the feed as a zip file, add the
-  file instead of its address.
+  The first means what you typed does not start with `http://` or
+  `https://`: paste the whole address. The second means the address names
+  your own computer or a private network, such as `localhost` or an address
+  that begins `192.168.`. The app downloads feeds from public servers only.
+  If you have the feed as a zip file, add the file instead of its address.
+  A name that looks public but turns out to point at a private address is
+  not caught until the download: the engine refuses it then, in cell 01, in
+  its own words.
 - **Open the address in a web browser.** If the browser cannot download the
   zip either, the agency's server is down or the address has changed. Try
   later, or look for the feed's current address on the agency's website.
@@ -446,7 +461,17 @@ two:
 Both mean the same thing for you: the engine's files are missing or will not
 start. Do as the sentence says: reinstall the app, over the old one, as above.
 If the same sentence comes back, [report it](#report-a-problem) with the
-diagnostics, and the log named in the next section.
+diagnostics and the engine's log, `engine.log`, named in the next section.
+
+An engine that starts and then keeps failing is a different case. The app
+starts it again by itself a few times, and when it gives up the Library
+leads with this sentence, then the engine's last reason and how many times in
+a row it failed:
+
+> Quit and open Legible Cities again.
+
+Do that: only a quit and a start begins the engine afresh. If it fails again,
+report it with the diagnostics and `engine.log`.
 
 ### Where the logs are
 
