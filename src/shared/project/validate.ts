@@ -49,6 +49,11 @@ export function isEngineVersion(value: unknown): value is string {
   return typeof value === 'string' && ENGINE_VERSION.test(value)
 }
 
+// Exported for tests/unit/compatibility.test.ts alone, which holds the shapes a record is read by.
+export const SERVICE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+// Exported for the same test: the one shape `isHexColor` reads a colour by.
+export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/
+
 export const FEED_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/
 // The engine's own rules for the two it validates: a mode is what LOOM's -m
 // takes, names or route_type numbers, comma-joined; an agency_id is at most
@@ -109,7 +114,7 @@ export const COLORS_MAX = 512
 
 /** A colour a person or a feed chose, written `#rrggbb`. */
 export function isHexColor(value: unknown): value is string {
-  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value)
+  return typeof value === 'string' && HEX_COLOR_PATTERN.test(value)
 }
 
 export function validateLineLabel(label: string): string | null {
@@ -152,7 +157,7 @@ export function validateLineOrder(order: unknown): string | null {
 
 /** A service day, YYYY-MM-DD, that names a real calendar day. */
 export function validateServiceDate(date: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'the service day must be written YYYY-MM-DD'
+  if (!SERVICE_DATE_PATTERN.test(date)) return 'the service day must be written YYYY-MM-DD'
   const parsed = new Date(`${date}T00:00:00Z`)
   if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
     return 'that is not a day in the calendar'

@@ -118,7 +118,8 @@ export function isAppTheme(value: unknown): value is AppTheme {
  * drive letter, or a UNC path. Written here rather than taken from
  * `node:path` because the renderer imports this module and has no Node.
  */
-const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/]|\\\\[^\\/])/
+// Exported for tests/unit/compatibility.test.ts alone, which holds the shapes a record is read by.
+export const ABSOLUTE = /^(?:\/|[A-Za-z]:[\\/]|\\\\[^\\/])/
 
 /** No path the app stores is longer than this; a longer one is not a path a person chose. */
 export const FOLDER_MAX = 4096

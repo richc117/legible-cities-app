@@ -37,6 +37,7 @@ import {
   isStyleChoice,
   isTheme,
   MODE_PATTERN,
+  SERVICE_DATE_PATTERN,
   validateLineLabel,
   validateLineOrder,
   validateServiceDate,
@@ -78,7 +79,8 @@ const OLD_STYLE = {
  * list orders by it as a string, which is right only while every value
  * shares the format (A5.6-04).
  */
-const OPENED_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
+// Exported for tests/unit/compatibility.test.ts alone, which holds the shapes a record is read by.
+export const OPENED_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
 /**
  * A tuning as a record holds it, read field by field: a grid the engine
@@ -210,7 +212,7 @@ function readRecord(json: unknown): Parsed {
     feed,
     mode: isString(json.mode) && MODE_PATTERN.test(json.mode) ? json.mode : DEFAULT_MODE,
     agency: isString(json.agency) && json.agency.trim() !== '' ? json.agency : null,
-    date: isString(json.date) && /^\d{4}-\d{2}-\d{2}$/.test(json.date) ? json.date : null,
+    date: isString(json.date) && SERVICE_DATE_PATTERN.test(json.date) ? json.date : null,
     service: readServiceWindow(json.service),
     style: readStyle(json.style, version),
     colors,

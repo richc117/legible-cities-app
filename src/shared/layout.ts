@@ -76,6 +76,9 @@ export interface LayoutResult {
   relaid: boolean
 }
 
+// Exported for tests/unit/compatibility.test.ts alone, which holds the shapes a record is read by.
+export const LAYOUT_ID_PATTERN = /^[0-9a-f]{64}$/
+
 /**
  * A layout identifier: the engine's, the SHA-256 of everything that went
  * into the layout (the feed's bytes, the mode, the agency, the label
@@ -84,7 +87,7 @@ export interface LayoutResult {
  * graphs, the same shape and a different value, which the next run replaces.
  */
 export function isLayoutId(value: unknown): value is string {
-  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+  return typeof value === 'string' && LAYOUT_ID_PATTERN.test(value)
 }
 
 /** The first eight characters, which is what a screen shows. */

@@ -11,6 +11,8 @@ window, for people who do not use a terminal.
 and follow [the install guide](docs/install.md): the installers are not
 signed, and it shows how to open the app past macOS's and Windows'
 warnings, what the app writes and where, and how to remove it completely.
+What a 1.x release keeps working from one version to the next, your
+projects above all, is in [what 1.0 keeps](docs/compatibility.md).
 The first release, 0.1.0, was published on 8 October 2026; the release
 candidates before it stay on the page, marked "Pre-release".
 
