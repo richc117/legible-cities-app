@@ -2395,8 +2395,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const putBackColours = panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })
       await log.soft('Put back your colours comes beside the reset, with the focus', async () => {
         await expect(putBackColours).toBeFocused()
+        // The region is the colours' section itself, so its status is found
+        // in it directly.
         await expect(
-          panel.locator('section.line-colours').getByRole('status').filter({
+          panel.getByRole('status').filter({
             hasText: COLOURS_RESET_SAID,
           }),
         ).toHaveCount(1)
@@ -3409,20 +3411,26 @@ test('a release, installed, through docs/acceptance.md', async () => {
           `${LA} Export as Instagram reel`,
         ]),
       )
+      // The inspector keeps the last twenty finished. Past that, the jobs of
+      // steps 4 and 7 (the first layout run and the day's draw) have rightly
+      // gone from the list, pushed off by step 8's and 9's redraws.
+      const full = jobs.length >= 20
+      if (full)
+        log.notAutomated(
+          `that step 7's "Draw for ${DAY_IN_WORDS}" and step 4's layout run are listed: the inspector keeps the last twenty, and the redraws since pushed them off.`,
+        )
       await log.soft('the rebuilds, and the first layout run last', () => {
         const missing = [
-          new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`),
+          ...(full ? [] : [new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`)]),
           new RegExp(`^${LA} Redraw in new colours$`),
           new RegExp(`^${LA} Redraw in a new line order$`),
         ].filter((pattern) => !titles.some((t) => pattern.test(t)))
         expect(missing.map(String)).toEqual([])
-        expect(
-          titles.filter((t) => / Layout run$/.test(t)),
-          'two layout runs and no more',
-        ).toHaveLength(2)
-        // The inspector keeps the last twenty finished; past that, the first
-        // layout run has rightly gone from the list.
-        if (jobs.length < 20) expect(titles[titles.length - 1]).toBe(`${LA} Layout run`)
+        const layoutRuns = titles.filter((t) => / Layout run$/.test(t))
+        expect(layoutRuns, 'two layout runs and no more').toHaveLength(
+          full && !layoutRuns.includes(`${LA} Layout run`) ? 1 : 2,
+        )
+        if (!full) expect(titles[titles.length - 1]).toBe(`${LA} Layout run`)
         expect(jobs.length).toBeLessThanOrEqual(20)
       })
       await log.soft('each finished', () =>
