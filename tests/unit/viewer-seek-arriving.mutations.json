@@ -1,11 +1,19 @@
 [
   {
     "file": "src/renderer/src/Transport.tsx",
-    "find": "    memory.seek(at)\n",
+    "find": "      memory.seek(at)\n",
     "replace": "",
     "test": "tests/unit/viewer-seek-arriving.test.tsx",
-    "title": "remembers each seek as it is asked for, and none it refuses (issue 660)",
+    "title": "remembers each seek as it is sent, and none it refuses (issue 660)",
     "why": "The scrub sends its seek without remembering it: the page a run wrote is given back the clock the page being left said, and a scrub made as the run ended is lost."
+  },
+  {
+    "file": "src/renderer/src/Transport.tsx",
+    "find": "    setNow(at)\n    sendSeek(at)\n",
+    "replace": "    setNow(at)\n    memory.seek(at)\n    sendSeek(at)\n",
+    "test": "tests/unit/viewer-seek-arriving.test.tsx",
+    "title": "remembers each seek as it is sent, and none it refuses (issue 660)",
+    "why": "The seek remembered as it is asked for, before the debounce: one still waiting when the page being left is read passes for one that page had taken, and the restore seeks over it."
   },
   {
     "file": "src/renderer/src/Viewer.tsx",
@@ -17,11 +25,11 @@
   },
   {
     "file": "src/renderer/src/Viewer.tsx",
-    "find": "    keptSeeks.current = transportFor(project.id).sought?.count ?? 0\n",
-    "replace": "",
+    "find": "      if (state !== null) {\n        kept.current = state\n        keptSeeks.current = asked\n      }\n",
+    "replace": "      keptSeeks.current = asked\n      if (state !== null) {\n        kept.current = state\n      }\n",
     "test": "tests/unit/viewer-seek-arriving.test.tsx",
-    "title": "is given back the clock the page being left said when nobody moved it since",
-    "why": "The seek counted only as the frame mounts: a seek the old page took and has since played on from is given back over the clock it reports."
+    "title": "keeps the count with the clock it was read with when a read fails",
+    "why": "The count kept at every ask, answered or not: a page scrubbed directly and then too busy to answer is given back neither its own clock nor the seek that moved it."
   },
   {
     "file": "src/renderer/src/Viewer.tsx",
@@ -54,5 +62,13 @@
     "test": "tests/unit/transport.test.ts",
     "title": "takes the place of the clock the page being left said, and only then",
     "why": "The seek handed to the composition and dropped: the restore seeks the new page to the old page's clock."
+  },
+  {
+    "file": "src/renderer/src/Viewer.tsx",
+    "find": "      if (state !== null) {\n        kept.current = state\n        keptSeeks.current = asked\n      }\n",
+    "replace": "      if (state !== null) kept.current = state\n",
+    "test": "tests/unit/viewer-seek-arriving.test.tsx",
+    "title": "is given back the clock the page being left said when nobody moved it since",
+    "why": "The count never taken as the page being left is asked: a seek the old page took and has since played on from is given back over the clock it reports."
   }
 ]

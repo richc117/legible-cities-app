@@ -194,17 +194,21 @@ export default function Viewer({
   useEffect(() => {
     if (wanted === showing) return undefined
     let off = false
-    // Counted as it is asked, not as it answers: a seek sent after the ask
-    // may or may not be in the answer, and given back again it costs
-    // nothing.
-    keptSeeks.current = transportFor(project.id).sought?.count ?? 0
+    // The seeks counted as the page is asked, not as it answers: one sent
+    // after the ask may or may not be in the answer, and given back again
+    // it costs nothing. Kept only with an answer, as the state is, so a
+    // read that failed leaves the two describing the same page.
+    const asked = transportFor(project.id).sought?.count ?? 0
     // The state of the page being left. Neither a refusal nor a silence is
     // an answer: the frame may be mid-navigation from a change a moment
     // ago, and what was read before that is still the last thing anyone
     // knows the map was showing, so it is kept.
     void answerWithin(() => window.api.viewer.call(ROLE, 'state'), STATE_DEADLINE).then((state) => {
       if (off) return
-      if (state !== null) kept.current = state
+      if (state !== null) {
+        kept.current = state
+        keptSeeks.current = asked
+      }
       // The message is **not** cleared here. It was for a while, so that
       // a sentence about the page being left could not sit over the page
       // arriving - and that guarantees two reflows in the common case
@@ -244,6 +248,9 @@ export default function Viewer({
   const onLoad = (event: SyntheticEvent<HTMLIFrameElement>): void => {
     const mine = event.currentTarget.getAttribute('src') === showing
     const navigation = navigations.current
+    // The seeks counted when the page this navigation left was read, taken
+    // with the navigation itself, so a later one cannot move it underneath.
+    const since = keptSeeks.current
     probeFrame(project.id, ROLE).then(
       async () => {
         if (!mounted.current) return
@@ -277,7 +284,6 @@ export default function Viewer({
         // person's move in that beat is the newer word. Read again before
         // each call, as the speed and the pause are.
         const memory = transportFor(project.id)
-        const since = keptSeeks.current
         const sought = (): number | null => soughtSince(memory.sought, since)
         const themeNow = (): Theme => themeAsItStands(project.id, project.theme)
         const composed = withRemembered(kept.current, memory.snapshot, sought())

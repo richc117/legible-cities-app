@@ -185,6 +185,11 @@ export default function Transport({
   useEffect(() => {
     seekRef.current = (at: number): void => {
       const mine = (seeks.current += 1)
+      // Remembered as it is sent, not as it is asked for: a seek still in
+      // the debounce when the page being left is read is not in that page's
+      // answer, and counted then it would pass for one that was. Counted
+      // here, a run's page arriving is given it back (issue 660).
+      memory.seek(at)
       void window.api.viewer
         .call('map', 'seek', at)
         // Read straight back, so what is on screen is the page's own answer
@@ -227,9 +232,6 @@ export default function Transport({
     // frame of being half a minute out and nothing else.
     hold()
     setNow(at)
-    // Remembered as it is asked for, before the debounce: a run's page may
-    // be arriving, and this is what it is given back (issue 660).
-    memory.seek(at)
     sendSeek(at)
   }
 

@@ -166,8 +166,8 @@ describe('giveBack', () => {
 
   it('seeks to where a person moved the clock since the page being left was read (issue 660)', async () => {
     // The run ended and the transport was offered while this document was
-    // still arriving; the scrub went to 17:00 and the
-    // restore would have put the page back at 07:20 over it.
+    // still arriving; the scrub went to 17:00, and the restore would have
+    // put the page back at 07:20 over it.
     const { sent, now } = setup({ sought: () => 61_200 })
     await giveBack(restoreCalls(STATE, 'warm-dark'), now)
     expect(sent.find(([method]) => method === 'seek')).toEqual(['seek', [61_200]])

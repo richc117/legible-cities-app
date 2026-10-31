@@ -12,7 +12,7 @@
 // Mutations, watched failing: `viewer-seek-arriving.mutations.json`.
 
 import { act } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Viewer from '../../src/renderer/src/Viewer'
 import { transportFor } from '../../src/renderer/src/transportState'
 import { answered, BASE, cleanup, renderCell, renderPanel } from '../support/render'
@@ -120,6 +120,25 @@ describe('the page a run wrote, given back', () => {
     expect(seeks(stand.sent)).toEqual([[LEFT.now]])
   })
 
+  it('keeps the count with the clock it was read with when a read fails', async () => {
+    // Mutation: the count kept at every ask, answered or not - a page
+    // scrubbed directly and then too busy to answer is given back neither
+    // its own clock, which went unread, nor the seek that moved it.
+    const id = 'seekarriving5'
+    const stand = page(null)
+    const redraw = drawn(id, stand)
+    // A scrub of the page on screen, which took it.
+    transportFor(id).seek(30_000)
+    redraw(1)
+    await answered()
+    stand.answer()
+    await answered()
+    loaded()
+    await answered()
+    await answered()
+    expect(seeks(stand.sent)).toEqual([[30_000]])
+  })
+
   it('gives a project opened again no seek from its last visit', async () => {
     // Mutation: the count started from nothing as the frame mounts - the
     // first page of a project opened again is sent where it was scrubbed
@@ -160,6 +179,9 @@ describe('the page a run wrote, given back', () => {
   })
 })
 
+/** Longer than the transport's own wait before it sends a seek (`SEEK_DELAY`, 80 ms). */
+const SEEK_WAIT = 200
+
 /** The run as cell 03 reads it, as `transport-refusal.test.tsx` has it. */
 class FrameRun extends StandInRun {
   job(): null {
@@ -182,30 +204,44 @@ function scrubTo(seconds: number): void {
 }
 
 describe('cell 03’s scrub', () => {
-  it('remembers each seek as it is asked for, and none it refuses (issue 660)', async () => {
-    // Mutation: the scrub sends its seek without remembering it - the page
-    // a run wrote is given back the clock the page being left said.
-    const api = {
-      viewer: {
-        call: async (_frame: string, method: string): Promise<unknown> =>
-          method === 'bounds'
-            ? { t0: 0, t1: 86_400 }
-            : method === 'state'
-              ? { now: 3_600, clock: '01:00' }
-              : undefined,
-      },
+  it('remembers each seek as it is sent, and none it refuses (issue 660)', async () => {
+    // Mutations: the scrub sends its seek without remembering it - the page
+    // a run wrote is given back the clock the page being left said - and it
+    // remembers it as it is asked for, so a seek still waiting out the
+    // debounce passes for one the page being left had taken.
+    vi.useFakeTimers()
+    try {
+      const api = {
+        viewer: {
+          call: async (_frame: string, method: string): Promise<unknown> =>
+            method === 'bounds'
+              ? { t0: 0, t1: 86_400 }
+              : method === 'state'
+                ? { now: 3_600, clock: '01:00' }
+                : undefined,
+        },
+      }
+      const view = renderCell('frame', {}, { run: new FrameRun(), api })
+      await answered()
+      const memory = transportFor(BASE.id)
+      const before = memory.sought?.count ?? 0
+      scrubTo(61_200)
+      expect(memory.sought?.count ?? 0, 'not yet sent: still in the debounce').toBe(before)
+      act(() => {
+        vi.advanceTimersByTime(SEEK_WAIT)
+      })
+      expect(memory.sought).toEqual({ at: 61_200, count: before + 1 })
+      view.rerender({ layingOut: true })
+      scrubTo(40_000)
+      act(() => {
+        vi.advanceTimersByTime(SEEK_WAIT)
+      })
+      expect(memory.sought, 'refused while a run holds the page').toEqual({
+        at: 61_200,
+        count: before + 1,
+      })
+    } finally {
+      vi.useRealTimers()
     }
-    const view = renderCell('frame', {}, { run: new FrameRun(), api })
-    await answered()
-    const memory = transportFor(BASE.id)
-    const before = memory.sought?.count ?? 0
-    scrubTo(61_200)
-    expect(memory.sought).toEqual({ at: 61_200, count: before + 1 })
-    view.rerender({ layingOut: true })
-    scrubTo(40_000)
-    expect(memory.sought, 'refused while a run holds the page').toEqual({
-      at: 61_200,
-      count: before + 1,
-    })
   })
 })
