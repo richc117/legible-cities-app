@@ -1,7 +1,7 @@
 import type { Theme } from '../../shared/project/types'
 import type { ViewerMethod } from '../../shared/viewer'
 import { asDispatchedTheme } from './themeMemory'
-import { asDispatched, type Remembered } from './transportState'
+import { asDispatched, asSought, type Remembered } from './transportState'
 import type { ViewerCall } from './viewerRestore'
 
 // The loop that sends a restore (`restoreCalls`) to a page that has just
@@ -14,8 +14,9 @@ import type { ViewerCall } from './viewerRestore'
 // pressed during it writes its memory and sends its own call, and a list
 // whose arguments were fixed before the press would then overwrite it from
 // behind. Each call is therefore handed the memory as it stands at its own
-// moment - the speed and the pause from cell 03's (`asDispatched`), the
-// theme from the project's (`asDispatchedTheme`) - and the loop stops the
+// moment - the speed and the pause from cell 03's (`asDispatched`), a seek
+// a person made since the page being left was read (`asSought`, issue 660),
+// the theme from the project's (`asDispatchedTheme`) - and the loop stops the
 // moment the navigation it belongs to has been replaced or the screen has
 // gone, because the page it was for is no longer the page on screen.
 
@@ -25,6 +26,8 @@ export interface GiveBack {
   alive: () => boolean
   /** What the app has told this project's page about its speed and pause, now. */
   remembered: () => Remembered
+  /** Where a person moved the clock since the page being left was read, now, or null (`soughtSince`). */
+  sought: () => number | null
   /** The project's theme, now. */
   theme: () => Theme
   /** One call to the page, in the shape `window.api.viewer.call` takes. */
@@ -41,7 +44,7 @@ export async function giveBack(calls: ViewerCall[], now: GiveBack): Promise<void
     if (!now.alive()) return
     const sending = asDispatchedTheme(
       method,
-      asDispatched(method, args, now.remembered()),
+      asSought(method, asDispatched(method, args, now.remembered()), now.sought()),
       now.theme(),
     )
     try {

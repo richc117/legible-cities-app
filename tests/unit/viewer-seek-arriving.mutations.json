@@ -1,0 +1,58 @@
+[
+  {
+    "file": "src/renderer/src/Transport.tsx",
+    "find": "    memory.seek(at)\n",
+    "replace": "",
+    "test": "tests/unit/viewer-seek-arriving.test.tsx",
+    "title": "remembers each seek as it is asked for, and none it refuses (issue 660)",
+    "why": "The scrub sends its seek without remembering it: the page a run wrote is given back the clock the page being left said, and a scrub made as the run ended is lost."
+  },
+  {
+    "file": "src/renderer/src/Viewer.tsx",
+    "find": "        const composed = withRemembered(kept.current, memory.snapshot, sought())\n",
+    "replace": "        const composed = withRemembered(kept.current, memory.snapshot)\n",
+    "test": "tests/unit/viewer-seek-arriving.test.tsx",
+    "title": "is sought there even where the page being left said nothing",
+    "why": "The restore composed without the seek made since the page being left was read: where that page refused to answer, the restore has no seek at all, and the new page stays where it starts."
+  },
+  {
+    "file": "src/renderer/src/Viewer.tsx",
+    "find": "    keptSeeks.current = transportFor(project.id).sought?.count ?? 0\n",
+    "replace": "",
+    "test": "tests/unit/viewer-seek-arriving.test.tsx",
+    "title": "is given back the clock the page being left said when nobody moved it since",
+    "why": "The seek counted only as the frame mounts: a seek the old page took and has since played on from is given back over the clock it reports."
+  },
+  {
+    "file": "src/renderer/src/Viewer.tsx",
+    "find": "  const keptSeeks = useRef(transportFor(project.id).sought?.count ?? 0)\n",
+    "replace": "  const keptSeeks = useRef(0)\n",
+    "test": "tests/unit/viewer-seek-arriving.test.tsx",
+    "title": "gives a project opened again no seek from its last visit",
+    "why": "The count started from nothing as the frame mounts: the first page of a project opened again is sent where it was scrubbed to on the last visit."
+  },
+  {
+    "file": "src/renderer/src/viewerGiveBack.ts",
+    "find": "      asSought(method, asDispatched(method, args, now.remembered()), now.sought()),\n",
+    "replace": "      asDispatched(method, args, now.remembered()),\n",
+    "test": "tests/unit/viewer-give-back.test.ts",
+    "title": "reads that seek again for the call, not as the list was composed",
+    "why": "A scrub during the restore's own round trips overwritten by the seek it composed before."
+  },
+  {
+    "file": "src/renderer/src/transportState.ts",
+    "find": "sought.count > since ? sought.at : null",
+    "replace": "sought.count >= since ? sought.at : null",
+    "test": "tests/unit/transport.test.ts",
+    "title": "is the one after the count the page being left was read at, else nothing",
+    "why": "A seek made before the page being left was read given back: a scrub from minutes ago pulls a playing map back to it at every redraw."
+  },
+  {
+    "file": "src/renderer/src/transportState.ts",
+    "find": "  if (sought !== null) base.now = sought\n",
+    "replace": "",
+    "test": "tests/unit/transport.test.ts",
+    "title": "takes the place of the clock the page being left said, and only then",
+    "why": "The seek handed to the composition and dropped: the restore seeks the new page to the old page's clock."
+  }
+]

@@ -227,6 +227,9 @@ export default function Transport({
     // frame of being half a minute out and nothing else.
     hold()
     setNow(at)
+    // Remembered as it is asked for, before the debounce: a run's page may
+    // be arriving, and this is what it is given back (issue 660).
+    memory.seek(at)
     sendSeek(at)
   }
 
