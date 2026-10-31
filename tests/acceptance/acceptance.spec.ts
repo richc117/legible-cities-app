@@ -2305,8 +2305,28 @@ test('a release, installed, through docs/acceptance.md', async () => {
             const view = element.ownerDocument.defaultView as Window
             view.scrollBy(0, box.top + box.height / 2 - view.innerHeight * 0.75)
           })
-          const box = await slider.boundingBox()
-          if (box === null) throw new Error('a slider has no box')
+          // The panel is anchored to its chip and flips above it where it no
+          // longer fits below, a layout after the scroll; read straight away,
+          // the box is where the slider was before the flip. So the box is
+          // read until two reads a paint apart agree.
+          const settledBox = async (): ReturnType<typeof slider.boundingBox> => {
+            const end = Date.now() + 5 * SECOND
+            let last = await slider.boundingBox()
+            while (Date.now() < end) {
+              await slider.evaluate(
+                () =>
+                  new Promise<void>((done) =>
+                    requestAnimationFrame(() => requestAnimationFrame(() => done())),
+                  ),
+              )
+              const now = await slider.boundingBox()
+              if (now !== null && last !== null && now.x === last.x && now.y === last.y) return now
+              last = now
+            }
+            return null
+          }
+          const box = await settledBox()
+          if (box === null) throw new Error('a slider has no box, or it never stopped moving')
           const at = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.5 }
           const hit = await picker.evaluate((element, { x, y }) => {
             const under = document.elementFromPoint(x, y)
