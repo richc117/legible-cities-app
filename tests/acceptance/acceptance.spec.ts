@@ -3411,26 +3411,28 @@ test('a release, installed, through docs/acceptance.md', async () => {
           `${LA} Export as Instagram reel`,
         ]),
       )
-      // The inspector keeps the last twenty finished. Past that, the jobs of
-      // steps 4 and 7 (the first layout run and the day's draw) have rightly
-      // gone from the list, pushed off by step 8's and 9's redraws.
-      const full = jobs.length >= 20
-      if (full)
+      // The inspector keeps the last twenty finished, cut from the oldest
+      // end. So step 4's layout run has gone only from a full list, and while
+      // it is still the oldest entry, step 7's draw, which ended later, must
+      // be listed too. Only once it has gone can the draw have gone with it.
+      const firstRunKept = titles[titles.length - 1] === `${LA} Layout run`
+      const pushedOff = jobs.length >= 20 && !firstRunKept
+      if (pushedOff)
         log.notAutomated(
-          `that step 7's "Draw for ${DAY_IN_WORDS}" and step 4's layout run are listed: the inspector keeps the last twenty, and the redraws since pushed them off.`,
+          `that step 4's layout run and step 7's "Draw for ${DAY_IN_WORDS}" are listed: the inspector keeps the last twenty, and the redraws since pushed the layout run off, and may have pushed the draw off with it.`,
         )
       await log.soft('the rebuilds, and the first layout run last', () => {
         const missing = [
-          ...(full ? [] : [new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`)]),
+          ...(pushedOff ? [] : [new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`)]),
           new RegExp(`^${LA} Redraw in new colours$`),
           new RegExp(`^${LA} Redraw in a new line order$`),
         ].filter((pattern) => !titles.some((t) => pattern.test(t)))
         expect(missing.map(String)).toEqual([])
-        const layoutRuns = titles.filter((t) => / Layout run$/.test(t))
-        expect(layoutRuns, 'two layout runs and no more').toHaveLength(
-          full && !layoutRuns.includes(`${LA} Layout run`) ? 1 : 2,
-        )
-        if (!full) expect(titles[titles.length - 1]).toBe(`${LA} Layout run`)
+        expect(
+          titles.filter((t) => / Layout run$/.test(t)),
+          'two layout runs and no more, the first gone only from a full list',
+        ).toHaveLength(pushedOff ? 1 : 2)
+        if (!pushedOff) expect(firstRunKept, `${LA}'s layout run is the oldest`).toBe(true)
         expect(jobs.length).toBeLessThanOrEqual(20)
       })
       await log.soft('each finished', () =>
