@@ -171,10 +171,9 @@ export default function Viewer({
   // The map's own state, read as the frame leaves a page and given back to
   // the page that comes next.
   const kept = useRef<unknown>(null)
-  // How many seeks cell 03 had asked for when the page being left was last
-  // asked what it shows: one after it is newer than anything that page
-  // said, and is what the next page is given back (`soughtSince`, issue
-  // 660). From the memory as it stands at mount, so a seek made on an
+  // How many seeks cell 03 had sent when the page being left last answered
+  // what it shows: one after it is newer than anything that page said, and
+  // is what the next page is given back (`soughtSince`, issue 660). From the memory as it stands at mount, so a seek made on an
   // earlier visit to the project is never given back to this one.
   const keptSeeks = useRef(transportFor(project.id).sought?.count ?? 0)
   // Which navigation a restore belongs to. Bumped where the navigation is

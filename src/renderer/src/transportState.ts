@@ -241,9 +241,9 @@ export function asDispatched(method: string, args: unknown[], remembered: Rememb
 }
 
 /**
- * A seek a person asked for, and which one it was: the memory counts them,
- * so a restore can tell one made since the page being left was read
- * (`soughtSince`).
+ * A seek a person asked for and the transport sent, and which one it was:
+ * the memory counts them, so a restore can tell one made since the page
+ * being left was read (`soughtSince`).
  */
 export interface Sought {
   at: number
@@ -395,7 +395,7 @@ export class TransportMemory {
   }
 
   /**
-   * Remember a seek as it is asked for, before the call goes. Nothing
+   * Remember a seek as it is sent, just before the call goes. Nothing
    * renders from it, so no listener is told: it is read by a restore.
    */
   seek(at: number): void {
