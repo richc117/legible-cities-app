@@ -996,10 +996,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const found = await (session.app as ElectronApplication).evaluate(
             async ({ BrowserWindow, Menu }) => {
               const roles: string[] = []
+              // A built menu's item without a role or a submenu has null there,
+              // not the template's undefined, whatever the typings say.
               const walk = (items: Electron.MenuItem[]): void => {
                 for (const item of items) {
-                  if (item.role !== undefined) roles.push(item.role.toLowerCase())
-                  if (item.submenu !== undefined) walk(item.submenu.items)
+                  if (item.role != null) roles.push(item.role.toLowerCase())
+                  if (item.submenu != null) walk(item.submenu.items)
                 }
               }
               const menu = Menu.getApplicationMenu()
