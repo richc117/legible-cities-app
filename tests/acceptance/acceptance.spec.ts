@@ -996,10 +996,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const found = await (session.app as ElectronApplication).evaluate(
             async ({ BrowserWindow, Menu }) => {
               const roles: string[] = []
+              // A built menu's item without a role or a submenu has null there,
+              // not the template's undefined, whatever the typings say.
               const walk = (items: Electron.MenuItem[]): void => {
                 for (const item of items) {
-                  if (item.role !== undefined) roles.push(item.role.toLowerCase())
-                  if (item.submenu !== undefined) walk(item.submenu.items)
+                  if (item.role != null) roles.push(item.role.toLowerCase())
+                  if (item.submenu != null) walk(item.submenu.items)
                 }
               }
               const menu = Menu.getApplicationMenu()
@@ -2303,8 +2305,28 @@ test('a release, installed, through docs/acceptance.md', async () => {
             const view = element.ownerDocument.defaultView as Window
             view.scrollBy(0, box.top + box.height / 2 - view.innerHeight * 0.75)
           })
-          const box = await slider.boundingBox()
-          if (box === null) throw new Error('a slider has no box')
+          // The panel is anchored to its chip and flips above it where it no
+          // longer fits below, a layout after the scroll; read straight away,
+          // the box is where the slider was before the flip. So the box is
+          // read until two reads a paint apart agree.
+          const settledBox = async (): ReturnType<typeof slider.boundingBox> => {
+            const end = Date.now() + 5 * SECOND
+            let last = await slider.boundingBox()
+            while (Date.now() < end) {
+              await slider.evaluate(
+                () =>
+                  new Promise<void>((done) =>
+                    requestAnimationFrame(() => requestAnimationFrame(() => done())),
+                  ),
+              )
+              const now = await slider.boundingBox()
+              if (now !== null && last !== null && now.x === last.x && now.y === last.y) return now
+              last = now
+            }
+            return null
+          }
+          const box = await settledBox()
+          if (box === null) throw new Error('a slider has no box, or it never stopped moving')
           const at = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.5 }
           const hit = await picker.evaluate((element, { x, y }) => {
             const under = document.elementFromPoint(x, y)
@@ -2393,8 +2415,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const putBackColours = panel.getByRole('button', { name: PUT_BACK_COLOURS, exact: true })
       await log.soft('Put back your colours comes beside the reset, with the focus', async () => {
         await expect(putBackColours).toBeFocused()
+        // The region is the colours' section itself, so its status is found
+        // in it directly.
         await expect(
-          panel.locator('section.line-colours').getByRole('status').filter({
+          panel.getByRole('status').filter({
             hasText: COLOURS_RESET_SAID,
           }),
         ).toHaveCount(1)
@@ -3407,20 +3431,28 @@ test('a release, installed, through docs/acceptance.md', async () => {
           `${LA} Export as Instagram reel`,
         ]),
       )
+      // The inspector keeps the last twenty finished, cut from the oldest
+      // end. So step 4's layout run has gone only from a full list, and while
+      // it is still the oldest entry, step 7's draw, which ended later, must
+      // be listed too. Only once it has gone can the draw have gone with it.
+      const firstRunKept = titles[titles.length - 1] === `${LA} Layout run`
+      const pushedOff = jobs.length >= 20 && !firstRunKept
+      if (pushedOff)
+        log.notAutomated(
+          `that step 4's layout run and step 7's "Draw for ${DAY_IN_WORDS}" are listed: the inspector keeps the last twenty, and the redraws since pushed the layout run off, and may have pushed the draw off with it.`,
+        )
       await log.soft('the rebuilds, and the first layout run last', () => {
         const missing = [
-          new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`),
+          ...(pushedOff ? [] : [new RegExp(`^${LA} Draw for ${DAY_IN_WORDS}$`)]),
           new RegExp(`^${LA} Redraw in new colours$`),
           new RegExp(`^${LA} Redraw in a new line order$`),
         ].filter((pattern) => !titles.some((t) => pattern.test(t)))
         expect(missing.map(String)).toEqual([])
         expect(
           titles.filter((t) => / Layout run$/.test(t)),
-          'two layout runs and no more',
-        ).toHaveLength(2)
-        // The inspector keeps the last twenty finished; past that, the first
-        // layout run has rightly gone from the list.
-        if (jobs.length < 20) expect(titles[titles.length - 1]).toBe(`${LA} Layout run`)
+          'two layout runs and no more, the first gone only from a full list',
+        ).toHaveLength(pushedOff ? 1 : 2)
+        if (!pushedOff) expect(firstRunKept, `${LA}'s layout run is the oldest`).toBe(true)
         expect(jobs.length).toBeLessThanOrEqual(20)
       })
       await log.soft('each finished', () =>

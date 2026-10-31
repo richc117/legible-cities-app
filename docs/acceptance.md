@@ -992,7 +992,9 @@ disclosure, open it, and press **Copy log** on one job. Press **Escape**.
   "Export as Instagram reel", the rebuilds ("Redraw in a new line order",
   "Redraw in new colours", "Draw for `<day in words>`") and "Layout run" for LA
   Metro Rail, each "finished, started `<time>`", headed by its project's
-  name, or by "Feeds" for the feed add. A job that is running says which
+  name, or by "Feeds" for the feed add. With twenty finished, the oldest of
+  these, LA Metro Rail's first "Layout run" and then the day's "Draw for",
+  may have gone from the list. A job that is running says which
   stage, "running stage `<n>` of `<total>`, `<stage>`, started `<time>`", above a line
   of stations with no labels; the line fits the inspector with no
   sideways scroll, and its title, line and buttons start where the heading
