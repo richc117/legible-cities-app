@@ -1,0 +1,26 @@
+[
+  {
+    "file": "src/renderer/src/styleRules.ts",
+    "find": "    if (isPending(current.style, current.drafts, key)) view.drafts[key] = current.drafts[key]\n",
+    "replace": "",
+    "test": "tests/unit/style-rules.test.ts",
+    "title": "keeps a figure being typed over a field the record has not moved (issue 659)",
+    "why": "The typed figure dropped as the record arrives: a theme pressed just before puts the field back under the person's hands, and the Enter that follows commits the old number, so nothing is refused or drawn."
+  },
+  {
+    "file": "src/renderer/src/styleRules.ts",
+    "find": "    if (isPending(current.style, current.drafts, key)) view.drafts[key] = current.drafts[key]\n",
+    "replace": "",
+    "test": "tests/unit/style-fields-typing.test.tsx",
+    "title": "keeps the typed figure, so its Enter is refused beside the field (issue 659)",
+    "why": "The same, through cell 04 itself: the record that a theme's write brings back puts the engine's 7 under a typed 30, and the Enter commits 7."
+  },
+  {
+    "file": "src/renderer/src/styleRules.ts",
+    "find": " || style[key] !== current.style[key]) continue",
+    "replace": ") continue",
+    "test": "tests/unit/style-rules.test.ts",
+    "title": "keeps a figure being typed over a field the record has not moved (issue 659)",
+    "why": "A typed figure kept over a field the record has moved itself: the field shows a number the record no longer holds under it."
+  }
+]
