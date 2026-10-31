@@ -473,6 +473,26 @@ describe('the group when the record arrives again', () => {
     expect(next.drafts.dotRadius).toBe('30')
   })
 
+  it('keeps a figure being typed over a field the record has not moved (issue 659)', () => {
+    // Mutation: the typed figure dropped as the record arrives - a theme
+    // pressed just before put Line width back under the person's hands,
+    // and the Enter that followed committed the old number.
+    const current = viewOf({ stationRadius: 5 })
+    current.drafts.lineWidth = '30'
+    current.drafts.stationRadius = '6'
+    const next = viewForRecord({ stationRadius: 5 }, current, true)
+    expect(next.drafts.lineWidth, 'typed over the engine’s own').toBe('30')
+    expect(next.drafts.stationRadius, 'typed over a size of the record’s').toBe('6')
+    expect(next.problems, 'kept as typed, not judged').toEqual({})
+    const moved = viewForRecord({ stationRadius: 8 }, current, true)
+    expect(moved.drafts.stationRadius, 'the record moved the field').toBe('8')
+    expect(moved.drafts.lineWidth).toBe('30')
+    expect(
+      viewForRecord({ stationRadius: 5 }, current, false).drafts.lineWidth,
+      'another project’s record',
+    ).toBe('7')
+  })
+
   it('keeps a choice waiting beside a number written by hand out of range, for the same project', () => {
     // Mutation: the record always taken - a rename or a theme pressed would
     // take the choice off the screen before the number is mended.

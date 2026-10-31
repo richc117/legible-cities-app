@@ -93,6 +93,8 @@ links are inline, with no images and no reference-style links.
   ring round its words, not across the whole column like a text field.
 - Opening a line's colour panel near the foot of the window no longer
   scrolls its colour chip out of sight.
+- A size typed in cell 04 just after choosing the map's theme is no longer
+  put back before it is taken.
 
 ### Security
 

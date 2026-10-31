@@ -346,10 +346,23 @@ export function viewOf(style: ProjectStyle, previous?: View): View {
  * so cannot be in the record, and taking the record would take the choice
  * off the screen (spec 034's edge case, "a choice made meanwhile is shown
  * and drawn with the fix"). Another project's record is always taken.
+ *
+ * A figure being typed and not yet committed is kept too, where the record
+ * still holds what the field was typed over (issue 659). A theme pressed
+ * comes back as a record with the style unchanged, and taking it put the
+ * field back under the person's hands, so the Enter that followed
+ * committed the old number and nothing was refused or drawn. Where the
+ * record has moved that field itself, the record's is shown.
  */
 export function viewForRecord(style: ProjectStyle, current: View, sameProject: boolean): View {
   if (sameProject && !drawable(current.style)) return current
-  return viewOf(style, current)
+  const view = viewOf(style, current)
+  if (!sameProject) return view
+  for (const key of FIGURE_KEYS) {
+    if (view.problems[key] !== undefined || style[key] !== current.style[key]) continue
+    if (isPending(current.style, current.drafts, key)) view.drafts[key] = current.drafts[key]
+  }
+  return view
 }
 
 /**
