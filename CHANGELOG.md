@@ -95,6 +95,8 @@ links are inline, with no images and no reference-style links.
   scrolls its colour chip out of sight.
 - A size typed in cell 04 just after choosing the map's theme is no longer
   put back before it is taken.
+- Moving the time of day in cell 03 just as a redraw ends is no longer
+  undone when the redrawn map arrives.
 
 ### Security
 

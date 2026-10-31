@@ -240,6 +240,39 @@ export function asDispatched(method: string, args: unknown[], remembered: Rememb
   return args
 }
 
+/**
+ * A seek a person asked for and the transport sent, and which one it was:
+ * the memory counts them, so a restore can tell one made since the page
+ * being left was read (`soughtSince`).
+ */
+export interface Sought {
+  at: number
+  count: number
+}
+
+/**
+ * Where a person moved the clock after the `since`th seek, or null where
+ * they have not.
+ *
+ * A run's end sends the frame to a new page, and the transport is offered
+ * again before that page has loaded and been given back (issue 660). A seek
+ * made in that beat reaches a frame between documents, which refuses it, or
+ * the page being left, or the new page just before the restore seeks it to
+ * where the old one was: lost, every way, while the control said the run had
+ * ended. `Viewer.tsx` notes the count as it reads the page being left, and a
+ * seek after it is what the new page is given back in place of the clock it
+ * read. Unlike a press during the run, which `transportRefusal` turns away,
+ * this is a position on the map that is arriving.
+ */
+export function soughtSince(sought: Sought | null, since: number): number | null {
+  return sought !== null && sought.count > since ? sought.at : null
+}
+
+/** The arguments of a restore's `seek`, the clock a person chose since laid over them. */
+export function asSought(method: string, args: unknown[], at: number | null): unknown[] {
+  return method === 'seek' && at !== null ? [at] : args
+}
+
 /** A second of the service day, inside the day the page says it has. */
 export function clampTo(bounds: ViewerBounds, seconds: number): number {
   if (!Number.isFinite(seconds)) return bounds.t0
@@ -301,12 +334,20 @@ export function pollsNow(open: boolean, held: string | null): boolean {
  * left out entirely, which `restoreCalls` reads as "not known": that is the
  * difference between a page left at its own defaults and one paused by this
  * and never started again.
+ *
+ * `sought` is the clock a person chose since the state was read
+ * (`soughtSince`), which is newer than the state's own and replaces it.
  */
-export function withRemembered(state: unknown, remembered: Remembered): ClaimedPageState {
+export function withRemembered(
+  state: unknown,
+  remembered: Remembered,
+  sought: number | null = null,
+): ClaimedPageState {
   const base: ClaimedPageState =
     state !== null && typeof state === 'object' ? { ...(state as ClaimedPageState) } : {}
   if (remembered.speed !== null) base.speed = remembered.speed
   if (remembered.playing !== null) base.playing = remembered.playing
+  if (sought !== null) base.now = sought
   return base
 }
 
@@ -344,6 +385,21 @@ export class TransportMemory {
     if (merged.speed === this.#state.speed && merged.playing === this.#state.playing) return
     this.#state = merged
     for (const listener of this.#listeners) listener(merged)
+  }
+
+  #sought: Sought | null = null
+
+  /** The last seek a person asked for, counted, or null before the first. */
+  get sought(): Sought | null {
+    return this.#sought
+  }
+
+  /**
+   * Remember a seek as it is sent, just before the call goes. Nothing
+   * renders from it, so no listener is told: it is read by a restore.
+   */
+  seek(at: number): void {
+    this.#sought = { at, count: (this.#sought?.count ?? 0) + 1 }
   }
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type JSX, type SyntheticEvent } from 'reac
 import type { ProjectRecord, Theme } from '../../shared/project/types'
 import { VIEWER_SANDBOX, readSeams, type ViewerRole } from '../../shared/viewer'
 import { themeAsItStands } from './themeMemory'
-import { transportFor, withRemembered } from './transportState'
+import { soughtSince, transportFor, withRemembered } from './transportState'
 import { wantedAddress } from './viewerAddress'
 import { giveBack } from './viewerGiveBack'
 import { restoreCalls } from './viewerRestore'
@@ -171,6 +171,11 @@ export default function Viewer({
   // The map's own state, read as the frame leaves a page and given back to
   // the page that comes next.
   const kept = useRef<unknown>(null)
+  // How many seeks cell 03 had sent when the page being left last answered
+  // what it shows: one after it is newer than anything that page said, and
+  // is what the next page is given back (`soughtSince`, issue 660). From the memory as it stands at mount, so a seek made on an
+  // earlier visit to the project is never given back to this one.
+  const keptSeeks = useRef(transportFor(project.id).sought?.count ?? 0)
   // Which navigation a restore belongs to. Bumped where the navigation is
   // decided and not where the new document lands, because the gap between
   // the two is exactly where a restore loop - up to seven awaited round
@@ -188,13 +193,21 @@ export default function Viewer({
   useEffect(() => {
     if (wanted === showing) return undefined
     let off = false
+    // The seeks counted as the page is asked, not as it answers: one sent
+    // after the ask may or may not be in the answer, and given back again
+    // it costs nothing. Kept only with an answer, as the state is, so a
+    // read that failed leaves the two describing the same page.
+    const asked = transportFor(project.id).sought?.count ?? 0
     // The state of the page being left. Neither a refusal nor a silence is
     // an answer: the frame may be mid-navigation from a change a moment
     // ago, and what was read before that is still the last thing anyone
     // knows the map was showing, so it is kept.
     void answerWithin(() => window.api.viewer.call(ROLE, 'state'), STATE_DEADLINE).then((state) => {
       if (off) return
-      if (state !== null) kept.current = state
+      if (state !== null) {
+        kept.current = state
+        keptSeeks.current = asked
+      }
       // The message is **not** cleared here. It was for a while, so that
       // a sentence about the page being left could not sit over the page
       // arriving - and that guarantees two reflows in the common case
@@ -208,7 +221,9 @@ export default function Viewer({
     return () => {
       off = true
     }
-  }, [wanted, showing])
+    // The project's id moves the wanted address with it, so naming it adds
+    // no run of its own.
+  }, [wanted, showing, project.id])
 
   // Attaching is what lets the privileged process hold this frame; it is
   // released when the project is left, so nothing is ever injected into a
@@ -232,6 +247,9 @@ export default function Viewer({
   const onLoad = (event: SyntheticEvent<HTMLIFrameElement>): void => {
     const mine = event.currentTarget.getAttribute('src') === showing
     const navigation = navigations.current
+    // The seeks counted when the page this navigation left was read, taken
+    // with the navigation itself, so a later one cannot move it underneath.
+    const since = keptSeeks.current
     probeFrame(project.id, ROLE).then(
       async () => {
         if (!mounted.current) return
@@ -258,9 +276,17 @@ export default function Viewer({
         // read from the memory the press writes the moment its record write
         // returns (`themeMemory.ts`), so whichever of the press and this
         // restore reaches the page last carries the same theme.
+        //
+        // And a seek made since the page being left was read goes in place
+        // of the clock that page said (issue 660): the transport is offered
+        // from the run's end, before this document had loaded, and a
+        // person's move in that beat is the newer word. Read again before
+        // each call, as the speed and the pause are.
         const memory = transportFor(project.id)
+        const sought = (): number | null => soughtSince(memory.sought, since)
         const themeNow = (): Theme => themeAsItStands(project.id, project.theme)
-        await giveBack(restoreCalls(withRemembered(kept.current, memory.snapshot), themeNow()), {
+        const composed = withRemembered(kept.current, memory.snapshot, sought())
+        await giveBack(restoreCalls(composed, themeNow()), {
           alive: () => navigation === navigations.current && mounted.current,
           // Read again one call before each is sent, rather than once for the
           // whole list: this loop is up to seven awaited round trips long and
@@ -270,6 +296,7 @@ export default function Viewer({
           // `asDispatched` and `asDispatchedTheme` are which of these calls
           // assert a state and which do not (`viewerGiveBack.ts`).
           remembered: () => memory.snapshot,
+          sought,
           theme: themeNow,
           send: (method, args) => window.api.viewer.call(ROLE, method, ...args),
         })

@@ -20,6 +20,7 @@ import {
   pollsNow,
   readBounds,
   readClock,
+  soughtSince,
   shownPlaying,
   shownSpeed,
   transportFor,
@@ -288,6 +289,17 @@ describe('a project’s memory of what the app told its page', () => {
     expect(heard).not.toHaveBeenCalled()
   })
 
+  it('counts the seeks a person asks for, and tells no listener of them (issue 660)', () => {
+    const memory = new TransportMemory()
+    const heard = vi.fn()
+    memory.subscribe(heard)
+    expect(memory.sought).toBeNull()
+    memory.seek(40_000)
+    memory.seek(41_000)
+    expect(memory.sought).toEqual({ at: 41_000, count: 2 })
+    expect(heard, 'nothing renders from it').not.toHaveBeenCalled()
+  })
+
   it('is one memory per project, and the same one every time', () => {
     // The component is rendered again on every poll; a fresh memory per
     // render would forget the pause a person made a second ago, and a
@@ -533,5 +545,29 @@ describe('when the page is polled', () => {
   it('asks again once the hold ends', () => {
     expect(pollsNow(true, held({ exporting: true }))).toBe(false)
     expect(pollsNow(true, held({ exporting: false }))).toBe(true)
+  })
+})
+
+describe('a seek made while a run’s page arrives (issue 660)', () => {
+  it('is the one after the count the page being left was read at, else nothing', () => {
+    // Mutation: any seek ever made given back - a scrub from minutes ago
+    // would pull a playing map back to it at every redraw.
+    expect(soughtSince(null, 0)).toBeNull()
+    expect(soughtSince({ at: 61_200, count: 3 }, 2)).toBe(61_200)
+    expect(soughtSince({ at: 61_200, count: 3 }, 3), 'made before the read').toBeNull()
+  })
+
+  it('takes the place of the clock the page being left said, and only then', () => {
+    const remembered = { speed: null, playing: false }
+    const calls = restoreCalls(withRemembered(STATE, remembered, 61_200), 'warm-dark')
+    expect(calls).toContainEqual({ method: 'seek', args: [61_200] })
+    expect(
+      restoreCalls(withRemembered(STATE, remembered), 'warm-dark'),
+      'none made: the page’s own clock',
+    ).toContainEqual({ method: 'seek', args: [STATE.now] })
+    expect(
+      restoreCalls(withRemembered(null, remembered, 61_200), 'warm-dark'),
+      'given back even where the page being left said nothing',
+    ).toContainEqual({ method: 'seek', args: [61_200] })
   })
 })
