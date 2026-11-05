@@ -127,6 +127,13 @@ export function validateEntry(entry) {
       problems.push(
         `"${field}" is not written as git lists it: no "./", "//", "/./" and no "/" or "/." at the end`,
       )
+    } else if (/[^\x20-\x7e]/.test(path)) {
+      // Git on a Mac composes a decomposed name it is handed (for `status`
+      // too) but lists an index committed elsewhere as it was written, so the
+      // tracked and the dirty checks could each see a different file.
+      problems.push(
+        `"${field}" has a character outside printable ASCII: name a file whose path is plain ASCII`,
+      )
     }
   }
   if (typeof entry.find === 'string' && entry.find === entry.replace) {

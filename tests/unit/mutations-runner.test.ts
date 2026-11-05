@@ -164,6 +164,23 @@ describe('an entry', () => {
     // A dot inside a name is not a "." part.
     expect(validateEntry(entry({ file: 'src/.config/a..b.ts' }))).toEqual([])
   })
+
+  it('is refused for a path with a character outside printable ASCII, composed or decomposed', async () => {
+    const { validateEntry } = await load()
+    // "cafe" with an acute accent, as one code point (NFC) and as two (NFD),
+    // and a tab. Git on a Mac would compose the second for one check and not
+    // the other.
+    const composed = `src/caf${String.fromCodePoint(0xe9)}.ts`
+    const decomposed = `src/cafe${String.fromCodePoint(0x301)}.ts`
+    for (const path of [composed, decomposed, 'src/a\tb.ts']) {
+      for (const field of ['file', 'test'] as const) {
+        const refusal = `"${field}" has a character outside printable ASCII: name a file whose path is plain ASCII`
+        const said = validateEntry(entry({ [field]: path }))
+        expect(said, `${field} ${JSON.stringify(path)}`).toEqual([refusal])
+      }
+    }
+    expect(validateEntry(entry({ file: 'src/a b~!@#$%^&()_+-=[]{};,.ts' }))).toEqual([])
+  })
 })
 
 describe('a "find"', () => {
@@ -517,6 +534,8 @@ describe('which files git tracks', () => {
     const added = spawnSync('git', ['update-index', '-z', '--index-info'], {
       cwd: dir,
       input: info,
+      timeout: 30_000,
+      windowsHide: true,
       env: env(),
     })
     expect(added.status, String(added.stderr)).toBe(0)

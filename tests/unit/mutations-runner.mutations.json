@@ -62,5 +62,21 @@
     "test": "tests/unit/mutations-runner.test.ts",
     "title": "takes a name that is not UTF-8 for none, never for one spelled with U+FFFD, and keeps a leading U+FEFF",
     "why": "A tracked name that begins with U+FEFF would lose it, and the untracked file named without it would pass as tracked."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "} else if (/[^\\x20-\\x7e]/.test(path)) {",
+    "replace": "} else if (false) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "is refused for a path with a character outside printable ASCII, composed or decomposed",
+    "why": "A decomposed name committed elsewhere would be found in the index as written, while git on a Mac composes it for status, so an edit to it would be invisible to the dirty-tree checks."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "if (!index.has(file)) {",
+    "replace": "if (!index.has(join(file).split(sep).join('/'))) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "looks a path up as written: one spelled otherwise than git lists it is not tracked",
+    "why": "The folding the first fix for issue 670 had: src/a.ts/. would be looked up as src/a.ts and pass as tracked, though git status names no file for it."
   }
 ]
