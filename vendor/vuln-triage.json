@@ -1,0 +1,344 @@
+{
+  "$comment": [
+    "One entry per id OSV returns and component it returns it for, read by",
+    "scripts/vuln-watch.mjs, which fails on an id with no entry here, or one",
+    "triaged for another component, version or severity, or rated below the",
+    "CVE record with no `rating_note`; on an open entry past its due date; and",
+    "on an entry whose id OSV no longer returns, until it is taken out",
+    "(SECURITY.md, \"Vulnerabilities in what the installers carry\"). These are",
+    "OSV matches read against how this app uses each component, not",
+    "vulnerabilities found in it.",
+    "",
+    "`osv_severity` is what OSV gives, as it gives it: the newest CVSS vector,",
+    "else the database's own rating, else null. `severity` is the highest",
+    "rating a CVE record of the id or its aliases gives that vector, its CNA's",
+    "or an ADP's; where OSV gives none (the PSF's own ids), the highest any of",
+    "them gives, and \"unrated\" only for an id with no CVE alias. `rating_note`,",
+    "needed where `severity` is below that rating or nothing rates the id (a",
+    "vector no record names, an alias with no record or no score), says how",
+    "the entry was rated instead.",
+    "",
+    "Verdicts: `not-affected`, the affected code is not in what ships (not",
+    "compiled, not linked, not bundled); `not-reachable`, it ships but nothing",
+    "the app runs reaches it in the way the advisory needs; `fixed-in-pin`, the",
+    "pinned version already carries the fix and OSV's match is stale; `open`,",
+    "it is reachable, or not yet shown not to be, and is due by `due`: 14 days",
+    "from `triaged` for critical or high, 60 for anything else."
+  ],
+  "entries": [
+    {
+      "id": "CVE-2024-3220",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "low",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:P/PR:L/UI:N/VC:N/VI:L/VA:L/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "mimetypes reads its default files, user-writable on Windows, only when it initialises on a first guess_type or the like, and nothing the engine runs makes one: schematic.serve imports it (through urllib3) and leaves it uninitialised, and urllib3 consults it only to label a file in a multipart upload, which the engine never sends.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-114583",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:N/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The flaw is in tarfile's tar extraction filter, reached only through extract and extractall. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-115557",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "critical",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H",
+      "verdict": "open",
+      "reason": "The compromised eMudhra intermediates chain to emSign Root TLS CA - G3, emSign Root CS CA - G3, AAA Certificate Services (through Sectigo's cross-signs) and emSign ECC Root CA - G3 (the disclosure's roots.json), and the locked certifi 2026.10.19 carries none of them (read at its 2026.10.19 tag, which restored only the unaffected emSign roots), so the engine's feed downloads, which requests verifies against that bundle, refuse such a chain by default. They reach it when REQUESTS_CA_BUNDLE, which the app passes to the engine, names a bundle that still carries one of those roots, and a certifi bump cannot close that path, since certifi holds roots, not a denylist of intermediates, and that bundle is not certifi's. OSV lists 3.12.0-3.12.15 as affected; 3.12.16, in python-build-standalone 20261026, carries the denylist, so the fix is a pin move.",
+      "triaged": "2026-11-04",
+      "due": "2026-11-18"
+    },
+    {
+      "id": "CVE-2026-12345",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:P/PR:N/UI:N/VC:N/VI:H/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "open",
+      "reason": "The engine's GIF export cleans up a tempfile.TemporaryDirectory for its palette, so the vulnerable cleanup runs; whether another account can rewrite it during cleanup, which needs a shared temporary folder (on Windows rmtree does not avoid symlink attacks), needs the maintainer's reading. Fixed in CPython 3.12.15.",
+      "triaged": "2026-11-04",
+      "due": "2027-01-03"
+    },
+    {
+      "id": "CVE-2026-15310",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "low",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:A/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The unbounded decompression is in zipfile's bzip2, LZMA and Zstandard readers. The engine reads a feed's members only through feeds._reader, which refuses any member that is not stored or deflated before zipfile decompresses it, extractall's reads included (READABLE, engine v0.21.1).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-15806",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:P/VC:H/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "Nothing the app runs uses urllib.request's HTTPPasswordMgr classes, where the flaw is: the engine fetches through requests, which keeps its own authentication, and no package it imports uses them (six only lists their moved names).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-17084",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The flaw is in stringprep's tables, which the stdlib idna codec consults only for a label that is not ASCII. requests encodes every host with the idna package (IDNA 2008) before urllib3 sees it, and urllib3 does the same for a proxy's host, so only ASCII reaches the codec or the sockets. That covers the engine's own stdlib call as well: _connect_checked in feeds.py runs host.encode(\"idna\") on urllib3's connection host, the name already encoded, only to refuse an empty or overlong label.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-19445",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "critical",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:H/VI:H/VA:L/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The use-after-free is on the server side of TLS, through sni_callback, and the advisory says TLS clients are not affected. The engine is a TLS client only: it serves JSON-RPC over stdio, and neither it nor any package it imports sets an sni_callback.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-19553",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "high",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "Hostname checking is skipped only when wrap_bio is given no server_hostname. urllib3 2.8.0, the runtime's one TLS client, passes the request's host to wrap_bio (its TLS-in-TLS path through an HTTPS proxy) as to wrap_socket, and the engine refuses an empty host before a request is made.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-82049",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "high",
+      "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The flaw is in tarfile's data and tar extraction filters, reached only through extract and extractall. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-87910",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:P/PR:L/UI:A/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The flaw is in the fallback tarfile takes for a link it cannot create, reached only through extract and extractall. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2025-2",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "low",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2024-3220, under the PSF's id. mimetypes reads its default files, user-writable on Windows, only when it initialises on a first guess_type or the like, and nothing the engine runs makes one: schematic.serve imports it (through urllib3) and leaves it uninitialised, and urllib3 consults it only to label a file in a multipart upload, which the engine never sends.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-36",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-15806, under the PSF's id. Nothing the app runs uses urllib.request's HTTPPasswordMgr classes, where the flaw is: the engine fetches through requests, which keeps its own authentication, and no package it imports uses them (six only lists their moved names).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-37",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-17084, under the PSF's id. Only ASCII host names reach the stdlib idna codec, which consults stringprep only for a label that is not ASCII: requests and urllib3 encode every host with the idna package first, and the engine's own host.encode(\"idna\") in feeds.py is given that encoded name.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-38",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-19672, under the PSF's id. The flaw is in tarfile's data and tar extraction filters, which create directories outside the destination on POSIX, reached only through extract and extractall. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-39",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "low",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-15310, under the PSF's id. The engine reads a feed's members only through feeds._reader, which refuses any member that is not stored or deflated before zipfile decompresses it, extractall's reads included (READABLE, engine v0.21.1).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-40",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-87910, under the PSF's id. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-41",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "high",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-82049, under the PSF's id. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-42",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": null,
+      "verdict": "open",
+      "reason": "The same issue as CVE-2026-12345, under the PSF's id. The engine's GIF export cleans up a tempfile.TemporaryDirectory for its palette, so the vulnerable cleanup runs; whether another account can rewrite it during cleanup, which needs a shared temporary folder (on Windows rmtree does not avoid symlink attacks), needs the maintainer's reading. Fixed in CPython 3.12.15.",
+      "triaged": "2026-11-04",
+      "due": "2027-01-03"
+    },
+    {
+      "id": "PSF-2026-43",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "critical",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-19445, under the PSF's id. The use-after-free is on the server side of TLS, through sni_callback, and the advisory says TLS clients are not affected. The engine is a TLS client only: it serves JSON-RPC over stdio, and neither it nor any package it imports sets an sni_callback.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-44",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "high",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-19553, under the PSF's id. Hostname checking is skipped only when wrap_bio is given no server_hostname. urllib3 2.8.0, the runtime's one TLS client, passes the request's host to wrap_bio (its TLS-in-TLS path through an HTTPS proxy) as to wrap_socket, and the engine refuses an empty host before a request is made.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-45",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "medium",
+      "osv_severity": null,
+      "verdict": "not-reachable",
+      "reason": "The same issue as CVE-2026-114583, under the PSF's id. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "PSF-2026-46",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "critical",
+      "osv_severity": null,
+      "verdict": "open",
+      "reason": "The same issue as CVE-2026-115557, under the PSF's id. The locked certifi 2026.10.19 carries none of the roots the compromised intermediates chain to, but REQUESTS_CA_BUNDLE, which the app passes to the engine, can name a bundle that does, and only the denylist in CPython 3.12.16 refuses the chain then. OSV lists 3.12.0-3.12.15 as affected.",
+      "triaged": "2026-11-04",
+      "due": "2026-11-18"
+    },
+    {
+      "id": "CVE-2026-107660",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:N/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-affected",
+      "reason": "The flaw is in libavformat/tls_mbedtls.c, and the pinned build has no TLS at all: it is configured --disable-network --disable-autodetect with only the file and pipe protocols, and the proof refuses a binary whose configuration differs (ADR-040).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-107675",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:P/PR:N/UI:P/VC:H/VI:L/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-affected",
+      "reason": "The flaw is in the libssh sftp protocol, which the pinned build does not compile: it enables only the file and pipe protocols, links no libssh and is configured --disable-network (ADR-040).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-107676",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "av_dynamic_hdr_plus_to_t35 writes HDR10+ metadata out, so what reaches it is an encoder or a muxer, and its only callers in FFmpeg's sources are the Matroska muxer and the libaom AV1 encoder (both at n9.0.1 too), neither of which the pinned build compiles: its muxers are mp4, gif, image2 and rawvideo, and its one external encoder is libx264. The function ships in libavutil, but nothing in the build calls it, and the frames the app hands ffmpeg are its own PNG or JPEG captures, which carry no HDR10+ side data.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-107677",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-affected",
+      "reason": "The loop is in the DASH demuxer, which the pinned build does not compile: its demuxers are image2, mov and gif alone (ADR-040).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-107678",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The mov demuxer that builds the pssh list is compiled in, but on the app's path ffmpeg reads only the PNG or JPEG frames the app captured, a palette the engine wrote and silent audio from lavfi. The one engine call that opens an MP4, export.poster for a contact sheet, is not reachable from schematic.serve, the only entry the app runs.",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-107696",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "high",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-affected",
+      "reason": "The loop is in RTSP, which the pinned build does not compile: it is configured --disable-network with only the file and pipe protocols and has no RTSP demuxer (ADR-040).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-76844",
+      "component": "zlib",
+      "version": "1.3.2",
+      "severity": "high",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:N/VI:H/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The overflow is in gz_write, after a failed write through gzwrite. Nothing that carries zlib 1.3.2 writes through the gz* file API: CPython on Windows compiles none of zlib's gz*.c files (PCbuild/pythoncore.vcxproj at v3.12.14), FFmpeg calls only deflate, inflate and uncompress, and LOOM only gzread (util::zreadAll at the pinned commit; the macOS builds of both import nothing else from libz).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-85091",
+      "component": "zlib",
+      "version": "1.3.2",
+      "severity": "high",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:N/VI:H/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The overflow is in gz_vacate, reached through gzprintf after a stalled gzwrite. Nothing that carries zlib 1.3.2 writes through the gz* file API: CPython on Windows compiles none of zlib's gz*.c files (PCbuild/pythoncore.vcxproj at v3.12.14), FFmpeg calls only deflate, inflate and uncompress, and LOOM only gzread (util::zreadAll at the pinned commit; the macOS builds of both import nothing else from libz).",
+      "triaged": "2026-11-04"
+    }
+  ]
+}

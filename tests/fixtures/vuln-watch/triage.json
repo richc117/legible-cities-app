@@ -1,0 +1,49 @@
+{
+  "$comment": [
+    "Four entries of vendor/vuln-triage.json, one for each id in osv.json, for tests/unit/vuln-watch.test.ts, which holds each to its committed entry while the committed triage still has it."
+  ],
+  "entries": [
+    {
+      "id": "CVE-2026-115557",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "critical",
+      "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H",
+      "verdict": "open",
+      "reason": "The compromised eMudhra intermediates chain to emSign Root TLS CA - G3, emSign Root CS CA - G3, AAA Certificate Services (through Sectigo's cross-signs) and emSign ECC Root CA - G3 (the disclosure's roots.json), and the locked certifi 2026.10.19 carries none of them (read at its 2026.10.19 tag, which restored only the unaffected emSign roots), so the engine's feed downloads, which requests verifies against that bundle, refuse such a chain by default. They reach it when REQUESTS_CA_BUNDLE, which the app passes to the engine, names a bundle that still carries one of those roots, and a certifi bump cannot close that path, since certifi holds roots, not a denylist of intermediates, and that bundle is not certifi's. OSV lists 3.12.0-3.12.15 as affected; 3.12.16, in python-build-standalone 20261026, carries the denylist, so the fix is a pin move.",
+      "triaged": "2026-11-04",
+      "due": "2026-11-18"
+    },
+    {
+      "id": "PSF-2026-46",
+      "component": "CPython",
+      "version": "3.12.14",
+      "severity": "critical",
+      "osv_severity": null,
+      "verdict": "open",
+      "reason": "The same issue as CVE-2026-115557, under the PSF's id. The locked certifi 2026.10.19 carries none of the roots the compromised intermediates chain to, but REQUESTS_CA_BUNDLE, which the app passes to the engine, can name a bundle that does, and only the denylist in CPython 3.12.16 refuses the chain then. OSV lists 3.12.0-3.12.15 as affected.",
+      "triaged": "2026-11-04",
+      "due": "2026-11-18"
+    },
+    {
+      "id": "CVE-2026-107677",
+      "component": "FFmpeg",
+      "version": "9.0.1",
+      "severity": "medium",
+      "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-affected",
+      "reason": "The loop is in the DASH demuxer, which the pinned build does not compile: its demuxers are image2, mov and gif alone (ADR-040).",
+      "triaged": "2026-11-04"
+    },
+    {
+      "id": "CVE-2026-76844",
+      "component": "zlib",
+      "version": "1.3.2",
+      "severity": "high",
+      "osv_severity": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:N/VI:H/VA:H/SC:N/SI:N/SA:N",
+      "verdict": "not-reachable",
+      "reason": "The overflow is in gz_write, after a failed write through gzwrite. Nothing that carries zlib 1.3.2 writes through the gz* file API: CPython on Windows compiles none of zlib's gz*.c files (PCbuild/pythoncore.vcxproj at v3.12.14), FFmpeg calls only deflate, inflate and uncompress, and LOOM only gzread (util::zreadAll at the pinned commit; the macOS builds of both import nothing else from libz).",
+      "triaged": "2026-11-04"
+    }
+  ]
+}

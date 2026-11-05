@@ -1,0 +1,245 @@
+{
+  "$comment": [
+    "What OSV answered on 2026-11-04 for four of the ids it returns for the pinned components, each record cut down to the fields scripts/vuln-watch.mjs reads and a few beside them, and which query returned which id; then, for each canary the script asks (CANARIES), the one id it expects among the many OSV returns. tests/unit/vuln-watch.test.ts answers the script from these through a stand-in fetch: no network."
+  ],
+  "answers": [
+    {
+      "query": {
+        "package": {
+          "ecosystem": "GIT",
+          "name": "https://github.com/python/cpython"
+        },
+        "version": "v3.12.14"
+      },
+      "ids": ["CVE-2026-115557", "PSF-2026-46"]
+    },
+    {
+      "query": {
+        "commit": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa"
+      },
+      "ids": ["CVE-2026-107677"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "GIT",
+          "name": "https://github.com/madler/zlib"
+        },
+        "version": "v1.3.2"
+      },
+      "ids": ["CVE-2026-76844"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "GIT",
+          "name": "https://github.com/madler/zlib"
+        },
+        "version": "v1.2.11"
+      },
+      "ids": ["CVE-2018-25032"]
+    },
+    {
+      "query": {
+        "commit": "cacf7f1d4e3d44d871b605da3b647f07d718623f"
+      },
+      "ids": ["CVE-2018-25032"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "PyPI",
+          "name": "requests"
+        },
+        "version": "2.19.1"
+      },
+      "ids": ["GHSA-x84v-xcm2-53pg"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "electron"
+        },
+        "version": "1.0.0"
+      },
+      "ids": ["GHSA-fjqr-fx3f-g4rv"]
+    }
+  ],
+  "vulns": {
+    "CVE-2026-76844": {
+      "id": "CVE-2026-76844",
+      "summary": "zlib 1.2.11 through 1.3.2 Heap Buffer Overflow via Stale gzwrite Pointer After Failed Write",
+      "details": "zlib 1.2.11 through 1.3.2 contains a heap buffer overflow: after an underlying write() fails, gz_write() returns without resetting strm.next_in, leaving it pointed at the caller's buffer. A later gz* write call then derives a position from the stale pointer and writes past a heap allocation; any write() failure reaches it, including EPIPE on a blocking descriptor, and in versions before 1.3.1.2 the failed write must be followed by a gzclearerr() call.",
+      "aliases": ["GHSA-g84c-rxfj-3j2c"],
+      "modified": "2026-10-28T11:17:48.991906765Z",
+      "published": "2026-08-24T13:12:01.148Z",
+      "severity": [
+        {
+          "type": "CVSS_V4",
+          "score": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:N/VI:H/VA:H/SC:N/SI:N/SA:N"
+        }
+      ],
+      "affected": [
+        {
+          "ranges": [
+            {
+              "type": "GIT",
+              "repo": "https://github.com/madler/zlib",
+              "events": [
+                {
+                  "introduced": "cacf7f1d4e3d44d871b605da3b647f07d718623f"
+                },
+                {
+                  "fixed": "df84af25dc1942490e1d1c899a07619152a46148"
+                }
+              ]
+            }
+          ],
+          "versions": ["v1.3.2", "v1.3.1.2", "v1.3.1"]
+        }
+      ],
+      "references": [
+        {
+          "type": "ADVISORY",
+          "url": "https://github.com/CVEProject/cvelistV5/tree/main/cves/2026/76xxx/CVE-2026-76844.json"
+        },
+        {
+          "type": "ADVISORY",
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-76844"
+        }
+      ]
+    },
+    "CVE-2026-115557": {
+      "id": "CVE-2026-115557",
+      "summary": "Distrust compromised intermediate certificates in ssl module",
+      "details": "Python has added a denylist for known compromised certificates to the \"ssl\" module to ensure user safety even without certificate revocation configured. Known compromised certificates will automatically be rejected regardless of the SSLContext policy configuration.",
+      "aliases": [
+        "BIT-libpython-2026-115557",
+        "BIT-python-2026-115557",
+        "BIT-python-min-2026-115557",
+        "PSF-2026-46"
+      ],
+      "modified": "2026-11-04T07:04:27.063292646Z",
+      "published": "2026-10-24T14:15:14.283Z",
+      "severity": [
+        {
+          "type": "CVSS_V4",
+          "score": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H"
+        }
+      ],
+      "affected": [
+        {
+          "ranges": [
+            {
+              "type": "GIT",
+              "repo": "https://github.com/python/cpython",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "21a50891ab4be2e9955239e625ae2b40c6b1854d"
+                }
+              ]
+            }
+          ],
+          "versions": ["v3.13.17", "v3.14.9", "v3.15.1"]
+        }
+      ],
+      "references": [
+        {
+          "type": "WEB",
+          "url": "http://www.openwall.com/lists/oss-security/2026/10/20/29"
+        },
+        {
+          "type": "WEB",
+          "url": "http://www.openwall.com/lists/oss-security/2026/10/24/5"
+        }
+      ]
+    },
+    "PSF-2026-46": {
+      "id": "PSF-2026-46",
+      "details": "Python has added a denylist for known compromised certificates to the \"ssl\" module to ensure user safety even without certificate revocation configured. Known compromised certificates will automatically be rejected regardless of the SSLContext policy configuration.",
+      "aliases": [
+        "BIT-libpython-2026-115557",
+        "BIT-python-2026-115557",
+        "BIT-python-min-2026-115557",
+        "CVE-2026-115557"
+      ],
+      "modified": "2026-10-30T20:55:55.849748987Z",
+      "published": "2026-10-24T14:15:14.283Z",
+      "affected": [
+        {
+          "ranges": [
+            {
+              "type": "GIT",
+              "repo": "https://github.com/python/cpython",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "fixed": "21a50891ab4be2e9955239e625ae2b40c6b1854d"
+                }
+              ]
+            }
+          ],
+          "versions": ["v3.13.17", "v3.14.9", "v3.15.1"]
+        }
+      ],
+      "references": [
+        {
+          "type": "WEB",
+          "url": "http://www.openwall.com/lists/oss-security/2026/10/20/29"
+        },
+        {
+          "type": "WEB",
+          "url": "https://github.com/python/cpython/pull/160042"
+        }
+      ]
+    },
+    "CVE-2026-107677": {
+      "id": "CVE-2026-107677",
+      "summary": "FFmpeg through 9.0.2 DASH Demuxer Infinite Loop via Empty SegmentTemplate Media",
+      "details": "FFmpeg through 9.0.2 contains a denial of service vulnerability in the DASH demuxer that allows attackers to trigger an infinite loop by supplying an empty SegmentTemplate media URL. Attackers can craft an .mpd manifest declaring SegmentTemplate media=\"\" so get_current_fragment() calls av_strireplace() with an empty search string, consuming CPU indefinitely.",
+      "modified": "2026-10-28T02:30:40.195323288Z",
+      "published": "2026-10-08T15:28:42.682Z",
+      "severity": [
+        {
+          "type": "CVSS_V4",
+          "score": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N"
+        }
+      ],
+      "affected": [
+        {
+          "ranges": [
+            {
+              "type": "GIT",
+              "repo": "https://git.ffmpeg.org/ffmpeg.git",
+              "events": [
+                {
+                  "introduced": "0"
+                },
+                {
+                  "last_affected": "946fcce07b6dcd0331c8cc609192aeff5e1924f8"
+                }
+              ]
+            }
+          ],
+          "versions": ["n9.0.2", "n9.0.1", "n9.0"]
+        }
+      ],
+      "references": [
+        {
+          "type": "WEB",
+          "url": "https://code.ffmpeg.org/FFmpeg/FFmpeg"
+        },
+        {
+          "type": "WEB",
+          "url": "https://ffmpeg.org/"
+        }
+      ]
+    }
+  }
+}

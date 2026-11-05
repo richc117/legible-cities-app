@@ -1,0 +1,354 @@
+[
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        note = 'not in the triage'\n",
+    "replace": "        continue\n",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "fails on an id the triage does not cover, and names it",
+    "why": "An id the triage has never seen passed over: OSV's new matches would never turn the weekly run red, which is the only notification there is."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      } else if (entry.verdict === 'open' && today > entry.due) {",
+    "replace": "      } else if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "fails on an open id past its due date, and not on the day it is due",
+    "why": "The due date ignored: an open id stays green for ever, and the fix budget is a number nobody is held to."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    return EXIT.unreachable\n",
+    "replace": "    return EXIT.clean\n",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never calls a network failure clean",
+    "why": "A run that never reached OSV exits as a clean one: the week OSV is down is the week nothing is watched, and the run says all is well."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (!response || !response.ok) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never calls a network failure clean",
+    "why": "An HTTP error read as an answer: a 503 whose body happens to parse would be judged as OSV's word on the components."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "results.length !== pending.length",
+    "replace": "false",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never calls a network failure clean",
+    "why": "A short answer taken whole: the queries OSV did not answer would read as components with no vulnerability."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    .filter((entry) => !(found.get(entry.id) ?? []).some((m) => m.component === entry.component))",
+    "replace": "    .filter(() => false)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "fails on a triaged id OSV no longer returns, and says to take it out",
+    "why": "A triaged id OSV has stopped returning goes unmentioned, so the triage keeps entries for fixes that have shipped and nobody is told to take them out."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        (e) => e.component === match.component && e.version === match.version,\n",
+    "replace": "        (e) => e.component === match.component,\n",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id triaged at another version as untriaged",
+    "why": "A verdict read against one version kept after the pin moves: a not-reachable judged on 3.12.14 would stand for whatever the runtime becomes."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      } else if (entry.osv_severity !== rated) {",
+    "replace": "      } else if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id OSV now rates otherwise as untriaged",
+    "why": "A re-rated id kept at its old rating: a medium raised to critical would keep its 60 days instead of 14."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      if (!('due' in entry)) say('is open and has no \"due\" date')\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an open entry with no due date, and a closed one with one",
+    "why": "An open entry with no due date accepted: it can never be overdue, so the budget never applies to it."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        else if (entry.due > latest) {",
+    "replace": "        else if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a due date past the budget for its severity",
+    "why": "A due date written past the budget accepted: a critical reachable id could be given a year."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    query: git('https://github.com/python/cpython', `v${python}`),",
+    "replace": "    query: git('https://github.com/python/cpython', python),",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "builds one query per component from the pins, sharing one for two pins that ask the same",
+    "why": "CPython asked about by its version rather than its tag: OSV's GIT records list tags, so the query matches nothing and the runtime's twenty-odd ids vanish from the watch."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  if (unknown.length > 0) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses pins that name a component the watch does not read, or lack a field it reads",
+    "why": "A component added to the pins without a query is let through, and the installers carry something the watch never asks about."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        next.push({ index, token: result.next_page_token })\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "follows OSV's pages, and asks again only for the query that has another",
+    "why": "Only OSV's first page read: a component with more ids than a page holds is judged on part of them."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    else found.push(...unknownPins(value[key], rule, at))",
+    "replace": "    else found.push()",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a key the pins gain inside a component the watch reads",
+    "why": "Only the top level of the pins checked: a library added as ffmpeg.libvpx, loom_windows_static.libpng or python.openssl ships unwatched, and the run stays green."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    found.push({ path: `python.targets.${target}.licences (LICENSE.zlib.txt)`, version: match[1] })",
+    "replace": "    void match",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "watches the Windows runtime's zlib at the version its licence record names",
+    "why": "The runtime's zlib read from its licence record and never asked about: python312.dll's zlib drops out of the watch with no refusal."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      else\n        throw new Error(",
+    "replace": "      else if (false)\n        throw new Error(",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a requirements line it cannot read as a pin",
+    "why": "A requirements line in another form skipped in silence: a package pinned with >= or a URL drops out of the watch while the lock still ships it."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    for (const match of found.get(id)) {",
+    "replace": "    for (const match of found.get(id).slice(-1)) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id returned for two components as untriaged unless each has its entry",
+    "why": "One component of an id judged for all: an id triaged for zlib and returned for CPython too passes on the zlib entry, and the CPython reading is never made."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  if (RANK[entry.severity] < RANK[source.rating]) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id the triage rates below the CVE record, with no note saying why, as untriaged",
+    "why": "A rating below the CVE record accepted without a word: a critical written as medium takes 60 days instead of 14, and nothing says it was a choice."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (given === null || given.startsWith('CVSS:')) rateFrom.set(id, cveIdsOf(details[id]))",
+    "replace": "    if (false) rateFrom.set(id, cveIdsOf(details[id]))",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id the triage rates below the CVE record, with no note saying why, as untriaged",
+    "why": "The CVE record never read: the rating the triage gives a vector is checked against nothing."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (held > 0) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never takes an answer that drops every id of a triaged component for a clean one",
+    "why": "An answer with every id of a component gone taken as a fix: a broken OSV, or a change in how it matches a GIT tag, turns the run green with the triage moved to \"no longer returned\"."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (!(heard[index] ?? []).includes(canary.expect)) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never takes an answer whose canaries are silent for a clean one",
+    "why": "A silent canary ignored: OSV stops matching PyPI versions, the packages, which the triage holds nothing for, read as clean, and the run is green."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  const wait = Math.min(limits.timeoutMs, left)",
+    "replace": "  const wait = left",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "gives each request its own time limit, against a fetch that never answers",
+    "why": "No limit per request: one wedged request holds the whole run until its deadline, and every request after it gets nothing."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        fetchImpl(url, { ...init, signal: controller.signal }),\n        expired,\n",
+    "replace": "        fetchImpl(url, { ...init, signal: controller.signal }),\n",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "gives each request its own time limit, against a fetch that never answers",
+    "why": "The limit left to the fetch honouring its signal: a request that ignores the abort hangs the run past every limit, and the job is cancelled with nothing said."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  const left = limits.deadline - Date.now()",
+    "replace": "  const left = Infinity",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "stops at its own deadline, inside the workflow job's timeout",
+    "why": "No deadline for the run: twenty slow pages and a record each outlast the job's ten minutes, and GitHub cancels it with no summary and no exit status of the watch's own."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "judgement.overdue.length > 0 || judgement.dropped.length > 0",
+    "replace": "judgement.overdue.length > 0",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "fails on a triaged id OSV no longer returns, and says to take it out",
+    "why": "A triaged id OSV stops returning passed over: an answer missing one of CPython's twenty-odd ids, with the canaries answering, exits 0 and calls clean what it could not vouch for."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (given === null || given.startsWith('CVSS:')) rateFrom.set(id, cveIdsOf(details[id]))",
+    "replace": "    if (given?.startsWith('CVSS:')) rateFrom.set(id, cveIdsOf(details[id]))",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "holds an id OSV gives no severity to the rating of its CVE alias",
+    "why": "An id OSV gives no severity never read against its CVE alias: were OSV to return only the PSF's id for a critical CVE, it would sit at unrated with 60 days instead of 14."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    return { rating: best.rating, by: `the CVE record of its alias ${best.id}` }",
+    "replace": "    return { rating: 'unrated', by: 'OSV' }",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "holds an id OSV gives no severity to the rating of its CVE alias",
+    "why": "The alias read and its rating thrown away: the same 60 days for a critical."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    const rule = Object.hasOwn(shape, key) ? shape[key] : shape[ANY]",
+    "replace": "    const rule = Object.hasOwn(shape, key) ? shape[key] : KNOWN",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a library a target's licence record or configure line gains",
+    "why": "The per-target maps taken whole: a library a target's licence record gains, LICENSE.openssl-3.txt with its version, ships unwatched and unrefused."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      if (!FFMPEG_ENABLES.includes(name)) found.push(`--enable-${name} (${at}.configure)`)",
+    "replace": "      if (false) found.push(`--enable-${name} (${at}.configure)`)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a library a target's licence record or configure line gains",
+    "why": "FFmpeg's configure lines unread: a build that adds --enable-libdav1d ships a library no query asks about."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    const library = unlisted['LICENSE.zlib.txt']?.library\n",
+    "replace": "    const library = unlisted['LICENSE.zlib.txt']?.library\n    if (library === undefined) continue\n",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "watches the Windows runtime's zlib at the version its licence record names",
+    "why": "A zlib licence record that names no version skipped as though it were absent: the runtime's zlib drops out of the watch the day the record changes shape."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        if (!SAFE_ID.test(vuln.id) || vuln.id === '.' || vuln.id === '..') {",
+    "replace": "        if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an id it would not put in a URL",
+    "why": "An id taken as OSV wrote it into the URL of the record read next: '../x' reads another path of the API than the record asked for."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  const pattern = /^CVE-\\d{4}-\\d{4,}$/",
+    "replace": "  const pattern = /CVE-\\d{4}-\\d{4,}/",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes a CVE id only when it is one, whole",
+    "why": "An alias that only contains a CVE id taken for one: 'CVE-2026-12345/../../x' goes into the CVE service's URL as written."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      .match(/[.!?][)\"'`]*(?=\\s+[A-Za-z0-9_`\"'(]|$)/g) ?? []",
+    "replace": "      .match(/[.!?][)\"'`]*(?=\\s+[A-Z0-9_`\"'(]|$)/g) ?? []",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "counts a sentence that begins with a name in lower case",
+    "why": "A sentence that begins with 'requests' or 'pandas' not counted: a reason of four sentences passes as three."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      if (!FFMPEG_ENABLES.includes(name)) found.push(`--enable-${name} (${at}.configure)`)",
+    "replace": "      if (!FFMPEG_ENABLES.includes(name) && name.startsWith('lib')) found.push(`--enable-${name} (${at}.configure)`)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an FFmpeg configure line that could link a library the watch does not ask about",
+    "why": "Only --enable-lib* options read: --enable-gnutls, --enable-openssl or --enable-lzma links a library no query asks about, and the run passes."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      if (!line.includes(` ${option} `)) found.push(`no ${option} (${at}.configure)`)",
+    "replace": "      if (false) found.push(`no ${option} (${at}.configure)`)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an FFmpeg configure line that could link a library the watch does not ask about",
+    "why": "A line without --disable-autodetect taken: configure links bzlib, lzma, iconv or SDL2 from the runner with no option naming them."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      found.push(`${linked} (${at}.configure)`)",
+    "replace": "      void linked",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an FFmpeg configure line that could link a library the watch does not ask about",
+    "why": "A library linked by hand taken: --extra-libs='-lssl' links OpenSSL with no --enable- option to refuse."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (!FFMPEG_ZLIB.includes(entry?.zlib)) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an FFmpeg configure line that could link a library the watch does not ask about",
+    "why": "A target's zlib that is neither the static build of ffmpeg.zlib nor the system's taken: a zlib of another version ships unwatched."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      if (SYSTEM_ZLIB.test(target)) continue\n      throw new Error(",
+    "replace": "      continue\n      throw new Error(",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "watches the Windows runtime's zlib at the version its licence record names",
+    "why": "A runtime whose licence record stops naming its zlib skipped: python-build-standalone naming zlib in its metadata would drop python312.dll's zlib from the watch with no refusal."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (unread.length > 0) {",
+    "replace": "    if (unread.length === read.length) return { rating: 'unrated', by: 'OSV' }\n    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "asks for a note where the CVE record of an alias is missing or unscored",
+    "why": "An alias whose CVE record is missing or rejected read as no alias at all: any rating, unrated included, passes with no note."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  return [...new Set(ids.filter((id) => typeof id === 'string' && pattern.test(id)))]",
+    "replace": "  return [...new Set(ids.filter((id) => typeof id === 'string' && pattern.test(id)))].slice(0, 1)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes the highest rating of every CVE alias, and of every container in each",
+    "why": "Only the first CVE alias read: an id whose second alias is rated high held to the first's medium."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  const containers = [cveRecord?.containers?.cna, ...(Array.isArray(adp) ? adp : [])]",
+    "replace": "  const containers = [cveRecord?.containers?.cna]",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes the highest rating of every CVE alias, and of every container in each",
+    "why": "The CNA's ratings alone read: an ADP's high above the CNA's medium never held."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": " || vuln.id === '..'",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an id it would not put in a URL",
+    "why": "A bare '..' taken: encodeURIComponent leaves it as it is, and vulns/.. reads the API's own path instead of a record."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": " || vuln.id === '.'",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses an id it would not put in a URL",
+    "why": "A bare '.' taken: encodeURIComponent leaves it as it is, and vulns/. reads the vulns path itself instead of a record."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      .replace(/\\b(?:e\\.g\\.|i\\.e\\.|etc\\.(?=\\s+[a-z]))/g, '')\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "counts \"e.g.\", \"i.e.\" and a mid-sentence \"etc.\" as part of a sentence",
+    "why": "An abbreviation counted as a sentence: a reason of one sentence with an \"e.g.\" in it reads as two."
+  }
+]
