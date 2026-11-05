@@ -228,9 +228,10 @@ export class Sidecar {
    * seen, until it is empty or the last wait after SIGKILL has lapsed (issue
    * 640). What an engine starts - a `loom`, a `topo`, an `ffmpeg` - is in
    * its group and does not end with it, so one that crashed, or left on its
-   * own, may leave work running that still writes into the home. A restart,
-   * a retry and a quit wait for these, so none of it runs beside the next
-   * engine on the same home, or outlives the app. An engine that outlived
+   * own, may leave work running that still writes into the home. A restart
+   * and a quit wait for these, and a person's retry is refused while there
+   * are any, as still stopping, so none of it runs beside the next engine on
+   * the same home, or outlives the app. An engine that outlived
    * the kill (`unended`) has none until it exits, and a quit does not wait
    * for that. POSIX only (`watchGroup`).
    */
@@ -995,13 +996,16 @@ export class Sidecar {
    * and one more `terminateMs` to see it go.
    *
    * The group's id is the engine's pid, which the system gives to no other
-   * process while the group has a member, and each signal follows a look
-   * that found the group still there. What is left is the gap between two
-   * looks, `GROUP_POLL_MS` or longer while the main process is busy: if the
-   * group empties in it and a new process takes its id as the leader of a
-   * group of its own, the next look takes that group for the engine's. Node
-   * has no handle on a process group that would close that gap, short of
-   * native code.
+   * process while the group has a member, and each signal is sent straight
+   * after a look that found the group still there, its line logged after
+   * it. What is left are the moments the app does not see the group: from
+   * the reap to the first look, when the exits of other children reaped
+   * with it may be handled first; between two looks, `GROUP_POLL_MS` or
+   * longer while the main process is busy; and between a look and the
+   * signal after it. If the group empties in one of them and a new process
+   * takes its id as the leader of a group of its own, the next look, or the
+   * signal, takes that group for the engine's. Node has no handle on a
+   * process group that would close these, short of native code.
    */
   private async endGroup(group: number, reported: Promise<void>): Promise<void> {
     const deadline = performance.now() + STDIO_CLOSE_MS
@@ -1009,16 +1013,16 @@ export class Sidecar {
       if (!this.groupHolds(group)) return
     }
     if (!this.groupHolds(group)) return
-    this.log('the engine exited and what it started is still running; terminating its group')
     this.signalGroup(group, 'SIGTERM')
-    if (await this.groupEmptied(group, this.bounds.terminateMs)) {
+    this.log('the engine exited and what it started is still running; terminating its group')
+    if ((await this.groupEmptied(group, this.bounds.terminateMs)) || !this.groupHolds(group)) {
       this.log("the engine's group ended on terminate")
       return
     }
+    this.signalGroup(group, 'SIGKILL')
     this.log(
       `the engine's group did not end on terminate within ${this.bounds.terminateMs} ms; killing it`,
     )
-    this.signalGroup(group, 'SIGKILL')
     if (await this.groupEmptied(group, this.bounds.terminateMs)) {
       this.log("the engine's group ended on kill")
       return

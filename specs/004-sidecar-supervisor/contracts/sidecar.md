@@ -118,10 +118,12 @@ A restart's wait begins only once this is done, `retry()` is refused while
 it runs, and `stop()` waits for it, including for a group added while it
 waits (an engine that outlived the kill, exiting at last). The group's id
 is the engine's pid, which no other process takes while the group has a
-member, and each signal follows a look that found the group there; the one
-gap in which the id could pass to another process unseen is the time
-between two looks, 25 ms or more while the main process is busy, which Node
-cannot close without native code.
+member, and each signal is sent straight after a look that found the group
+there. The id could still pass to another process unseen in the moments
+the app does not see the group: from the reap to the first look, when the
+exits of other children reaped with it may be handled first; between two
+looks, 25 ms or more while the main process is busy; and between a look
+and the signal after it. Node cannot close these without native code.
 
 On Windows nothing is done: there is no group, and the engine's pid has
 gone by the time its exit is seen, so `taskkill /T` has no tree to walk.

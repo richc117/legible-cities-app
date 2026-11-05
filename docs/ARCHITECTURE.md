@@ -326,17 +326,19 @@ meanwhile (the engine is "still stopping"), and a quit waits for it, so
 nothing an exited engine started runs beside the next one on the same home
 or outlives the app. An engine that outlived the kill (issue 562) is the
 exception: the quit does not wait for it, and what it left is ended only if
-it exits while the app is still running. Each signal follows a look that
-found the group still there, and the group's id is the engine's pid, which
-no other process takes while the group has a member; what remains is the
-time between two looks, in which the group could empty and its id pass to
-a new group the next look would take for the engine's, and Node cannot
-close that without native code. On Windows nothing of this is done,
+it exits while the app is still running. Each signal is sent straight after
+a look that found the group still there, and the group's id is the
+engine's pid, which no other process takes while the group has a member.
+What remains are the moments the app does not see the group - from the
+reap to the first look, between two looks, and between a look and its
+signal - in which the group could empty and its id pass to a new group
+that the next look or signal would take for the engine's; Node cannot
+close them without native code. On Windows nothing of this is done,
 because nothing can be: there is no group, and by the time the exit is seen
 the engine's pid has gone, so `taskkill /T` has no tree to walk. What the
-engine started
-runs to its own end there; reaching it would take the engine putting its
-children in a job object, which is a change to the engine.
+engine started runs to its own end there; reaching it would take the
+engine putting its children in a job object, which is a change to the
+engine.
 
 The state is one line in the interface's header, a polite live region.
 Contract: `specs/004-sidecar-supervisor/contracts/sidecar.md`.

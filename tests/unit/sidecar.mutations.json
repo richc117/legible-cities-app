@@ -110,5 +110,13 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "has a quit wait too for a group added while it waits",
     "why": "A wait that takes the groups there when it began (issue 640): an engine that outlived the kill and exits meanwhile leaves its group unwaited, and the quit resolves with it still running."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    while ((await inTime(reported, GROUP_POLL_MS)) === LAPSED && performance.now() < deadline) {\n      if (!this.groupHolds(group)) return\n    }\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has read the last stderr line written before the pipe closed",
+    "why": "The group signalled as the exit is seen, not once it is reported (issue 640): a child of the engine still holding its stderr pipe is ended before it writes its last line, and the log loses what the engine's side printed on its way out."
   }
 ]
