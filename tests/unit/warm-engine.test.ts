@@ -6,10 +6,10 @@
 // bytecode: the app's own environment, in the stand-in's `__pycache__`.
 // Needs a Python 3 on the PATH; skips, saying so, without one.
 
-import { readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { DEFAULT_BOUNDS } from '../../src/main/sidecar'
 import { FAKE_ENGINE, findPython } from '../support/python'
 import { READY_DEADLINE_MS, WINDOW_MARGIN_MS } from '../support/ready'
@@ -17,8 +17,20 @@ import { WARM_PREFIX, warmEngine } from '../support/warm-engine'
 
 const PYTHON = findPython()
 
-/** The folders of the warm-up's own kind in the temporary folder. */
-const homes = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith(WARM_PREFIX))
+/**
+ * The folder every warm-up here makes its home in, this file's own. The
+ * temporary folder is shared with every process on the machine that runs a
+ * warm-up (another test run, a lane's `npm test`, the e2e global setup), so
+ * listing it for "what this call left behind" also lists the home of a
+ * warm-up that is merely running (issue 648). The name must not begin with
+ * the warm-up's own prefix, or another checkout's run of the old test, which
+ * lists the temporary folder, would take this folder for a home.
+ */
+const PARENT = mkdtempSync(join(tmpdir(), 'legible-cities-warm_test-'))
+afterAll(() => rmSync(PARENT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
+
+/** The warm-up homes in this file's folder. */
+const homes = (): string[] => readdirSync(PARENT).filter((name) => name.startsWith(WARM_PREFIX))
 
 /** The stand-in's compiled module, wherever the interpreter keeps it: the app's environment sets no cache prefix. */
 const cache = join(FAKE_ENGINE, 'schematic', '__pycache__')
@@ -34,6 +46,8 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
   it('has the stand-in answer engine.info, compiles it where a launch reads it and removes its own home', async () => {
     // Only the compiled stand-in is removed, so this run's claim is its own
     // and not an earlier run's; another test compiling it meanwhile is harmless.
+    // This file is not meant to run twice at once in one checkout: a second
+    // run removes the compiled stand-in under this one (issue 648).
     for (const name of compiled()) {
       try {
         rmSync(join(cache, name), { force: true })
@@ -43,7 +57,7 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
       }
     }
     const before = homes()
-    const { ms, leftover } = await warmEngine(PYTHON as string)
+    const { ms, leftover } = await warmEngine(PYTHON as string, { parent: PARENT })
     expect(Number.isInteger(ms) && ms > 0).toBe(true)
     expect(leftover).toBeUndefined()
     expect(compiled(), "serve.<tag>.pyc in the stand-in's own __pycache__").toHaveLength(1)
@@ -58,13 +72,15 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
     // promise settles once the child has closed, and the home goes then, so
     // a home still there would be a child still running.
     const before = homes()
-    await expect(warmEngine(PYTHON as string, { deadlineMs: 1 })).rejects.toThrow(/within 1 ms/)
+    await expect(warmEngine(PYTHON as string, { deadlineMs: 1, parent: PARENT })).rejects.toThrow(
+      /within 1 ms/,
+    )
     expect(homes().filter((h) => !before.includes(h))).toEqual([])
   })
 
   it('rejects with the reason when there is no such interpreter, and leaves no home', async () => {
     const before = homes()
-    await expect(warmEngine('no-such-interpreter-529')).rejects.toThrow()
+    await expect(warmEngine('no-such-interpreter-529', { parent: PARENT })).rejects.toThrow()
     expect(homes().filter((h) => !before.includes(h))).toEqual([])
   })
 
@@ -74,6 +90,7 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
     const before = homes()
     const refused: string[] = []
     const { ms, leftover } = await warmEngine(PYTHON as string, {
+      parent: PARENT,
       remove: (path) => {
         refused.push(path)
         throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' })
@@ -86,13 +103,14 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
     await expect(
       warmEngine(PYTHON as string, {
         deadlineMs: 1,
+        parent: PARENT,
         remove: () => {
           throw new Error('EPERM')
         },
       }),
     ).rejects.toThrow(/within 1 ms/)
     for (const h of homes().filter((name) => !before.includes(name)))
-      rmSync(join(tmpdir(), h), { recursive: true, force: true })
+      rmSync(join(PARENT, h), { recursive: true, force: true })
   })
 
   // POSIX alone can ignore a terminate; on Windows the terminate is already forceful.
@@ -104,6 +122,7 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
       const started = Date.now()
       await warmEngine(PYTHON as string, {
         control: { ignore_shutdown: true, ignore_sigterm: true },
+        parent: PARENT,
         shutdownMs: 200,
         terminateMs: 200,
       })

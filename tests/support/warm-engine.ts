@@ -48,6 +48,13 @@ export interface WarmOptions {
   control?: Record<string, unknown>
   /** Removes the warm-up's engine home; a test makes it fail. */
   remove?: (path: string) => void
+  /**
+   * The folder the engine home is made in (default: the temporary folder). A
+   * test that lists what a warm-up leaves behind gives it a folder of its
+   * own, since the temporary folder is shared with every other process
+   * running a warm-up (issue 648).
+   */
+  parent?: string
 }
 
 /**
@@ -69,7 +76,7 @@ export function warmEngine(python: string, options: WarmOptions = {}): Promise<W
   const shutdownMs = options.shutdownMs ?? DEFAULT_BOUNDS.shutdownMs
   const terminateMs = options.terminateMs ?? DEFAULT_BOUNDS.terminateMs
   const remove = options.remove ?? removeFolder
-  const home = mkdtempSync(join(tmpdir(), WARM_PREFIX))
+  const home = mkdtempSync(join(options.parent ?? tmpdir(), WARM_PREFIX))
   /** Remove the home; a failure is reported, never thrown. */
   const cleanUp = (): string | undefined => {
     try {
