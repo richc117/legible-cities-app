@@ -65,19 +65,29 @@ each one, whether the app is affected and why.
 
 The run fails when OSV returns an id the triage does not cover, or covers
 for another component, version or severity, or rates below its CVE record
-with no note saying why, and when an open id is past its due date. A red
-run is the notice; nothing else is sent. It also fails, saying that
-nothing was judged, when OSV or the CVE records cannot be reached, when the
-run outlasts its own deadline (eight minutes, inside the job's ten), and
-when OSV's answer cannot be trusted: a few canaries, old versions OSV has
+with no note saying why; when an open id is past its due date; and when a
+triaged id is no longer returned, until its entry is taken out, since OSV
+answering part of what it did looks the same as a fix. A red run is the
+notice; nothing else is sent. It also fails, saying that nothing was
+judged, when OSV or the CVE records cannot be reached, when the run
+outlasts its own deadline (eight minutes, inside the job's ten), and when
+OSV's answer cannot be trusted: a few canaries, old versions OSV has
 matched for years, are asked beside the components, and one that comes
 back silent, or a component the triage holds ids for that comes back with
 none at all, means OSV's matching changed rather than the components went
-clean. Every run lists what it does not watch, and why: the libraries
-inside the Python runtime (OpenSSL, SQLite and the rest), whose versions
-the pins do not record; Chromium and Electron's own FFmpeg, which reach the
-app as Electron releases; and the libraries the Windows LOOM tools link
-without a pinned version.
+clean.
+
+Every run lists what it does not watch, and why: the libraries
+inside the Python runtime, OpenSSL, SQLite and the rest, whose versions the
+pins do not record, and Expat and libmpdec, whose versions the Windows
+build's licence records name but whose matches are not yet triaged; bzip2
+1.0.8 in the Windows LOOM tools, which is pinned but which OSV lists only
+by commit; Chromium, and Electron's own FFmpeg with everything it links,
+which reach the app as Electron releases; and the GCC and mingw-w64
+runtime libraries the Windows LOOM tools link without a pinned version. A
+component added to the pins, or a library added to a target's licence
+record or FFmpeg's configure line, refuses the run until the watch asks
+about it or this list says why it does not.
 
 GitHub turns off a scheduled workflow in a public repository after 60 days
 with no activity in the repository, and from then on there is no run to
@@ -106,9 +116,10 @@ and the id) and decide from evidence:
 Then add an entry: the id; the component and version the run printed (an
 id returned for two components has an entry for each);
 `osv_severity` as the run printed it, or null where OSV gives none, and
-`severity`, the rating the CVE record gives that vector (`unrated` where
-OSV gives none), with a `rating_note` saying why where it is lower or
-nothing rates the vector; a verdict, `not-affected` (not in what ships),
+`severity`, the rating the CVE record gives that vector (where OSV gives
+none, the highest rating the CVE record of its alias gives, else
+`unrated`), with a `rating_note` saying why where it is lower or nothing
+rates the vector; a verdict, `not-affected` (not in what ships),
 `not-reachable` (ships, but nothing the app runs reaches it as the
 advisory needs), `fixed-in-pin` or `open`; a reason of one to three
 sentences grounded in how the app uses the component; the day; and, for an
@@ -118,7 +129,7 @@ maintainer's reading: a wrong `not-reachable` is worse than an honest
 `open`. The unit tests refuse an entry that is malformed, dated past its
 budget, or names a version the pins no longer carry, so moving a pin means
 rereading its entries in the same pull request. An id the run lists as no
-longer returned is taken out.
+longer returned is taken out, once the advisory or the pin shows why.
 
 ## Hygiene this repository practises
 
