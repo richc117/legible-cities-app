@@ -173,24 +173,34 @@ describe('where a known folder can start', () => {
   it('makes a line full of them cost linear time', () => {
     // A line of the resources folder percent-encoded, bare and quoted: before
     // `%2F` ended a scan, each occurrence walked to the end of the line, and
-    // eight times the line took about sixty-four times as long.
+    // the time grew with the square of the line.
     for (const unit of [` ${encoded(resources, '%2F')}`, ` '${encoded(resources, '%2F')}`]) {
-      const time = (bytes: number): number => {
-        const line = unit.repeat(Math.ceil(bytes / unit.length))
-        withoutKnownPaths(line, [resources], 'darwin')
-        let least = Infinity
-        for (let run = 0; run < 5; run += 1) {
-          const started = performance.now()
-          withoutKnownPaths(line, [resources], 'darwin')
-          least = Math.min(least, performance.now() - started)
-        }
-        return least
+      const line = (bytes: number): string => unit.repeat(Math.ceil(bytes / unit.length))
+      const once = (text: string): number => {
+        const started = performance.now()
+        withoutKnownPaths(text, [resources], 'darwin')
+        return performance.now() - started
       }
-      const small = time(32 * 1024)
-      const large = time(8 * 32 * 1024)
-      // Linear gives about 8 and quadratic about 64; both sides scale with
-      // the machine's load, so the ratio does not.
-      expect(large / small, unit).toBeLessThan(20)
+      // Sixteen times the line: linear gives a ratio of about 16, quadratic
+      // about 256, and the bound sits four times from each. The two sizes
+      // take turns within each of five rounds, so load that comes and goes
+      // over a round falls on both alike, and the least of each is kept; a
+      // slice of the processor taken from every long run while a short one
+      // escapes is what the margin of four is for. Eight times the
+      // line, a bound of 20 and the sizes timed one after the other left a
+      // linear scan a margin of two and a half, and a macOS runner once came
+      // to 20.3 (issue 658).
+      const short = line(32 * 1024)
+      const long = line(16 * 32 * 1024)
+      once(short)
+      once(long)
+      let small = Infinity
+      let large = Infinity
+      for (let round = 0; round < 5; round += 1) {
+        small = Math.min(small, once(short))
+        large = Math.min(large, once(long))
+      }
+      expect(large / small, unit).toBeLessThan(64)
     }
   }, 180_000)
 })
