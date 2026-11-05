@@ -1,5 +1,6 @@
 // The browser project's dependency settings (issue 654). CI always starts
-// with an empty Vite cache, so nothing there would notice either one going.
+// with an empty Vite cache, so nothing there would notice `force` going; the
+// JSX runtime's going CI would notice, and this names why it is there.
 
 import { describe, expect, it } from 'vitest'
 import config from '../../vitest.config'

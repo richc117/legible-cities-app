@@ -67,8 +67,8 @@ export default defineConfig({
         //   import) makes the bundle and the reload mid-run, and every
         //   browser file fails. `force` scans the browser test files and
         //   bundles what they import on every start of Vitest (a watch
-        //   session's reruns keep its first scan), about a fifth of a
-        //   second, so no list of packages is kept by hand to go stale. The
+        //   session's reruns keep its first scan), in under half a second,
+        //   so no list of packages is kept by hand to go stale. The
         //   cost: two Vitest processes in one checkout can remove each
         //   other's browser deps folder (the second start's forced removal),
         //   so do not run watch mode beside `npm test` in one checkout.
