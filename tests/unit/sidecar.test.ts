@@ -1430,16 +1430,19 @@ describe('an engine start and a reset of its data', () => {
       restartDelaysMs: [],
     })
     sidecar.start()
-    await eventually(() => sidecar.state.state === 'stopped', 5_000, 'the give-up')
-    expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
-    expect(sidecar.inFlight).toBe(0)
-    expect(sidecar.groupsBeingEnded).toBe(0)
-    expect(sidecar.stillEnding).toBe(true)
-    expect(engineWorkRefusal(sidecar), 'the reset').toBe(RESET_REFUSALS.stillStopping)
-    expect(sidecar.retry(), 'a retry').toBe(RETRY_REFUSALS.stillStopping)
-    expect(spawned, 'no engine beside the one being ended').toHaveLength(1)
-
-    spawned[0]!.exit()
+    try {
+      await eventually(() => sidecar.state.state === 'stopped', 5_000, 'the give-up')
+      expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+      expect(sidecar.inFlight).toBe(0)
+      expect(sidecar.groupsBeingEnded).toBe(0)
+      expect(sidecar.stillEnding).toBe(true)
+      expect(engineWorkRefusal(sidecar), 'the reset').toBe(RESET_REFUSALS.stillStopping)
+      expect(sidecar.retry(), 'a retry').toBe(RETRY_REFUSALS.stillStopping)
+      expect(spawned, 'no engine beside the one being ended').toHaveLength(1)
+    } finally {
+      // Whatever failed above, no engine is left for the stop to wait out.
+      for (const fake of spawned) if (fake.child.signalCode === null) fake.exit()
+    }
     await eventually(() => !sidecar.stillEnding, 5_000, 'the engine to have been ended')
     expect(engineWorkRefusal(sidecar)).toBeNull()
   })
