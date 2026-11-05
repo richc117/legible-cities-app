@@ -1045,6 +1045,92 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
     expect(h.sidecar.state.state).toBe('stopped')
   })
+
+  // What an engine starts is in its process group and does not end with it
+  // (issue 640): an engine that exits by itself, whether it crashed or
+  // stopped as asked, may leave a tool running that still writes into its
+  // home. The stand-in leaves a child that sleeps and exits.
+  //
+  // Not on Windows, where there is no group: by the time the exit is seen
+  // the engine's pid is gone, `taskkill /T` cannot walk the tree from it,
+  // and the supervisor does nothing there, as `launch` says.
+  describe.skipIf(process.platform === 'win32')('what an engine left running as it exited', () => {
+    const leftPid = (h: Harness): number =>
+      Number(readFileSync(join(h.home, 'fake-engine.left.pid'), 'utf8'))
+
+    // A child the supervisor did not end (a mutation, a failure) is ended
+    // here, before the harness's own stop and the removal of its home.
+    afterEach(() => {
+      for (const h of running) {
+        if (!existsSync(join(h.home, 'fake-engine.left.pid'))) continue
+        const pid = leftPid(h)
+        if (pid > 0 && alive(pid)) process.kill(pid, 'SIGKILL')
+      }
+    })
+
+    it('ends it on SIGTERM, well within terminateMs, then restarts', async () => {
+      // A terminate long enough that the kill it escalates to cannot be what
+      // ended the child in the time allowed here.
+      const h = harness({ leave_child: true }, { terminateMs: 4_000 })
+      h.sidecar.start()
+      await h.until((s) => s.state === 'restarting')
+      const child = leftPid(h)
+      expect(child).toBeGreaterThan(0)
+      await eventually(() => !alive(child), 2_000, 'the child it left to end on SIGTERM')
+      // It was still there when the exit was reported, so this was the supervisor.
+      expect(h.log).toContain(
+        'the engine exited and what it started is still running; terminating its group',
+      )
+      expect(h.log).toContain("the engine's group ended on terminate")
+      await h.until(ready)
+    })
+
+    it('kills it within terminateMs of the terminate when it ignores SIGTERM, before the next engine starts', async () => {
+      const h = harness({ leave_child: 'ignores-sigterm' }, { terminateMs: 1_000 })
+      // Whether the child was still running as the next engine started.
+      const besideTheNext: boolean[] = []
+      h.sidecar.onState((s) => {
+        if (s.state === 'starting' && s.attempt === 2) besideTheNext.push(alive(leftPid(h)))
+      })
+      h.sidecar.start()
+      // The terminate is sent as the exit is reported, just before this state.
+      await h.until((s) => s.state === 'restarting')
+      const child = leftPid(h)
+      await eventually(() => !alive(child), 1_000 + 2_000, 'the child it left to end on SIGKILL')
+      await h.until(ready)
+      expect(besideTheNext, 'no child of the old engine runs beside the new one').toEqual([false])
+      expect(h.log).toContain(
+        "the engine's group did not end on terminate within 1000 ms; killing it",
+      )
+      expect(h.log).toContain("the engine's group ended on kill")
+    })
+
+    it('refuses a retry, and a quit waits, while what an engine it gave up on left is ended', async () => {
+      // No restarts: the first exit is the give-up.
+      const h = harness(
+        { leave_child: 'ignores-sigterm' },
+        { terminateMs: 1_000, restartDelaysMs: [] },
+      )
+      h.sidecar.start()
+      await h.until((s) => s.state === 'stopped')
+      const child = leftPid(h)
+      expect(alive(child), 'it ignores the terminate, so it is there for terminateMs').toBe(true)
+      expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
+      expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
+      await h.sidecar.stop()
+      expect(alive(child), 'the quit waited for it to be ended').toBe(false)
+    })
+
+    it('ends, before a quit resolves, what an engine left as it stopped as asked', async () => {
+      const h = harness({ leave_child_on_shutdown: 'ignores-sigterm' }, { terminateMs: 1_000 })
+      h.sidecar.start()
+      await h.until(ready)
+      await h.sidecar.stop()
+      expect(h.log).toContain('ended on request (quit)')
+      expect(alive(leftPid(h)), 'nothing it started outlives the quit').toBe(false)
+      expect(h.log).toContain("the engine's group ended on kill")
+    })
+  })
 })
 
 // A child that outlives the last wait after SIGKILL (issue 562): one in

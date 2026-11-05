@@ -21,6 +21,14 @@ writes before the app starts (every key optional):
                       has a number to be held to
     spawn_child       true: start a child that sleeps (pid in fake-engine.child.pid), as
                       the engine starts a layout tool; ended on engine.shutdown
+    leave_child       true or "ignores-sigterm": once engine.info is answered, start a child
+                      that sleeps (pid in fake-engine.left.pid), in the stand-in's own process
+                      group as the engine's tools are, and exit with code 3 without ending it,
+                      as an engine that crashed mid-run would (issue 640). Once per home: a
+                      restart finds the file and runs as usual. "ignores-sigterm": the child
+                      ignores SIGTERM (POSIX), so only SIGKILL ends it
+    leave_child_on_shutdown  the same, true or "ignores-sigterm", but the child is started on
+                      engine.shutdown and left running as the stand-in exits as asked
     shutdown_delay_ms wait this long after answering engine.shutdown before exiting, so a
                       test can tell a quit that waited for the stop from one that did not
     ignore_sigterm    true: ignore SIGTERM (POSIX), so only SIGKILL ends it
@@ -1657,11 +1665,17 @@ class Engine:
                 sys.stderr.write("fake engine: exiting after the handshake as told\n")
                 sys.stderr.flush()
                 os._exit(3)
+            if self.control.get("leave_child") and self.leave_child(self.control["leave_child"]):
+                sys.stderr.write("fake engine: exiting with a child left running, as told\n")
+                sys.stderr.flush()
+                os._exit(3)
             return True
         if method == "engine.shutdown":
             write({"jsonrpc": "2.0", "id": msg_id, "result": {"ok": True}})
             if self.control.get("ignore_shutdown"):
                 return True
+            if self.control.get("leave_child_on_shutdown"):
+                self.leave_child(self.control["leave_child_on_shutdown"])
             time.sleep(self.control.get("shutdown_delay_ms", 0) / 1000)
             if self.child is not None:
                 self.child.kill()
@@ -1879,6 +1893,27 @@ class Engine:
             else:
                 if until is not None and msg_id not in self.cancelled:
                     return False
+        return True
+
+    def leave_child(self, how) -> bool:
+        """Start a child that sleeps, in this process's group as the engine's
+        tools are, and leave it to the caller, which exits without ending it
+        (``leave_child``, ``leave_child_on_shutdown``; issue 640). False, and
+        nothing started, once a child has been left in this home, so a
+        restart runs as usual."""
+        left = HOME / "fake-engine.left.pid"
+        if left.exists():
+            return False
+        if how == "ignores-sigterm" and os.name != "nt":
+            # Ignored here, before the child starts, so it ignores SIGTERM from
+            # its first instruction: SIG_IGN is kept across exec, and a SIGTERM
+            # that came while the child was still starting Python would
+            # otherwise end it. This process exits next, so it matters not here.
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(600)"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        write_page(left, str(child.pid))
         return True
 
     def end_children(self) -> None:
