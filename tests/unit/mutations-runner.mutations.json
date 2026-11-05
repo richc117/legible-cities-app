@@ -1,0 +1,82 @@
+[
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "const problems = checkEntry(repo, item.entry, tracked)",
+    "replace": "const problems = checkEntry(repo, item.entry)",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "reads the index once for --check, however many entries there are",
+    "why": "--check would start a git for every entry again, which outgrew the unit suite's 30 s on a Windows runner (issue 670)."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": ".filter((item) => checkEntry(repo, item.entry, tracked).length === 0)",
+    "replace": ".filter((item) => checkEntry(repo, item.entry).length === 0)",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "reads the index once to look at the entries before a run, then asks if the tree is clean",
+    "why": "A run's look at every entry before it starts would start a git for each of them again."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "if (!index.has(file)) {",
+    "replace": "if (index.size === 0) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "refuses a file git does not track, untracked or ignored, and leaves it as it was",
+    "why": "An untracked or ignored file, which nothing else holds a copy of, would be mutated, and its original lost if the restore failed."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "const result = git(repo, ['ls-files', '-z'], 'buffer')\n  if (result.error || result.status !== 0) {",
+    "replace": "const result = git(repo, ['ls-files', '-z'], 'buffer')\n  if (false) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "refuses every entry, saying why, where git cannot list the files it tracks",
+    "why": "A git that could not list the index would read as an index with nothing in it: every file called untracked, and what went wrong never said."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "index = trackedFiles(repo)",
+    "replace": "index = globalThis.lcTrackedFiles ??= trackedFiles(repo)",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "is read from the index at each call, so a file added between two calls is seen",
+    "why": "A list of tracked files kept for the life of the process would call a file added since untracked, and one removed since tracked."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "} else if (path.split('/').some((part) => part === '' || part === '.')) {",
+    "replace": "} else if (false) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "is refused for a path not written as git lists it: no \"./\", \"//\" or \"/./\", nothing after a last \"/\" but a name",
+    "why": "A path such as src/a.ts/. would reach the file system as src/a.ts but git as no file at all, so an edit to it would be invisible to the dirty-tree checks."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })",
+    "replace": "new TextDecoder('utf-8', { ignoreBOM: true })",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "takes a name that is not UTF-8 for none, never for one spelled with U+FFFD, and keeps a leading U+FEFF",
+    "why": "A tracked name that is not UTF-8 would be read as one spelled with U+FFFD, and an untracked file of that spelling would pass as tracked."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })",
+    "replace": "new TextDecoder('utf-8', { fatal: true })",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "takes a name that is not UTF-8 for none, never for one spelled with U+FFFD, and keeps a leading U+FEFF",
+    "why": "A tracked name that begins with U+FEFF would lose it, and the untracked file named without it would pass as tracked."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "} else if (/[^\\x20-\\x7e]/.test(path)) {",
+    "replace": "} else if (false) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "is refused for a path with a character outside printable ASCII, composed or decomposed",
+    "why": "A decomposed name committed elsewhere would be found in the index as written, while git on a Mac composes it for status, so an edit to it would be invisible to the dirty-tree checks."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "if (!index.has(file)) {",
+    "replace": "if (!index.has(join(file).split(sep).join('/'))) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "looks a path up as written: one spelled otherwise than git lists it is not tracked",
+    "why": "The folding the first fix for issue 670 had: src/a.ts/. would be looked up as src/a.ts and pass as tracked, though git status names no file for it."
+  }
+]

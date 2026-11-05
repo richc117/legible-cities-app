@@ -220,7 +220,9 @@ A test whose comment names the fault it guards ("Mutation: the parts compared
 as strings") can have that fault written down as an entry in
 `tests/unit/<name>.mutations.json` beside it: the `file` (tracked by git, not a
 link), a `find` that occurs once in it, what it `replace`s with, the `test` file
-and the `title` that must go red, and a `why`. `node scripts/mutations.mjs
+and the `title` that must go red, and a `why`. The `file` and the `test` are
+written as `git ls-files` lists them: from the top, with `/`, no `./`, `//` or
+`/` at the end, and in printable ASCII only. `node scripts/mutations.mjs
 --check` validates every entry without running anything, and `npm test` runs
 it, so a renamed test or a moved line fails there.
 
