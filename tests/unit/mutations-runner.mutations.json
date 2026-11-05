@@ -17,7 +17,7 @@
   },
   {
     "file": "scripts/mutations.mjs",
-    "find": "if (!index.has(indexPath(file))) {",
+    "find": "if (!index.has(file)) {",
     "replace": "if (index.size === 0) {",
     "test": "tests/unit/mutations-runner.test.ts",
     "title": "refuses a file git does not track, untracked or ignored, and leaves it as it was",
@@ -25,8 +25,8 @@
   },
   {
     "file": "scripts/mutations.mjs",
-    "find": "const result = git(repo, ['ls-files', '-z'])\n  if (result.error || result.status !== 0) {",
-    "replace": "const result = git(repo, ['ls-files', '-z'])\n  if (false) {",
+    "find": "const result = git(repo, ['ls-files', '-z'], 'buffer')\n  if (result.error || result.status !== 0) {",
+    "replace": "const result = git(repo, ['ls-files', '-z'], 'buffer')\n  if (false) {",
     "test": "tests/unit/mutations-runner.test.ts",
     "title": "refuses every entry, saying why, where git cannot list the files it tracks",
     "why": "A git that could not list the index would read as an index with nothing in it: every file called untracked, and what went wrong never said."
@@ -41,10 +41,26 @@
   },
   {
     "file": "scripts/mutations.mjs",
-    "find": "return posix.normalize(slashed)",
-    "replace": "return slashed",
+    "find": "} else if (path.split('/').some((part) => part === '' || part === '.')) {",
+    "replace": "} else if (false) {",
     "test": "tests/unit/mutations-runner.test.ts",
-    "title": "takes a path as git took it: \"./\", \"/./\" and \"//\" fold, case does not",
-    "why": "A path git folds, such as ./src/a.ts, would be called untracked though git tracks it, which it was not before issue 670."
+    "title": "is refused for a path not written as git lists it: no \"./\", \"//\" or \"/./\", nothing after a last \"/\" but a name",
+    "why": "A path such as src/a.ts/. would reach the file system as src/a.ts but git as no file at all, so an edit to it would be invisible to the dirty-tree checks."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })",
+    "replace": "new TextDecoder('utf-8', { ignoreBOM: true })",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "takes a name that is not UTF-8 for none, never for one spelled with U+FFFD, and keeps a leading U+FEFF",
+    "why": "A tracked name that is not UTF-8 would be read as one spelled with U+FFFD, and an untracked file of that spelling would pass as tracked."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })",
+    "replace": "new TextDecoder('utf-8', { fatal: true })",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "takes a name that is not UTF-8 for none, never for one spelled with U+FFFD, and keeps a leading U+FEFF",
+    "why": "A tracked name that begins with U+FEFF would lose it, and the untracked file named without it would pass as tracked."
   }
 ]

@@ -73,10 +73,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, isAbsolute, join, posix, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
+import { TextDecoder } from 'node:util'
 
 const FIELDS = ['file', 'find', 'replace', 'test', 'title', 'why']
 // The suite's `testTimeout` is 30 s; a run of one file starts Vitest, loads
@@ -120,6 +121,12 @@ export function validateEntry(entry) {
       problems.push(`"${field}" uses a backslash: write the path with forward slashes`)
     else if (isAbsolute(path) || /^[A-Za-z]:/.test(path) || path.split('/').includes('..')) {
       problems.push(`"${field}" is not a path inside the repository: write it relative to the top`)
+    } else if (path.split('/').some((part) => part === '' || part === '.')) {
+      // Git folds some of these and not others (`a/./b` names a/b, `a/b/.`
+      // names nothing), and the file is looked up and asked about as written.
+      problems.push(
+        `"${field}" is not written as git lists it: no "./", "//", "/./" and no "/" or "/." at the end`,
+      )
     }
   }
   if (typeof entry.find === 'string' && entry.find === entry.replace) {
@@ -264,10 +271,10 @@ function gitEnv() {
 // --literal-pathspecs as a flag: GIT_LITERAL_PATHSPECS is a GIT_ variable and
 // is dropped with the rest, and a file called `*.ts` must not name its
 // neighbours.
-function git(repo, args) {
+function git(repo, args, encoding = 'utf8') {
   return spawnSync('git', ['--literal-pathspecs', ...args], {
     cwd: repo,
-    encoding: 'utf8',
+    encoding,
     windowsHide: true,
     timeout: GIT_TIMEOUT_MS,
     // The whole index is read at once (trackedFiles), and the default 1 MiB
@@ -279,7 +286,8 @@ function git(repo, args) {
 
 function gitWhy(result) {
   if (result.error) return result.error.message
-  return (result.stderr || `exit status ${result.status}`).trim()
+  // A Buffer where git ran with 'buffer', and an empty one is truthy.
+  return String(result.stderr ?? '').trim() || `exit status ${result.status}`
 }
 
 /** Every `*.mutations.json` under tests/unit, as repository-relative paths, sorted. */
@@ -326,28 +334,28 @@ export function loadEntries(repo) {
  * cannot say: a failure is a refusal, never an index read as empty or full.
  */
 export function trackedFiles(repo) {
-  const result = git(repo, ['ls-files', '-z'])
+  const result = git(repo, ['ls-files', '-z'], 'buffer')
   if (result.error || result.status !== 0) {
     throw new Error(
       `git could not list the files it tracks (${gitWhy(result)}): refusing, since a file ` +
         'it does not track has nothing else holding its original',
     )
   }
-  return new Set(result.stdout.split('\0').filter((path) => path !== ''))
+  const files = new Set()
+  const out = result.stdout
+  for (let start = 0, end = out.indexOf(0); end !== -1; start = end + 1, end = out.indexOf(0, start)) {
+    try {
+      files.add(STRICT_UTF8.decode(out.subarray(start, end)))
+    } catch {
+      // Not UTF-8, so no entry (JSON, so Unicode) can name it. Read loosely,
+      // it would be a name spelled with U+FFFD, and pass for another file.
+    }
+  }
+  return files
 }
 
-/**
- * `file` as the index spells it, folded as git folds a pathspec before it
- * looks, which is what `ls-files --error-unmatch -- <file>` did before
- * issue 670: `./`, `/./` and `//` collapse, and on Windows a backslash is a
- * separator. Case is kept, as git keeps it even where core.ignorecase is
- * set. validateEntry has refused a backslash, an absolute path and `..` by
- * the time an entry's file gets here.
- */
-function indexPath(file) {
-  const slashed = process.platform === 'win32' ? file.replaceAll('\\', '/') : file
-  return posix.normalize(slashed)
-}
+// A leading U+FEFF is part of a name, not a mark to drop.
+const STRICT_UTF8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 /**
  * What is wrong with `file` as something to write to and put back: it is
@@ -385,7 +393,9 @@ export function fileProblems(repo, file, tracked = undefined) {
       return [`"file" ${file} cannot be checked: ${error.message}`]
     }
   }
-  if (!index.has(indexPath(file))) {
+  // As written: validateEntry has refused every other spelling of a path,
+  // and one git would not list is not in the index, so it is refused here.
+  if (!index.has(file)) {
     return [
       `"file" ${file} is not tracked by git (it is untracked or ignored), so nothing else holds its original: ` +
         'commit it, or name a tracked file',

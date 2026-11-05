@@ -150,6 +150,20 @@ describe('an entry', () => {
     }
     expect(validateEntry(entry({ test: 'tests\\unit\\a.test.ts' }))).toHaveLength(1)
   })
+
+  it('is refused for a path not written as git lists it: no "./", "//" or "/./", nothing after a last "/" but a name', async () => {
+    const { validateEntry } = await load()
+    // Git folds some of these and not others: "src/a.ts/." names no file.
+    for (const path of ['./src/a.ts', 'src//a.ts', 'src/./a.ts', 'src/a.ts/.', 'src/a.ts/']) {
+      for (const field of ['file', 'test'] as const) {
+        expect(validateEntry(entry({ [field]: path })), `${field} ${path}`).toEqual([
+          `"${field}" is not written as git lists it: no "./", "//", "/./" and no "/" or "/." at the end`,
+        ])
+      }
+    }
+    // A dot inside a name is not a "." part.
+    expect(validateEntry(entry({ file: 'src/.config/a..b.ts' }))).toEqual([])
+  })
 })
 
 describe('a "find"', () => {
@@ -472,17 +486,48 @@ describe('which files git tracks', () => {
     expect(fileProblems(dir, 'src/new.ts', trackedFiles(dir))).toEqual([])
   })
 
-  it('takes a path as git took it: "./", "/./" and "//" fold, case does not', async () => {
+  it('looks a path up as written: one spelled otherwise than git lists it is not tracked', async () => {
     const { fileProblems } = await load()
     const { dir } = repository({ 'src/a.ts': 'x\n' })
-    for (const file of ['./src/a.ts', 'src/./a.ts', 'src//a.ts']) {
-      expect(fileProblems(dir, file), file).toEqual([])
+    // Each names src/a.ts to the file system; git folds only some of them.
+    // An entry never gets here with one: validateEntry refuses it first.
+    for (const file of ['./src/a.ts', 'src/./a.ts', 'src//a.ts', 'src/a.ts/.']) {
+      expect(fileProblems(dir, file), file).toEqual([
+        expect.stringMatching(/ is not tracked by git \(it is untracked or ignored\)/),
+      ])
     }
     // Missing on a file system that minds case, untracked on one that does not.
     expect(fileProblems(dir, 'SRC/a.ts')).toHaveLength(1)
-    // A separator on Windows, as git reads it there; part of a name elsewhere.
-    // An entry never gets here with one: validateEntry refuses it first.
-    expect(fileProblems(dir, 'src\\a.ts')).toEqual(POSIX ? ['"file" src\\a.ts does not exist'] : [])
+    // Untracked on Windows, where it names src/a.ts; missing elsewhere.
+    expect(fileProblems(dir, 'src\\a.ts')).toHaveLength(1)
+  })
+
+  it('takes a name that is not UTF-8 for none, never for one spelled with U+FFFD, and keeps a leading U+FEFF', async () => {
+    const { fileProblems, trackedFiles } = await load()
+    const { dir, put } = repository({ 'src/a.ts': 'x\n', 'src/\u00e9.ts': 'x\n' })
+    // Into the index without a file, so on any file system: "lib/<0xFF>.ts"
+    // and "<U+FEFF>c.ts".
+    const blob = git(dir, 'hash-object', '-w', 'src/a.ts')
+    const info = Buffer.concat([
+      Buffer.from(`100644 ${blob}\tlib/`),
+      Buffer.from([0xff]),
+      Buffer.from('.ts\0'),
+      Buffer.from(`100644 ${blob}\t\ufeffc.ts\0`),
+    ])
+    const added = spawnSync('git', ['update-index', '-z', '--index-info'], {
+      cwd: dir,
+      input: info,
+      env: env(),
+    })
+    expect(added.status, String(added.stderr)).toBe(0)
+    // What a loose read of each would pass for, untracked.
+    put('lib/\ufffd.ts', 'x\n')
+    put('c.ts', 'x\n')
+    expect(fileProblems(dir, 'lib/\ufffd.ts')).toEqual([
+      expect.stringMatching(/ is not tracked by git/),
+    ])
+    expect(fileProblems(dir, 'c.ts')).toEqual([expect.stringMatching(/ is not tracked by git/)])
+    expect([...trackedFiles(dir)].sort()).toEqual(['src/a.ts', 'src/\u00e9.ts', '\ufeffc.ts'])
   })
 
   it('refuses, and says why, where git cannot list what it tracks', async () => {
@@ -513,8 +558,10 @@ describe("this repository's own mutations files", () => {
       timeout: 20_000,
       env: env(),
     })
-    expect(result.stdout + result.stderr).toMatch(/entries checked, all well formed/)
-    expect(result.status, result.stdout + result.stderr).toBe(0)
+    // A child killed at its 20 s says so only in `error`.
+    const said = result.stdout + result.stderr + String(result.error ?? '')
+    expect(said).toMatch(/entries checked, all well formed/)
+    expect(result.status, said).toBe(0)
   })
 })
 
