@@ -1,0 +1,18 @@
+[
+  {
+    "file": "vitest.config.ts",
+    "find": "optimizeDeps: { force: true, include: ['react/jsx-dev-runtime'] },",
+    "replace": "optimizeDeps: { include: ['react/jsx-dev-runtime'] },",
+    "test": "tests/unit/vitest-config.test.ts",
+    "title": "bundles its dependencies on every start, so a cache from an earlier run cannot make it reload mid-run",
+    "why": "The browser project without force: a kept cache that lacks a new import makes the page reload under every browser file, and CI, which starts cold, would not notice."
+  },
+  {
+    "file": "vitest.config.ts",
+    "find": "optimizeDeps: { force: true, include: ['react/jsx-dev-runtime'] },",
+    "replace": "optimizeDeps: { force: true, include: [] },",
+    "test": "tests/unit/vitest-config.test.ts",
+    "title": "lists the JSX runtime the scan cannot see",
+    "why": "The JSX runtime dropped from the include list: the scan cannot see it, so it is found late and every browser file fails to load."
+  }
+]
