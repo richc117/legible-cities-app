@@ -8,24 +8,31 @@
 // it (the file python.requirements.sha256 pins). Each becomes one OSV query
 // (`watchList`): a commit where the pins name one, a version of a GIT
 // repository or of a PyPI or npm package where they name a version. They
-// go to https://api.osv.dev/v1/querybatch, a page at a time, and every id
-// it returns is read in full from /v1/vulns/<id>. The ids are then compared
-// with vendor/vuln-triage.json (`judge`), which holds one entry per id: the
-// component and version it matched, the severity OSV gives as OSV gives it
-// (`osv_severity`) and the rating read from it (`severity`), a verdict
-// (`not-affected`, `not-reachable`, `fixed-in-pin` or `open`), a reason, the
-// day it was triaged and, for an open one, the day it is due.
+// go to https://api.osv.dev/v1/querybatch, a page at a time, with a few
+// canaries (`CANARIES`): old versions OSV has long matched, one per kind of
+// query, whose silence means OSV's matching has changed, not that the
+// components are clean. Every id the components return is read in full
+// from /v1/vulns/<id>, and the rating of the vector OSV gives it from the
+// CVE record (https://cveawg.mitre.org/api/cve/<id>) that rates it. The ids
+// are then compared with vendor/vuln-triage.json (`judge`), which holds an
+// entry per id and component: the version it matched, the severity OSV
+// gives as OSV gives it (`osv_severity`) and the rating read from it
+// (`severity`), a verdict (`not-affected`, `not-reachable`, `fixed-in-pin`
+// or `open`), a reason, the day it was triaged and, for an open one, the
+// day it is due; `rating_note` where the rating is not the one the CVE
+// record gives.
 //
 // The table it prints, and appends to --summary when given (the workflow
 // passes $GITHUB_STEP_SUMMARY), has:
 //
-// - the ids OSV returns that the triage does not cover: new ones, and ones
-//   triaged for another component or version, or under another severity,
-//   since a verdict holds for what it was read against;
+// - the ids OSV returns that the triage does not cover: new ones, ones
+//   triaged for another component or version or under another severity,
+//   since a verdict holds for what it was read against, and ones rated
+//   below the CVE record's rating with no note saying why;
 // - the open ids past their due date;
 // - the triaged ids OSV no longer returns, to be taken out of the triage;
 // - the open ids within their budget, the closed ones by verdict, what was
-//   asked, and what is not watched and why (`UNWATCHED`).
+//   asked, the canaries, and what is not watched and why (`UNWATCHED`).
 //
 // The fix budget (issue 557): medium or above within 60 days, critical or
 // high in a reachable path within 14. An open entry is reachable or not yet
@@ -35,9 +42,13 @@
 //
 // Exit status: 0 when every id OSV returns is triaged and no open one is past
 // its due date; 1 when one is untriaged or overdue; 2 when the arguments,
-// the pins or the triage cannot be read or are malformed; 3 when OSV could
-// not be asked or answered something unreadable. A network failure is never
-// reported clean: nothing was judged.
+// the pins, the requirements or the triage cannot be read or are malformed;
+// 3 when OSV or the CVE records could not be asked, answered something
+// unreadable, or answered in a way that cannot be trusted (`distrust`: a
+// silent canary, or no id at all for a component the triage holds ids for).
+// None of those is reported clean: nothing was judged. The whole run stops
+// at its own deadline (`RUN_DEADLINE_MS`), inside the workflow's timeout, so
+// a slow OSV ends in that status rather than in a cancelled job.
 //
 // Every decision is a function the unit test calls with OSV's answers as
 // fixtures (tests/unit/vuln-watch.test.ts); only `fetchOsv` talks to the
@@ -47,11 +58,15 @@
 import { appendFileSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import process from 'node:process'
+import { clearTimeout, setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 export const OSV_API = 'https://api.osv.dev'
+
+/** Where a CVE record is read, for the rating its CNA gives a vector. */
+export const CVE_API = 'https://cveawg.mitre.org/api/cve'
 
 /** The Python packages the runtime carries, beside the pins file. */
 export const REQUIREMENTS = 'python-requirements.txt'
@@ -62,29 +77,135 @@ export const VERDICTS = ['not-affected', 'not-reachable', 'fixed-in-pin', 'open'
 
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'unrated']
 
+/** How the severities order, for "rated below". */
+const RANK = { unrated: 0, low: 1, medium: 2, high: 3, critical: 4 }
+
 /** Days from triage to due, for an open entry, by severity. */
 export const BUDGET_DAYS = { critical: 14, high: 14, medium: 60, low: 60, unrated: 60 }
 
-/** Each request to OSV is given this long; a wedged one fails the run. */
+/** Each request is given this long; a wedged one fails the run. */
 export const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * The whole run is given this long, every request included: two minutes
+ * inside the workflow's `timeout-minutes: 10`, which checkout and Node's
+ * setup share, so a slow OSV ends in EXIT.unreachable and its summary, never
+ * in a job GitHub cancels with nothing said.
+ */
+export const RUN_DEADLINE_MS = 8 * 60_000
 
 /** OSV pages a query's answer; more rounds than this is an answer gone wrong. */
 const MAX_PAGES = 20
 
-/** Details are read this many at a time. */
+/** Records are read this many at a time. */
 const DETAIL_CONCURRENCY = 8
 
-/** The top-level keys of the pins file this watch knows how to read. */
-export const KNOWN_PINS = [
-  '$comment',
-  'loom',
-  'loom_windows_port',
-  'loom_windows_static',
-  'engine',
-  'python',
-  'ffmpeg',
-  'electron_ffmpeg',
+/** The words a CVE record or a database uses for a rating, as the triage's. */
+const RATINGS = {
+  CRITICAL: 'critical',
+  HIGH: 'high',
+  MEDIUM: 'medium',
+  MODERATE: 'medium',
+  LOW: 'low',
+  NONE: 'low',
+}
+
+/**
+ * Queries OSV has matched for years, one for each kind the watch asks: each
+ * must return its `expect` id, or OSV's answer is not trusted. A change in
+ * how OSV matches a GIT tag, a commit or a package version would otherwise
+ * read as every component going clean at once.
+ */
+export const CANARIES = [
+  {
+    kind: 'GIT tag',
+    query: {
+      package: { ecosystem: 'GIT', name: 'https://github.com/madler/zlib' },
+      version: 'v1.2.11',
+    },
+    expect: 'CVE-2018-25032',
+  },
+  {
+    kind: 'commit',
+    query: { commit: 'cacf7f1d4e3d44d871b605da3b647f07d718623f' },
+    expect: 'CVE-2018-25032',
+  },
+  {
+    kind: 'PyPI',
+    query: { package: { ecosystem: 'PyPI', name: 'requests' }, version: '2.19.1' },
+    expect: 'GHSA-x84v-xcm2-53pg',
+  },
+  {
+    kind: 'npm',
+    query: { package: { ecosystem: 'npm', name: 'electron' }, version: '1.0.0' },
+    expect: 'GHSA-fjqr-fx3f-g4rv',
+  },
 ]
+
+/** A key the pins may hold, its contents not read for components. */
+const KNOWN = true
+const known = (...names) => Object.fromEntries(names.map((name) => [name, KNOWN]))
+
+/**
+ * Every key of the pins this watch knows how to read, as far down as a
+ * component could be added: a key the pins gain anywhere in here and the
+ * watch does not know refuses the run (`unknownPins`), so a component
+ * cannot reach the installers unwatched. `KNOWN` marks what holds no
+ * component of its own: metadata, the build's own tools, the per-target
+ * build lines (the same components on each platform), and what UNWATCHED
+ * covers whole.
+ */
+export const PINS_SHAPE = {
+  $comment: KNOWN,
+  loom: known('repo', 'commit', 'note', 'binaries', 'licence'),
+  loom_windows_port: known('repo', 'commit', 'note', 'licence'),
+  loom_windows_static: {
+    note: KNOWN,
+    zlib: known(
+      'version',
+      'msys2_package',
+      'msys2_revision',
+      'msys2_source',
+      'url',
+      'sha256',
+      'signature',
+      'signing_key',
+      'licence',
+    ),
+    // UNWATCHED says why.
+    bzip2: KNOWN,
+  },
+  engine: known('repo', 'tag', 'commit', 'version', 'protocol', 'note', 'licence', 'schema_sha256'),
+  python: {
+    ...known('source', 'release', 'version', 'note', 'licence', 'licence_check', 'licence_texts'),
+    // The packages are read from the requirements file; uv is a build tool.
+    requirements: KNOWN,
+    pip: known('note', 'version', 'sha256'),
+    // The same CPython on each platform; its zlib is read from the licence
+    // records, its other libraries are in UNWATCHED.
+    targets: KNOWN,
+  },
+  ffmpeg: {
+    ...known('version', 'note', 'licence', 'targets'),
+    source: known('url', 'sha256', 'signature', 'signing_key', 'repo', 'tag', 'commit', 'licence'),
+    x264: known('repo', 'commit', 'sha256', 'licence'),
+    zlib: known('version', 'url', 'sha256', 'signature', 'signing_key', 'licence'),
+  },
+  electron_ffmpeg: {
+    // Electron's FFmpeg and what builds it: UNWATCHED says why.
+    ...known(
+      'note',
+      'licence',
+      'chromium',
+      'ffmpeg',
+      'chromium_trees',
+      'chromium_deps',
+      'electron_files',
+      'components',
+    ),
+    electron: known('version', 'repo', 'tag', 'commit'),
+  },
+}
 
 /**
  * What the installers carry that no query covers, and why. Printed on every
@@ -94,7 +215,7 @@ export const UNWATCHED = [
   {
     component:
       "The Python runtime's own libraries (OpenSSL, SQLite, libffi, xz, bzip2, mpdecimal, Expat, Tcl/Tk, libuuid)",
-    why: 'vendor/pins.json records the python-build-standalone release, not their versions; zlib, which the Windows runtime also carries, is watched as zlib.',
+    why: "vendor/pins.json records the python-build-standalone release, not their versions; the Windows build's licence records name Expat's and libmpdec's in passing, and watching them waits on a triage of their matches. Its zlib is watched at the version its licence record names.",
   },
   {
     component: 'Chromium, inside Electron',
@@ -116,13 +237,26 @@ export const UNWATCHED = [
 
 // ---- pure decisions ------------------------------------------------------
 
-/** The packages a requirements file pins, as `{ name, version }`, in its order. */
+/**
+ * The packages a requirements file pins, as `{ name, version }`, in its
+ * order. Blank lines, comments and the indented lines under a pin (its
+ * hashes, its "via") are passed over; any other line it cannot read as
+ * `name==version` throws, so a package cannot drop out of the watch by
+ * being written another way.
+ */
 export function parseRequirements(text) {
   const found = []
-  for (const line of String(text).split(/\r?\n/)) {
-    const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)/.exec(line)
-    if (match) found.push({ name: match[1], version: match[2] })
-  }
+  String(text)
+    .split(/\r?\n/)
+    .forEach((line, index) => {
+      if (line.trim() === '' || line.startsWith('#') || /^\s/.test(line)) return
+      const match = /^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s;\\]+)(?=\s|;|\\|$)/.exec(line)
+      if (match !== null) found.push({ name: match[1], version: match[2] })
+      else
+        throw new Error(
+          `${REQUIREMENTS} line ${index + 1}, ${JSON.stringify(line)}, is not a pin the watch can read (name==version)`,
+        )
+    })
   return found
 }
 
@@ -140,6 +274,44 @@ function pinned(pins, path) {
   return value
 }
 
+/** Every dotted path in `value` that `shape` does not know. */
+export function unknownPins(value, shape = PINS_SHAPE, path = '') {
+  if (shape === KNOWN || value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return []
+  }
+  const found = []
+  for (const key of Object.keys(value)) {
+    const at = path === '' ? key : `${path}.${key}`
+    if (!Object.hasOwn(shape, key)) found.push(at)
+    else found.push(...unknownPins(value[key], shape[key], at))
+  }
+  return found
+}
+
+/**
+ * The zlib each Python runtime carries, read from its licence record
+ * (`python.targets.<target>.licences.unlisted["LICENSE.zlib.txt"].library`,
+ * which says "zlib <version>, from ..."), as `{ path, version }`. A record
+ * the watch cannot read a version from throws.
+ */
+function runtimeZlibs(pins) {
+  const targets = pins.python?.targets
+  const found = []
+  if (targets === null || typeof targets !== 'object') return found
+  for (const [target, entry] of Object.entries(targets)) {
+    const library = entry?.licences?.unlisted?.['LICENSE.zlib.txt']?.library
+    if (library === undefined) continue
+    const match = typeof library === 'string' ? /^zlib (\d+(?:\.\d+)+),/.exec(library) : null
+    if (match === null) {
+      throw new Error(
+        `vendor/pins.json's python.targets.${target} records its zlib as ${JSON.stringify(library)}, which names no version the watch can read`,
+      )
+    }
+    found.push({ path: `python.targets.${target}.licences (LICENSE.zlib.txt)`, version: match[1] })
+  }
+  return found
+}
+
 /**
  * Every query the pins and the requirements make, as `{ component, version,
  * from, query }`: `from` the pins paths it stands for, `query` OSV's. Two
@@ -151,10 +323,10 @@ export function watchList(pins, requirementsText) {
   if (pins === null || typeof pins !== 'object' || Array.isArray(pins)) {
     throw new Error('vendor/pins.json is not an object')
   }
-  const unknown = Object.keys(pins).filter((key) => !KNOWN_PINS.includes(key))
+  const unknown = unknownPins(pins)
   if (unknown.length > 0) {
     throw new Error(
-      `vendor/pins.json names ${unknown.join(', ')}, which the watch does not read: add a query for it, or a line in UNWATCHED saying why there is none`,
+      `vendor/pins.json names ${unknown.join(', ')}, which the watch does not read: add a query for it, or a line in UNWATCHED saying why there is none, or, if it is no component, a key in PINS_SHAPE`,
     )
   }
   const list = []
@@ -197,13 +369,17 @@ export function watchList(pins, requirementsText) {
   commit('engine.commit', 'engine', pinned(pins, 'engine.version'))
   commit('ffmpeg.source.commit', 'FFmpeg', pinned(pins, 'ffmpeg.version'))
   commit('ffmpeg.x264.commit', 'x264', pinned(pins, 'ffmpeg.x264.commit').slice(0, 12))
-  for (const path of ['ffmpeg.zlib.version', 'loom_windows_static.zlib.version']) {
-    const zlib = pinned(pins, path)
+  const zlibs = ['ffmpeg.zlib.version', 'loom_windows_static.zlib.version'].map((path) => ({
+    path,
+    version: pinned(pins, path),
+  }))
+  zlibs.push(...runtimeZlibs(pins))
+  for (const { path, version } of zlibs) {
     add({
       component: 'zlib',
-      version: zlib,
+      version,
       from: [path],
-      query: git('https://github.com/madler/zlib', `v${zlib}`),
+      query: git('https://github.com/madler/zlib', `v${version}`),
     })
   }
   commit('loom.commit', 'LOOM', pinned(pins, 'loom.commit').slice(0, 12))
@@ -242,6 +418,43 @@ export function osvSeverity(record) {
   return typeof own === 'string' && own !== '' ? own : null
 }
 
+/** The CVE id whose record rates `record`'s vector: its own id, else its first CVE alias, else null. */
+export function cveIdOf(record) {
+  const pattern = /^CVE-\d{4}-\d{4,}$/
+  if (typeof record?.id === 'string' && pattern.test(record.id)) return record.id
+  const aliases = Array.isArray(record?.aliases) ? record.aliases : []
+  return aliases.find((alias) => typeof alias === 'string' && pattern.test(alias)) ?? null
+}
+
+/**
+ * The rating OSV's severity for `record` carries, as `{ rating, by }`:
+ * "unrated" where OSV gives none; for a CVSS vector, the rating the CVE
+ * record (`cveRecord`, or null) gives that very vector, its CNA's or an
+ * ADP's; else the database's own word in OSV's record; else null, where
+ * nothing names one.
+ */
+export function sourceRating(record, cveRecord) {
+  const given = osvSeverity(record)
+  if (given === null) return { rating: 'unrated', by: 'OSV' }
+  if (given.startsWith('CVSS:')) {
+    const adp = cveRecord?.containers?.adp
+    const containers = [cveRecord?.containers?.cna, ...(Array.isArray(adp) ? adp : [])]
+    for (const container of containers) {
+      const metrics = Array.isArray(container?.metrics) ? container.metrics : []
+      for (const metric of metrics) {
+        for (const value of Object.values(metric ?? {})) {
+          if (value?.vectorString !== given || typeof value.baseSeverity !== 'string') continue
+          const rating = RATINGS[value.baseSeverity.toUpperCase()]
+          if (rating !== undefined) return { rating, by: 'the CVE record' }
+        }
+      }
+    }
+  }
+  const own = record?.database_specific?.severity
+  const rating = typeof own === 'string' ? RATINGS[own.toUpperCase()] : undefined
+  return rating !== undefined ? { rating, by: "OSV's record" } : null
+}
+
 const DATE = /^\d{4}-\d{2}-\d{2}$/
 
 function isDate(text) {
@@ -277,6 +490,9 @@ const FIELDS = [
   'triaged',
 ]
 
+/** The fields an entry may have besides FIELDS. */
+const OPTIONAL = ['due', 'rating_note']
+
 /** Every way the triage is malformed, each as a sentence; empty where it is not. */
 export function validateTriage(triage) {
   if (triage === null || typeof triage !== 'object' || !Array.isArray(triage.entries)) {
@@ -298,16 +514,20 @@ export function validateTriage(triage) {
       if (!(field in entry)) say(`has no "${field}"`)
     }
     for (const field of Object.keys(entry)) {
-      if (!FIELDS.includes(field) && field !== 'due') say(`has a field "${field}" the form lacks`)
+      if (!FIELDS.includes(field) && !OPTIONAL.includes(field)) {
+        say(`has a field "${field}" the form lacks`)
+      }
     }
-    for (const field of ['id', 'component', 'version', 'reason']) {
+    for (const field of ['id', 'component', 'version', 'reason', 'rating_note']) {
       if (field in entry && (typeof entry[field] !== 'string' || entry[field].trim() === '')) {
         say(`has an empty or non-text "${field}"`)
       }
     }
     if (typeof entry.id === 'string') {
-      if (seen.has(entry.id)) say('is triaged twice')
-      seen.add(entry.id)
+      // An id OSV returns for two components has an entry for each.
+      const key = JSON.stringify([entry.id, entry.component, entry.version])
+      if (seen.has(key)) say('is triaged twice')
+      seen.add(key)
     }
     if ('severity' in entry && !SEVERITIES.includes(entry.severity)) {
       say(`has severity ${JSON.stringify(entry.severity)}, not one of ${SEVERITIES.join(', ')}`)
@@ -352,6 +572,23 @@ export function validateTriage(triage) {
   return problems
 }
 
+/**
+ * Why an entry's rating, read against the rating its source gives (`source`,
+ * from `sourceRating`, or null where nothing names one), needs a
+ * `rating_note` it lacks; null where it needs none. A rating at or above the
+ * source's needs no note: the budget it buys is no longer than the source's.
+ */
+export function unexplainedRating(entry, source) {
+  if (entry.osv_severity === null || 'rating_note' in entry) return null
+  if (source === null) {
+    return `nothing rates the vector OSV gives (no CVE record names it): rate it, and say how in "rating_note"`
+  }
+  if (RANK[entry.severity] < RANK[source.rating]) {
+    return `rated ${entry.severity}, below the ${source.rating} ${source.by} gives, and no "rating_note" says why`
+  }
+  return null
+}
+
 /** A record's first sentence, on one line, for the table: its summary, else its details. */
 export function headline(record) {
   const flat = String(record?.summary || record?.details || '')
@@ -364,12 +601,18 @@ export function headline(record) {
 
 /**
  * OSV's answer judged against the triage. `returned[i]` is the ids OSV gave
- * for `watch[i]`; `details` each id's record. Every id OSV returns lands in
- * exactly one of untriaged, overdue, open or closed; every triaged id it
- * does not return lands in dropped.
+ * for `watch[i]`; `details` each id's record; `ratings` each id's rating from
+ * `sourceRating`. Every component an id is returned for lands in exactly one
+ * of untriaged, overdue, open or closed, judged by the entry for that id,
+ * component and version; every entry whose id OSV no longer returns for its
+ * component lands in dropped.
  */
-export function judge({ watch, returned, details, triage, today }) {
-  const triaged = new Map(triage.entries.map((entry) => [entry.id, entry]))
+export function judge({ watch, returned, details, ratings = {}, triage, today }) {
+  const triaged = new Map()
+  for (const entry of triage.entries) {
+    if (!triaged.has(entry.id)) triaged.set(entry.id, [])
+    triaged.get(entry.id).push(entry)
+  }
   const found = new Map()
   watch.forEach((asked, index) => {
     for (const id of returned[index] ?? []) {
@@ -382,35 +625,41 @@ export function judge({ watch, returned, details, triage, today }) {
   const open = []
   const closed = []
   for (const id of [...found.keys()].sort()) {
-    const matches = found.get(id)
     const record = details[id] ?? {}
     const rated = osvSeverity(record)
-    const where = matches.map((m) => `${m.component} ${m.version}`).join(', ')
-    const entry = triaged.get(id)
-    let note = null
-    if (entry === undefined) {
-      note = 'not in the triage'
-    } else if (!matches.some((m) => m.component === entry.component)) {
-      note = `triaged for ${entry.component}, now returned for ${where}`
-    } else if (
-      !matches.some((m) => m.component === entry.component && m.version === entry.version)
-    ) {
-      note = `triaged at ${entry.component} ${entry.version}, now returned for ${where}`
-    } else if (entry.osv_severity !== rated) {
-      note = `triaged as ${entry.osv_severity ?? 'unrated'}, OSV now gives ${rated ?? 'unrated'}`
-    }
-    if (note !== null) {
-      untriaged.push({ id, where, rated, summary: headline(record), note })
-    } else if (entry.verdict === 'open' && today > entry.due) {
-      overdue.push({ id, where, entry })
-    } else if (entry.verdict === 'open') {
-      open.push({ id, where, entry })
-    } else {
-      closed.push({ id, where, entry })
+    const entries = triaged.get(id) ?? []
+    for (const match of found.get(id)) {
+      const where = `${match.component} ${match.version}`
+      const entry = entries.find(
+        (e) => e.component === match.component && e.version === match.version,
+      )
+      let note
+      if (entries.length === 0) {
+        note = 'not in the triage'
+      } else if (entry === undefined) {
+        const same = entries.find((e) => e.component === match.component)
+        note =
+          same !== undefined
+            ? `triaged at ${same.component} ${same.version}, now returned for ${where}`
+            : `triaged for ${entries.map((e) => e.component).join(', ')}, now returned for ${where}`
+      } else if (entry.osv_severity !== rated) {
+        note = `triaged as ${entry.osv_severity ?? 'unrated'}, OSV now gives ${rated ?? 'unrated'}`
+      } else {
+        note = unexplainedRating(entry, ratings[id] ?? null)
+      }
+      if (note !== null) {
+        untriaged.push({ id, where, rated, summary: headline(record), note })
+      } else if (entry.verdict === 'open' && today > entry.due) {
+        overdue.push({ id, where, entry })
+      } else if (entry.verdict === 'open') {
+        open.push({ id, where, entry })
+      } else {
+        closed.push({ id, where, entry })
+      }
     }
   }
   const dropped = triage.entries
-    .filter((entry) => !found.has(entry.id))
+    .filter((entry) => !(found.get(entry.id) ?? []).some((m) => m.component === entry.component))
     .map((entry) => ({ id: entry.id, entry }))
   return { untriaged, overdue, open, closed, dropped, returned: found.size }
 }
@@ -418,6 +667,37 @@ export function judge({ watch, returned, details, triage, today }) {
 /** Whether a judgement fails the run. */
 export function failed(judgement) {
   return judgement.untriaged.length > 0 || judgement.overdue.length > 0
+}
+
+/**
+ * Why OSV's answer cannot be trusted, each as a sentence; empty where it
+ * can. A canary that no longer returns its id means OSV matches that kind of
+ * query otherwise now; a query that returns nothing at all for a component
+ * and version the triage holds entries for means its ids went at once, which
+ * a fix does not do between two weekly runs and a broken answer does. Were
+ * they really gone, their entries come out of the triage and the run passes.
+ */
+export function distrust({ watch, returned, triage, canaries = [], heard = [] }) {
+  const doubts = []
+  canaries.forEach((canary, index) => {
+    if (!(heard[index] ?? []).includes(canary.expect)) {
+      doubts.push(
+        `the ${canary.kind} canary (${coordinates(canary.query)}) no longer returns ${canary.expect}, so OSV's matching for that kind of query has changed`,
+      )
+    }
+  })
+  watch.forEach((asked, index) => {
+    if ((returned[index] ?? []).length > 0) return
+    const held = triage.entries.filter(
+      (e) => e.component === asked.component && e.version === asked.version,
+    ).length
+    if (held > 0) {
+      doubts.push(
+        `OSV returned no id for ${asked.component} ${asked.version}, which the triage holds ${held} for; if they are really gone, take their entries out of the triage`,
+      )
+    }
+  })
+  return doubts
 }
 
 function cell(text) {
@@ -436,7 +716,7 @@ function table(head, rows) {
 }
 
 /** The report, as Markdown: what stdout prints and the job summary shows. */
-export function report({ judgement, watch, returned, today, triaged }) {
+export function report({ judgement, watch, returned, today, triaged, canaries = [], heard = [] }) {
   const out = []
   out.push(`## Vulnerability watch, ${today}\n`)
   out.push(
@@ -497,6 +777,18 @@ export function report({ judgement, watch, returned, today, triaged }) {
       ]),
     ),
   )
+  out.push('### Canaries\n')
+  out.push(
+    table(
+      ['Kind', 'Asked as', 'Must return', 'Ids'],
+      canaries.map((c, i) => [
+        c.kind,
+        coordinates(c.query),
+        c.expect,
+        String((heard[i] ?? []).length),
+      ]),
+    ),
+  )
   out.push('### Not watched\n')
   out.push(
     table(
@@ -515,39 +807,101 @@ export function report({ judgement, watch, returned, today, triaged }) {
 // ---- the network ---------------------------------------------------------
 
 /** OSV could not be asked, or answered something that cannot be read. */
-export class OsvUnavailable extends Error {}
+export class OsvUnavailable extends Error {
+  lead = 'OSV could not be asked'
+}
 
-async function call(fetchImpl, url, init, timeoutMs, what) {
-  let response
-  try {
-    response = await fetchImpl(url, { ...init, signal: globalThis.AbortSignal.timeout(timeoutMs) })
-  } catch (error) {
-    throw new OsvUnavailable(`${what}: ${error?.message ?? error}`)
+/** A CVE record could not be read. */
+export class CveUnavailable extends OsvUnavailable {
+  lead = 'The CVE records could not be read'
+}
+
+/**
+ * One request, its JSON answer, or OsvUnavailable (`Failure`). It is given
+ * `limits.timeoutMs`, or what is left of the run's deadline where that is
+ * less, and the limit holds even against a fetch that ignores its signal.
+ * With `missingOk`, a 404 is null.
+ */
+async function call(
+  fetchImpl,
+  url,
+  init,
+  limits,
+  what,
+  { missingOk = false, Failure = OsvUnavailable } = {},
+) {
+  const left = limits.deadline - Date.now()
+  if (left <= 0) {
+    throw new Failure(`${what}: the run's own deadline of ${limits.deadlineMs} ms passed first`)
   }
-  if (!response || !response.ok) {
-    throw new OsvUnavailable(`${what}: HTTP ${response?.status ?? 'no response'}`)
-  }
+  const wait = Math.min(limits.timeoutMs, left)
+  const bound =
+    wait < limits.timeoutMs ? `the run's own deadline of ${limits.deadlineMs} ms` : `${wait} ms`
+  const controller = new globalThis.AbortController()
+  let timer
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      // Rejected first, so the race reports the limit, not the abort.
+      reject(new Failure(`${what}: no answer within ${bound}`))
+      controller.abort()
+    }, wait)
+  })
   try {
-    return await response.json()
-  } catch (error) {
-    throw new OsvUnavailable(`${what}: the answer is not JSON (${error?.message ?? error})`)
+    let response
+    try {
+      response = await Promise.race([
+        fetchImpl(url, { ...init, signal: controller.signal }),
+        expired,
+      ])
+    } catch (error) {
+      if (error instanceof OsvUnavailable) throw error
+      throw new Failure(`${what}: ${error?.message ?? error}`)
+    }
+    if (missingOk && response?.status === 404) return null
+    if (!response || !response.ok) {
+      throw new Failure(`${what}: HTTP ${response?.status ?? 'no response'}`)
+    }
+    try {
+      return await Promise.race([response.json(), expired])
+    } catch (error) {
+      if (error instanceof OsvUnavailable) throw error
+      throw new Failure(`${what}: the answer is not JSON (${error?.message ?? error})`)
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** `run` over `items`, `DETAIL_CONCURRENCY` at a time. */
+async function inBatches(items, run) {
+  for (let at = 0; at < items.length; at += DETAIL_CONCURRENCY) {
+    await Promise.all(items.slice(at, at + DETAIL_CONCURRENCY).map(run))
   }
 }
 
 /**
- * OSV's answer for every query, `{ returned, details }`: `returned[i]` the
- * ids for `watch[i]`, `details` each id's full record. Throws OsvUnavailable
- * on any failure to ask or to read the answer, never a partial result.
+ * OSV's answer for every query, `{ returned, details, ratings, heard }`:
+ * `returned[i]` the ids for `watch[i]`, `details` each id's full record,
+ * `ratings` each id's rating (`sourceRating`, over the CVE record where its
+ * vector needs one), `heard[i]` the ids for `canaries[i]`, which are asked
+ * beside the components and not read further. Throws OsvUnavailable on any
+ * failure to ask or to read an answer, or at the run's deadline, never a
+ * partial result.
  */
-export async function fetchOsv(watch, { fetch: fetchImpl, timeoutMs = REQUEST_TIMEOUT_MS }) {
-  const returned = watch.map(() => [])
-  let pending = watch.map((_, index) => ({ index, token: null }))
+export async function fetchOsv(
+  watch,
+  { fetch: fetchImpl, timeoutMs = REQUEST_TIMEOUT_MS, deadlineMs = RUN_DEADLINE_MS, canaries = [] },
+) {
+  const limits = { timeoutMs, deadlineMs, deadline: Date.now() + deadlineMs }
+  const asked = [...watch.map((w) => w.query), ...canaries.map((c) => c.query)]
+  const found = asked.map(() => [])
+  let pending = asked.map((_, index) => ({ index, token: null }))
   for (let round = 0; pending.length > 0; round += 1) {
     if (round >= MAX_PAGES) {
       throw new OsvUnavailable(`querybatch was still paging after ${MAX_PAGES} rounds`)
     }
     const queries = pending.map(({ index, token }) =>
-      token === null ? watch[index].query : { ...watch[index].query, page_token: token },
+      token === null ? asked[index] : { ...asked[index], page_token: token },
     )
     const answer = await call(
       fetchImpl,
@@ -557,7 +911,7 @@ export async function fetchOsv(watch, { fetch: fetchImpl, timeoutMs = REQUEST_TI
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ queries }),
       },
-      timeoutMs,
+      limits,
       'querybatch',
     )
     const results = answer?.results
@@ -576,7 +930,7 @@ export async function fetchOsv(watch, { fetch: fetchImpl, timeoutMs = REQUEST_TI
         if (typeof vuln?.id !== 'string' || vuln.id === '') {
           throw new OsvUnavailable('querybatch answered a vulnerability with no id')
         }
-        if (!returned[index].includes(vuln.id)) returned[index].push(vuln.id)
+        if (!found[index].includes(vuln.id)) found[index].push(vuln.id)
       }
       if (typeof result?.next_page_token === 'string' && result.next_page_token !== '') {
         next.push({ index, token: result.next_page_token })
@@ -584,26 +938,46 @@ export async function fetchOsv(watch, { fetch: fetchImpl, timeoutMs = REQUEST_TI
     })
     pending = next
   }
+  const returned = found.slice(0, watch.length)
+  const heard = found.slice(watch.length)
   const ids = [...new Set(returned.flat())].sort()
   const details = {}
-  for (let at = 0; at < ids.length; at += DETAIL_CONCURRENCY) {
-    await Promise.all(
-      ids.slice(at, at + DETAIL_CONCURRENCY).map(async (id) => {
-        const record = await call(
-          fetchImpl,
-          `${OSV_API}/v1/vulns/${encodeURIComponent(id)}`,
-          { method: 'GET' },
-          timeoutMs,
-          `vulns/${id}`,
-        )
-        if (record?.id !== id) {
-          throw new OsvUnavailable(`vulns/${id} answered a record for ${record?.id ?? 'nothing'}`)
-        }
-        details[id] = record
-      }),
+  await inBatches(ids, async (id) => {
+    const record = await call(
+      fetchImpl,
+      `${OSV_API}/v1/vulns/${encodeURIComponent(id)}`,
+      { method: 'GET' },
+      limits,
+      `vulns/${id}`,
     )
-  }
-  return { returned, details }
+    if (record?.id !== id) {
+      throw new OsvUnavailable(`vulns/${id} answered a record for ${record?.id ?? 'nothing'}`)
+    }
+    details[id] = record
+  })
+  const ratings = {}
+  await inBatches(ids, async (id) => {
+    const record = details[id]
+    const cve = cveIdOf(record)
+    let cveRecord = null
+    if (osvSeverity(record)?.startsWith('CVSS:') && cve !== null) {
+      cveRecord = await call(
+        fetchImpl,
+        `${CVE_API}/${cve}`,
+        { method: 'GET' },
+        limits,
+        `the CVE record ${cve}`,
+        { missingOk: true, Failure: CveUnavailable },
+      )
+      if (cveRecord !== null && cveRecord?.cveMetadata?.cveId !== cve) {
+        throw new CveUnavailable(
+          `the CVE record ${cve} answered for ${cveRecord?.cveMetadata?.cveId ?? 'nothing'}`,
+        )
+      }
+    }
+    ratings[id] = sourceRating(record, cveRecord)
+  })
+  return { returned, details, ratings, heard }
 }
 
 // ---- the command ---------------------------------------------------------
@@ -631,14 +1005,15 @@ function parseArgs(argv) {
 const USAGE = 'usage: vuln-watch.mjs [--pins <file>] [--triage <file>] [--summary <file>]\n'
 
 /**
- * The command, with the network and the clock handed in so a test can run
- * it whole. Resolves to the exit status.
+ * The command, with the network, the clock and the limits handed in so a
+ * test can run it whole. Resolves to the exit status.
  */
 export async function main(argv, io = {}) {
   const out = io.out ?? process.stdout
   const err = io.err ?? process.stderr
   const fetchImpl = io.fetch ?? globalThis.fetch
   const today = io.today ?? new Date().toISOString().slice(0, 10)
+  const canaries = io.canaries ?? CANARIES
   let options
   try {
     options = parseArgs(argv)
@@ -648,6 +1023,14 @@ export async function main(argv, io = {}) {
   }
   const summarise = (text) => {
     if (options.summary !== null) appendFileSync(options.summary, text)
+  }
+  const refuse = (lead, why) => {
+    const text =
+      `## Vulnerability watch, ${today}\n\n**${lead}:** ${why}. ` +
+      'Nothing was judged, so this run says nothing about whether the components are clean.\n'
+    err.write(text)
+    summarise(text)
+    return EXIT.unreachable
   }
   let watch
   let triage
@@ -668,16 +1051,18 @@ export async function main(argv, io = {}) {
   }
   let answer
   try {
-    answer = await fetchOsv(watch, { fetch: fetchImpl, timeoutMs: io.timeoutMs })
+    answer = await fetchOsv(watch, {
+      fetch: fetchImpl,
+      timeoutMs: io.timeoutMs,
+      deadlineMs: io.deadlineMs,
+      canaries,
+    })
   } catch (error) {
     if (!(error instanceof OsvUnavailable)) throw error
-    const text =
-      `## Vulnerability watch, ${today}\n\n**OSV could not be asked:** ${error.message}. ` +
-      'Nothing was judged, so this run says nothing about whether the components are clean.\n'
-    err.write(text)
-    summarise(text)
-    return EXIT.unreachable
+    return refuse(error.lead, error.message)
   }
+  const doubts = distrust({ watch, ...answer, triage, canaries })
+  if (doubts.length > 0) return refuse("OSV's answer cannot be trusted", doubts.join('; '))
   const judgement = judge({ watch, ...answer, triage, today })
   const text = report({
     judgement,
@@ -685,6 +1070,8 @@ export async function main(argv, io = {}) {
     returned: answer.returned,
     today,
     triaged: triage.entries.length,
+    canaries,
+    heard: answer.heard,
   })
   out.write(text)
   summarise(text)

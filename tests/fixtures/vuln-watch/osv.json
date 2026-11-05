@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "What OSV answered on 2026-11-04 for four of the ids it returns for the pinned components, each record cut down to the fields scripts/vuln-watch.mjs reads and a few beside them, and which query returned which id. tests/unit/vuln-watch.test.ts answers the script from these through a stand-in fetch: no network."
+    "What OSV answered on 2026-11-04 for four of the ids it returns for the pinned components, each record cut down to the fields scripts/vuln-watch.mjs reads and a few beside them, and which query returned which id; then, for each canary the script asks (CANARIES), the one id it expects among the many OSV returns. tests/unit/vuln-watch.test.ts answers the script from these through a stand-in fetch: no network."
   ],
   "answers": [
     {
@@ -28,6 +28,42 @@
         "version": "v1.3.2"
       },
       "ids": ["CVE-2026-76844"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "GIT",
+          "name": "https://github.com/madler/zlib"
+        },
+        "version": "v1.2.11"
+      },
+      "ids": ["CVE-2018-25032"]
+    },
+    {
+      "query": {
+        "commit": "cacf7f1d4e3d44d871b605da3b647f07d718623f"
+      },
+      "ids": ["CVE-2018-25032"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "PyPI",
+          "name": "requests"
+        },
+        "version": "2.19.1"
+      },
+      "ids": ["GHSA-x84v-xcm2-53pg"]
+    },
+    {
+      "query": {
+        "package": {
+          "ecosystem": "npm",
+          "name": "electron"
+        },
+        "version": "1.0.0"
+      },
+      "ids": ["GHSA-fjqr-fx3f-g4rv"]
     }
   ],
   "vulns": {

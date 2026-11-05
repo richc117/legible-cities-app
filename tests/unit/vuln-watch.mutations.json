@@ -1,16 +1,16 @@
 [
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "      note = 'not in the triage'\n",
-    "replace": "      continue\n",
+    "find": "        note = 'not in the triage'\n",
+    "replace": "        continue\n",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "fails on an id the triage does not cover, and names it",
     "why": "An id the triage has never seen passed over: OSV's new matches would never turn the weekly run red, which is the only notification there is."
   },
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "    } else if (entry.verdict === 'open' && today > entry.due) {",
-    "replace": "    } else if (false) {",
+    "find": "      } else if (entry.verdict === 'open' && today > entry.due) {",
+    "replace": "      } else if (false) {",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "fails on an open id past its due date, and not on the day it is due",
     "why": "The due date ignored: an open id stays green for ever, and the fix budget is a number nobody is held to."
@@ -25,8 +25,8 @@
   },
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "  if (!response || !response.ok) {",
-    "replace": "  if (false) {",
+    "find": "    if (!response || !response.ok) {",
+    "replace": "    if (false) {",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "never calls a network failure clean",
     "why": "An HTTP error read as an answer: a 503 whose body happens to parse would be judged as OSV's word on the components."
@@ -41,7 +41,7 @@
   },
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "    .filter((entry) => !found.has(entry.id))",
+    "find": "    .filter((entry) => !(found.get(entry.id) ?? []).some((m) => m.component === entry.component))",
     "replace": "    .filter(() => false)",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "reports a triaged id OSV no longer returns, without failing on it",
@@ -49,16 +49,16 @@
   },
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "      !matches.some((m) => m.component === entry.component && m.version === entry.version)\n",
-    "replace": "      false\n",
+    "find": "        (e) => e.component === match.component && e.version === match.version,\n",
+    "replace": "        (e) => e.component === match.component,\n",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "takes an id triaged at another version as untriaged",
     "why": "A verdict read against one version kept after the pin moves: a not-reachable judged on 3.12.14 would stand for whatever the runtime becomes."
   },
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "    } else if (entry.osv_severity !== rated) {",
-    "replace": "    } else if (false) {",
+    "find": "      } else if (entry.osv_severity !== rated) {",
+    "replace": "      } else if (false) {",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "takes an id OSV now rates otherwise as untriaged",
     "why": "A re-rated id kept at its old rating: a medium raised to critical would keep its 60 days instead of 14."
@@ -102,5 +102,93 @@
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "follows OSV's pages, and asks again only for the query that has another",
     "why": "Only OSV's first page read: a component with more ids than a page holds is judged on part of them."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    else found.push(...unknownPins(value[key], shape[key], at))",
+    "replace": "    else found.push()",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a key the pins gain inside a component the watch reads",
+    "why": "Only the top level of the pins checked: a library added as ffmpeg.libvpx, loom_windows_static.libpng or python.openssl ships unwatched, and the run stays green."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (library === undefined) continue",
+    "replace": "    continue",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "watches the Windows runtime's zlib at the version its licence record names",
+    "why": "The Windows runtime's zlib left to coincidence: while it shares FFmpeg's version it is watched by accident, and the day python-build-standalone moves it, nothing asks about it."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "      else\n        throw new Error(",
+    "replace": "      else if (false)\n        throw new Error(",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "refuses a requirements line it cannot read as a pin",
+    "why": "A requirements line in another form skipped in silence: a package pinned with >= or a URL drops out of the watch while the lock still ships it."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    for (const match of found.get(id)) {",
+    "replace": "    for (const match of found.get(id).slice(-1)) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id returned for two components as untriaged unless each has its entry",
+    "why": "One component of an id judged for all: an id triaged for zlib and returned for CPython too passes on the zlib entry, and the CPython reading is never made."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  if (RANK[entry.severity] < RANK[source.rating]) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id the triage rates below the CVE record, with no note saying why, as untriaged",
+    "why": "A rating below the CVE record accepted without a word: a critical written as medium takes 60 days instead of 14, and nothing says it was a choice."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (osvSeverity(record)?.startsWith('CVSS:') && cve !== null) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "takes an id the triage rates below the CVE record, with no note saying why, as untriaged",
+    "why": "The CVE record never read: the rating the triage gives a vector is checked against nothing."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (held > 0) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never takes an answer that drops every id of a triaged component for a clean one",
+    "why": "An answer with every id of a component gone taken as a fix: a broken OSV, or a change in how it matches a GIT tag, turns the run green with the triage moved to \"no longer returned\"."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "    if (!(heard[index] ?? []).includes(canary.expect)) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "never takes an answer whose canaries are silent for a clean one",
+    "why": "A silent canary ignored: OSV stops matching PyPI versions, the packages, which the triage holds nothing for, read as clean, and the run is green."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  const wait = Math.min(limits.timeoutMs, left)",
+    "replace": "  const wait = left",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "gives each request its own time limit, against a fetch that never answers",
+    "why": "No limit per request: one wedged request holds the whole run until its deadline, and every request after it gets nothing."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "        fetchImpl(url, { ...init, signal: controller.signal }),\n        expired,\n",
+    "replace": "        fetchImpl(url, { ...init, signal: controller.signal }),\n",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "gives each request its own time limit, against a fetch that never answers",
+    "why": "The limit left to the fetch honouring its signal: a request that ignores the abort hangs the run past every limit, and the job is cancelled with nothing said."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  const left = limits.deadline - Date.now()",
+    "replace": "  const left = Infinity",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "stops at its own deadline, inside the workflow job's timeout",
+    "why": "No deadline for the run: twenty slow pages and a record each outlast the job's ten minutes, and GitHub cancels it with no summary and no exit status of the watch's own."
   }
 ]

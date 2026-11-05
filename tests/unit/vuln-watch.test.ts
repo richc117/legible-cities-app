@@ -1,13 +1,15 @@
 // The vulnerability watch (issue 557): scripts/vuln-watch.mjs asks OSV about
 // every component the installers carry and judges the answer against
-// vendor/vuln-triage.json. OSV is played here by a stand-in fetch that
-// answers from tests/fixtures/vuln-watch/osv.json, records OSV returned on
-// 2026-11-04, so nothing talks to the network. The rules each have a test
-// that fails when the rule is taken out (tests/unit/vuln-watch.mutations.json):
-// an untriaged id fails the run, an open one past its due date fails it, a
-// triaged id OSV stops returning is reported, and a failure to reach OSV is
-// its own exit status and never clean. The last blocks hold the committed
-// triage and the weekly workflow to their form.
+// vendor/vuln-triage.json. OSV and the CVE records are played here by a
+// stand-in fetch that answers from tests/fixtures/vuln-watch/osv.json and
+// cve.json, records as they read on 2026-11-04, so nothing talks to the
+// network. The rules each have a test that fails when the rule is taken out
+// (tests/unit/vuln-watch.mutations.json): an untriaged id fails the run, an
+// open one past its due date fails it, a triaged id OSV stops returning is
+// reported, and a failure to reach OSV, an answer that cannot be trusted and
+// a request or a run that outlasts its limit are their own exit status and
+// never clean. The last blocks hold the committed triage and the weekly
+// workflow to their form.
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -41,6 +43,7 @@ interface Entry {
   reason: string
   triaged: string
   due?: string
+  rating_note?: string
 }
 interface Triage {
   entries: Entry[]
@@ -52,9 +55,13 @@ interface Module {
   EXIT: { clean: number; findings: number; usage: number; unreachable: number }
   BUDGET_DAYS: Record<string, number>
   VERDICTS: string[]
+  RUN_DEADLINE_MS: number
+  REQUEST_TIMEOUT_MS: number
+  CANARIES: { kind: string; query: Query; expect: string }[]
   parseRequirements(text: string): { name: string; version: string }[]
   watchList(pins: unknown, requirements: string): Watched[]
   osvSeverity(record: unknown): string | null
+  sourceRating(record: unknown, cveRecord: unknown): { rating: string; by: string } | null
   validateTriage(triage: unknown): string[]
   addDays(date: string, days: number): string
   sentences(text: string): number
@@ -66,6 +73,7 @@ interface Module {
       out: Writer
       err: Writer
       timeoutMs?: number
+      deadlineMs?: number
     },
   ): Promise<number>
 }
@@ -79,6 +87,7 @@ const OSV = read<{ answers: { query: Query; ids: string[] }[]; vulns: Record<str
   'osv.json',
 )
 const TRIAGE = read<Triage>('triage.json')
+const CVE = read<{ records: Record<string, unknown> }>('cve.json')
 
 // The shape scripts/lock-python.sh writes: a hash under each pin, a comment
 // naming who wants it, an environment marker on one.
@@ -108,10 +117,12 @@ interface Stand {
   answers?: Map<string, string[]>
   /** The second page of a query's ids: the first page carries a token for it. */
   paged?: Map<string, string[]>
+  /** The CVE records, by id; the fixture's by default, a 404 for any other. */
+  cves?: Record<string, unknown>
 }
 
 /** A fetch that answers as OSV does, from the fixtures, and records what it was asked. */
-function standIn({ answers, paged }: Stand = {}) {
+function standIn({ answers, paged, cves = CVE.records }: Stand = {}) {
   const ids =
     answers ??
     new Map(OSV.answers.map(({ query, ids }) => [asked(query), ids] as [string, string[]]))
@@ -135,6 +146,13 @@ function standIn({ answers, paged }: Stand = {}) {
       })
     }
     calls.push({ url })
+    const cvePrefix = 'https://cveawg.mitre.org/api/cve/'
+    if (url.startsWith(cvePrefix)) {
+      const cve = cves[url.slice(cvePrefix.length)]
+      return cve !== undefined
+        ? json(cve)
+        : json({ error: 'CVE_RECORD_DNE', message: 'The cve record does not exist.' }, 404)
+    }
     const prefix = 'https://api.osv.dev/v1/vulns/'
     const id = decodeURIComponent(url.slice(prefix.length))
     const record = OSV.vulns[id]
@@ -164,6 +182,8 @@ async function run(
     today?: string
     fetch?: (url: string, init?: RequestInit) => Promise<Response>
     pins?: unknown
+    timeoutMs?: number
+    deadlineMs?: number
   } = {},
 ): Promise<Run> {
   const { main } = await load()
@@ -182,7 +202,8 @@ async function run(
       today: options.today ?? '2026-11-10',
       out: { write: (text) => void (out += text) },
       err: { write: (text) => void (err += text) },
-      timeoutMs: 2_000,
+      timeoutMs: options.timeoutMs ?? 2_000,
+      deadlineMs: options.deadlineMs ?? 5_000,
     },
   )
   return { code, out, err, summary: existsSync(summary) ? readFileSync(summary, 'utf8') : '' }
@@ -242,6 +263,74 @@ describe('the queries the pins make', () => {
     expect(() => watchList(PINS, '# nothing pinned\n')).toThrow(/pins no package/)
   })
 
+  it('refuses a key the pins gain inside a component the watch reads', async () => {
+    const { watchList } = await load()
+    const ffmpeg = PINS.ffmpeg as Record<string, unknown>
+    const statics = PINS.loom_windows_static as Record<string, unknown>
+    const python = PINS.python as Record<string, unknown>
+    expect(() =>
+      watchList({ ...PINS, ffmpeg: { ...ffmpeg, libvpx: { version: '1.15.0' } } }, REQUIREMENTS),
+    ).toThrow(/names ffmpeg\.libvpx, which the watch does not read/)
+    expect(() =>
+      watchList(
+        { ...PINS, loom_windows_static: { ...statics, libpng: { version: '1.6.50' } } },
+        REQUIREMENTS,
+      ),
+    ).toThrow(/names loom_windows_static\.libpng,/)
+    expect(() =>
+      watchList({ ...PINS, python: { ...python, openssl: { version: '3.5.4' } } }, REQUIREMENTS),
+    ).toThrow(/names python\.openssl,/)
+    const x264 = ffmpeg.x264 as Record<string, unknown>
+    expect(() =>
+      watchList({ ...PINS, ffmpeg: { ...ffmpeg, x264: { ...x264, fork: 'x' } } }, REQUIREMENTS),
+    ).toThrow(/names ffmpeg\.x264\.fork,/)
+  })
+
+  it("watches the Windows runtime's zlib at the version its licence record names", async () => {
+    const { watchList } = await load()
+    interface Recorded {
+      python: { targets: Record<string, { licences?: { unlisted?: Record<string, unknown> } }> }
+    }
+    const pins = JSON.parse(readFileSync(join(repo, 'vendor', 'pins.json'), 'utf8')) as Recorded
+    const requirements = readFileSync(join(repo, 'vendor', 'python-requirements.txt'), 'utf8')
+    const record = pins.python.targets['win-x64'].licences?.unlisted?.['LICENSE.zlib.txt'] as
+      { library?: string } | undefined
+    const recorded = /^zlib (\S+),/.exec(record?.library ?? '')?.[1]
+    expect(recorded).toMatch(/^\d+(\.\d+)+$/)
+    const runtime = watchList(pins, requirements).find((w) =>
+      w.from.includes('python.targets.win-x64.licences (LICENSE.zlib.txt)'),
+    )
+    expect(runtime?.component).toBe('zlib')
+    expect(runtime?.version).toBe(recorded)
+
+    const python = PINS.python as Record<string, unknown>
+    const at = (library: unknown): unknown => ({
+      ...PINS,
+      python: {
+        ...python,
+        targets: { 'win-x64': { licences: { unlisted: { 'LICENSE.zlib.txt': { library } } } } },
+      },
+    })
+    const apart = watchList(at("zlib 1.3.1, from CPython's Windows externals"), REQUIREMENTS)
+    expect(apart.filter((w) => w.component === 'zlib').map((w) => [w.version, w.from])).toEqual([
+      ['1.3.2', ['ffmpeg.zlib.version', 'loom_windows_static.zlib.version']],
+      ['1.3.1', ['python.targets.win-x64.licences (LICENSE.zlib.txt)']],
+    ])
+    expect(() => watchList(at('zlib, from the externals'), REQUIREMENTS)).toThrow(
+      /names no version the watch can read/,
+    )
+  })
+
+  it('refuses a requirements line it cannot read as a pin', async () => {
+    const { parseRequirements } = await load()
+    expect(() => parseRequirements('requests>=2.34\n')).toThrow(
+      /line 1, "requests>=2\.34", is not a pin the watch can read/,
+    )
+    expect(() =>
+      parseRequirements('# locked\nnumpy==2.5.4 \\\n    --hash=sha256:00\nsix~=1.17\n'),
+    ).toThrow(/line 4, "six~=1\.17"/)
+  })
+
   it('reads the repository pins, and asks about every Python package the lock carries', async () => {
     const { watchList, parseRequirements } = await load()
     const pins = JSON.parse(readFileSync(join(repo, 'vendor', 'pins.json'), 'utf8')) as unknown
@@ -264,6 +353,22 @@ describe("OSV's severity", () => {
     expect(osvSeverity({ severity: [v3] })).toBe(v3.score)
     expect(osvSeverity({ database_specific: { severity: 'MODERATE' } })).toBe('MODERATE')
     expect(osvSeverity({ id: 'PSF-2026-46' })).toBeNull()
+  })
+
+  it("reads the rating of OSV's vector from the CVE record, else from OSV's record", async () => {
+    const { sourceRating } = await load()
+    const v4 = 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H'
+    const record = { id: 'CVE-2026-115557', severity: [{ type: 'CVSS_V4', score: v4 }] }
+    expect(sourceRating(record, CVE.records['CVE-2026-115557'])).toEqual({
+      rating: 'critical',
+      by: 'the CVE record',
+    })
+    expect(sourceRating(record, null)).toBeNull()
+    expect(sourceRating({ ...record, database_specific: { severity: 'MODERATE' } }, null)).toEqual({
+      rating: 'medium',
+      by: "OSV's record",
+    })
+    expect(sourceRating({ id: 'PSF-2026-46' }, null)).toEqual({ rating: 'unrated', by: 'OSV' })
   })
 })
 
@@ -337,6 +442,67 @@ describe('the judgement', () => {
     )
   })
 
+  it('takes an id returned for two components as untriaged unless each has its entry', async () => {
+    const { EXIT } = await load()
+    const cpython = 'GIT https://github.com/python/cpython @ v3.12.14'
+    const answers = new Map(
+      OSV.answers.map(({ query, ids }) => [
+        asked(query),
+        asked(query) === cpython ? [...ids, 'CVE-2026-76844'] : ids,
+      ]),
+    )
+    const result = await run({ fetch: standIn({ answers }).fetch })
+    expect(result.code).toBe(EXIT.findings)
+    const rows = section(result.out, 'New or untriaged')
+    expect(rows).toContain('untriaged: 1')
+    expect(rows).toContain('| CVE-2026-76844 | CPython 3.12.14 |')
+    expect(rows).toContain('triaged for zlib, now returned for CPython 3.12.14')
+
+    const zlib = TRIAGE.entries.find((e) => e.id === 'CVE-2026-76844') as Entry
+    const both = await run({
+      fetch: standIn({ answers }).fetch,
+      triage: triageWith((entries) => [
+        ...entries,
+        { ...zlib, component: 'CPython', version: '3.12.14' },
+      ]),
+    })
+    expect(both.code).toBe(EXIT.clean)
+  })
+
+  it('takes an id the triage rates below the CVE record, with no note saying why, as untriaged', async () => {
+    const { EXIT } = await load()
+    const rated = (id: string, severity: string, note?: string): Triage =>
+      triageWith((entries) =>
+        entries.map((e) =>
+          e.id === id
+            ? { ...e, severity, ...(note === undefined ? {} : { rating_note: note }) }
+            : e,
+        ),
+      )
+    const lower = await run({ triage: rated('CVE-2026-115557', 'high') })
+    expect(lower.code).toBe(EXIT.findings)
+    expect(section(lower.out, 'New or untriaged')).toContain(
+      'rated high, below the critical the CVE record gives, and no "rating_note" says why',
+    )
+    const noted = await run({
+      triage: rated('CVE-2026-115557', 'high', 'Rated by the subsequent-system impact alone.'),
+    })
+    expect(noted.code).toBe(EXIT.clean)
+    const higher = await run({ triage: rated('CVE-2026-107677', 'high') })
+    expect(higher.code).toBe(EXIT.clean)
+  })
+
+  it('asks for a note where nothing rates the vector OSV gives', async () => {
+    const { EXIT } = await load()
+    const cves = { ...CVE.records }
+    delete cves['CVE-2026-76844']
+    const result = await run({ fetch: standIn({ cves }).fetch })
+    expect(result.code).toBe(EXIT.findings)
+    expect(section(result.out, 'New or untriaged')).toMatch(
+      /\| CVE-2026-76844 \|.*nothing rates the vector OSV gives/,
+    )
+  })
+
   it('fails on an open id past its due date, and not on the day it is due', async () => {
     const { EXIT } = await load()
     const due = await run({ today: '2026-11-18' })
@@ -351,19 +517,18 @@ describe('the judgement', () => {
     expect(late.out).toContain('**Failed:** 0 untriaged, 2 past their due date')
   })
 
+  // One id of a component gone is a fix; every id of it gone at once is not
+  // trusted ("an answer that cannot be trusted", below).
   it('reports a triaged id OSV no longer returns, without failing on it', async () => {
     const { EXIT } = await load()
     const answers = new Map(
-      OSV.answers.map(({ query, ids }) => [
-        asked(query),
-        ids.filter((id) => id !== 'CVE-2026-107677'),
-      ]),
+      OSV.answers.map(({ query, ids }) => [asked(query), ids.filter((id) => id !== 'PSF-2026-46')]),
     )
     const result = await run({ fetch: standIn({ answers }).fetch })
     expect(result.code).toBe(EXIT.clean)
     const rows = section(result.out, 'Triaged, and no longer returned by OSV')
     expect(rows).toContain('returned by OSV: 1')
-    expect(rows).toContain('| CVE-2026-107677 | FFmpeg 9.0.1 | not-affected |')
+    expect(rows).toContain('| PSF-2026-46 | CPython 3.12.14 | open |')
   })
 
   it("follows OSV's pages, and asks again only for the query that has another", async () => {
@@ -404,7 +569,7 @@ describe('a failure to reach OSV', () => {
     [
       'fewer results than queries',
       () => Promise.resolve(json({ results: [{}] })),
-      /querybatch answered 1 results for 11 queries/,
+      /querybatch answered 1 results for 15 queries/,
     ],
   ]
 
@@ -429,6 +594,111 @@ describe('a failure to reach OSV', () => {
     expect(result.code).toBe(EXIT.unreachable)
     expect(result.err).toMatch(/vulns\/[A-Z]+-[0-9-]+: HTTP 500/)
     expect(result.out).toBe('')
+  })
+
+  it('never calls a network failure clean: a CVE record that will not come', async () => {
+    const { EXIT } = await load()
+    const stand = standIn()
+    const result = await run({
+      fetch: (url, init) =>
+        url.startsWith('https://cveawg.mitre.org/')
+          ? Promise.resolve(json({}, 500))
+          : stand.fetch(url, init),
+    })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toMatch(
+      /\*\*The CVE records could not be read:\*\* the CVE record CVE-[0-9-]+: HTTP 500/,
+    )
+    expect(result.err).toContain('Nothing was judged')
+    expect(result.out).toBe('')
+  })
+
+  it('gives each request its own time limit, against a fetch that never answers', async () => {
+    const { EXIT, REQUEST_TIMEOUT_MS } = await load()
+    expect(REQUEST_TIMEOUT_MS).toBe(30_000)
+    const started = Date.now()
+    const result = await run({ fetch: () => new Promise<Response>(() => undefined), timeoutMs: 50 })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toContain('querybatch: no answer within 50 ms')
+    expect(Date.now() - started).toBeLessThan(2_000)
+  })
+
+  it("stops at its own deadline, inside the workflow job's timeout", async () => {
+    const { EXIT, RUN_DEADLINE_MS } = await load()
+    // OSV paging for ever, each page slow: the deadline ends it first.
+    const slow = async (_: string, init?: RequestInit): Promise<Response> => {
+      await new Promise((done) => setTimeout(done, 40))
+      const { queries } = JSON.parse(String(init?.body)) as { queries: Query[] }
+      return json({ results: queries.map(() => ({ next_page_token: 'more' })) })
+    }
+    const result = await run({ fetch: slow, deadlineMs: 100 })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toContain("the run's own deadline of 100 ms")
+    const workflow = readFileSync(join(repo, '.github', 'workflows', 'vuln-watch.yml'), 'utf8')
+    const minutes = Number(/timeout-minutes: (\d+)/.exec(workflow)?.[1])
+    // A minute is left for checking out and setting Node up.
+    expect(RUN_DEADLINE_MS + 60_000).toBeLessThanOrEqual(minutes * 60_000)
+  })
+})
+
+describe('an answer that cannot be trusted', () => {
+  const canaryQueries = async (): Promise<Set<string>> =>
+    new Set((await load()).CANARIES.map((c) => asked(c.query)))
+
+  it('never takes an answer that drops every id of a triaged component for a clean one', async () => {
+    const { EXIT } = await load()
+    const canaries = await canaryQueries()
+    const answers = new Map(
+      OSV.answers.map(({ query, ids }) => [asked(query), canaries.has(asked(query)) ? ids : []]),
+    )
+    const result = await run({ fetch: standIn({ answers }).fetch })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toContain("**OSV's answer cannot be trusted:**")
+    expect(result.err).toContain(
+      'OSV returned no id for CPython 3.12.14, which the triage holds 2 for',
+    )
+    expect(result.err).toContain('OSV returned no id for zlib 1.3.2, which the triage holds 1 for')
+    expect(result.err).toContain('Nothing was judged')
+    expect(result.out).toBe('')
+    expect(result.summary).not.toContain('Clean')
+  })
+
+  it('never takes an answer whose canaries are silent for a clean one', async () => {
+    const { EXIT } = await load()
+    const pypi = 'PyPI requests @ 2.19.1'
+    expect(await canaryQueries()).toContain(pypi)
+    const answers = new Map(
+      OSV.answers.map(({ query, ids }) => [asked(query), asked(query) === pypi ? [] : ids]),
+    )
+    const result = await run({ fetch: standIn({ answers }).fetch })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toContain(
+      'the PyPI canary (PyPI requests @ 2.19.1) no longer returns GHSA-x84v-xcm2-53pg',
+    )
+    expect(result.err).not.toContain('OSV returned no id for')
+    expect(result.out).toBe('')
+  })
+
+  it('never calls an answer with every result empty clean', async () => {
+    const { EXIT } = await load()
+    const empty = async (url: string, init?: RequestInit): Promise<Response> => {
+      const { queries } = JSON.parse(String(init?.body)) as { queries: Query[] }
+      return url.endsWith('/querybatch')
+        ? json({ results: queries.map(() => ({})) })
+        : json({}, 404)
+    }
+    const result = await run({ fetch: empty })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toContain('canary')
+    expect(result.summary).not.toContain('Clean')
+  })
+
+  it('passes the fixture answer, canaries and all', async () => {
+    const { EXIT } = await load()
+    const result = await run()
+    expect(result.code).toBe(EXIT.clean)
+    const canaries = section(result.out, 'Canaries')
+    expect(canaries).toContain('| PyPI | PyPI requests @ 2.19.1 | GHSA-x84v-xcm2-53pg | 1 |')
   })
 })
 
@@ -504,6 +774,11 @@ describe('the triage', () => {
       'CVE-2026-0001: has a field "note" the form lacks',
     ])
     expect(await problems(entry(), entry())).toEqual(['CVE-2026-0001: is triaged twice'])
+    expect(await problems(entry(), entry({ component: 'CPython', version: '3.12.14' }))).toEqual([])
+    expect(await problems(entry({ rating_note: 'Rated by hand.' }))).toEqual([])
+    expect(await problems(entry({ rating_note: ' ' }))).toEqual([
+      'CVE-2026-0001: has an empty or non-text "rating_note"',
+    ])
     expect(await problems(entry({ triaged: '4 Nov 2026' }))).toContain(
       'CVE-2026-0001: has a "triaged" that is not a YYYY-MM-DD date',
     )
@@ -545,9 +820,17 @@ describe('vendor/vuln-triage.json', () => {
       expect(watched, e.id).toContain(`${e.component} ${e.version}`)
   })
 
-  it('agrees with the fixture triage the tests run on, entry for entry', () => {
-    const byId = new Map(committed.entries.map((e) => [e.id, e]))
-    for (const e of TRIAGE.entries) expect(byId.get(e.id)).toEqual(e)
+  // The fixture is four of these entries, as the tests read them. One the
+  // triage still holds must read the same in both, so a reason or a verdict
+  // changed here is changed there in the same change; one taken out of the
+  // triage, its fix shipped, stays in the fixture, which needs no edit for it.
+  it('agrees with the fixture triage the tests run on, for every entry it still holds', () => {
+    const key = (e: Entry): string => `${e.id} ${e.component}`
+    const held = new Map(committed.entries.map((e) => [key(e), e]))
+    for (const e of TRIAGE.entries) {
+      const now = held.get(key(e))
+      if (now !== undefined) expect(now).toEqual(e)
+    }
   })
 })
 
