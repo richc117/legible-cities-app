@@ -184,7 +184,9 @@ describe('where a known folder can start', () => {
       // Sixteen times the line: linear gives a ratio of about 16, quadratic
       // about 256, and the bound sits four times from each. The two sizes
       // take turns within each of five rounds, so load that comes and goes
-      // falls on both alike, and the least of each is kept. Eight times the
+      // over a round falls on both alike, and the least of each is kept; a
+      // slice of the processor taken from every long run while a short one
+      // escapes is what the margin of four is for. Eight times the
       // line, a bound of 20 and the sizes timed one after the other left a
       // linear scan a margin of two and a half, and a macOS runner once came
       // to 20.3 (issue 658).
