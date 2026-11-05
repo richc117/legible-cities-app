@@ -22,5 +22,45 @@
     "test": "tests/unit/engine-ipc.test.ts",
     "title": "holds the cancel of every request for one the guard is still thinking about",
     "why": "A request the guard is still thinking about passed over: it is sent to the engine a moment after the window that asked for it was closed, and nothing stops it."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "            : later\n              ? REQUEST_FOR_READ_ONLY\n              : null\n",
+    "replace": "            : null\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "refuses it before anything reaches the engine, and releases the mark",
+    "why": "The bridge without the read-only answer (issue 633): a map.build for a project a later version wrote reaches the engine, which rewrites that version's map under out/<id>."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "            : later\n              ? REQUEST_FOR_READ_ONLY\n              : null\n",
+    "replace": "            : null\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "lets a map.build through for a project this version wrote",
+    "why": "The same check skipped, seen beside a project this version wrote: both map.builds reach the engine, not only the current one."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "        gone === LAPSED || later === LAPSED\n",
+    "replace": "        gone === LAPSED\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "refuses when the read-only answer does not come in time, as the record lookup does",
+    "why": "A lapse of the read-only lookup not read as one: the refusal says the project is read-only when the disk never said so, where a lapsed record lookup says it could not be found in time."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "    const release = named === null ? () => {} : activity.beginRequest(named)\n    let refused: string | null\n    try {\n      // Not for a project that has no record (issue 505): a run whose\n      // project was deleted under it would make `out/<id>` again. A lookup\n      // the disk did not answer in time is a refusal; nothing has been sent.\n      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)\n      // Nor for a project a later build wrote (issue 633, ADR-056): this\n      // build never writes its record, so a map.build would replace the\n      // later build's map under `out/<id>` and leave the record's `drawn`\n      // describing a page that is no longer there. Asked of a record that is\n      // there, in the same queue and under the same bound, and a lapse is a\n      // refusal as above.\n      const later =\n        named === null || gone !== false ? false : await inTime(records.readOnly(named), lookupMs)\n",
+    "replace": "    let release = () => {}\n    let refused: string | null\n    try {\n      // Not for a project that has no record (issue 505): a run whose\n      // project was deleted under it would make `out/<id>` again. A lookup\n      // the disk did not answer in time is a refusal; nothing has been sent.\n      const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)\n      // Nor for a project a later build wrote (issue 633, ADR-056): this\n      // build never writes its record, so a map.build would replace the\n      // later build's map under `out/<id>` and leave the record's `drawn`\n      // describing a page that is no longer there. Asked of a record that is\n      // there, in the same queue and under the same bound, and a lapse is a\n      // refusal as above.\n      const later =\n        named === null || gone !== false ? false : await inTime(records.readOnly(named), lookupMs)\n      release = named === null ? () => {} : activity.beginRequest(named)\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "marks the project before it asks, so an export or a deletion begun meanwhile is refused",
+    "why": "beginRequest moved after the read-only lookup: an export or a deletion begun while the store is asked whether a later version wrote the project meets no mark and starts."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "      return 'record' in result && result.readOnly\n",
+    "replace": "      return 'record' in result\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "is yes only for a record it reads from a later version, and never rejects",
+    "why": "The store answering read-only for any record it can read: every map.build for a project this version wrote would be refused."
   }
 ]

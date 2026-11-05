@@ -57,7 +57,11 @@
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { CHANNELS, type EngineAccepted, type EngineSettled } from '../shared/api'
-import { REQUEST_FOR_NO_PROJECT, REQUEST_UNCHECKED } from '../shared/activity'
+import {
+  REQUEST_FOR_NO_PROJECT,
+  REQUEST_FOR_READ_ONLY,
+  REQUEST_UNCHECKED,
+} from '../shared/activity'
 import { ERROR_CODES, type EngineState, type JobLog, type JobProgress } from '../shared/engine'
 import { isLayoutId } from '../shared/layout'
 import type { Method } from '../shared/protocol'
@@ -93,10 +97,13 @@ export type Guard = (
 
 /**
  * What the bridge asks the project store before a request may write a
- * project's folder (issue 505): `ProjectStore.recordGone`, or a test's fake.
+ * project's folder: whether it has no record (issue 505) and whether a later
+ * build wrote it (issue 633). `ProjectStore` itself, or a test's fake; both
+ * questions are required, so a wiring that dropped one is a type error.
  */
 export interface RecordLookup {
   recordGone(id: string): Promise<boolean>
+  readOnly(id: string): Promise<boolean>
 }
 
 /** A request the supervisor would not send; why is in the log. */
@@ -157,8 +164,9 @@ export function registerEngineHandlers(
    */
   activity: ProjectActivity,
   /**
-   * Whether a project still has a record, for a request that writes its
-   * folder (issue 505). Required, as `activity` is.
+   * Whether a project still has a record (issue 505), and whether this
+   * build may write it (issue 633), for a request that writes its folder.
+   * Required, as `activity` is.
    */
   records: RecordLookup,
   /**
@@ -219,7 +227,22 @@ export function registerEngineHandlers(
       // project was deleted under it would make `out/<id>` again. A lookup
       // the disk did not answer in time is a refusal; nothing has been sent.
       const gone = named === null ? false : await inTime(records.recordGone(named), lookupMs)
-      const lookup = gone === LAPSED ? REQUEST_UNCHECKED : gone ? REQUEST_FOR_NO_PROJECT : null
+      // Nor for a project a later build wrote (issue 633, ADR-056): this
+      // build never writes its record, so a map.build would replace the
+      // later build's map under `out/<id>` and leave the record's `drawn`
+      // describing a page that is no longer there. Asked of a record that is
+      // there, in the same queue and under the same bound, and a lapse is a
+      // refusal as above.
+      const later =
+        named === null || gone !== false ? false : await inTime(records.readOnly(named), lookupMs)
+      const lookup =
+        gone === LAPSED || later === LAPSED
+          ? REQUEST_UNCHECKED
+          : gone
+            ? REQUEST_FOR_NO_PROJECT
+            : later
+              ? REQUEST_FOR_READ_ONLY
+              : null
       // The gate: what may be asked of the registry on a person's behalf is
       // decided here, with what the main process knows (the paths its own
       // chooser answered, the feeds its projects name), never on the page.

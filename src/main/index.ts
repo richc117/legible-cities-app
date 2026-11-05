@@ -895,7 +895,8 @@ if (!hasLock) {
         resetInProgress() ?? (await registry(method, params)) ?? resetInProgress(),
       pathRoots,
       activity,
-      // A map.build for a project with no record is refused (issue 505).
+      // A map.build for a project with no record is refused (issue 505), and
+      // for one a later build wrote, which opens read-only (issue 633).
       store,
       // And a person's retry while the engine's data is being reset (issue 562).
       resetInProgress,

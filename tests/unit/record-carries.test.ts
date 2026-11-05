@@ -268,6 +268,7 @@ const NOT_WRITERS: Record<string, string> = {
   destinations: 'reads every record',
   get: 'reads a record',
   recordGone: 'asks the disk whether a record is there',
+  readOnly: 'reads a record to ask whether a later build wrote it',
   create: 'writes a new record, which no other build has written',
   delete: 'removes the record whole',
 }
