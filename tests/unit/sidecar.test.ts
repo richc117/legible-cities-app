@@ -1059,9 +1059,12 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       Number(readFileSync(join(h.home, 'fake-engine.left.pid'), 'utf8'))
 
     // A child the supervisor did not end (a mutation, a failure) is ended
-    // here, before the harness's own stop and the removal of its home.
-    afterEach(() => {
+    // here, before the removal of its home, and only once the supervisor has
+    // stopped: one still looking at the group must not outlast the child, or
+    // it would look at an id the system is free to give another group.
+    afterEach(async () => {
       for (const h of running) {
+        await h.sidecar.stop()
         if (!existsSync(join(h.home, 'fake-engine.left.pid'))) continue
         const pid = leftPid(h)
         if (pid > 0 && alive(pid)) process.kill(pid, 'SIGKILL')
@@ -1218,7 +1221,12 @@ describe('a retry beside a child that outlived the kill', () => {
 // seen. Not on Windows, where there is no group and nothing is looked at.
 describe.skipIf(process.platform === 'win32')("an exited engine's group", () => {
   const members: ChildProcess[] = []
-  afterEach(() => {
+  const supervisors: Sidecar[] = []
+  // Each supervisor is stopped before the members are killed: one still
+  // looking at a group must not outlast its member, or it would look at an
+  // id the system is free to give another group.
+  afterEach(async () => {
+    for (const sidecar of supervisors.splice(0)) await sidecar.stop()
     for (const member of members.splice(0)) {
       if (member.exitCode === null && member.signalCode === null) member.kill('SIGKILL')
     }
@@ -1238,7 +1246,7 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
   }
 
   function supervisor(spawned: Fake[], log: string[] = [], bounds: Partial<Bounds> = {}): Sidecar {
-    return new Sidecar({
+    const sidecar = new Sidecar({
       command: ['stand-in-interpreter', '-m', 'schematic.serve'],
       env: {},
       pin: PIN,
@@ -1247,6 +1255,8 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
       bounds: { terminateMs: 1_000, restartDelaysMs: [], ...bounds },
       spawn: (() => (spawned.shift() as Fake).child) as never,
     })
+    supervisors.push(sidecar)
+    return sidecar
   }
 
   // The first look is taken as the exit is seen, just after the reap: a
@@ -1288,36 +1298,49 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
   // made to outlive SIGKILL on cue, nor what is in its group with it, so the
   // stand-in for that engine has no pid while it is being ended, and takes a
   // real group's id only as it exits.
-  it('has a quit wait too for a group added while it waits, as an engine that outlived the kill exits', async () => {
-    const [nextLeft, outlivedLeft] = [await member(true), await member(true)]
-    const outlived = fakeChild()
-    const next = fakeChild(nextLeft.pid)
-    const log: string[] = []
-    // One restart, then the give-up.
-    const sidecar = supervisor([outlived, next], log, {
-      shutdownMs: 20,
-      terminateMs: 500,
-      restartDelaysMs: [20],
-    })
-    sidecar.start()
-    // A stray line: the first engine is ended, outlives the kill, and the next starts.
-    outlived.child.stdout?.push('this is not a frame\n\n')
-    await eventually(() => log.some((l) => l.includes('it is still there')), 5_000, 'the kill')
-    await eventually(() => log.some((l) => l.startsWith('starting, attempt 2')), 5_000, 'a restart')
-    next.exit()
-    expect(sidecar.groupsBeingEnded).toBe(1)
-    const stopping = sidecar.stop()
-    // The quit is waiting on the next engine's group by now, which takes
-    // terminateMs, its member ignoring SIGTERM. Only a quit that fails this
-    // test leans on the pause: one that looks again waits whenever it comes.
-    await sleep(150)
-    ;(outlived.child as unknown as { pid: number }).pid = outlivedLeft.pid as number
-    outlived.exit()
-    expect(sidecar.groupsBeingEnded).toBe(2)
-    await stopping
-    expect(alive(nextLeft.pid as number)).toBe(false)
-    expect(alive(outlivedLeft.pid as number), 'the group added while the quit waited').toBe(false)
-  })
+  it(
+    'has a quit wait too for a group added while it waits, as an engine that outlived the kill exits',
+    { timeout: 20_000 },
+    async () => {
+      const [nextLeft, outlivedLeft] = [await member(true), await member(true)]
+      const outlived = fakeChild()
+      const next = fakeChild(nextLeft.pid)
+      const log: string[] = []
+      // One restart, then the give-up.
+      const sidecar = supervisor([outlived, next], log, {
+        shutdownMs: 20,
+        terminateMs: 1_500,
+        restartDelaysMs: [20],
+      })
+      sidecar.start()
+      // A stray line: the first engine is ended, outlives the kill, and the next starts.
+      outlived.child.stdout?.push('this is not a frame\n\n')
+      await eventually(() => log.some((l) => l.includes('it is still there')), 10_000, 'the kill')
+      await eventually(
+        () => log.some((l) => l.startsWith('starting, attempt 2')),
+        5_000,
+        'a restart',
+      )
+      next.exit()
+      expect(sidecar.groupsBeingEnded).toBe(1)
+      const stopping = sidecar.stop()
+      // The quit is now waiting on the next engine's group, which takes
+      // terminateMs and a look after the exit to end, its member ignoring
+      // SIGTERM. The outlived engine must exit inside that wait, whatever the
+      // code: after the quit has begun to wait, and before the next engine's
+      // group has ended, or the quit has resolved and one group, not two, is
+      // counted below. 600 ms in leaves 900 ms before that end. A quit that
+      // waits only for the groups there when it began resolves at that end,
+      // while the group added has 600 ms still to go.
+      await sleep(600)
+      ;(outlived.child as unknown as { pid: number }).pid = outlivedLeft.pid as number
+      outlived.exit()
+      expect(sidecar.groupsBeingEnded).toBe(2)
+      await stopping
+      expect(alive(nextLeft.pid as number)).toBe(false)
+      expect(alive(outlivedLeft.pid as number), 'the group added while the quit waited').toBe(false)
+    },
+  )
 })
 
 describe('engineWorkRefusal (issue 107)', () => {
