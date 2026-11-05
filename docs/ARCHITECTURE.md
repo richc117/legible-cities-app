@@ -2205,11 +2205,13 @@ process refuses while a reset is already running, while an export is
 running, while the engine is answering a request, or while a record is
 being written - it counts all four - and for a home so high up that those
 four names would mean something else. It refuses too while the engine is
-starting or restarting ("The engine is starting. Try again in a moment."),
-and while the engine, or what an exited engine left running in its process
-group, is still being ended ("The engine is still stopping. Try again in a
-moment.", the question a retry asks and its sentence), since either may
-still be writing into the home: an engine given up on, or a mismatched
+starting or restarting ("The engine is still starting. Try again in a
+moment.", as a run, an export and a feed's addition say it), and while the
+engine, or what an exited engine left running in its process group (on
+POSIX; on Windows nothing tracks it, "The engine process" above), is still
+being ended ("The engine is still stopping. Try again in a moment.", the
+question a retry asks and its sentence), since either may still be
+writing into the home: an engine given up on, or a mismatched
 one, is ended after its state says so, with nothing left in flight (issue
 637, `engineWorkRefusal`). And once the flag is up, no restart and no Try
 again starts the engine until it is down ("The engine process"). It does

@@ -169,11 +169,11 @@
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "  if (engine.stillEnding) return RESET_REFUSALS.stillStopping\n",
+    "find": "    if (this.ending !== null) return true\n",
     "replace": "",
     "test": "tests/unit/sidecar.test.ts",
     "title": "has the reset refused, as a retry is, while the engine given up on is still being ended",
-    "why": "The reset let through while a retry is refused (issue 637): the engine given up on is still being ended, for up to shutdownMs and two terminateMs, with no client and so nothing in flight, and the reset removes the four folders under a live engine."
+    "why": "An engine being ended not counted as still ending (issue 637, the regression its second commit fixed): the engine given up on is still being ended, for up to shutdownMs and two terminateMs, with no client and so nothing in flight, and the reset removes the four folders under a live engine while a retry is refused."
   },
   {
     "file": "src/main/sidecar.ts",
@@ -182,5 +182,13 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "starts no engine while the data is reset, and starts it once the reset has ended",
     "why": "The wait's sentence put in place of the failure's reason (issue 637): while the restart waits for a reset, the screen no longer says why the engine stopped."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "        this.waitingOnReset = false\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "says the wait again when a later restart meets a later reset",
+    "why": "The record of a wait for a reset never cleared (issue 637): a later restart that meets a later reset keeps the failure's reason alone, says nothing of the wait, and logs nothing of it."
   }
 ]

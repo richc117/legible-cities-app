@@ -1365,6 +1365,34 @@ describe('an engine start and a reset of its data', () => {
     spawned[1]!.exit()
   })
 
+  // The wait is said again for a second reset: its record of the first ends
+  // with the launch, and a restart that met one reset meets the next as new.
+  it('says the wait again when a later restart meets a later reset', async () => {
+    // Two restarts before the give-up.
+    const { sidecar, spawned, log, reset } = supervised({ restartDelaysMs: [20, 20] })
+    sidecar.start()
+    for (const attempt of [2, 3]) {
+      spawned[attempt - 2]!.exit()
+      expect(sidecar.state).toMatchObject({ state: 'restarting', attempt })
+      await restartArmed(sidecar)
+      reset.now = RESETTING
+      await eventually(() => waiting(sidecar), 5_000, `wait ${attempt - 1} for a reset`)
+      expect(sidecar.state).toMatchObject({ state: 'restarting', attempt })
+      expect(spawned, 'nothing started under the reset').toHaveLength(attempt - 1)
+      reset.now = null
+      await eventually(() => spawned.length === attempt, 5_000, `start ${attempt} after it`)
+      expect(sidecar.state).toEqual({ state: 'starting', attempt })
+    }
+    expect(
+      log.filter((l) => l.startsWith('the restart waits for the reset')),
+      'one line for each wait',
+    ).toHaveLength(2)
+    expect(
+      log.filter((l) => l === 'the reset of the engine data has ended; restarting'),
+    ).toHaveLength(2)
+    spawned[2]!.exit()
+  })
+
   it('leaves no timer and starts nothing once a stop comes during the wait', async () => {
     const { sidecar, spawned, reset } = supervised()
     sidecar.start()
@@ -1660,7 +1688,8 @@ describe('engineWorkRefusal (issues 107 and 637)', () => {
   })
 
   it('asks to wait for an engine on its way, before the handshake it is answering', () => {
-    const said = 'The engine is starting. Try again in a moment.'
+    // The words the renderer has for the same state (layoutRun, exportRun, feedAdd).
+    const said = 'The engine is still starting. Try again in a moment.'
     expect(engineWorkRefusal({ ...idle, state: { state: 'starting', attempt: 1 } })).toBe(said)
     expect(
       engineWorkRefusal({ ...idle, inFlight: 1, state: { state: 'starting', attempt: 1 } }),

@@ -182,10 +182,12 @@ const GROUP_POLL_MS = 25
 
 /**
  * Why the engine's data cannot be reset now, as the supervisor says it
- * (`engineWorkRefusal`), shown in the reset's dialog as written. The
- * still-stopping sentence is the retry's own (`RETRY_REFUSALS`, issue 562)
- * and the starting one takes its form, so the two doors speak alike; the
- * other two keep the words they were first shown in (issue 107).
+ * (`engineWorkRefusal`), shown in the reset's dialog as written. Each state
+ * has one sentence across the app: the still-stopping one is the retry's
+ * own (`RETRY_REFUSALS`, issue 562), and the starting one is what a layout
+ * run, an export and a feed's addition say when the engine is on its way
+ * (`layoutRun.ts`, `exportRun.ts`, `feedAdd.ts`); the other two keep the
+ * words they were first shown in (issue 107).
  */
 export const RESET_REFUSALS = {
   /** A request a bound ended may never end, and only a quit ends it: so the way out, not a wait (issue 107). */
@@ -197,7 +199,7 @@ export const RESET_REFUSALS = {
    * start is bounded (the handshake, then a restart's wait), and ends ready
    * or down, either of which lets the reset through.
    */
-  starting: 'The engine is starting. Try again in a moment.',
+  starting: 'The engine is still starting. Try again in a moment.',
   inFlight: 'The engine is answering a request; wait for it to finish.',
   /**
    * The engine, or what an exited engine left running in its process group,
@@ -397,7 +399,9 @@ export class Sidecar {
    * - An engine that outlived the last wait after SIGKILL and has not
    *   exited since (`unended`, issue 562).
    * - What an exited engine left running in its process group, being ended
-   *   (`groupsEnding`, issue 640).
+   *   (`groupsEnding`, issue 640). On POSIX only: on Windows there is no
+   *   group, nothing tracks what a crashed engine started, and it runs to
+   *   its own end unseen by this question.
    *
    * Read only.
    */
