@@ -144,12 +144,14 @@ sides, each asking the other in the same turn as it acts:
 - **The reset asks the supervisor** (`engineWorkRefusal`, in its `busy`
   check, before its flag goes up) and refuses, in this order: while a
   request a bound ended is unanswered (`abandoned`); while the state is
-  `starting` or `restarting`, "The engine is starting. Try again in a
-  moment." (before the requests in flight, since a start's handshake is
-  one); while a request is in flight (`inFlight`); and while the engine,
-  or what an exited engine left in its process group, is still being
-  ended (`stillEnding`, the question `retry()` asks too), "The engine is
-  still stopping. Try again in a moment.", the retry's own sentence: the
+  `starting` or `restarting`, "The engine is still starting. Try again in
+  a moment.", what the screen says for a start elsewhere (before the
+  requests in flight, since a start's handshake is one); while a request is
+  in flight (`inFlight`); and while the engine, or what an exited engine
+  left in its process group (on POSIX; on Windows nothing tracks it, "After
+  an exit"), is still being ended (`stillEnding`, the question `retry()`
+  asks too), "The engine is still stopping. Try again in a moment.", the
+  retry's own sentence: the
   engine given up on, or a mismatched one, while it is being ended (the
   state already says `stopped` or `mismatched`, and the client is gone, so
   nothing is in flight), an engine that outlived the kill, and an exited

@@ -113,11 +113,12 @@ settings: {
   It is refused while a reset is already running, while an export is
   running, an engine request is in flight or a record is being written, with
   a sentence saying which _(and, since 2026-11-04, issue 637, while the
-  engine is starting or restarting, "The engine is starting. Try again in a
-  moment.", and while the engine, or what an exited engine left running in
-  its process group, is still being ended, "The engine is still stopping.
-  Try again in a moment.", the question and the sentence a person's Try
-  again has)_. The home is resolved through every symbolic link
+  engine is starting or restarting, "The engine is still starting. Try
+  again in a moment.", and while the engine, or what an exited engine left
+  running in its process group (on POSIX; on Windows nothing tracks it), is
+  still being ended, "The engine is still stopping. Try again in a
+  moment.", the question and the sentence a person's Try again has)_. The
+  home is resolved through every symbolic link
   before anything judges it, so the guards read the folder the reset would
   really reach; resolving it reads and never creates, because a press that
   is about to be refused must not write to the disk. It is then refused for
