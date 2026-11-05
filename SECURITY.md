@@ -57,20 +57,34 @@ engine's packages, FFmpeg with x264 and zlib, and the LOOM tools, each
 pinned in `vendor/pins.json` (the packages in
 `vendor/python-requirements.txt`). Once a week
 `.github/workflows/vuln-watch.yml` runs `scripts/vuln-watch.mjs`, which
-asks [OSV](https://osv.dev) about each of them and judges the answer
-against `vendor/vuln-triage.json`. An id OSV returns is a match on a
-component and a version, not a vulnerability found in the app; the triage
-records, for each one, whether the app is affected and why.
+asks [OSV](https://osv.dev) about each of them, reads the rating of each
+id's vector from its CVE record, and judges the answer against
+`vendor/vuln-triage.json`. An id OSV returns is a match on a component and
+a version, not a vulnerability found in the app; the triage records, for
+each one, whether the app is affected and why.
 
 The run fails when OSV returns an id the triage does not cover, or covers
-for another component, version or severity, and when an open id is past its
-due date. A red run is the notice; nothing else is sent. It also fails when
-OSV cannot be reached, saying that nothing was judged. Every run lists what
-it does not watch, and why: the libraries inside the Python runtime
-(OpenSSL, SQLite and the rest), whose versions the pins do not record;
-Chromium and Electron's own FFmpeg, which reach the app as Electron
-releases; and the libraries the Windows LOOM tools link without a pinned
-version.
+for another component, version or severity, or rates below its CVE record
+with no note saying why, and when an open id is past its due date. A red
+run is the notice; nothing else is sent. It also fails, saying that
+nothing was judged, when OSV or the CVE records cannot be reached, when the
+run outlasts its own deadline (eight minutes, inside the job's ten), and
+when OSV's answer cannot be trusted: a few canaries, old versions OSV has
+matched for years, are asked beside the components, and one that comes
+back silent, or a component the triage holds ids for that comes back with
+none at all, means OSV's matching changed rather than the components went
+clean. Every run lists what it does not watch, and why: the libraries
+inside the Python runtime (OpenSSL, SQLite and the rest), whose versions
+the pins do not record; Chromium and Electron's own FFmpeg, which reach the
+app as Electron releases; and the libraries the Windows LOOM tools link
+without a pinned version.
+
+GitHub turns off a scheduled workflow in a public repository after 60 days
+with no activity in the repository, and from then on there is no run to
+go red. A quiet spell after a release can silence the watch that way: the
+Actions tab then shows vuln-watch as disabled, and its "Enable workflow"
+button, or `gh workflow enable vuln-watch.yml`, turns it back on. A run by
+hand (`gh workflow run vuln-watch.yml`) is the check that it still works.
 
 **The fix budget.** Medium or above within 60 days; critical or high in a
 path the app can reach within 14. An open entry is reachable, or not yet
@@ -89,10 +103,12 @@ and the id) and decide from evidence:
   to read), the LOOM tools and ffmpeg, and nothing else;
 - whether the pinned version already carries the fix.
 
-Then add an entry: the id; the component and version the run printed;
+Then add an entry: the id; the component and version the run printed (an
+id returned for two components has an entry for each);
 `osv_severity` as the run printed it, or null where OSV gives none, and
-`severity`, the rating the CVE record's own score gives that (`unrated`
-where OSV gives none); a verdict, `not-affected` (not in what ships),
+`severity`, the rating the CVE record gives that vector (`unrated` where
+OSV gives none), with a `rating_note` saying why where it is lower or
+nothing rates the vector; a verdict, `not-affected` (not in what ships),
 `not-reachable` (ships, but nothing the app runs reaches it as the
 advisory needs), `fixed-in-pin` or `open`; a reason of one to three
 sentences grounded in how the app uses the component; the day; and, for an
