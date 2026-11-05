@@ -17,5 +17,5 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["tests/**/*", "src/**/*", "scripts/**/*"]
+  "include": ["tests/**/*", "src/**/*", "scripts/**/*", "vitest.config.ts"]
 }

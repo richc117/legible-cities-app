@@ -53,10 +53,27 @@ export default defineConfig({
       {
         extends: true,
         // The page Vite serves the browser is bundled ahead of the run, from
-        // the imports it finds; the automatic JSX transform's runtime is not
-        // one it finds, and bundling it late reloads the page under a test
-        // that has started.
-        optimizeDeps: { include: ['react/jsx-dev-runtime'] },
+        // the imports it finds; a dependency found after the page is up is
+        // bundled then, and the page reloads under a test that has started,
+        // which fails the browser files at the file level, before any test
+        // runs (issue 654). Two things find one:
+        //
+        // - the automatic JSX transform's runtime, which no file imports and
+        //   the scan cannot see, so it is listed (without it, every browser
+        //   file fails on an empty cache too);
+        // - a cache kept from an earlier run. Vite reuses it without scanning
+        //   when the config and the lockfile are unchanged, so a browser test
+        //   that imports a package the cache lacks (a new test file, a new
+        //   import) makes the bundle and the reload mid-run, and every
+        //   browser file fails. `force` scans the browser test files and
+        //   bundles what they import on every start of Vitest (a watch
+        //   session's reruns keep its first scan), in under half a second,
+        //   so no list of packages is kept by hand to go stale. The
+        //   cost: two Vitest processes in one checkout can remove each
+        //   other's browser deps folder (the second start's forced removal),
+        //   so do not run watch mode beside `npm test` in one checkout.
+        //   `tests/unit/vitest-config.test.ts` holds both settings.
+        optimizeDeps: { force: true, include: ['react/jsx-dev-runtime'] },
         test: {
           name: 'browser',
           include: ['tests/unit/**/*.browser.test.tsx'],
