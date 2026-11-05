@@ -20,12 +20,14 @@ import { Exporter, type ExportEngine } from '../../src/main/export'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
 import { ProjectActivity, projectNamedBy } from '../../src/main/projectActivity'
 import { ProjectStore } from '../../src/main/projects'
+import { RECORD_VERSION } from '../../src/main/record/parse'
 import {
   DELETE_WHILE_DRAWING,
   DELETE_WHILE_EXPORTING,
   DRAW_WHILE_EXPORTING,
   EXPORT_WHILE_DRAWING,
   REQUEST_FOR_NO_PROJECT,
+  REQUEST_FOR_READ_ONLY,
   REQUEST_UNCHECKED,
   REQUEST_WHILE_DELETING,
 } from '../../src/shared/activity'
@@ -64,7 +66,9 @@ describe('the sentences', () => {
       'This project is exporting. Wait for the export to finish or cancel it, then try again.',
     )
     expect(REQUEST_FOR_NO_PROJECT).toBe('This project has been deleted.')
-    expect(REQUEST_UNCHECKED).toBe('This project could not be found in time. Try again.')
+    // Reworded by issue 633, when a second lookup, of a record already
+    // found, came to lapse into it.
+    expect(REQUEST_UNCHECKED).toBe('This project could not be read in time. Try again.')
   })
 })
 
@@ -687,6 +691,33 @@ describe('the engine bridge refuses a map.build for a project with no record (is
     await b.request('t2', 'map.build', { key: 'bart' })
     expect(asked).toEqual([])
     expect(b.held).toHaveLength(2)
+  })
+})
+
+describe('the engine bridge refuses a map.build for a project a later version wrote (issue 633)', () => {
+  it('and the later version finds its map as it left it', async () => {
+    // Mutation: the bridge without the read-only answer - the map.build
+    // reaches the engine, which writes out/<id> over the later version's map.
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const b = bridge(activity, { records: store })
+    const { id } = await store.create({ name: 'Later', feed: 'la-metro-rail' })
+    const file = join(home, 'projects', id, 'project.json')
+    const json = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
+    await writeFile(file, JSON.stringify({ ...json, version: RECORD_VERSION + 1 }, null, 2))
+    // The map the later version drew, where a draw here would write its own.
+    const page = join(home, 'out', id, 'index.html')
+    await mkdir(join(home, 'out', id), { recursive: true })
+    await writeFile(page, '<title>the later version’s map</title>')
+    const answer = await said(b.request('t1', 'map.build', { out: id }))
+    // The harm first, so a mutation's failure names it.
+    expect(await readFile(page, 'utf8'), 'out/<id> as the later version left it').toBe(
+      '<title>the later version’s map</title>',
+    )
+    expect(b.held, 'nothing reached the engine').toEqual([])
+    expect(answer).toContain('"accepted":false')
+    expect(answer).toContain(REQUEST_FOR_READ_ONLY)
+    expect(activity.exportRefusal(id), 'the refusal released its mark').toBeNull()
   })
 })
 

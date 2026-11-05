@@ -222,7 +222,8 @@ export function registerEngineHandlers(
       // build never writes its record, so a map.build would replace the
       // later build's map under `out/<id>` and leave the record's `drawn`
       // describing a page that is no longer there. Asked of a record that is
-      // there, in the same queue and under the same bound, and a lapse is a
+      // there, in the same queue, under a bound of its own, of the same
+      // length, so a refusal can take up to twice `lookupMs`; a lapse is a
       // refusal as above.
       const later =
         named === null || gone !== false ? false : await inTime(records.readOnly(named), lookupMs)

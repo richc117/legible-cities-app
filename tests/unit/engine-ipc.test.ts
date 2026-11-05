@@ -764,7 +764,8 @@ async function projectAt(home: string, store: ProjectStore, version: unknown): P
 // `out/<id>` as well (issue 633), with no renderer in the room: the screen
 // offers no run for such a project, and this is what holds when one is sent
 // anyway. The engine here is the harness's fake, so "nothing reached the
-// engine" is its empty list of requests.
+// engine" is its empty list of requests; that `out/<id>` stays unwritten is
+// `project-activity.test.ts`'s, whose stand-in engine writes it.
 describe('the bridge refuses a map.build for a project a later version wrote (issue 633)', () => {
   let home: string
   beforeEach(async () => {
@@ -789,7 +790,6 @@ describe('the bridge refuses a map.build for a project a later version wrote (is
     const activity = new ProjectActivity(() => 0)
     const store = new ProjectStore(home, () => {}, {}, activity)
     const id = await projectAt(home, store, RECORD_VERSION + 1)
-    const before = await readFile(join(home, 'projects', id, 'project.json'), 'utf8')
     const h = harness(true, undefined, undefined, { records: store, activity })
     const answer = (await h.call(CHANNELS.engineRequest, 'tok1', 'map.build', {
       key: 'la-metro-rail',
@@ -802,10 +802,6 @@ describe('the bridge refuses a map.build for a project a later version wrote (is
     expect(h.requests, 'nothing reached the engine').toEqual([])
     expect(activity.exportRefusal(id), 'the refusal released its mark').toBeNull()
     expect(activity.deleteRefusal(id)).toBeNull()
-    expect(
-      await readFile(join(home, 'projects', id, 'project.json'), 'utf8'),
-      'the later version finds its record as it left it',
-    ).toBe(before)
   })
 
   it('lets a map.build through for a project this version wrote', async () => {
@@ -917,6 +913,17 @@ describe('ProjectStore.readOnly', () => {
     expect(await store.readOnly(emptied), 'a folder with no record').toBe(false)
     expect(await store.readOnly('cccccccccccc'), 'never made').toBe(false)
     expect(await store.readOnly('../projects'), 'no identifier').toBe(false)
+  })
+
+  it('answers after a deletion sent before it', async () => {
+    // Mutation: `readOnly` read outside the project's queue - it reads the
+    // record before the deletion removes it and answers yes.
+    const store = new ProjectStore(home, () => {})
+    const id = await projectAt(home, store, RECORD_VERSION + 1)
+    const deletion = store.delete(id)
+    const later = store.readOnly(id)
+    await deletion
+    expect(await later).toBe(false)
   })
 })
 

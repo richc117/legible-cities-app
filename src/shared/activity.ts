@@ -54,7 +54,10 @@ export const REQUEST_FOR_READ_ONLY =
   'This project was made by a newer version of the app and cannot be drawn here.'
 
 /**
- * The same question, when the disk did not answer it within the deadline
- * every check over folders keeps (`FOLDERS_TIMEOUT_MS`).
+ * Either of the two questions above, whether the project has a record and
+ * whether a later build wrote it, when the disk did not answer it within the
+ * deadline every check over folders keeps (`FOLDERS_TIMEOUT_MS`). Each has a
+ * deadline of its own. Worded to be true of both: the second is asked of a
+ * record already found, so "could not be found" would be false of it.
  */
-export const REQUEST_UNCHECKED = 'This project could not be found in time. Try again.'
+export const REQUEST_UNCHECKED = 'This project could not be read in time. Try again.'

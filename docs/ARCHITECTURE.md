@@ -1817,14 +1817,15 @@ deleted while its `graph.build` ran. A record that is there but cannot be
 read is let through, since its folder is still there for a deletion to
 remove `out/<id>` with. Of a record that is there, the bridge then asks
 whether a later build wrote it (`ProjectStore.readOnly`, issue 633), in the
-same queue and under the same bound, and refuses a read-only project's
+same queue, under a bound of its own, of the same length, so a refusal can
+take up to twice `FOLDERS_TIMEOUT_MS`; it refuses a read-only project's
 `map.build`, since this build never writes that record and the draw would
 replace that build's map. The bridge raises the request's mark in the same
-turn as its check and before the lookup's await, so an export or a deletion
-begun while it waits meets the mark and is refused; the guard is asked after
-the lookup, so its last look at the reset comes after every await and its
-sentence wins over the lookup's. Each says why in a
-sentence (`src/shared/activity.ts`), the screen's confirm re-reads its runs
+turn as its check and before the two lookups' awaits, so an export or a
+deletion begun while it waits meets the mark and is refused; the guard is
+asked after the lookups, so its last look at the reset comes after every
+await and its sentence wins over theirs. Each says why in a sentence
+(`src/shared/activity.ts`), the screen's confirm re-reads its runs
 and says the same. A mark follows the engine's answer, not its work, so when
 a bound ends a project's `map.build` (`inactive`) while the engine still
 reports a request it stopped answering (`Sidecar.abandoned`), the bridge
