@@ -322,7 +322,7 @@ describe('a field the paths cannot be looked for in', () => {
       undefined,
       broken,
       new ProjectActivity(() => 0),
-      { recordGone: async () => false },
+      { recordGone: async () => false, readOnly: async () => false },
       () => null,
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})
@@ -379,7 +379,7 @@ describe('both bridges hand the door their folders', () => {
       async (method) => (method === 'feeds.remove' ? `the zip at ${HOME} is not yours` : null),
       ROOTS,
       new ProjectActivity(() => 0),
-      { recordGone: async () => false },
+      { recordGone: async () => false, readOnly: async () => false },
       () => null,
     )
     await call(CHANNELS.engineRequest, 'tok-1', 'map.build', {})

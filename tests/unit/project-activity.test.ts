@@ -217,7 +217,7 @@ function bridge(
     over.guard,
     NO_ROOTS,
     activity,
-    over.records ?? { recordGone: async () => false },
+    over.records ?? { recordGone: async () => false, readOnly: async () => false },
     () => null,
     over.lookupMs,
   )
@@ -656,7 +656,10 @@ describe('the engine bridge refuses a map.build for a project with no record (is
     // Mutation: `gone === LAPSED` read as "not gone" - the request is sent.
     const activity = new ProjectActivity(() => 0)
     const b = bridge(activity, {
-      records: { recordGone: () => new Promise<boolean>(() => {}) },
+      records: {
+        recordGone: () => new Promise<boolean>(() => {}),
+        readOnly: async () => false,
+      },
       lookupMs: 20,
     })
     const answer = await said(b.request('t1', 'map.build', { out: 'abcdefghijk1' }))
@@ -673,6 +676,10 @@ describe('the engine bridge refuses a map.build for a project with no record (is
         recordGone: async (id) => {
           asked.push(id)
           return true
+        },
+        readOnly: async (id) => {
+          asked.push(id)
+          return false
         },
       },
     })
@@ -738,6 +745,7 @@ describe('the bridge marks before it asks (issue 505)', () => {
           looking = true
           return opened.then(() => store.recordGone(id))
         },
+        readOnly: (id) => store.readOnly(id),
       },
     })
     const project = await store.create({ name: 'Racing', feed: 'la-metro-rail' })
@@ -771,7 +779,10 @@ describe('the guard is asked after the record lookup (issue 505)', () => {
   function heldLookup(gone: boolean) {
     let open!: () => void
     const opened = new Promise<void>((r) => (open = r))
-    return { records: { recordGone: () => opened.then(() => gone) }, open }
+    return {
+      records: { recordGone: () => opened.then(() => gone), readOnly: async () => false },
+      open,
+    }
   }
   it('so a reset begun while the lookup waits is still the guard’s to refuse', async () => {
     // Mutation: the guard asked before the lookup - it answers null before
@@ -818,6 +829,7 @@ describe('the guard is asked after the record lookup (issue 505)', () => {
           if (fails) throw new Error('the disk broke')
           return false
         },
+        readOnly: async () => false,
       },
     })
     await expect(b.request('t1', 'map.build', { out: 'abcdefghijk1' })).rejects.toThrow(

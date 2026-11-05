@@ -3,20 +3,31 @@
 // the page's id, and only the top frame allowed through.
 
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   NOT_SENT,
   PAGE_METHODS,
   registerEngineHandlers,
   type EngineSource,
+  type RecordLookup,
 } from '../../src/main/engine-ipc'
 import { NO_ROOTS } from '../../src/main/ipc-shape'
 import { ProjectActivity } from '../../src/main/projectActivity'
+import { ProjectStore } from '../../src/main/projects'
+import { RECORD_VERSION } from '../../src/main/record/parse'
 import type { Notification } from '../../src/main/sidecar'
+import {
+  DELETE_WHILE_DRAWING,
+  EXPORT_WHILE_DRAWING,
+  REQUEST_FOR_READ_ONLY,
+  REQUEST_UNCHECKED,
+} from '../../src/shared/activity'
 import { CHANNELS } from '../../src/shared/api'
 import { EngineError, ERROR_CODES, type EngineState, type ErrorData } from '../../src/shared/engine'
+import { until } from '../support/until'
 
 type Handler = (event: IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
 
@@ -31,7 +42,14 @@ function harness(
   topFrame = true,
   guard?: (method: string) => Promise<string | null>,
   resetting: () => string | null = () => null,
+  over: {
+    /** The store's lookup; by default every project has its record, and this build wrote it. */
+    records?: RecordLookup
+    activity?: ProjectActivity
+    lookupMs?: number
+  } = {},
 ) {
+  const activity = over.activity ?? new ProjectActivity(() => 0)
   const handlers = new Map<string, Handler>()
   const ipc = {
     handle: (channel: string, h: Handler) => handlers.set(channel, h),
@@ -100,13 +118,15 @@ function harness(
     guard,
     // No folder known: the door's own tests are in ipc-shape.test.ts.
     NO_ROOTS,
-    new ProjectActivity(() => 0),
-    { recordGone: async () => false },
+    activity,
+    over.records ?? { recordGone: async () => false, readOnly: async () => false },
     resetting,
+    over.lookupMs,
   )
   const event = {} as IpcMainInvokeEvent
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
   return {
+    activity,
     handlers,
     call,
     sent,
@@ -727,6 +747,176 @@ describe('a request has no deadline of its own (issue 351)', () => {
       accepted: boolean
     }
     expect(again.accepted).toBe(true)
+  })
+})
+
+/** A project made in a real store under `home`, its record rewritten as if `version` wrote it. */
+async function projectAt(home: string, store: ProjectStore, version: unknown): Promise<string> {
+  const { id } = await store.create({ name: 'Later', feed: 'la-metro-rail' })
+  const file = join(home, 'projects', id, 'project.json')
+  const json = JSON.parse(await readFile(file, 'utf8')) as Record<string, unknown>
+  await writeFile(file, JSON.stringify({ ...json, version }, null, 2) + '\n')
+  return id
+}
+
+// A project a later build wrote opens read-only (ADR-056), and every writer
+// of its record refuses. Main refuses the map.build that would rewrite its
+// `out/<id>` as well (issue 633), with no renderer in the room: the screen
+// offers no run for such a project, and this is what holds when one is sent
+// anyway. The engine here is the harness's fake, so "nothing reached the
+// engine" is its empty list of requests.
+describe('the bridge refuses a map.build for a project a later version wrote (issue 633)', () => {
+  let home: string
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'legible-cities-633-'))
+  })
+  afterEach(async () => {
+    await rm(home, { recursive: true, force: true })
+  })
+
+  const hintOf = (answer: unknown): string | undefined =>
+    (answer as { error?: { data?: { hint?: string } } }).error?.data?.hint
+
+  it('says why in a sentence of its own', () => {
+    expect(REQUEST_FOR_READ_ONLY).toBe(
+      'This project was made by a newer version of the app and cannot be drawn here.',
+    )
+  })
+
+  it('refuses it before anything reaches the engine, and releases the mark', async () => {
+    // Mutation: the bridge without the read-only answer (`later` never
+    // read) - the map.build is accepted and reaches the engine.
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const id = await projectAt(home, store, RECORD_VERSION + 1)
+    const before = await readFile(join(home, 'projects', id, 'project.json'), 'utf8')
+    const h = harness(true, undefined, undefined, { records: store, activity })
+    const answer = (await h.call(CHANNELS.engineRequest, 'tok1', 'map.build', {
+      key: 'la-metro-rail',
+      layout: 'a'.repeat(64),
+      out: id,
+    })) as { accepted: boolean; error?: { code: number } }
+    expect(answer.accepted).toBe(false)
+    expect(answer.error?.code).toBe(ERROR_CODES.badCall)
+    expect(hintOf(answer)).toBe(REQUEST_FOR_READ_ONLY)
+    expect(h.requests, 'nothing reached the engine').toEqual([])
+    expect(activity.exportRefusal(id), 'the refusal released its mark').toBeNull()
+    expect(activity.deleteRefusal(id)).toBeNull()
+    expect(
+      await readFile(join(home, 'projects', id, 'project.json'), 'utf8'),
+      'the later version finds its record as it left it',
+    ).toBe(before)
+  })
+
+  it('lets a map.build through for a project this version wrote', async () => {
+    const activity = new ProjectActivity(() => 0)
+    const store = new ProjectStore(home, () => {}, {}, activity)
+    const later = await projectAt(home, store, RECORD_VERSION + 1)
+    const current = await projectAt(home, store, RECORD_VERSION)
+    const h = harness(true, undefined, undefined, { records: store, activity })
+    expect(await h.call(CHANNELS.engineRequest, 'tok1', 'map.build', { out: current })).toEqual({
+      accepted: true,
+    })
+    expect(hintOf(await h.call(CHANNELS.engineRequest, 'tok2', 'map.build', { out: later }))).toBe(
+      REQUEST_FOR_READ_ONLY,
+    )
+    expect(h.requests.map((r) => [r.method, (r.params as { out: string }).out])).toEqual([
+      ['map.build', current],
+    ])
+  })
+
+  it('refuses when the read-only answer does not come in time, as the record lookup does', async () => {
+    // Mutation: a lapse of the read-only answer not read as one - the
+    // refusal says the project is read-only, which nobody knows.
+    const h = harness(true, undefined, undefined, {
+      records: {
+        recordGone: async () => false,
+        readOnly: () => new Promise<boolean>(() => {}),
+      },
+      lookupMs: 20,
+    })
+    const answer = await h.call(CHANNELS.engineRequest, 'tok1', 'map.build', {
+      out: 'abcdefghijk1',
+    })
+    expect((answer as { accepted: boolean }).accepted).toBe(false)
+    expect(hintOf(answer)).toBe(REQUEST_UNCHECKED)
+    expect(h.requests, 'nothing reached the engine').toEqual([])
+    expect(h.activity.exportRefusal('abcdefghijk1'), 'the mark is released').toBeNull()
+    expect(h.activity.deleteRefusal('abcdefghijk1')).toBeNull()
+  })
+
+  it('marks the project before it asks, so an export or a deletion begun meanwhile is refused', async () => {
+    // Mutation: `beginRequest` moved after the read-only answer - while the
+    // store is asked, the project carries no mark.
+    let open!: () => void
+    const opened = new Promise<void>((r) => (open = r))
+    let looking = false
+    const h = harness(true, undefined, undefined, {
+      records: {
+        recordGone: async () => false,
+        readOnly: () => {
+          looking = true
+          return opened.then(() => false)
+        },
+      },
+    })
+    const asked = h.call(CHANNELS.engineRequest, 'tok1', 'map.build', { out: 'abcdefghijk1' })
+    await until('the bridge to ask whether the project is read-only', () => looking)
+    expect(h.activity.exportRefusal('abcdefghijk1')).toBe(EXPORT_WHILE_DRAWING)
+    expect(h.activity.deleteRefusal('abcdefghijk1')).toBe(DELETE_WHILE_DRAWING)
+    open()
+    expect(await asked).toEqual({ accepted: true })
+    expect(h.requests.map((r) => r.method)).toEqual(['map.build'])
+  })
+
+  it('is not asked for a project with no record, nor for a request that names none', async () => {
+    const asked: string[] = []
+    const h = harness(true, undefined, undefined, {
+      records: {
+        recordGone: async (id) => id === 'gonegonegone',
+        readOnly: async (id) => {
+          asked.push(id)
+          return true
+        },
+      },
+    })
+    await h.call(CHANNELS.engineRequest, 'tok1', 'map.build', { out: 'gonegonegone' })
+    await h.call(CHANNELS.engineRequest, 'tok2', 'map.build', { key: 'bart' })
+    await h.call(CHANNELS.engineRequest, 'tok3', 'graph.build', {
+      key: 'bart',
+      out: 'abcdefghijk1',
+    })
+    expect(asked).toEqual([])
+  })
+})
+
+describe('ProjectStore.readOnly', () => {
+  let home: string
+  beforeEach(async () => {
+    home = await mkdtemp(join(tmpdir(), 'legible-cities-633-'))
+  })
+  afterEach(async () => {
+    await rm(home, { recursive: true, force: true })
+  })
+
+  it('is yes only for a record it reads from a later version, and never rejects', async () => {
+    const store = new ProjectStore(home, () => {})
+    const made = (version: unknown): Promise<string> => projectAt(home, store, version)
+    const later = await made(RECORD_VERSION + 1)
+    const current = await made(RECORD_VERSION)
+    const unversioned = await made('two')
+    const broken = await made(RECORD_VERSION + 1)
+    await writeFile(join(home, 'projects', broken, 'project.json'), '{ not json')
+    const emptied = await made(RECORD_VERSION + 1)
+    await rm(join(home, 'projects', emptied, 'project.json'))
+
+    expect(await store.readOnly(later), 'a later version').toBe(true)
+    expect(await store.readOnly(current), 'this version').toBe(false)
+    expect(await store.readOnly(unversioned), 'no version it can read').toBe(false)
+    expect(await store.readOnly(broken), 'there, unreadable').toBe(false)
+    expect(await store.readOnly(emptied), 'a folder with no record').toBe(false)
+    expect(await store.readOnly('cccccccccccc'), 'never made').toBe(false)
+    expect(await store.readOnly('../projects'), 'no identifier').toBe(false)
   })
 })
 

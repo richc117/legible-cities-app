@@ -1815,7 +1815,11 @@ exports (issue 505), and for an `out` that names no project record (issue
 layout's closing `map.build` from making `out/<id>` again for a project
 deleted while its `graph.build` ran. A record that is there but cannot be
 read is let through, since its folder is still there for a deletion to
-remove `out/<id>` with. The bridge raises the request's mark in the same
+remove `out/<id>` with. Of a record that is there, the bridge then asks
+whether a later build wrote it (`ProjectStore.readOnly`, issue 633), in the
+same queue and under the same bound, and refuses a read-only project's
+`map.build`, since this build never writes that record and the draw would
+replace that build's map. The bridge raises the request's mark in the same
 turn as its check and before the lookup's await, so an export or a deletion
 begun while it waits meets the mark and is refused; the guard is asked after
 the lookup, so its last look at the reset comes after every await and its
