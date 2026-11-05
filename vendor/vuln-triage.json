@@ -169,7 +169,7 @@
       "id": "PSF-2026-38",
       "component": "CPython",
       "version": "3.12.14",
-      "severity": "unrated",
+      "severity": "medium",
       "osv_severity": null,
       "verdict": "not-reachable",
       "reason": "The flaw is in tarfile's data and tar extraction filters, which create directories outside the destination on POSIX, reached only through extract and extractall. Nothing the app runs extracts a tar archive: the engine never imports tarfile, and pandas, which does, reads a member in memory with extractfile, and only for a tar compression the engine never asks for.",
