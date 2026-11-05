@@ -1045,7 +1045,10 @@ export class Sidecar {
   /**
    * Whether anything is left in a process group. Signal 0 is checked and
    * sent to no one: ESRCH says the group is empty, and EPERM that what is
-   * left is not the app's to signal, so not the app's to end either.
+   * left is not the app's to signal, so not the app's to end either. macOS
+   * also answers EPERM for a group whose members have all exited and wait
+   * only to be reaped, which have ended: the group is done with while each
+   * pid still answers signal 0, until its parent reaps it.
    */
   private groupHolds(group: number): boolean {
     try {

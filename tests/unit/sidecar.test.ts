@@ -1054,9 +1054,21 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
   // Not on Windows, where there is no group: by the time the exit is seen
   // the engine's pid is gone, `taskkill /T` cannot walk the tree from it,
   // and the supervisor does nothing there, as `launch` says.
+  //
+  // What the supervisor did is read from its own count and log at the
+  // moment it matters - in a state listener, or as a quit resolves - and
+  // never by asking straight after whether the child's pid still answers.
+  // On macOS a group whose members have all exited, and wait only to be
+  // reaped, answers EPERM, which the supervisor rightly takes for empty,
+  // while each pid answers until it is reaped: here by launchd, since the
+  // stand-in that started the child has exited. So the child's end is
+  // waited for, with a deadline far past any reap.
   describe.skipIf(process.platform === 'win32')('what an engine left running as it exited', () => {
     const leftPid = (h: Harness): number =>
       Number(readFileSync(join(h.home, 'fake-engine.left.pid'), 'utf8'))
+    /** The line the supervisor writes as it is done with a group, however that went. */
+    const groupDone = (line: string): boolean =>
+      /^the engine's group (ended on |did not end on kill)/.test(line)
 
     // A child the supervisor did not end (a mutation, a failure) is ended
     // here, before the removal of its home, and only once the supervisor has
@@ -1072,41 +1084,47 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     })
 
     it('ends it on SIGTERM, well within terminateMs, then restarts', async () => {
-      // A terminate long enough that the kill it escalates to cannot be what
-      // ended the child in the time allowed here.
+      // The one bound here is the supervisor's own: 4 s before it would
+      // escalate to the kill, for a child that ends as SIGTERM reaches it.
       const h = harness({ leave_child: true }, { terminateMs: 4_000 })
       h.sidecar.start()
       await h.until((s) => s.state === 'restarting')
       const child = leftPid(h)
       expect(child).toBeGreaterThan(0)
-      await eventually(() => !alive(child), 2_000, 'the child it left to end on SIGTERM')
-      // The restart waits for the group to be ended, which is logged first:
-      // the last line is written by the look after the child has gone, which
-      // the wait above can beat.
+      // The restart waits for the group to be ended, and the line saying how
+      // it ended is written before that.
       await h.until(ready)
       // It was still there when the exit was reported, so this was the supervisor.
       expect(h.log).toContain(
         'the engine exited and what it started is still running; terminating its group',
       )
-      expect(h.log).toContain("the engine's group ended on terminate")
+      expect(h.log.filter(groupDone)).toEqual(["the engine's group ended on terminate"])
+      await eventually(() => !alive(child), 10_000, 'the child it left to be reaped')
     })
 
     it('kills it within terminateMs of the terminate when it ignores SIGTERM, before the next engine starts', async () => {
       const h = harness({ leave_child: 'ignores-sigterm' }, { terminateMs: 1_000 })
-      // Whether the child was still running as the next engine started.
-      const besideTheNext: boolean[] = []
+      // What the supervisor had done with the group as the next engine
+      // started, read in the state's own listener: at that moment, not after.
+      const atTheNext: Array<{ beingEnded: number; done: string[] }> = []
       h.sidecar.onState((s) => {
-        if (s.state === 'starting' && s.attempt === 2) besideTheNext.push(alive(leftPid(h)))
+        if (s.state === 'starting' && s.attempt === 2) {
+          atTheNext.push({ beingEnded: h.sidecar.groupsBeingEnded, done: h.log.filter(groupDone) })
+        }
       })
       h.sidecar.start()
       // Not the first engine's ready, which can come before its exit.
       await h.until((s) => s.state === 'restarting')
+      const child = leftPid(h)
       await h.until(ready)
-      expect(besideTheNext, 'no child of the old engine runs beside the new one').toEqual([false])
+      expect(atTheNext, 'the next engine starts once the old group is done with').toEqual([
+        { beingEnded: 0, done: [expect.any(String)] },
+      ])
       expect(h.log).toContain(
         "the engine's group did not end on terminate within 1000 ms; killing it",
       )
-      expect(h.log).toContain("the engine's group ended on kill")
+      // It ignores SIGTERM, so only the kill ends it.
+      await eventually(() => !alive(child), 10_000, 'the child it left, killed, to be reaped')
     })
 
     it('refuses a retry, and a quit waits, while what an engine it gave up on left is ended', async () => {
@@ -1116,13 +1134,19 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
         { terminateMs: 1_000, restartDelaysMs: [] },
       )
       h.sidecar.start()
+      // `until` resolves in the state's listener, so what follows runs before
+      // any timer does: the group, whose member ignores SIGTERM, is still
+      // being ended, however slow the machine.
       await h.until((s) => s.state === 'stopped')
       const child = leftPid(h)
       expect(alive(child), 'it ignores the terminate, so it is there for terminateMs').toBe(true)
+      expect(h.sidecar.groupsBeingEnded).toBe(1)
       expect(h.sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
       expect(h.states.filter((s) => s.state === 'starting')).toHaveLength(1)
       await h.sidecar.stop()
-      expect(alive(child), 'the quit waited for it to be ended').toBe(false)
+      expect(h.sidecar.groupsBeingEnded, 'the quit waited for it to be ended').toBe(0)
+      expect(h.log.filter(groupDone)).toHaveLength(1)
+      await eventually(() => !alive(child), 10_000, 'the child it left, killed, to be reaped')
     })
 
     it('ends, before a quit resolves, what an engine left as it stopped as asked', async () => {
@@ -1131,8 +1155,12 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       await h.until(ready)
       await h.sidecar.stop()
       expect(h.log).toContain('ended on request (quit)')
-      expect(alive(leftPid(h)), 'nothing it started outlives the quit').toBe(false)
-      expect(h.log).toContain("the engine's group ended on kill")
+      expect(h.sidecar.groupsBeingEnded, 'the quit waited for its group to be ended').toBe(0)
+      expect(h.log).toContain(
+        'the engine exited and what it started is still running; terminating its group',
+      )
+      expect(h.log.filter(groupDone)).toHaveLength(1)
+      await eventually(() => !alive(leftPid(h)), 10_000, 'what it left, killed, to be reaped')
     })
   })
 })
@@ -1245,6 +1273,16 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
     return started
   }
 
+  /**
+   * Whether this process has reaped a member, which sets its exit code or
+   * signal. Not whether its pid answers: it does until the reap, and on
+   * macOS a group whose members all wait to be reaped answers EPERM, which
+   * the supervisor rightly takes for empty, so a quit can resolve before
+   * this process has reaped what it killed.
+   */
+  const reaped = (started: ChildProcess): boolean =>
+    started.exitCode !== null || started.signalCode !== null
+
   function supervisor(spawned: Fake[], log: string[] = [], bounds: Partial<Bounds> = {}): Sidecar {
     const sidecar = new Sidecar({
       command: ['stand-in-interpreter', '-m', 'schematic.serve'],
@@ -1282,14 +1320,21 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
   it('keeps a group that still has a member from the exit on, and ends it', async () => {
     const left = await member()
     const fake = fakeChild(left.pid)
-    const sidecar = supervisor([fake])
+    const log: string[] = []
+    const sidecar = supervisor([fake], log)
     sidecar.start()
     fake.exit(false)
     expect(sidecar.groupsBeingEnded).toBe(1)
     fake.close()
     await sidecar.stop()
     expect(sidecar.groupsBeingEnded).toBe(0)
-    expect(alive(left.pid as number)).toBe(false)
+    expect(log).toContain(
+      'the engine exited and what it started is still running; terminating its group',
+    )
+    await eventually(() => reaped(left), 10_000, 'the member to be reaped')
+    // Only the supervisor signals it before the test is over: SIGTERM, or
+    // SIGKILL on a machine too slow to deliver that within terminateMs.
+    expect(['SIGTERM', 'SIGKILL']).toContain(left.signalCode)
   })
 
   // An engine that outlived the last wait after SIGKILL (issue 562) can exit
@@ -1298,6 +1343,18 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
   // made to outlive SIGKILL on cue, nor what is in its group with it, so the
   // stand-in for that engine has no pid while it is being ended, and takes a
   // real group's id only as it exits.
+  //
+  // No assertion here turns on how fast the machine is. What the quit
+  // waited for is read in a handler on the quit itself, as it resolves, not
+  // after; the outlived member's end is waited for as this process reaps
+  // it, not asked of its pid (`reaped` says why). And the order in which a
+  // quit that waits only for the groups there when it began resolves too
+  // soon is set by the test, not by a pause: the next engine's group ends
+  // once its member is killed, by the test after the outlived engine has
+  // exited, or by the supervisor terminateMs after its SIGTERM. Only a
+  // machine stalled that long sees the second; the quit has then resolved
+  // before the exit, with nothing to wait for, and correct code passes that
+  // too.
   it(
     'has a quit wait too for a group added while it waits, as an engine that outlived the kill exits',
     { timeout: 20_000 },
@@ -1307,11 +1364,7 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
       const next = fakeChild(nextLeft.pid)
       const log: string[] = []
       // One restart, then the give-up.
-      const sidecar = supervisor([outlived, next], log, {
-        shutdownMs: 20,
-        terminateMs: 1_500,
-        restartDelaysMs: [20],
-      })
+      const sidecar = supervisor([outlived, next], log, { shutdownMs: 20, restartDelaysMs: [20] })
       sidecar.start()
       // A stray line: the first engine is ended, outlives the kill, and the next starts.
       outlived.child.stdout?.push('this is not a frame\n\n')
@@ -1323,22 +1376,24 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
       )
       next.exit()
       expect(sidecar.groupsBeingEnded).toBe(1)
-      const stopping = sidecar.stop()
-      // The quit is now waiting on the next engine's group, which takes
-      // terminateMs and a look after the exit to end, its member ignoring
-      // SIGTERM. The outlived engine must exit inside that wait, whatever the
-      // code: after the quit has begun to wait, and before the next engine's
-      // group has ended, or the quit has resolved and one group, not two, is
-      // counted below. 600 ms in leaves 900 ms before that end. A quit that
-      // waits only for the groups there when it began resolves at that end,
-      // while the group added has 600 ms still to go.
-      await sleep(600)
+      let atTheQuit = -1
+      const quit = sidecar.stop().then(() => {
+        atTheQuit = sidecar.groupsBeingEnded
+      })
+      // The next engine has exited and its pipes have closed, so the quit
+      // reaches its wait on the groups before any timer runs: after this
+      // pause it is waiting on the next engine's group, whose member ignores
+      // SIGTERM.
+      await sleep(0)
       ;(outlived.child as unknown as { pid: number }).pid = outlivedLeft.pid as number
       outlived.exit()
-      expect(sidecar.groupsBeingEnded).toBe(2)
-      await stopping
-      expect(alive(nextLeft.pid as number)).toBe(false)
-      expect(alive(outlivedLeft.pid as number), 'the group added while the quit waited').toBe(false)
+      // The next engine's group can end now; the outlived one's member, which
+      // ignores SIGTERM too, is not killed before terminateMs has passed.
+      nextLeft.kill('SIGKILL')
+      await quit
+      expect(atTheQuit, 'groups still being ended as the quit resolved').toBe(0)
+      await eventually(() => reaped(outlivedLeft), 10_000, "the outlived engine's member")
+      expect(outlivedLeft.signalCode, 'the supervisor killed it').toBe('SIGKILL')
     },
   )
 })
