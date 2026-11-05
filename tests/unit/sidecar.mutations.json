@@ -118,5 +118,53 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "has read the last stderr line written before the pipe closed",
     "why": "The group signalled as the exit is seen, not once it is reported (issue 640): a child of the engine still holding its stderr pipe is ended before it writes its last line, and the log loses what the engine's side printed on its way out."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "      if (reset !== null) {\n        this.waitForReset(reset)\n        return\n      }\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine while the data is reset, and starts it once the reset has ended",
+    "why": "A restart that does not ask about the reset (issue 637): its wait ends during a reset of the engine's data and an engine starts on the home whose folders are being removed, writing into them and asked for feeds.list as it settles."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    this.armRestart(this.bounds.resetPollMs)\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine while the data is reset, and starts it once the reset has ended",
+    "why": "A restart that found a reset running and never looks again (issue 637): the engine stays restarting after the reset has ended, and only a quit and a reopen start it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.restartTimer !== null) {\n      clearTimeout(this.restartTimer)\n      this.restartTimer = null\n    }\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "leaves no timer and starts nothing once a stop comes during the wait",
+    "why": "A quit that leaves the restart's timer armed (issue 637): the wait for a reset goes on looking past the stop, held off only by the callback's own check of stopping."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    const reset = this.options.resetting()\n    if (reset !== null) return reset\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "refuses a retry while the engine data is being reset, with the reset’s sentence",
+    "why": "The supervisor's retry not checked against the reset (issue 637): any caller but the bridge, whose own check stands in front, starts an engine on the home whose folders are being removed."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "  if (engine.state.state === 'starting' || engine.state.state === 'restarting')\n    return RESET_REFUSALS.starting\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has the reset refused while the engine is starting or restarting",
+    "why": "A reset let through while the engine is restarting (issue 637): nothing is in flight while a restart waits, the reset begins, and the two run together; while starting the handshake refuses it, but as a request being answered, not as the start it is."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "  if (engine.groupsBeingEnded > 0) return RESET_REFUSALS.stillStopping\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has the reset refused while the group is being ended",
+    "why": "A reset let through while what an exited engine left in its group is still being ended (issue 637, from issue 640's review): a tool still running there writes into the folders the reset removes."
   }
 ]

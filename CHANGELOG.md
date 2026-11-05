@@ -14,6 +14,10 @@ links are inline, with no images and no reference-style links.
 
 - On a Mac, when the engine stops by itself, the tools it was running stop
   too, before it starts again or the app quits.
+- When the engine stops by itself while **Reset engine data** is running,
+  it starts again only once the reset has finished, so it no longer writes
+  into the folders being removed. **Reset engine data** says to try again
+  in a moment while the engine is starting or still stopping.
 
 ## [1.0.0]
 

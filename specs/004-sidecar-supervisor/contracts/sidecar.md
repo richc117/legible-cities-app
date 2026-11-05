@@ -1,9 +1,10 @@
 # Contract: the supervisor
 
 `src/main/sidecar.ts`, class `Sidecar`. Constructed with the command, the
-environment, the pin, the bounds and a log; started once; exposes `state`,
-`request`, `cancel`, `inFlight`, `abandoned`, `onState`, `onNotification`,
-`stop`.
+environment, the pin, the bounds, a log and the reset's question
+(`resetting`, "The reset of the engine's data" below); started once; exposes
+`state`, `request`, `cancel`, `inFlight`, `abandoned`, `groupsBeingEnded`,
+`onState`, `onNotification`, `retry`, `stop`.
 
 ## The command
 
@@ -24,8 +25,9 @@ own), never `shell`. The interpreter is `resolveInterpreter()`'s answer
 | `starting(n)` | process ends, framing error, or handshake bound | `restarting(n+1, reason)` if n < 4, else `stopped(reason)` | |
 | `ready` | process ends or framing error | `restarting(2, reason)` | every request in flight rejects with `-32002` |
 | `restarting(n)` | wait elapsed (1 s, 2 s, 4 s for n = 2, 3, 4) | `starting(n)` | the wait begins once the old engine has gone and, on POSIX, what it left in its process group has been ended ("After an exit", issue 640): up to 1 s and 2 × `terminateMs` after its exit, where something left ignores SIGTERM |
+| `restarting(n)` | wait elapsed while the engine's data is being reset (issue 637) | `restarting(n, "The engine data is being reset; the engine starts again once the reset has finished.")` | nothing is spawned; the reset is asked again every `resetPollMs` (250 ms), and the first look that finds it over goes on to `starting(n)` ("The reset of the engine's data") |
 | any but `unavailable`/`stopped` | `stop()` (quit) | `stopped('quitting')` | the shutdown sequence; nothing restarts |
-| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched` and in every other state, and as still stopping while the engine given up on is still being ended (the state says `stopped` before that ends), while an engine that outlived the kill is still there, and while what an exited engine left in its process group is being ended ("After an exit", issue 640); the bridge refuses it too while the engine's data is being reset |
+| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched` and in every other state, with the reset's own sentence while the engine's data is being reset (issue 637; the bridge asks first, as it did before), and as still stopping while the engine given up on is still being ended (the state says `stopped` before that ends), while an engine that outlived the kill is still there, and while what an exited engine left in its process group is being ended ("After an exit", issue 640) |
 
 `onState` listeners are called after each transition with the new state.
 Every transition is logged with the reason.
@@ -62,7 +64,8 @@ Every transition is logged with the reason.
   reset of the engine's data refuses while `inFlight` is above zero, and
   while `abandoned` is, says "The engine has not finished a request it
   stopped answering. If it does not, quit and reopen Legible Cities."
-  (`engineWorkRefusal`).
+  (`engineWorkRefusal`; what else it refuses for is under "The reset of the
+  engine's data").
 - `cancel(id)` sends `$/cancelRequest` for an id in flight; the request
   settles with whatever the engine answers (its `-32800`), or with its
   deadline, whichever comes first.
@@ -131,6 +134,43 @@ What an engine that exited by itself started runs to its own end there;
 reaching it would take the engine running its children in a job object,
 which is a change to the engine.
 
+## The reset of the engine's data (issue 637)
+
+The reset removes `projects`, `out`, `data` and `frames` under the engine's
+home, and an engine started while it runs would write into them and be
+asked for `feeds.list` as it settles. The two are kept apart from both
+sides, each asking the other in the same turn as it acts:
+
+- **The reset asks the supervisor** (`engineWorkRefusal`, in its `busy`
+  check, before its flag goes up) and refuses, in this order: while a
+  request a bound ended is unanswered (`abandoned`); while the state is
+  `starting` or `restarting`, "The engine is starting; try again in a
+  moment." (before the requests in flight, since a start's handshake is
+  one); while a request is in flight (`inFlight`); and while an exited
+  engine's process group is still being ended (`groupsBeingEnded`), "The
+  engine is still stopping. Try again in a moment.", the retry's own
+  sentence, since what is left there may still be writing into the home.
+- **The supervisor asks the reset** (`resetting`, the question the
+  engine bridge's guard asks: a sentence while the reset's flag is up,
+  else null). A restart whose wait elapses while it answers a sentence
+  spawns nothing: the state stays `restarting(n)` with the reason "The
+  engine data is being reset; the engine starts again once the reset has
+  finished.", said once and logged, and the reset is asked again every
+  `resetPollMs`; the first look that finds it over logs that and starts the
+  engine as the restart would have. `retry()` is refused with the reset's
+  sentence.
+
+Since the reset refuses while the engine is `starting` or `restarting`, a
+restart meets a reset only when the engine was `ready` as the reset began -
+perhaps already exited, its exit not yet reported, which takes up to a
+second - and its failure was reported during it: its data removed under
+it, say. The supervisor asks rather than being told, so
+a reset that ends any way at all - removed, refused after its flag went up,
+thrown - lets the engine start within `resetPollMs`, and no word from the
+reset's owner has to arrive. The wait's timer is the restart's own, one at
+a time, and `stop()` clears it before anything it awaits, so a quit during
+the wait starts nothing.
+
 ## Bounds (constructor options, so tests shorten them)
 
 | Name | Default |
@@ -141,3 +181,4 @@ which is a change to the engine.
 | `terminateMs` | 3 000 |
 | `restartDelaysMs` | `[1000, 2000, 4000]` |
 | `stableMs` | 30 000 |
+| `resetPollMs` | 250 |

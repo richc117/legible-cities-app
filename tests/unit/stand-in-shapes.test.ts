@@ -669,6 +669,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s answers${WHY}`, () => 
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
@@ -1467,6 +1468,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine draws a layout as it solve
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
@@ -1574,6 +1576,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine, held at a stage${WHY}`, (
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
@@ -1760,6 +1763,7 @@ function forgetsABuildBeforeItAnswers(
           development: true,
         }),
         pin: PIN,
+        resetting: () => null,
         log: () => {},
         bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
       })
@@ -1879,6 +1883,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine's two builds of one layout
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
@@ -2010,6 +2015,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s removal is a job${WHY}
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs },
     })
@@ -2149,6 +2155,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s opening${WHY}`, () => 
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
@@ -2303,6 +2310,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s late cancel${WHY}`, ()
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
@@ -2603,6 +2611,7 @@ describe.skipIf(PYTHON === null)(`the stand-in engine’s shutdown${WHY}`, () =>
         development: true,
       }),
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: { handshakeMs: READY_MS, inactivityMs: READY_MS },
     })
