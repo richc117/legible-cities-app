@@ -32,6 +32,12 @@ export interface Bounds {
   restartDelaysMs: number[]
   /** Ready this long, or one request answered, and the failure count starts afresh. */
   stableMs: number
+  /**
+   * How often a restart that came due while the engine's data was being
+   * reset asks again whether the reset has ended (issue 637): the longest the
+   * next engine waits once it has.
+   */
+  resetPollMs: number
 }
 
 export const DEFAULT_BOUNDS: Bounds = {
@@ -41,6 +47,7 @@ export const DEFAULT_BOUNDS: Bounds = {
   terminateMs: 3_000,
   restartDelaysMs: [1_000, 2_000, 4_000],
   stableMs: 30_000,
+  resetPollMs: 250,
 }
 
 /** What one request may ask of the supervisor beyond the method and its parameters. */
@@ -90,6 +97,17 @@ export interface SidecarOptions {
    * same argument array and options; nothing else is started through it.
    */
   spawn?: typeof spawn
+  /**
+   * Why nothing may write under the engine's home right now, or null: the
+   * reset's own check (`resetInProgress` in `index.ts`), the question the
+   * engine bridge's guard asks (issue 637). An engine started while the
+   * reset removes the home's folders would write into them, and be asked
+   * for `feeds.list` as it settles; so a restart that comes due meanwhile
+   * waits for the reset to end, and `retry()` is refused with this sentence.
+   * Required, so a wiring that dropped it would be a type error and not a
+   * rule held by nothing.
+   */
+  resetting: () => string | null
 }
 
 const STDERR_TAIL = 20
@@ -163,16 +181,62 @@ export const STDIO_CLOSE_MS = 1_000
 const GROUP_POLL_MS = 25
 
 /**
- * Why the engine's data cannot be reset now, as far as the supervisor knows,
- * or null. A request the engine stopped answering may never end, and only a
- * quit ends it, so that refusal says how out rather than to wait (issue 107).
+ * Why the engine's data cannot be reset now, as the supervisor says it
+ * (`engineWorkRefusal`). Each says what is going on and then what to do.
  */
-export function engineWorkRefusal(engine: { inFlight: number; abandoned: number }): string | null {
-  if (engine.abandoned > 0)
-    return 'The engine has not finished a request it stopped answering. If it does not, quit and reopen Legible Cities.'
-  if (engine.inFlight > 0) return 'The engine is answering a request; wait for it to finish.'
+export const RESET_REFUSALS = {
+  /** A request a bound ended may never end, and only a quit ends it: so the way out, not a wait (issue 107). */
+  abandoned:
+    'The engine has not finished a request it stopped answering. If it does not, quit and reopen Legible Cities.',
+  /**
+   * An engine on its way, `starting` or `restarting` (issue 637): one
+   * started under a reset would write into the folders being removed. A
+   * start is bounded (the handshake, then a restart's wait), and ends ready
+   * or down, either of which lets the reset through.
+   */
+  starting: 'The engine is starting; try again in a moment.',
+  inFlight: 'The engine is answering a request; wait for it to finish.',
+  /**
+   * What an exited engine left running in its process group is being ended
+   * (issues 640, 637), and may still be writing into the home. The retry's
+   * own sentence for it, word for word, so the two doors agree.
+   */
+  stillStopping: RETRY_REFUSALS.stillStopping,
+} as const
+
+/** What the reset asks of the supervisor: `Sidecar` is one. */
+export interface EngineWork {
+  inFlight: number
+  abandoned: number
+  state: EngineState
+  groupsBeingEnded: number
+}
+
+/**
+ * Why the engine's data cannot be reset now, as far as the supervisor knows,
+ * or null. Asked before the reset's flag goes up, in the same turn, so an
+ * engine that is not starting now cannot start before the flag is up, and
+ * once it is up no restart and no retry starts one (issue 637).
+ */
+export function engineWorkRefusal(engine: EngineWork): string | null {
+  if (engine.abandoned > 0) return RESET_REFUSALS.abandoned
+  // Before the requests: a start's handshake is one, and "answering a
+  // request" would not say what is happening.
+  if (engine.state.state === 'starting' || engine.state.state === 'restarting')
+    return RESET_REFUSALS.starting
+  if (engine.inFlight > 0) return RESET_REFUSALS.inFlight
+  if (engine.groupsBeingEnded > 0) return RESET_REFUSALS.stillStopping
   return null
 }
+
+/**
+ * What a restart that came due while the engine's data was being reset says
+ * as it waits for the reset to end (issue 637), as the `restarting` state's
+ * reason. Like the supervisor's other restarting reasons it gives no step:
+ * the engine starts by itself once the reset has ended, whichever way.
+ */
+export const RESTART_WAITS_FOR_RESET =
+  'The engine data is being reset; the engine starts again once the reset has finished.'
 
 /** Whole milliseconds since a `performance.now()` reading. */
 const elapsedMs = (since: number): number => Math.round(performance.now() - since)
@@ -306,10 +370,22 @@ export class Sidecar {
 
   /**
    * How many exited engines' process groups are being ended (issue 640):
-   * none for an engine whose group was empty as its exit was seen, for tests.
+   * none for an engine whose group was empty as its exit was seen. The reset
+   * of the engine's data refuses while there are any (`engineWorkRefusal`,
+   * issue 637), since what is left in one may still be writing into the
+   * home; read only, here and in the tests.
    */
   get groupsBeingEnded(): number {
     return this.groupsEnding.size
+  }
+
+  /**
+   * Whether a restart is waiting on its timer: its delay, or the next look
+   * at whether a reset of the engine's data has ended (issue 637). False
+   * from the moment `stop()` is called. For tests.
+   */
+  get restartArmed(): boolean {
+    return this.restartTimer !== null
   }
 
   start(): void {
@@ -340,7 +416,9 @@ export class Sidecar {
    * engine on the same home beside the first; while an engine that
    * outlived the last wait after SIGKILL is still there (`unended`); and
    * while what an engine that has exited left running in its process group
-   * is being ended (`groupsEnding`, issue 640).
+   * is being ended (`groupsEnding`, issue 640). And while the engine's data
+   * is being reset, with the reset's own sentence (issue 637), after the
+   * refusals that say a retry cannot help at all, which outlast the reset.
    * `start()` is no way back in: it returns once it has run.
    */
   retry(): string | null {
@@ -350,6 +428,8 @@ export class Sidecar {
     if (state.state === 'mismatched') return RETRY_REFUSALS.mismatched
     if ((state.state !== 'stopped' && state.state !== 'unavailable') || !state.retryable)
       return RETRY_REFUSALS.notDown
+    const reset = this.options.resetting()
+    if (reset !== null) return reset
     if (this.ending !== null) return RETRY_REFUSALS.stillStopping
     if (this.groupsEnding.size > 0) return RETRY_REFUSALS.stillStopping
     const unended = this.unended
@@ -775,13 +855,60 @@ export class Sidecar {
     await this.groupsEnded()
     // stop() may have run while the child was being ended.
     if (this.stopping || giveUp) return
-    this.restartTimer = setTimeout(
-      () => {
-        this.restartTimer = null
-        if (!this.stopping) this.launch()
-      },
-      delays[this.failures - 1],
-    )
+    this.armRestart(delays[this.failures - 1])
+  }
+
+  /**
+   * The next engine, once `ms` has passed: unless the engine's data is being
+   * reset (issue 637). The reset refuses to begin while the engine is
+   * `starting` or `restarting`, but an engine that is ready when it begins -
+   * or has exited, its exit not yet reported - can fail during it, its data
+   * removed under it, say, and its restart come due while the removal walks
+   * the home. An engine started then would write into the folders being
+   * removed, and be asked for `feeds.list` as it settles. So the restart
+   * waits, `restarting` still with a reason that says why, and asks again
+   * every `resetPollMs`; the engine starts at the first look that finds the
+   * reset over.
+   *
+   * The supervisor asks rather than being told, so the reset's owner keeps
+   * no list of who waits on it: a word that never came, from a reset that
+   * threw or a wiring that dropped it, would hold the engine in `restarting`
+   * for good, while a look finds the reset over whichever way it ended. So
+   * the wait lasts as long as the reset and at most `resetPollMs` more, and
+   * nothing else holds it. Each look is the reset's own flag, read in the
+   * same turn as the launch, and the reset raises it in the turn its own
+   * refusal is decided, so neither can begin while the other is beginning.
+   * One timer at a time, the restart's own, which `stop()` clears.
+   */
+  private armRestart(ms: number): void {
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null
+      if (this.stopping) return
+      const reset = this.options.resetting()
+      if (reset !== null) {
+        this.waitForReset(reset)
+        return
+      }
+      if (this.waitingForReset()) this.log('the reset of the engine data has ended; restarting')
+      this.launch()
+    }, ms)
+  }
+
+  /** A restart that found a reset running: say so once, and look again. */
+  private waitForReset(reset: string): void {
+    if (!this.waitingForReset()) {
+      this.log(`the restart waits for the reset of the engine data to end: ${reset}`)
+      this.setState({
+        state: 'restarting',
+        attempt: this.failures + 1,
+        reason: RESTART_WAITS_FOR_RESET,
+      })
+    }
+    this.armRestart(this.bounds.resetPollMs)
+  }
+
+  private waitingForReset(): boolean {
+    return this._state.state === 'restarting' && this._state.reason === RESTART_WAITS_FOR_RESET
   }
 
   private armStable(): void {

@@ -492,6 +492,7 @@ function createSidecar(config: Config): Sidecar {
       env: {},
       pin,
       log: engineLog,
+      resetting: resetInProgress,
     })
   }
   log.info('engine', `interpreter: ${resolution.interpreter} (${resolution.origin})`)
@@ -507,6 +508,9 @@ function createSidecar(config: Config): Sidecar {
     pin,
     log: engineLog,
     bundledInterpreter,
+    // No engine starts, by a restart or a person's retry, while its data is
+    // being reset (issue 637).
+    resetting: resetInProgress,
   })
 }
 
@@ -738,7 +742,8 @@ if (!hasLock) {
       },
       // What this side actually knows: whether anything is *writing* under
       // the home at this moment - an export, a request the engine is
-      // answering, or a record being renamed into place. It deliberately
+      // answering (or an engine starting, or what one left being ended,
+      // issue 637), or a record being renamed into place. It deliberately
       // does not claim to know whether a multi-step layout run is open:
       // that run is driven from the page, which issues graph.build, then
       // feeds.service, then map.build, then the record write, and nothing
