@@ -45,7 +45,7 @@
     "replace": "        gone === LAPSED\n",
     "test": "tests/unit/engine-ipc.test.ts",
     "title": "refuses when the read-only answer does not come in time, as the record lookup does",
-    "why": "A lapse of the read-only lookup not read as one: the refusal says the project is read-only when the disk never said so, where a lapsed record lookup says it could not be found in time."
+    "why": "A lapse of the read-only lookup not read as one: the refusal says the project is read-only when the disk never said so, where a lapse says the project could not be read in time."
   },
   {
     "file": "src/main/engine-ipc.ts",
@@ -62,5 +62,13 @@
     "test": "tests/unit/engine-ipc.test.ts",
     "title": "is yes only for a record it reads from a later version, and never rejects",
     "why": "The store answering read-only for any record it can read: every map.build for a project this version wrote would be refused."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "    return this.#serial(id, async () => {\n      const result = await this.read(id)\n      return 'record' in result && result.readOnly\n    })\n",
+    "replace": "    return (async () => {\n      const result = await this.read(id)\n      return 'record' in result && result.readOnly\n    })()\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "answers after a deletion sent before it",
+    "why": "readOnly asked outside the project's queue: it answers from the record as it was before the writes sent ahead of it, a deletion among them."
   }
 ]
