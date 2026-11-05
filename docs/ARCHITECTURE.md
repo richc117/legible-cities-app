@@ -391,11 +391,12 @@ supervisor's `retry()` forgives the failures and starts it with the whole
 budget again, refused while quitting, with no interpreter at all, for a
 mismatched engine, in every other state, while the engine's data is being
 reset (the supervisor asks the reset's own question, as the bridge does
-before it), and while the engine it gave up on, or what that engine left
-running, is still being ended. A restart asks the same question as its
-wait ends (issue 637): while the reset runs it starts nothing, says so as
-the *restarting* state's reason ("The engine data is being reset; the
-engine starts again once the reset has finished."), and asks again every
+before it), and while an engine, or what an exited one left running, is
+still being ended (`stillEnding`, which the reset asks too). A restart asks
+the reset's question as its wait ends (issue 637): while the reset runs it
+starts nothing, says so at the head of the *restarting* state's reason
+("The engine data is being reset; the engine starts again once the reset
+has finished.", the failure's own reason after it), and asks again every
 250 ms, starting the engine at the first look that finds the reset over.
 It asks rather than being told, so a reset that ends any way at all lets
 the engine start, and the wait's timer is the restart's own, which a quit
@@ -2204,12 +2205,14 @@ process refuses while a reset is already running, while an export is
 running, while the engine is answering a request, or while a record is
 being written - it counts all four - and for a home so high up that those
 four names would mean something else. It refuses too while the engine is
-starting or restarting ("The engine is starting; try again in a moment."),
-and while what an engine that has exited left running in its process group
-is still being ended ("The engine is still stopping. Try again in a
-moment."), since that may still be writing into the home (issue 637,
-`engineWorkRefusal`); and once the flag is up, no restart and no Try again
-starts the engine until it is down ("The engine process" above). It does
+starting or restarting ("The engine is starting. Try again in a moment."),
+and while the engine, or what an exited engine left running in its process
+group, is still being ended ("The engine is still stopping. Try again in a
+moment.", the question a retry asks and its sentence), since either may
+still be writing into the home: an engine given up on, or a mismatched
+one, is ended after its state says so, with nothing left in flight (issue
+637, `engineWorkRefusal`). And once the flag is up, no restart and no Try
+again starts the engine until it is down ("The engine process"). It does
 not claim to know whether a multi-step layout run is open: that run is
 `graph.build`, then `feeds.service`, then `map.build`, then a record write,
 and nothing is in flight between them. The renderer holds the runs, and

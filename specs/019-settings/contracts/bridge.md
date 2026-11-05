@@ -112,7 +112,12 @@ settings: {
 
   It is refused while a reset is already running, while an export is
   running, an engine request is in flight or a record is being written, with
-  a sentence saying which. The home is resolved through every symbolic link
+  a sentence saying which _(and, since 2026-11-04, issue 637, while the
+  engine is starting or restarting, "The engine is starting. Try again in a
+  moment.", and while the engine, or what an exited engine left running in
+  its process group, is still being ended, "The engine is still stopping.
+  Try again in a moment.", the question and the sentence a person's Try
+  again has)_. The home is resolved through every symbolic link
   before anything judges it, so the guards read the folder the reset would
   really reach; resolving it reads and never creates, because a press that
   is about to be refused must not write to the disk. It is then refused for
@@ -132,9 +137,12 @@ settings: {
   the second was still walking. While it is up, every engine request, every
   export and every write to a project record is refused with "The engine
   data is being reset; wait for it to finish.", so nothing lands in a folder
-  being walked away. The engine's gate asks on both sides of the registry's
-  own check, because that check reads the project list from disk and the
-  loop turns while it does. A multi-step layout run has gaps in which
+  being walked away _(and, since 2026-11-04, issue 637, no engine starts: a
+  restart that comes due waits, still restarting, until the flag is down,
+  and a Try again is refused with the same sentence)_. The engine's gate
+  asks on both sides of the registry's own check, because that check reads
+  the project list from disk and the loop turns while it does. A
+  multi-step layout run has gaps in which
   nothing is in flight, so the main process does not claim to know one is
   open; the screen, where the runs live, disables the button instead.
 

@@ -33,19 +33,19 @@
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "    if (this.ending !== null) return RETRY_REFUSALS.stillStopping\n",
+    "find": "    if (this.ending !== null) return true\n",
     "replace": "",
     "test": "tests/unit/sidecar.test.ts",
     "title": "is refused while the engine it gave up on is still being ended",
-    "why": "A retry let through while the engine given up on is still being ended (issue 562): a second engine starts on the same home beside one that has not yet gone."
+    "why": "An engine being ended not counted as still ending (issues 562, 637): a retry let through while the engine given up on is still being ended starts a second engine on the same home beside one that has not yet gone, and the reset removes the home's folders under it."
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "    if (unended !== null && unended.exitCode === null && unended.signalCode === null)\n      return RETRY_REFUSALS.stillStopping\n",
-    "replace": "",
+    "find": "    return unended !== null && unended.exitCode === null && unended.signalCode === null\n",
+    "replace": "    return false\n",
     "test": "tests/unit/sidecar.test.ts",
     "title": "is refused while that child lives",
-    "why": "A retry let through beside an engine that outlived the last wait after SIGKILL (issue 562): a second engine starts on the same home while the first is still there."
+    "why": "An engine that outlived the last wait after SIGKILL not counted as still ending (issues 562, 637): a retry starts a second engine on the same home while the first is still there, and the reset removes the home's folders under it."
   },
   {
     "file": "src/main/sidecar.ts",
@@ -73,11 +73,11 @@
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "    if (this.groupsEnding.size > 0) return RETRY_REFUSALS.stillStopping\n",
+    "find": "    if (this.groupsEnding.size > 0) return true\n",
     "replace": "",
     "test": "tests/unit/sidecar.test.ts",
     "title": "refuses a retry, and a quit waits, while what an engine it gave up on left is ended",
-    "why": "A person's Try again let through while what the engine given up on left running is being ended (issue 640): a new engine starts beside its tools on the same home."
+    "why": "What an exited engine left running not counted as still ending (issues 640, 637): a person's Try again starts a new engine beside its tools on the same home, and the reset removes the folders they write into."
   },
   {
     "file": "src/main/sidecar.ts",
@@ -161,10 +161,26 @@
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "  if (engine.groupsBeingEnded > 0) return RESET_REFUSALS.stillStopping\n",
+    "find": "  if (engine.stillEnding) return RESET_REFUSALS.stillStopping\n",
     "replace": "",
     "test": "tests/unit/sidecar.test.ts",
     "title": "has the reset refused while the group is being ended",
-    "why": "A reset let through while what an exited engine left in its group is still being ended (issue 637, from issue 640's review): a tool still running there writes into the folders the reset removes."
+    "why": "The reset not asking whether anything is still being ended (issue 637, from issue 640's review): a tool still running in an exited engine's group writes into the folders the reset removes."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "  if (engine.stillEnding) return RESET_REFUSALS.stillStopping\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has the reset refused, as a retry is, while the engine given up on is still being ended",
+    "why": "The reset let through while a retry is refused (issue 637): the engine given up on is still being ended, for up to shutdownMs and two terminateMs, with no client and so nothing in flight, and the reset removes the four folders under a live engine."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "        reason: `${RESTART_WAITS_FOR_RESET}${failure}`,\n",
+    "replace": "        reason: RESTART_WAITS_FOR_RESET,\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine while the data is reset, and starts it once the reset has ended",
+    "why": "The wait's sentence put in place of the failure's reason (issue 637): while the restart waits for a reset, the screen no longer says why the engine stopped."
   }
 ]

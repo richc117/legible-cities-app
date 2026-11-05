@@ -742,8 +742,8 @@ if (!hasLock) {
       },
       // What this side actually knows: whether anything is *writing* under
       // the home at this moment - an export, a request the engine is
-      // answering (or an engine starting, or what one left being ended,
-      // issue 637), or a record being renamed into place. It deliberately
+      // answering (or an engine starting or still being ended, or what one
+      // left, issue 637), or a record being renamed into place. It deliberately
       // does not claim to know whether a multi-step layout run is open:
       // that run is driven from the page, which issues graph.build, then
       // feeds.service, then map.build, then the record write, and nothing
