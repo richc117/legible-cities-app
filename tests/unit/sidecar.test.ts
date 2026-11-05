@@ -3,8 +3,8 @@
 // the bounds, restart, backoff, shutdown. Needs a Python 3 on the PATH to
 // run the stand-in; skips, saying so, without one.
 
-import type { ChildProcess } from 'node:child_process'
-import { EventEmitter } from 'node:events'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { EventEmitter, once } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1077,12 +1077,15 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       const child = leftPid(h)
       expect(child).toBeGreaterThan(0)
       await eventually(() => !alive(child), 2_000, 'the child it left to end on SIGTERM')
+      // The restart waits for the group to be ended, which is logged first:
+      // the last line is written by the look after the child has gone, which
+      // the wait above can beat.
+      await h.until(ready)
       // It was still there when the exit was reported, so this was the supervisor.
       expect(h.log).toContain(
         'the engine exited and what it started is still running; terminating its group',
       )
       expect(h.log).toContain("the engine's group ended on terminate")
-      await h.until(ready)
     })
 
     it('kills it within terminateMs of the terminate when it ignores SIGTERM, before the next engine starts', async () => {
@@ -1093,10 +1096,8 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
         if (s.state === 'starting' && s.attempt === 2) besideTheNext.push(alive(leftPid(h)))
       })
       h.sidecar.start()
-      // The terminate is sent as the exit is reported, just before this state.
+      // Not the first engine's ready, which can come before its exit.
       await h.until((s) => s.state === 'restarting')
-      const child = leftPid(h)
-      await eventually(() => !alive(child), 1_000 + 2_000, 'the child it left to end on SIGKILL')
       await h.until(ready)
       expect(besideTheNext, 'no child of the old engine runs beside the new one').toEqual([false])
       expect(h.log).toContain(
@@ -1139,35 +1140,42 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
 // `spawn`: a child with pipes and no process id, which answers nothing,
 // takes no signal (with no id there is none to send) and exits only when
 // the test says. Needs no Python.
+interface Fake {
+  child: ChildProcess
+  /** Its exit, and its stdio's close unless `close` is false. */
+  exit(close?: boolean): void
+  /** Its stdio's close, after an exit that left it open. */
+  close(): void
+}
+
+function fakeChild(pid?: number): Fake {
+  const emitter = new EventEmitter()
+  const child = Object.assign(emitter, {
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    pid,
+    exitCode: null as number | null,
+    signalCode: null as NodeJS.Signals | null,
+    kill: () => true,
+  })
+  const close = (): void => {
+    child.stdout.end()
+    child.stderr.end()
+    child.emit('close', null, 'SIGKILL')
+  }
+  return {
+    child: child as unknown as ChildProcess,
+    exit: (andClose = true) => {
+      child.signalCode = 'SIGKILL'
+      child.emit('exit', null, 'SIGKILL')
+      if (andClose) close()
+    },
+    close,
+  }
+}
+
 describe('a retry beside a child that outlived the kill', () => {
-  interface Fake {
-    child: ChildProcess
-    exit(): void
-  }
-
-  function fakeChild(): Fake {
-    const emitter = new EventEmitter()
-    const child = Object.assign(emitter, {
-      stdin: new PassThrough(),
-      stdout: new PassThrough(),
-      stderr: new PassThrough(),
-      pid: undefined,
-      exitCode: null as number | null,
-      signalCode: null as NodeJS.Signals | null,
-      kill: () => true,
-    })
-    return {
-      child: child as unknown as ChildProcess,
-      exit: () => {
-        child.signalCode = 'SIGKILL'
-        child.emit('exit', null, 'SIGKILL')
-        child.stdout.end()
-        child.stderr.end()
-        child.emit('close', null, 'SIGKILL')
-      },
-    }
-  }
-
   it('is refused while that child lives, and starts once its exit is seen', async () => {
     const spawned: Fake[] = []
     const log: string[] = []
@@ -1201,6 +1209,114 @@ describe('a retry beside a child that outlived the kill', () => {
     expect(spawned).toHaveLength(2)
     spawned[1]!.exit()
     await sidecar.stop()
+  })
+})
+
+// An exited engine's process group, with a stand-in for `spawn` (issue
+// 640): a child whose pid is the id of a real group, empty or not, so what
+// the supervisor does at the exit and while its stdio stays open can be
+// seen. Not on Windows, where there is no group and nothing is looked at.
+describe.skipIf(process.platform === 'win32')("an exited engine's group", () => {
+  const members: ChildProcess[] = []
+  afterEach(() => {
+    for (const member of members.splice(0)) {
+      if (member.exitCode === null && member.signalCode === null) member.kill('SIGKILL')
+    }
+  })
+
+  /** A process leading a group of its own, standing for what an engine left in its group; ready once its SIGTERM handler, if any, is in place. */
+  async function member(ignoresSigterm = false): Promise<ChildProcess> {
+    const code = `${ignoresSigterm ? "process.on('SIGTERM', () => {}); " : ''}process.stdout.write('ready'); setInterval(() => {}, 1000)`
+    const started = spawn(process.execPath, ['-e', code], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    })
+    members.push(started)
+    await once(started.stdout as NodeJS.ReadableStream, 'data')
+    return started
+  }
+
+  function supervisor(spawned: Fake[], log: string[] = [], bounds: Partial<Bounds> = {}): Sidecar {
+    return new Sidecar({
+      command: ['stand-in-interpreter', '-m', 'schematic.serve'],
+      env: {},
+      pin: PIN,
+      log: (m) => log.push(m),
+      platform: 'linux',
+      bounds: { terminateMs: 1_000, restartDelaysMs: [], ...bounds },
+      spawn: (() => (spawned.shift() as Fake).child) as never,
+    })
+  }
+
+  // The first look is taken as the exit is seen, just after the reap: a
+  // group with nothing left is done with there, before the stdio closes, so
+  // there is no stretch in which its id could pass to another process unseen.
+  it('keeps nothing for a group that was empty, before the stdio has closed', async () => {
+    // A process of its own group, reaped: its id names no group now.
+    const gone = spawn(process.execPath, ['-e', ''], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    })
+    await once(gone, 'exit')
+    const fake = fakeChild(gone.pid)
+    const sidecar = supervisor([fake])
+    sidecar.start()
+    fake.exit(false)
+    expect(sidecar.groupsBeingEnded).toBe(0)
+    fake.close()
+    await sidecar.stop()
+  })
+
+  it('keeps a group that still has a member from the exit on, and ends it', async () => {
+    const left = await member()
+    const fake = fakeChild(left.pid)
+    const sidecar = supervisor([fake])
+    sidecar.start()
+    fake.exit(false)
+    expect(sidecar.groupsBeingEnded).toBe(1)
+    fake.close()
+    await sidecar.stop()
+    expect(sidecar.groupsBeingEnded).toBe(0)
+    expect(alive(left.pid as number)).toBe(false)
+  })
+
+  // An engine that outlived the last wait after SIGKILL (issue 562) can exit
+  // at last while a quit is waiting on another engine's group, and leave a
+  // group of its own; the quit waits for that one too. Nothing real can be
+  // made to outlive SIGKILL on cue, nor what is in its group with it, so the
+  // stand-in for that engine has no pid while it is being ended, and takes a
+  // real group's id only as it exits.
+  it('has a quit wait too for a group added while it waits, as an engine that outlived the kill exits', async () => {
+    const [nextLeft, outlivedLeft] = [await member(true), await member(true)]
+    const outlived = fakeChild()
+    const next = fakeChild(nextLeft.pid)
+    const log: string[] = []
+    // One restart, then the give-up.
+    const sidecar = supervisor([outlived, next], log, {
+      shutdownMs: 20,
+      terminateMs: 500,
+      restartDelaysMs: [20],
+    })
+    sidecar.start()
+    // A stray line: the first engine is ended, outlives the kill, and the next starts.
+    outlived.child.stdout?.push('this is not a frame\n\n')
+    await eventually(() => log.some((l) => l.includes('it is still there')), 5_000, 'the kill')
+    await eventually(() => log.some((l) => l.startsWith('starting, attempt 2')), 5_000, 'a restart')
+    next.exit()
+    expect(sidecar.groupsBeingEnded).toBe(1)
+    const stopping = sidecar.stop()
+    // The quit is waiting on the next engine's group by now, which takes
+    // terminateMs, its member ignoring SIGTERM. Only a quit that fails this
+    // test leans on the pause: one that looks again waits whenever it comes.
+    await sleep(150)
+    ;(outlived.child as unknown as { pid: number }).pid = outlivedLeft.pid as number
+    outlived.exit()
+    expect(sidecar.groupsBeingEnded).toBe(2)
+    await stopping
+    expect(alive(nextLeft.pid as number)).toBe(false)
+    expect(alive(outlivedLeft.pid as number), 'the group added while the quit waited').toBe(false)
   })
 })
 

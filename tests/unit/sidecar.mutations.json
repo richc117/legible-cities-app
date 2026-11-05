@@ -89,10 +89,26 @@
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "      if (groupEnded !== null) this.endGroup(child, groupEnded)\n      if (unexpected === null) return\n",
-    "replace": "      if (unexpected === null) {\n        if (groupEnded !== null) groupEnded()\n        return\n      }\n      if (groupEnded !== null) this.endGroup(child, groupEnded)\n",
+    "find": "      groupReported = this.watchGroup(child)\n",
+    "replace": "      if (this.child === child) groupReported = this.watchGroup(child)\n",
     "test": "tests/unit/sidecar.test.ts",
     "title": "ends, before a quit resolves, what an engine left as it stopped as asked",
     "why": "Only an exit nobody asked for has its group ended (issue 640): an engine that stops as asked, on a quit or after a failure, leaves its tools running past it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.platform === 'win32' || group === undefined || !this.groupHolds(group)) return null\n",
+    "replace": "    if (this.platform === 'win32' || group === undefined) return null\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "keeps nothing for a group that was empty, before the stdio has closed",
+    "why": "No look at the group as the exit is seen (issue 640): an empty one is kept and waited on until a later look, and its id can pass to another process before that look takes it for the engine's."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    while (this.groupsEnding.size > 0) await Promise.all(this.groupsEnding.values())\n",
+    "replace": "    await Promise.all(this.groupsEnding.values())\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has a quit wait too for a group added while it waits",
+    "why": "A wait that takes the groups there when it began (issue 640): an engine that outlived the kill and exits meanwhile leaves its group unwaited, and the quit resolves with it still running."
   }
 ]
