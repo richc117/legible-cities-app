@@ -1,0 +1,51 @@
+{
+  "$comment": [
+    "vendor/pins.json cut down to the fields scripts/vuln-watch.mjs reads, at the values of 2026-11-04, for tests/unit/vuln-watch.test.ts."
+  ],
+  "loom": {
+    "repo": "https://github.com/ad-freiburg/loom",
+    "commit": "1e4757838104d1e4d22186c9b77d5fc4b98681a0"
+  },
+  "loom_windows_port": {
+    "repo": "https://github.com/transportforcairo/loom-windows-port",
+    "commit": "8c521a1815759a64b46a5f876dd84b1d8b0878d4"
+  },
+  "loom_windows_static": {
+    "zlib": {
+      "version": "1.3.2"
+    },
+    "bzip2": {
+      "version": "1.0.8"
+    }
+  },
+  "engine": {
+    "repo": "https://github.com/richc117/legible-cities",
+    "tag": "v0.21.1",
+    "commit": "9a8a5f815d8a233b22b3b2b0da238010e72f1479",
+    "version": "0.21.1"
+  },
+  "python": {
+    "release": "20260901",
+    "version": "3.12.14",
+    "pip": {
+      "version": "26.2.1"
+    }
+  },
+  "ffmpeg": {
+    "version": "9.0.1",
+    "source": {
+      "commit": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa"
+    },
+    "x264": {
+      "commit": "0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee"
+    },
+    "zlib": {
+      "version": "1.3.2"
+    }
+  },
+  "electron_ffmpeg": {
+    "electron": {
+      "version": "45.0.0"
+    }
+  }
+}

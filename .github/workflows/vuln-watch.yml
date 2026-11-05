@@ -1,0 +1,51 @@
+# The vulnerability watch (issue 557). Once a week, scripts/vuln-watch.mjs
+# asks OSV about every component vendor/pins.json pins and every Python
+# package vendor/python-requirements.txt locks, and judges the answer against
+# vendor/vuln-triage.json. The run fails on an id the triage does not cover
+# and on an open one past its due date; a red run is the notification, and
+# it opens no issue. Its table, read or not, is the job summary. SECURITY.md,
+# "Vulnerabilities in what the installers carry", says how to triage a new id.
+#
+# A run that cannot reach OSV fails too, with an exit status of its own and
+# a summary that says nothing was judged: it is never clean.
+#
+# It reads the repository and nothing else: no secret, no write permission,
+# no npm install (the script needs only Node). It is not a required check
+# (docs/repository-settings.md does not list it). By hand:
+#
+#   gh workflow run vuln-watch.yml
+#
+# or, on any checkout, `node scripts/vuln-watch.mjs`.
+name: vuln-watch
+
+on:
+  schedule:
+    # Mondays at 06:17 UTC, off the hour, when the scheduler is busiest.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vuln-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: vuln-watch
+    runs-on: ubuntu-22.04
+    # Twenty-odd queries and a record per id, each given 30 seconds.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # As ci.yml sets Node up, without its npm cache: nothing is installed.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Ask OSV and judge the answer
+        run: node scripts/vuln-watch.mjs --summary "$GITHUB_STEP_SUMMARY"
