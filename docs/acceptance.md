@@ -1288,7 +1288,7 @@ Copy everything in the block below into a new issue titled
 
 ## Versions from Settings
 
-(the seven rows of step 3)
+(the six rows of step 3)
 
 ## Anything else
 ```
