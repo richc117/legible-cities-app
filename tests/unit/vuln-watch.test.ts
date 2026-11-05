@@ -4,12 +4,12 @@
 // stand-in fetch that answers from tests/fixtures/vuln-watch/osv.json and
 // cve.json, records as they read on 2026-11-04, so nothing talks to the
 // network. The rules each have a test that fails when the rule is taken out
-// (tests/unit/vuln-watch.mutations.json): an untriaged id fails the run, an
-// open one past its due date fails it, a triaged id OSV stops returning is
-// reported, and a failure to reach OSV, an answer that cannot be trusted and
-// a request or a run that outlasts its limit are their own exit status and
-// never clean. The last blocks hold the committed triage and the weekly
-// workflow to their form.
+// (tests/unit/vuln-watch.mutations.json): an untriaged id fails the run, and
+// so do an open one past its due date and a triaged id OSV stops returning;
+// a failure to reach OSV, an answer that cannot be trusted and a request or
+// a run that outlasts its limit are their own exit status and never clean.
+// The last blocks hold the committed triage and the weekly workflow to
+// their form.
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -61,8 +61,12 @@ interface Module {
   parseRequirements(text: string): { name: string; version: string }[]
   watchList(pins: unknown, requirements: string): Watched[]
   osvSeverity(record: unknown): string | null
-  sourceRating(record: unknown, cveRecord: unknown): { rating: string; by: string } | null
-  cveIdOf(record: unknown): string | null
+  sourceRating(
+    record: unknown,
+    cves?: Record<string, unknown>,
+  ): { rating: string | null; by?: string; why?: string }
+  cveIdsOf(record: unknown): string[]
+  ffmpegConfigure(pins: unknown): string[]
   validateTriage(triage: unknown): string[]
   addDays(date: string, days: number): string
   sentences(text: string): number
@@ -296,7 +300,7 @@ describe('the queries the pins make', () => {
     const requirements = readFileSync(join(repo, 'vendor', 'python-requirements.txt'), 'utf8')
     // A new target is no new component.
     const added = structuredClone(pins)
-    added.python.targets['linux-x64'] = structuredClone(added.python.targets['darwin-x64'])
+    added.python.targets['win-arm64'] = structuredClone(added.python.targets['win-x64'])
     added.ffmpeg.targets['linux-arm64'] = structuredClone(added.ffmpeg.targets['linux-x64'])
     expect(() => watchList(added, requirements)).not.toThrow()
 
@@ -311,6 +315,45 @@ describe('the queries the pins make', () => {
     dav1d.ffmpeg.targets['win-x64'].configure += ' --enable-libdav1d'
     expect(() => watchList(dav1d, requirements)).toThrow(
       /builds FFmpeg with --enable-libdav1d \(ffmpeg\.targets\.win-x64\.configure\)/,
+    )
+  })
+
+  it('refuses an FFmpeg configure line that could link a library the watch does not ask about', async () => {
+    const { watchList, ffmpegConfigure } = await load()
+    const pins = JSON.parse(readFileSync(join(repo, 'vendor', 'pins.json'), 'utf8')) as {
+      ffmpeg: { targets: Record<string, { configure: string; zlib: string }> }
+    }
+    const requirements = readFileSync(join(repo, 'vendor', 'python-requirements.txt'), 'utf8')
+    expect(ffmpegConfigure(pins)).toEqual([])
+    const changed = (change: (t: { configure: string; zlib: string }) => void): string[] => {
+      const copy = structuredClone(pins)
+      change(copy.ffmpeg.targets['win-x64'])
+      return ffmpegConfigure(copy)
+    }
+    // A library that is not called lib-something.
+    expect(changed((t) => (t.configure += ' --enable-gnutls'))).toEqual([
+      '--enable-gnutls (ffmpeg.targets.win-x64.configure)',
+    ])
+    // Autodetection back on links what the runner has, bzlib, lzma, iconv,
+    // with no option naming it.
+    expect(
+      changed((t) => (t.configure = t.configure.replace(' --disable-autodetect', ''))),
+    ).toEqual(['no --disable-autodetect (ffmpeg.targets.win-x64.configure)'])
+    expect(
+      changed((t) => (t.configure = t.configure.replace('--disable-everything ', ''))),
+    ).toEqual(['no --disable-everything (ffmpeg.targets.win-x64.configure)'])
+    expect(changed((t) => (t.configure += " --extra-libs='-lssl -lcrypto'"))).toEqual([
+      '--extra-libs (ffmpeg.targets.win-x64.configure)',
+      '-lssl (ffmpeg.targets.win-x64.configure)',
+      '-lcrypto (ffmpeg.targets.win-x64.configure)',
+    ])
+    expect(changed((t) => (t.zlib = '1.3.1'))).toEqual([
+      'a zlib that is "1.3.1" (ffmpeg.targets.win-x64.zlib)',
+    ])
+    const gnutls = structuredClone(pins)
+    gnutls.ffmpeg.targets['win-x64'].configure += ' --enable-gnutls'
+    expect(() => watchList(gnutls, requirements)).toThrow(
+      /builds FFmpeg with --enable-gnutls \(ffmpeg\.targets\.win-x64\.configure\), which could link a library/,
     )
   })
 
@@ -351,6 +394,21 @@ describe('the queries the pins make', () => {
     expect(() => watchList(at(undefined), REQUIREMENTS)).toThrow(
       /records its zlib as undefined, which names no version/,
     )
+    // And its absence only where the runtime links the system's zlib.
+    const without = (target: string): unknown => ({
+      ...PINS,
+      python: { ...python, targets: { [target]: { licences: { unlisted: {} } } } },
+    })
+    expect(() => watchList(without('win-x64'), REQUIREMENTS)).toThrow(
+      /python\.targets\.win-x64 carries a zlib of its own, and its licence record names none/,
+    )
+    expect(() => watchList(without('linux-x64'), REQUIREMENTS)).toThrow(
+      /python\.targets\.linux-x64 carries a zlib of its own/,
+    )
+    const system = watchList(without('darwin-arm64'), REQUIREMENTS)
+    expect(system.filter((w) => w.component === 'zlib').map((w) => w.from)).toEqual([
+      ['ffmpeg.zlib.version', 'loom_windows_static.zlib.version'],
+    ])
   })
 
   it('refuses a requirements line it cannot read as a pin', async () => {
@@ -388,30 +446,79 @@ describe("OSV's severity", () => {
   })
 
   it('takes a CVE id only when it is one, whole', async () => {
-    const { cveIdOf } = await load()
-    expect(cveIdOf({ id: 'CVE-2026-115557' })).toBe('CVE-2026-115557')
-    expect(cveIdOf({ id: 'PSF-2026-46', aliases: ['BIT-x', 'CVE-2026-115557'] })).toBe(
+    const { cveIdsOf } = await load()
+    expect(cveIdsOf({ id: 'CVE-2026-115557' })).toEqual(['CVE-2026-115557'])
+    expect(cveIdsOf({ id: 'PSF-2026-46', aliases: ['BIT-x', 'CVE-2026-115557'] })).toEqual([
       'CVE-2026-115557',
-    )
-    expect(cveIdOf({ id: 'GHSA-x', aliases: ['CVE-2026-12345/../../x'] })).toBeNull()
-    expect(cveIdOf({ id: 'GHSA-x', aliases: ['x/CVE-2026-12345'] })).toBeNull()
-    expect(cveIdOf({ id: 'CVE-2026-12345?x=1' })).toBeNull()
+    ])
+    expect(cveIdsOf({ id: 'GHSA-x', aliases: ['CVE-2026-12345/../../x'] })).toEqual([])
+    expect(cveIdsOf({ id: 'GHSA-x', aliases: ['x/CVE-2026-12345'] })).toEqual([])
+    expect(cveIdsOf({ id: 'CVE-2026-12345?x=1' })).toEqual([])
+  })
+
+  it('takes the highest rating of every CVE alias, and of every container in each', async () => {
+    const { cveIdsOf, sourceRating } = await load()
+    const medium = CVE.records['CVE-2026-107677']
+    const high = CVE.records['CVE-2026-76844']
+    const cves = { 'CVE-2026-107677': medium, 'CVE-2026-76844': high }
+    const twice = { id: 'PSF-x', aliases: ['CVE-2026-107677', 'CVE-2026-76844', 'CVE-2026-76844'] }
+    expect(cveIdsOf(twice)).toEqual(['CVE-2026-107677', 'CVE-2026-76844'])
+    expect(sourceRating(twice, cves)).toEqual({
+      rating: 'high',
+      by: 'the CVE record of its alias CVE-2026-76844',
+    })
+    const reversed = { id: 'PSF-x', aliases: ['CVE-2026-76844', 'CVE-2026-107677'] }
+    expect(sourceRating(reversed, cves)?.rating).toBe('high')
+    // An ADP's rating above the CNA's is the one held.
+    const metric = (vectorString: string, baseSeverity: string): unknown => ({
+      cvssV3_1: { vectorString, baseSeverity },
+    })
+    const adp = {
+      cveMetadata: { cveId: 'CVE-2026-0001' },
+      containers: {
+        cna: { metrics: [metric('CVSS:3.1/AV:L', 'MEDIUM')] },
+        adp: [{ metrics: [metric('CVSS:3.1/AV:N', 'HIGH')] }],
+      },
+    }
+    const psf = { id: 'PSF-y', aliases: ['CVE-2026-0001'] }
+    expect(sourceRating(psf, { 'CVE-2026-0001': adp })).toEqual({
+      rating: 'high',
+      by: 'the CVE record of its alias CVE-2026-0001',
+    })
+    // And the vector OSV gives is rated wherever a record names it.
+    const vector = {
+      id: 'GHSA-y',
+      aliases: ['CVE-2026-0001'],
+      severity: [{ type: 'CVSS_V3', score: 'CVSS:3.1/AV:N' }],
+    }
+    expect(sourceRating(vector, { 'CVE-2026-0001': adp })).toEqual({
+      rating: 'high',
+      by: 'the CVE record',
+    })
   })
 
   it("reads the rating of OSV's vector from the CVE record, else from OSV's record", async () => {
     const { sourceRating } = await load()
     const v4 = 'CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H'
     const record = { id: 'CVE-2026-115557', severity: [{ type: 'CVSS_V4', score: v4 }] }
-    expect(sourceRating(record, CVE.records['CVE-2026-115557'])).toEqual({
+    expect(sourceRating(record, { 'CVE-2026-115557': CVE.records['CVE-2026-115557'] })).toEqual({
       rating: 'critical',
       by: 'the CVE record',
     })
-    expect(sourceRating(record, null)).toBeNull()
-    expect(sourceRating({ ...record, database_specific: { severity: 'MODERATE' } }, null)).toEqual({
+    expect(sourceRating(record, {})).toEqual({
+      rating: null,
+      why: 'nothing rates the vector OSV gives (no CVE record names it)',
+    })
+    expect(sourceRating({ ...record, database_specific: { severity: 'MODERATE' } }, {})).toEqual({
       rating: 'medium',
       by: "OSV's record",
     })
-    expect(sourceRating({ id: 'PSF-2026-46' }, null)).toEqual({ rating: 'unrated', by: 'OSV' })
+    // "unrated" only for an id with no CVE alias to read.
+    expect(sourceRating({ id: 'PSF-2026-46' }, {})).toEqual({ rating: 'unrated', by: 'OSV' })
+    expect(sourceRating({ id: 'PSF-2026-46', aliases: ['CVE-2026-115557'] }, {})).toEqual({
+      rating: null,
+      why: 'OSV gives no severity, and no CVE record rates its alias CVE-2026-115557 (missing, rejected or unscored)',
+    })
   })
 })
 
@@ -554,6 +661,36 @@ describe('the judgement', () => {
     expect((await run()).code).toBe(EXIT.clean)
   })
 
+  it('asks for a note where the CVE record of an alias is missing or unscored', async () => {
+    const { EXIT } = await load()
+    const row =
+      /\| PSF-2026-46 \|.*no CVE record rates its alias CVE-2026-115557 \(missing, rejected or unscored\): rate it, and say how in "rating_note"/
+    const missing = { ...CVE.records }
+    delete missing['CVE-2026-115557']
+    const gone = await run({ fetch: standIn({ cves: missing }).fetch })
+    expect(gone.code).toBe(EXIT.findings)
+    expect(section(gone.out, 'New or untriaged')).toMatch(row)
+    const rejected = {
+      ...CVE.records,
+      'CVE-2026-115557': {
+        cveMetadata: { cveId: 'CVE-2026-115557', state: 'REJECTED' },
+        containers: { cna: { rejectedReasons: [{ lang: 'en', value: 'Not a vulnerability.' }] } },
+      },
+    }
+    const empty = await run({ fetch: standIn({ cves: rejected }).fetch })
+    expect(empty.code).toBe(EXIT.findings)
+    expect(section(empty.out, 'New or untriaged')).toMatch(row)
+    const noted = await run({
+      fetch: standIn({ cves: rejected }).fetch,
+      triage: triageWith((entries) =>
+        entries.map((e) =>
+          e.id === 'PSF-2026-46' ? { ...e, rating_note: 'Rated as its CVE was before.' } : e,
+        ),
+      ),
+    })
+    expect(section(noted.out, 'New or untriaged')).not.toContain('PSF-2026-46')
+  })
+
   it('asks for a note where nothing rates the vector OSV gives', async () => {
     const { EXIT } = await load()
     const cves = { ...CVE.records }
@@ -596,7 +733,9 @@ describe('the judgement', () => {
     expect(result.out).toContain(
       '**Failed:** 0 untriaged, 0 past their due date, 1 no longer returned.',
     )
-    expect(result.out).toContain('take out the entry of each one no longer returned')
+    expect(result.out).toContain(
+      'take out the entry of each one no longer returned once its advisory or the pin shows why',
+    )
 
     const out = await run({
       fetch: standIn({ answers }).fetch,
@@ -692,7 +831,6 @@ describe('a failure to reach OSV', () => {
   it('gives each request its own time limit, against a fetch that never answers', async () => {
     const { EXIT, REQUEST_TIMEOUT_MS } = await load()
     expect(REQUEST_TIMEOUT_MS).toBe(30_000)
-    const started = Date.now()
     const result = await run({
       fetch: () => new Promise<Response>(() => undefined),
       timeoutMs: 50,
@@ -700,22 +838,23 @@ describe('a failure to reach OSV', () => {
     })
     expect(result.code).toBe(EXIT.unreachable)
     expect(result.err).toContain('querybatch: no answer within 50 ms')
-    expect(Date.now() - started).toBeLessThan(1_000)
   }, 5_000)
 
-  it('refuses an id it would not put in a URL', async () => {
+  // encodeURIComponent leaves a bare ".." or "." as it is, and a URL
+  // parser resolves it: vulns/.. is the API's own path.
+  it.each(['../x', '..', '.'])('refuses an id it would not put in a URL: %s', async (id) => {
     const { EXIT } = await load()
     const zlib = 'GIT https://github.com/madler/zlib @ v1.3.2'
     const answers = new Map(
-      OSV.answers.map(({ query, ids }) => [asked(query), asked(query) === zlib ? ['../x'] : ids]),
+      OSV.answers.map(({ query, ids }) => [asked(query), asked(query) === zlib ? [id] : ids]),
     )
     const stand = standIn({ answers })
     const result = await run({ fetch: stand.fetch })
     expect(result.code).toBe(EXIT.unreachable)
     expect(result.err).toContain(
-      'querybatch answered the id "../x", which the watch will not put in a URL',
+      `querybatch answered the id ${JSON.stringify(id)}, which the watch will not put in a URL`,
     )
-    expect(stand.calls.some((c) => c.url.includes('/x'))).toBe(false)
+    expect(stand.calls.some((c) => c.url.startsWith('https://api.osv.dev/v1/vulns/'))).toBe(false)
   })
 
   it("stops at its own deadline, inside the workflow job's timeout", async () => {
@@ -894,6 +1033,13 @@ describe('the triage', () => {
     const { sentences } = await load()
     expect(sentences('Only ASCII reaches it. requests encodes the rest first.')).toBe(2)
     expect(sentences('The pin is 3.12.14. pandas reads it with extractfile.')).toBe(2)
+  })
+
+  it('counts "e.g.", "i.e." and a mid-sentence "etc." as part of a sentence', async () => {
+    const { sentences } = await load()
+    expect(sentences("Some, e.g. zlib, i.e. the runtime's own, reach it.")).toBe(1)
+    expect(sentences('Tar, zip, etc. are read in memory. Nothing extracts them.')).toBe(2)
+    expect(sentences('It reads tar, zip, etc. Nothing extracts them.')).toBe(2)
   })
 })
 

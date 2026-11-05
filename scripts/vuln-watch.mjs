@@ -40,8 +40,9 @@
 // triage and any other within 60; low and unrated ones take 60 as well, so
 // nothing open is undated. `validateTriage` refuses a due date past that.
 //
-// Exit status: 0 when every id OSV returns is triaged and no open one is past
-// its due date; 1 when one is untriaged or overdue; 2 when the arguments,
+// Exit status: 0 when every id OSV returns is triaged, no open one is past
+// its due date and every triaged id is still returned; 1 when one is
+// untriaged or overdue, or a triaged one is no longer returned; 2 when the arguments,
 // the pins, the requirements or the triage cannot be read or are malformed;
 // 3 when OSV or the CVE records could not be asked, answered something
 // unreadable, or answered in a way that cannot be trusted (`distrust`: a
@@ -159,8 +160,8 @@ const ANY = '*'
  * cannot reach the installers unwatched. `KNOWN` marks what holds no
  * component of its own: metadata, the build's own tools, and what UNWATCHED
  * covers whole. A per-target map is descended through `ANY`, so a target
- * may be added but a library a target's licence record gains may not; the
- * libraries FFmpeg's configure lines enable are read in `watchList`.
+ * may be added but a library a target's licence record gains may not;
+ * FFmpeg's configure lines are read in `watchList` (`ffmpegConfigure`).
  * Electron's FFmpeg is not descended: its trees, its build's dependencies
  * and its components are one row of UNWATCHED, everything it links
  * included, so a key added there names nothing the watch could ask about.
@@ -313,28 +314,86 @@ export function unknownPins(value, shape = PINS_SHAPE, path = '') {
   return found
 }
 
-/** FFmpeg's external libraries, which its configure lines enable: x264 alone is watched. */
-const FFMPEG_LIBRARIES = ['--enable-libx264']
+/**
+ * The `--enable-` options FFmpeg's configure lines may carry, by name, none
+ * of them a library the watch is blind to: libx264, asked about at its
+ * commit; zlib, which the Windows build compiles in from ffmpeg.zlib, asked
+ * about at its version, and the others take from the operating system,
+ * which the installers do not ship (`FFMPEG_ZLIB`); gpl and version3, the
+ * licence switches, which link nothing; and the selectors of FFmpeg's own
+ * encoders, decoders, parsers, muxers, demuxers, filters, input devices and
+ * protocols that the pinned lines use. A selector names FFmpeg's code, not
+ * a library: one that needs a library builds only with that library's own
+ * option, which is not here, or with what autodetection finds, which
+ * `FFMPEG_REQUIRED` turns off. Any other option refuses the run.
+ */
+const FFMPEG_ENABLES = [
+  'libx264',
+  'zlib',
+  'gpl',
+  'version3',
+  'encoder',
+  'decoder',
+  'parser',
+  'muxer',
+  'demuxer',
+  'filter',
+  'indev',
+  'protocol',
+]
 
-/** The configure options of `pins`' FFmpeg targets that enable a library the watch does not ask about. */
-function unwatchedLibraries(pins) {
+/** What every FFmpeg configure line carries (ADR-040): without them configure links what the runner has. */
+const FFMPEG_REQUIRED = ['--disable-everything', '--disable-autodetect']
+
+/** Where each FFmpeg target's zlib comes from: built from ffmpeg.zlib, or the operating system's. */
+const FFMPEG_ZLIB = ['static', 'system']
+
+/**
+ * What in `pins`' FFmpeg configure lines could link a library the watch does
+ * not ask about, each as a phrase naming its target: an `--enable-` option
+ * outside FFMPEG_ENABLES, a library linked by hand (`--extra-libs`, `-l`,
+ * `-framework`), a line without an option of FFMPEG_REQUIRED, or a zlib
+ * from neither of FFMPEG_ZLIB's places.
+ */
+export function ffmpegConfigure(pins) {
   const targets = pins.ffmpeg?.targets
   const found = []
   if (targets === null || typeof targets !== 'object') return found
   for (const [target, entry] of Object.entries(targets)) {
-    const enabled = String(entry?.configure ?? '').match(/--enable-lib[\w-]+/g) ?? []
-    for (const option of enabled.filter((o) => !FFMPEG_LIBRARIES.includes(o))) {
-      found.push(`${option} (ffmpeg.targets.${target}.configure)`)
+    const at = `ffmpeg.targets.${target}`
+    const line = ` ${String(entry?.configure ?? '').replace(/\s+/g, ' ')} `
+    for (const option of FFMPEG_REQUIRED) {
+      if (!line.includes(` ${option} `)) found.push(`no ${option} (${at}.configure)`)
+    }
+    for (const [, name] of line.matchAll(/ --enable-([\w-]+)/g)) {
+      if (!FFMPEG_ENABLES.includes(name)) found.push(`--enable-${name} (${at}.configure)`)
+    }
+    for (const [, linked] of line.matchAll(/[\s'"=,](--extra-libs|-l[\w.+-]+|-framework)\b/g)) {
+      found.push(`${linked} (${at}.configure)`)
+    }
+    if (!FFMPEG_ZLIB.includes(entry?.zlib)) {
+      found.push(`a zlib that is ${JSON.stringify(entry?.zlib)} (${at}.zlib)`)
     }
   }
   return found
 }
 
 /**
+ * The Python runtimes that link the operating system's zlib, which the
+ * installers do not ship: python-build-standalone's macOS builds, whose
+ * licence records say so under `named_absent`. Every other target carries
+ * a zlib of its own.
+ */
+const SYSTEM_ZLIB = /^darwin-/
+
+/**
  * The zlib each Python runtime carries, read from its licence record
  * (`python.targets.<target>.licences.unlisted["LICENSE.zlib.txt"].library`,
  * which says "zlib <version>, from ..."), as `{ path, version }`. A record
- * the watch cannot read a version from throws.
+ * the watch cannot read a version from throws, and so does a target that
+ * carries its own zlib with no record of it: were python-build-standalone's
+ * metadata to name zlib, the record would go, and the pins record nothing
+ * of the metadata the watch could read its version from instead.
  */
 function runtimeZlibs(pins) {
   const targets = pins.python?.targets
@@ -342,7 +401,12 @@ function runtimeZlibs(pins) {
   if (targets === null || typeof targets !== 'object') return found
   for (const [target, entry] of Object.entries(targets)) {
     const unlisted = entry?.licences?.unlisted
-    if (!Object.hasOwn(unlisted ?? {}, 'LICENSE.zlib.txt')) continue
+    if (!Object.hasOwn(unlisted ?? {}, 'LICENSE.zlib.txt')) {
+      if (SYSTEM_ZLIB.test(target)) continue
+      throw new Error(
+        `vendor/pins.json's python.targets.${target} carries a zlib of its own, and its licence record names none (unlisted["LICENSE.zlib.txt"]): teach the watch where its version is recorded now`,
+      )
+    }
     const library = unlisted['LICENSE.zlib.txt']?.library
     const match = typeof library === 'string' ? /^zlib (\d+(?:\.\d+)+),/.exec(library) : null
     if (match === null) {
@@ -369,13 +433,13 @@ export function watchList(pins, requirementsText) {
   const unknown = unknownPins(pins)
   if (unknown.length > 0) {
     throw new Error(
-      `vendor/pins.json names ${unknown.join(', ')}, which the watch does not read: add a query for it, or a line in UNWATCHED saying why there is none, or, if it is no component, a key in PINS_SHAPE`,
+      `vendor/pins.json names ${unknown.join(', ')}, which the watch does not read: add it to PINS_SHAPE, and with it a query in watchList or, where none can be made, a line in UNWATCHED saying why; where it holds no component, PINS_SHAPE alone`,
     )
   }
-  const libraries = unwatchedLibraries(pins)
-  if (libraries.length > 0) {
+  const configured = ffmpegConfigure(pins)
+  if (configured.length > 0) {
     throw new Error(
-      `vendor/pins.json builds FFmpeg with ${libraries.join(', ')}, which the watch does not ask about: add a query for it and a line in FFMPEG_LIBRARIES, or a line in UNWATCHED saying why there is none`,
+      `vendor/pins.json builds FFmpeg with ${configured.join(', ')}, which could link a library the watch does not ask about: an option of FFMPEG_REQUIRED goes back on the line, a library linked by hand goes through its own --enable- option, and an --enable- option goes into FFMPEG_ENABLES, a library's with a query for it in watchList or, where none can be made, a line in UNWATCHED saying why`,
     )
   }
   const list = []
@@ -467,15 +531,14 @@ export function osvSeverity(record) {
   return typeof own === 'string' && own !== '' ? own : null
 }
 
-/** The CVE id whose record rates `record`'s vector: its own id, else its first CVE alias, else null. */
-export function cveIdOf(record) {
+/** The CVE ids whose records rate `record`: its own id where it is one, then every CVE alias. */
+export function cveIdsOf(record) {
   const pattern = /^CVE-\d{4}-\d{4,}$/
-  if (typeof record?.id === 'string' && pattern.test(record.id)) return record.id
-  const aliases = Array.isArray(record?.aliases) ? record.aliases : []
-  return aliases.find((alias) => typeof alias === 'string' && pattern.test(alias)) ?? null
+  const ids = [record?.id, ...(Array.isArray(record?.aliases) ? record.aliases : [])]
+  return [...new Set(ids.filter((id) => typeof id === 'string' && pattern.test(id)))]
 }
 
-/** The ratings a CVE record gives, as `{ vector, rating }`: its CNA's, else its ADPs'. */
+/** Every rating a CVE record gives, as `{ vector, rating }`: its CNA's and every ADP's. */
 function recordRatings(cveRecord) {
   const adp = cveRecord?.containers?.adp
   const containers = [cveRecord?.containers?.cna, ...(Array.isArray(adp) ? adp : [])]
@@ -491,45 +554,51 @@ function recordRatings(cveRecord) {
         if (rating !== undefined) found.push({ vector: value.vectorString, rating })
       }
     }
-    if (container === cveRecord?.containers?.cna && found.length > 0) break
   }
   return found
 }
 
+/** The highest of `ratings` (`{ rating, ... }`), or undefined for none. */
+const highest = (ratings) =>
+  ratings.reduce((a, b) => (a === undefined || RANK[b.rating] > RANK[a.rating] ? b : a), undefined)
+
 /**
- * The rating OSV's severity for `record` carries, as `{ rating, by }`. For a
- * CVSS vector, the rating the CVE record (`cveRecord`, or null) gives that
- * very vector, its CNA's or an ADP's; else the database's own word in OSV's
- * record; else null, where nothing names one. Where OSV gives no severity
- * (the PSF's own ids), the highest rating the CVE record of its alias
- * gives, so an id that OSV returns under the PSF's id alone is still held to
- * the CVE's budget; "unrated" where there is none.
+ * The rating OSV's severity for `record` carries, as `{ rating, by }`, read
+ * against `cves`, the CVE records of `cveIdsOf(record)` by id (null for one
+ * that could not be found). For a CVSS vector, the highest rating any of
+ * those records gives that very vector, its CNA's or an ADP's; else the
+ * database's own word in OSV's record. Where OSV gives no severity (the
+ * PSF's own ids), the highest rating any of them gives, so an id that OSV
+ * returns under the PSF's id alone is still held to the CVE's budget, and
+ * "unrated" only where it has no CVE alias at all. Where something should
+ * rate it and nothing does, `{ rating: null, why }`: a vector no record
+ * names, or an alias whose record is missing, rejected or unscored.
  */
-export function sourceRating(record, cveRecord) {
+export function sourceRating(record, cves = {}) {
   const given = osvSeverity(record)
+  const read = cveIdsOf(record).map((id) => ({ id, ratings: recordRatings(cves[id] ?? null) }))
   if (given === null) {
-    const ratings = recordRatings(cveRecord).map((r) => r.rating)
-    if (ratings.length === 0) return { rating: 'unrated', by: 'OSV' }
-    const rating = ratings.reduce((a, b) => (RANK[b] > RANK[a] ? b : a))
-    return { rating, by: `the CVE record of its alias ${cveRecord?.cveMetadata?.cveId}` }
-  }
-  if (given.startsWith('CVSS:')) {
-    const adp = cveRecord?.containers?.adp
-    const containers = [cveRecord?.containers?.cna, ...(Array.isArray(adp) ? adp : [])]
-    for (const container of containers) {
-      const metrics = Array.isArray(container?.metrics) ? container.metrics : []
-      for (const metric of metrics) {
-        for (const value of Object.values(metric ?? {})) {
-          if (value?.vectorString !== given || typeof value.baseSeverity !== 'string') continue
-          const rating = RATINGS[value.baseSeverity.toUpperCase()]
-          if (rating !== undefined) return { rating, by: 'the CVE record' }
-        }
+    if (read.length === 0) return { rating: 'unrated', by: 'OSV' }
+    const unread = read.filter((r) => r.ratings.length === 0).map((r) => r.id)
+    if (unread.length > 0) {
+      return {
+        rating: null,
+        why: `OSV gives no severity, and no CVE record rates its alias ${unread.join(', ')} (missing, rejected or unscored)`,
       }
     }
+    const best = highest(read.map((r) => ({ id: r.id, rating: highest(r.ratings).rating })))
+    return { rating: best.rating, by: `the CVE record of its alias ${best.id}` }
+  }
+  if (given.startsWith('CVSS:')) {
+    const named = highest(read.flatMap((r) => r.ratings.filter((x) => x.vector === given)))
+    if (named !== undefined) return { rating: named.rating, by: 'the CVE record' }
   }
   const own = record?.database_specific?.severity
   const rating = typeof own === 'string' ? RATINGS[own.toUpperCase()] : undefined
-  return rating !== undefined ? { rating, by: "OSV's record" } : null
+  if (rating !== undefined) return { rating, by: "OSV's record" }
+  return given.startsWith('CVSS:')
+    ? { rating: null, why: 'nothing rates the vector OSV gives (no CVE record names it)' }
+    : { rating: null, why: `nothing rates the severity OSV gives, ${given}` }
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/
@@ -551,12 +620,14 @@ export function addDays(date, days) {
  * How many sentences a reason has: a full stop, ! or ? before a space and a
  * word, a digit or a quote, or before the end. A sentence may begin with a
  * name written in lower case ("requests encodes ..."); a version number or
- * a file name, with no space after its dots, ends none.
+ * a file name, with no space after its dots, ends none, and nor do "e.g.",
+ * "i.e." and an "etc." a lower-case word follows.
  */
 export function sentences(text) {
   return (
     String(text)
       .trim()
+      .replace(/\b(?:e\.g\.|i\.e\.|etc\.(?=\s+[a-z]))/g, '')
       .match(/[.!?][)"'`]*(?=\s+[A-Za-z0-9_`"'(]|$)/g) ?? []
   ).length
 }
@@ -653,17 +724,13 @@ export function validateTriage(triage) {
 
 /**
  * Why an entry's rating, read against the rating its source gives (`source`,
- * from `sourceRating`, or null where nothing names one), needs a
- * `rating_note` it lacks; null where it needs none. A rating at or above the
- * source's needs no note: the budget it buys is no longer than the source's.
+ * from `sourceRating`), needs a `rating_note` it lacks; null where it needs
+ * none. A rating at or above the source's needs no note: the budget it buys
+ * is no longer than the source's. Where nothing rates it, every rating does.
  */
 export function unexplainedRating(entry, source) {
   if ('rating_note' in entry) return null
-  if (source === null) {
-    return entry.osv_severity === null
-      ? null
-      : `nothing rates the vector OSV gives (no CVE record names it): rate it, and say how in "rating_note"`
-  }
+  if (source.rating === null) return `${source.why}: rate it, and say how in "rating_note"`
   if (RANK[entry.severity] < RANK[source.rating]) {
     const held = entry.severity === 'unrated' ? 'held as unrated' : `rated ${entry.severity}`
     return `${held}, below the ${source.rating} ${source.by} gives, and no "rating_note" says why`
@@ -727,7 +794,7 @@ export function judge({ watch, returned, details, ratings = {}, triage, today })
       } else if (entry.osv_severity !== rated) {
         note = `triaged as ${entry.osv_severity ?? 'unrated'}, OSV now gives ${rated ?? 'unrated'}`
       } else {
-        note = unexplainedRating(entry, ratings[id] ?? null)
+        note = unexplainedRating(entry, ratings[id] ?? sourceRating(record))
       }
       if (note !== null) {
         untriaged.push({ id, where, rated, summary: headline(record), note })
@@ -888,7 +955,7 @@ export function report({ judgement, watch, returned, today, triaged, canaries = 
   )
   out.push(
     failed(judgement)
-      ? `**Failed:** ${judgement.untriaged.length} untriaged, ${judgement.overdue.length} past their due date, ${judgement.dropped.length} no longer returned. Triage each new id in vendor/vuln-triage.json, and take out the entry of each one no longer returned (SECURITY.md says how).\n`
+      ? `**Failed:** ${judgement.untriaged.length} untriaged, ${judgement.overdue.length} past their due date, ${judgement.dropped.length} no longer returned. Triage each new id in vendor/vuln-triage.json, and take out the entry of each one no longer returned once its advisory or the pin shows why (SECURITY.md says how).\n`
       : '**Clean:** every id OSV returns is triaged, no open one is past its due date, and OSV still returns every triaged id.\n',
   )
   return out.join('\n')
@@ -1053,16 +1120,15 @@ export async function fetchOsv(
     }
     details[id] = record
   })
-  // The CVE record each id is rated from: its own or its alias's, for a
-  // vector OSV gives, or for an id OSV gives no severity at all.
+  // The CVE records each id is rated from, its own and every alias's, for
+  // a vector OSV gives, or for an id OSV gives no severity at all.
   const rateFrom = new Map()
   for (const id of ids) {
     const given = osvSeverity(details[id])
-    const cve = cveIdOf(details[id])
-    if (cve !== null && (given === null || given.startsWith('CVSS:'))) rateFrom.set(id, cve)
+    if (given === null || given.startsWith('CVSS:')) rateFrom.set(id, cveIdsOf(details[id]))
   }
   const cveRecords = new Map()
-  await inBatches([...new Set(rateFrom.values())].sort(), async (cve) => {
+  await inBatches([...new Set([...rateFrom.values()].flat())].sort(), async (cve) => {
     const cveRecord = await call(
       fetchImpl,
       `${CVE_API}/${cve}`,
@@ -1080,8 +1146,8 @@ export async function fetchOsv(
   })
   const ratings = {}
   for (const id of ids) {
-    const cve = rateFrom.get(id)
-    ratings[id] = sourceRating(details[id], cve === undefined ? null : cveRecords.get(cve))
+    const cves = (rateFrom.get(id) ?? []).map((cve) => [cve, cveRecords.get(cve) ?? null])
+    ratings[id] = sourceRating(details[id], Object.fromEntries(cves))
   }
   return { returned, details, ratings, heard }
 }

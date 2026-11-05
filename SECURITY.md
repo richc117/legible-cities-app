@@ -57,11 +57,11 @@ engine's packages, FFmpeg with x264 and zlib, and the LOOM tools, each
 pinned in `vendor/pins.json` (the packages in
 `vendor/python-requirements.txt`). Once a week
 `.github/workflows/vuln-watch.yml` runs `scripts/vuln-watch.mjs`, which
-asks [OSV](https://osv.dev) about each of them, reads the rating of each
-id's vector from its CVE record, and judges the answer against
-`vendor/vuln-triage.json`. An id OSV returns is a match on a component and
-a version, not a vulnerability found in the app; the triage records, for
-each one, whether the app is affected and why.
+asks [OSV](https://osv.dev) about each of them, checks each id's rating
+against the CVE records of the id and its aliases, and judges the answer
+against `vendor/vuln-triage.json`. An id OSV returns is a match on a
+component and a version, not a vulnerability found in the app; the triage
+records, for each one, whether the app is affected and why.
 
 The run fails when OSV returns an id the triage does not cover, or covers
 for another component, version or severity, or rates below its CVE record
@@ -86,8 +86,13 @@ by commit; Chromium, and Electron's own FFmpeg with everything it links,
 which reach the app as Electron releases; and the GCC and mingw-w64
 runtime libraries the Windows LOOM tools link without a pinned version. A
 component added to the pins, or a library added to a target's licence
-record or FFmpeg's configure line, refuses the run until the watch asks
-about it or this list says why it does not.
+record, refuses the run until the watch is taught it: a query for it, or
+a row in this list saying why there is none. So does a Python runtime
+that carries its own zlib with no record of its version, and an FFmpeg
+configure line that carries an `--enable-` option the watch does not
+know or a library linked by hand (`--extra-libs`, `-l`, `-framework`),
+or that lacks `--disable-everything` or `--disable-autodetect`, without
+which configure links whatever the runner has.
 
 GitHub turns off a scheduled workflow in a public repository after 60 days
 with no activity in the repository, and from then on there is no run to
@@ -116,10 +121,12 @@ and the id) and decide from evidence:
 Then add an entry: the id; the component and version the run printed (an
 id returned for two components has an entry for each);
 `osv_severity` as the run printed it, or null where OSV gives none, and
-`severity`, the rating the CVE record gives that vector (where OSV gives
-none, the highest rating the CVE record of its alias gives, else
-`unrated`), with a `rating_note` saying why where it is lower or nothing
-rates the vector; a verdict, `not-affected` (not in what ships),
+`severity`, the highest rating the CVE records of the id and its aliases
+give that vector, a CNA's or an ADP's (where OSV gives none, the highest
+any of them gives, and `unrated` only for an id with no CVE alias), with a
+`rating_note` saying why where it is lower or nothing rates it: a vector
+no record names, or an alias whose record is missing, rejected or
+unscored; a verdict, `not-affected` (not in what ships),
 `not-reachable` (ships, but nothing the app runs reaches it as the
 advisory needs), `fixed-in-pin` or `open`; a reason of one to three
 sentences grounded in how the app uses the component; the day; and, for an
@@ -130,6 +137,10 @@ maintainer's reading: a wrong `not-reachable` is worse than an honest
 budget, or names a version the pins no longer carry, so moving a pin means
 rereading its entries in the same pull request. An id the run lists as no
 longer returned is taken out, once the advisory or the pin shows why.
+When neither does, run the watch again by hand (`gh workflow run
+vuln-watch.yml`): an id that stays missing while its advisory still lists
+the pinned version as affected stays in the triage, and the run stays red
+until OSV returns it again or the advisory or the pin changes.
 
 ## Hygiene this repository practises
 

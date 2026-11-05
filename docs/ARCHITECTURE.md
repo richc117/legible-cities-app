@@ -2912,7 +2912,7 @@ design end-to-end test reads the computed sizes and the focus ring of the
 kit's controls in both themes, tabs through a dialog and closes it with
 Escape. The hygiene checks (`gitleaks`, `bin/preflight`) run beside them.
 `vuln-watch.yml`, weekly and not a required check, asks OSV about the
-components the installers carry and judges its answer against
+pinned components it can name and judges its answer against
 `vendor/vuln-triage.json` (`scripts/vuln-watch.mjs`); `SECURITY.md`,
 "Vulnerabilities in what the installers carry", says what it covers and
 how a new id is triaged.
