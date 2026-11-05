@@ -23,10 +23,11 @@ const PYTHON = findPython()
  * warm-up (another test run, a lane's `npm test`, the e2e global setup), so
  * listing it for "what this call left behind" also lists the home of a
  * warm-up that is merely running (issue 648). The name must not begin with
- * the warm-up's own prefix, or the folder is itself taken for a home.
+ * the warm-up's own prefix, or another checkout's run of the old test, which
+ * lists the temporary folder, would take this folder for a home.
  */
 const PARENT = mkdtempSync(join(tmpdir(), 'legible-cities-warm_test-'))
-afterAll(() => rmSync(PARENT, { recursive: true, force: true }))
+afterAll(() => rmSync(PARENT, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }))
 
 /** The warm-up homes in this file's folder. */
 const homes = (): string[] => readdirSync(PARENT).filter((name) => name.startsWith(WARM_PREFIX))
@@ -45,32 +46,21 @@ describe.skipIf(PYTHON === null)('warmEngine', { timeout: 30_000 }, () => {
   it('has the stand-in answer engine.info, compiles it where a launch reads it and removes its own home', async () => {
     // Only the compiled stand-in is removed, so this run's claim is its own
     // and not an earlier run's; another test compiling it meanwhile is harmless.
-    // Another process removing it meanwhile is not (a second `npm test` on the
-    // machine runs this same file against the same stand-in folder, issue 648):
-    // its removal can come between this warm-up's compile and the look, so the
-    // removal and the warm-up are tried again until a deadline. A warm-up that
-    // never compiles the stand-in still fails, at the last attempt.
-    const deadline = Date.now() + 20_000
-    let attempt: Awaited<ReturnType<typeof warmEngine>>
-    let before: string[]
-    let found: string[]
-    do {
-      for (const name of compiled()) {
-        try {
-          rmSync(join(cache, name), { force: true })
-        } catch {
-          // Windows may refuse a file another test's stand-in has open; then
-          // that file stays, and the assertion below is the weaker for it.
-        }
+    // This file is not meant to run twice at once in one checkout: a second
+    // run removes the compiled stand-in under this one (issue 648).
+    for (const name of compiled()) {
+      try {
+        rmSync(join(cache, name), { force: true })
+      } catch {
+        // Windows may refuse a file another test's stand-in has open; then
+        // that file stays, and the assertion below is the weaker for it.
       }
-      before = homes()
-      attempt = await warmEngine(PYTHON as string, { parent: PARENT })
-      found = compiled()
-    } while (found.length === 0 && Date.now() < deadline)
-    const { ms, leftover } = attempt
+    }
+    const before = homes()
+    const { ms, leftover } = await warmEngine(PYTHON as string, { parent: PARENT })
     expect(Number.isInteger(ms) && ms > 0).toBe(true)
     expect(leftover).toBeUndefined()
-    expect(found, "serve.<tag>.pyc in the stand-in's own __pycache__").toHaveLength(1)
+    expect(compiled(), "serve.<tag>.pyc in the stand-in's own __pycache__").toHaveLength(1)
     expect(
       homes().filter((h) => !before.includes(h)),
       'its engine home is removed',
