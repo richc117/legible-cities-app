@@ -917,7 +917,14 @@ describe('ProjectStore.readOnly', () => {
 
   it('answers after a deletion sent before it', async () => {
     // Mutation: `readOnly` read outside the project's queue - it reads the
-    // record before the deletion removes it and answers yes.
+    // record before the deletion removes it and answers yes. That is a race
+    // the read wins every time, not by luck: the unqueued read's open is in
+    // the file system pool's queue from its own synchronous call, while the
+    // deletion begins a microtask later and is some six operations (two
+    // stats, then rm's lstat, readdir and lstat) from unlinking the record;
+    // and an open file is read to its end after an unlink, on POSIX and on
+    // Windows (libuv opens with share-delete). Unmutated, the order is not a
+    // race at all: `delete` enters the queue synchronously, ahead of this.
     const store = new ProjectStore(home, () => {})
     const id = await projectAt(home, store, RECORD_VERSION + 1)
     const deletion = store.delete(id)
