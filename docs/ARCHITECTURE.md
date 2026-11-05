@@ -399,17 +399,27 @@ Those steps reach what the engine started - `loom`, `topo`, `ffmpeg` - only
 while the engine itself is there, and an engine that exits by itself (a
 crash, an exit after a stray line on its output, an exit after a shutdown it
 was asked for) leaves its children running, perhaps still writing into its
-home (issue 640). So on POSIX, however the engine ended, once its exit is
-reported - its stdio closed, or a second after the exit, so a child holding
-the pipe writes its last line first - the supervisor looks at its process
-group: if anything is left, it sends the group SIGTERM, then SIGKILL after
-3 s, and stops waiting 3 s after that, each step in the log. A restart waits
-for that before it starts the next engine, a person's **Try again** is
-refused meanwhile (the engine is "still stopping"), and a quit waits for it,
-so nothing the old engine started runs beside the next one on the same home
-or outlives the app. On Windows nothing of this is done, because nothing
-can be: there is no group, and by the time the exit is seen the engine's
-pid has gone, so `taskkill /T` has no tree to walk. What the engine started
+home (issue 640). So on POSIX, however the engine ended, the supervisor
+looks at its process group as the exit is seen, just after the reap: with
+nothing left, that is all. Otherwise it looks again every 25 ms until the
+exit is reported - its stdio closed, or a second after the exit, so a child
+holding the pipe writes its last line first - and then, if anything is
+still left, sends the group SIGTERM, then SIGKILL after 3 s, and stops
+waiting 3 s after that, each step in the log. A restart waits for that
+before it starts the next engine, a person's **Try again** is refused
+meanwhile (the engine is "still stopping"), and a quit waits for it, so
+nothing an exited engine started runs beside the next one on the same home
+or outlives the app. An engine that outlived the kill (issue 562) is the
+exception: the quit does not wait for it, and what it left is ended only if
+it exits while the app is still running. Each signal follows a look that
+found the group still there, and the group's id is the engine's pid, which
+no other process takes while the group has a member; what remains is the
+time between two looks, in which the group could empty and its id pass to
+a new group the next look would take for the engine's, and Node cannot
+close that without native code. On Windows nothing of this is done,
+because nothing can be: there is no group, and by the time the exit is seen
+the engine's pid has gone, so `taskkill /T` has no tree to walk. What the
+engine started
 runs to its own end there; reaching it would take the engine putting its
 children in a job object, which is a change to the engine.
 
