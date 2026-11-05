@@ -143,6 +143,7 @@ export async function startEngine(
       ...OFFLINE,
     },
     pin: PIN,
+    resetting: () => null,
     log: (m) => log.push(m),
     // A cold start imports pandas, which on a fresh Windows runner is slow.
     bounds: { handshakeMs: 120_000 },

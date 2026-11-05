@@ -46,6 +46,7 @@ describe.skipIf(INTERPRETER === null)(`Sidecar against the real engine${WHY}`, (
           ...OFFLINE,
         },
         pin: PINS.engine,
+        resetting: () => null,
         log: (m) => log.push(m),
         bounds: { handshakeMs: HANDSHAKE_MS },
       })

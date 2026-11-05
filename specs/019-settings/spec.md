@@ -274,7 +274,16 @@ in the platform's own file browser.
   or that is the home, or holds it. The home it works on comes from its own
   configuration and never from the page. While the removal runs, no export,
   no engine request and no write to a project record may start, and the flag
-  that says so MUST be raised before the first `await`.
+  that says so MUST be raised before the first `await`. *As of 4 Nov 2026
+  (issue 637):* the main process MUST also refuse it while the engine is
+  starting or restarting, and while the engine, or what an exited engine
+  left running in its process group (on POSIX; on Windows nothing tracks
+  it), is still being ended, as a person's Try again is refused; and while
+  the flag is up no engine may start
+  either: a restart that comes due waits for the flag to come down, and a
+  Try again is refused with the reset's sentence
+  (specs/004-sidecar-supervisor/contracts/sidecar.md, "The reset of the
+  engine's data").
 - **FR-013**: A layout run is four steps with nothing in flight between
   them, so the main process MUST NOT claim to know one is open. The screen,
   where the runs live, MUST refuse the reset while any run or export is
