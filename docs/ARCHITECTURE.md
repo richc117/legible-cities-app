@@ -256,7 +256,7 @@ first interpreter of these that exists and by nothing else: the one
 started with `PYTHONDONTWRITEBYTECODE=1` so nothing it imports is ever
 written into the bundle (see "Packaging" below). With none, the state is *unavailable* with a sentence for whoever is
 looking at the screen, and the app is otherwise usable. The sentence depends
-on where the interpreter came from, not on the build: for the bundled runtime
+on where the interpreter came from, not on whether the app is packaged alone: for the bundled runtime
 it says to reinstall the app and names no key (issue 547); for any other
 interpreter - a checkout's, or one `LEGIBLE_ENGINE_PYTHON` names, a bare
 command name included, in a packaged app or not - it names the key or the

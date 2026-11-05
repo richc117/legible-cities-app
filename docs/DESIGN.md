@@ -644,16 +644,19 @@ derivatives.
 
 Sentences, present tense, sentence case, no exclamation marks. Button
 labels are verbs ("New project", "Run layout", "Cancel"). The engine's
-`hint` is shown in the engine's words, and the app often leads it with a
-sentence or clause of its own saying what was tried or what to do first:
-cell 03 says the redraw a project's opening asked for could not be done
-before the engine's reason, the Library says to try again and which sample
-city could not be opened, and the header's status line names the engine's
-state before its reason. A reason that follows a colon may be a lower-case
+`hint` is shown in the engine's words, its paths taken out. The app often
+leads a reason - the engine's, the supervisor's or a refusal's - with a
+sentence or clause of its own saying what was tried, what to do first, or
+what state the engine is in: cell 03 says the redraw a project's opening
+asked for could not be done before the engine's reason, the Library says to
+try again and which sample city could not be opened before the store's
+refusal, and the header's status line names the engine's state before the
+supervisor's reason. A reason that follows a colon may be a lower-case
 fragment ("feed key must be lowercase letters, digits and hyphens"), and
-nothing capitalises it, except where a surface does on purpose, as the
-trip's refusals do. A closing full stop is added where a helper's sentence
-needs one. Numbers carry units and align in tables. Spelling follows
+nothing capitalises it. The page's reasons for a trip it could not find are
+said as sentences of their own and capitalised on purpose. A closing full
+stop is added where a helper's sentence needs one. Numbers carry units and
+align in tables. Spelling follows
 the code base's British
 conventions ("licence", "colour"). A screen says what the person can do
 next before it says what went wrong.
