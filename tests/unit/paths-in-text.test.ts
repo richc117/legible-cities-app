@@ -186,11 +186,16 @@ describe('where a known folder can start', () => {
         }
         return least
       }
+      // Sixteen times the line: linear gives a ratio of about 16, quadratic
+      // about 256. The bound sits between them by the same factor on each
+      // side, four, so a loaded runner has to slow one size four times more
+      // than the other before a linear scan fails. Eight times the line, with
+      // a bound of 20, left two and a half, and a macOS runner once came to
+      // 20.3 (issue 658). Both sides scale with the machine's load, so the
+      // ratio does not.
       const small = time(32 * 1024)
-      const large = time(8 * 32 * 1024)
-      // Linear gives about 8 and quadratic about 64; both sides scale with
-      // the machine's load, so the ratio does not.
-      expect(large / small, unit).toBeLessThan(20)
+      const large = time(16 * 32 * 1024)
+      expect(large / small, unit).toBeLessThan(64)
     }
   }, 180_000)
 })
