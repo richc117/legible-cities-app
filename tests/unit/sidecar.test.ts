@@ -1249,8 +1249,12 @@ describe('a retry beside a child that outlived the kill', () => {
     expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
     expect(sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
     expect(spawned, 'no second engine beside the one still there').toHaveLength(1)
+    // And the reset of its data, which it may still be writing into (issue 637).
+    expect(sidecar.inFlight).toBe(0)
+    expect(engineWorkRefusal(sidecar), 'the reset too').toBe(RESET_REFUSALS.stillStopping)
 
     spawned[0]!.exit()
+    expect(engineWorkRefusal(sidecar), 'the reset, once it has gone').toBeNull()
     expect(sidecar.retry()).toBeNull()
     expect(spawned).toHaveLength(2)
     spawned[1]!.exit()
@@ -1319,7 +1323,7 @@ describe('an engine start and a reset of its data', () => {
   }
 
   const waiting = (sidecar: Sidecar): boolean =>
-    sidecar.state.state === 'restarting' && sidecar.state.reason === RESTART_WAITS_FOR_RESET
+    sidecar.state.state === 'restarting' && sidecar.state.reason.startsWith(RESTART_WAITS_FOR_RESET)
 
   it('starts no engine while the data is reset, and starts it once the reset has ended', async () => {
     const { sidecar, spawned, log, reset } = supervised()
@@ -1327,18 +1331,20 @@ describe('an engine start and a reset of its data', () => {
     expect(spawned).toHaveLength(1)
     // The engine fails, and a restart is armed.
     spawned[0]!.exit()
-    expect(sidecar.state).toMatchObject({ state: 'restarting', attempt: 2 })
+    const failure = 'The engine ended by signal SIGKILL.'
+    expect(sidecar.state).toEqual({ state: 'restarting', attempt: 2, reason: failure })
     await restartArmed(sidecar)
     // A reset begins, then the restart's wait is over.
     reset.now = RESETTING
     await eventually(() => waiting(sidecar), 5_000, 'the restart to wait for the reset')
+    // The wait first, then why the engine stopped, which is kept.
     expect(sidecar.state).toEqual({
       state: 'restarting',
       attempt: 2,
-      reason: RESTART_WAITS_FOR_RESET,
+      reason: `${RESTART_WAITS_FOR_RESET} ${failure}`,
     })
     expect(describeState(sidecar.state)).toBe(
-      `The engine stopped; restarting (attempt 2). ${RESTART_WAITS_FOR_RESET}`,
+      `The engine stopped; restarting (attempt 2). ${RESTART_WAITS_FOR_RESET} ${failure}`,
     )
     // It looks again, and again, and starts nothing while the reset runs.
     const asked = reset.asked
@@ -1407,8 +1413,35 @@ describe('an engine start and a reset of its data', () => {
     // Nothing in flight and nothing left running: only the state says it.
     expect(sidecar.state.state).toBe('restarting')
     expect(sidecar.inFlight).toBe(0)
-    expect(sidecar.groupsBeingEnded).toBe(0)
+    expect(sidecar.stillEnding).toBe(false)
     expect(engineWorkRefusal(sidecar), 'restarting').toBe(RESET_REFUSALS.starting)
+  })
+
+  // `failed()` says stopped as it gives up, then ends the engine it gave up
+  // on, which takes up to `shutdownMs` and two `terminateMs`; the client is
+  // gone by then, so nothing counts as in flight, and no group has exited.
+  it('has the reset refused, as a retry is, while the engine given up on is still being ended', async () => {
+    // The handshake lapses at once and the first failure is the give-up; the
+    // engine, which answers nothing, is asked to shut down for as long as
+    // the test needs, and exits when the test says.
+    const { sidecar, spawned } = supervised({
+      handshakeMs: 20,
+      shutdownMs: 60_000,
+      restartDelaysMs: [],
+    })
+    sidecar.start()
+    await eventually(() => sidecar.state.state === 'stopped', 5_000, 'the give-up')
+    expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+    expect(sidecar.inFlight).toBe(0)
+    expect(sidecar.groupsBeingEnded).toBe(0)
+    expect(sidecar.stillEnding).toBe(true)
+    expect(engineWorkRefusal(sidecar), 'the reset').toBe(RESET_REFUSALS.stillStopping)
+    expect(sidecar.retry(), 'a retry').toBe(RETRY_REFUSALS.stillStopping)
+    expect(spawned, 'no engine beside the one being ended').toHaveLength(1)
+
+    spawned[0]!.exit()
+    await eventually(() => !sidecar.stillEnding, 5_000, 'the engine to have been ended')
+    expect(engineWorkRefusal(sidecar)).toBeNull()
   })
 })
 
@@ -1588,7 +1621,7 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
 
 describe('engineWorkRefusal (issues 107 and 637)', () => {
   const READY: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
-  const idle = { inFlight: 0, abandoned: 0, state: READY, groupsBeingEnded: 0 }
+  const idle = { inFlight: 0, abandoned: 0, state: READY, stillEnding: false }
 
   it('lets a reset through when the engine has nothing to do, up or down', () => {
     expect(engineWorkRefusal(idle)).toBeNull()
@@ -1624,7 +1657,7 @@ describe('engineWorkRefusal (issues 107 and 637)', () => {
   })
 
   it('asks to wait for an engine on its way, before the handshake it is answering', () => {
-    const said = 'The engine is starting; try again in a moment.'
+    const said = 'The engine is starting. Try again in a moment.'
     expect(engineWorkRefusal({ ...idle, state: { state: 'starting', attempt: 1 } })).toBe(said)
     expect(
       engineWorkRefusal({ ...idle, inFlight: 1, state: { state: 'starting', attempt: 1 } }),
@@ -1634,9 +1667,9 @@ describe('engineWorkRefusal (issues 107 and 637)', () => {
     ).toBe(said)
   })
 
-  it('asks to wait while what an exited engine left running is being ended', () => {
+  it('asks to wait while the engine, or what an exited engine left running, is being ended', () => {
     const state: EngineState = { state: 'stopped', reason: 'x.', retryable: true }
-    expect(engineWorkRefusal({ ...idle, state, groupsBeingEnded: 1 })).toBe(
+    expect(engineWorkRefusal({ ...idle, state, stillEnding: true })).toBe(
       'The engine is still stopping. Try again in a moment.',
     )
     // The retry's own sentence, so the two doors agree.

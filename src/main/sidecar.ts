@@ -182,7 +182,10 @@ const GROUP_POLL_MS = 25
 
 /**
  * Why the engine's data cannot be reset now, as the supervisor says it
- * (`engineWorkRefusal`). Each says what is going on and then what to do.
+ * (`engineWorkRefusal`), shown in the reset's dialog as written. The
+ * still-stopping sentence is the retry's own (`RETRY_REFUSALS`, issue 562)
+ * and the starting one takes its form, so the two doors speak alike; the
+ * other two keep the words they were first shown in (issue 107).
  */
 export const RESET_REFUSALS = {
   /** A request a bound ended may never end, and only a quit ends it: so the way out, not a wait (issue 107). */
@@ -194,12 +197,13 @@ export const RESET_REFUSALS = {
    * start is bounded (the handshake, then a restart's wait), and ends ready
    * or down, either of which lets the reset through.
    */
-  starting: 'The engine is starting; try again in a moment.',
+  starting: 'The engine is starting. Try again in a moment.',
   inFlight: 'The engine is answering a request; wait for it to finish.',
   /**
-   * What an exited engine left running in its process group is being ended
-   * (issues 640, 637), and may still be writing into the home. The retry's
-   * own sentence for it, word for word, so the two doors agree.
+   * The engine, or what an exited engine left running in its process group,
+   * is still being ended (`Sidecar.stillEnding`; issues 562, 640, 637), and
+   * may still be writing into the home. The retry's own sentence for it,
+   * word for word, from the same question, so the two doors agree.
    */
   stillStopping: RETRY_REFUSALS.stillStopping,
 } as const
@@ -209,7 +213,7 @@ export interface EngineWork {
   inFlight: number
   abandoned: number
   state: EngineState
-  groupsBeingEnded: number
+  stillEnding: boolean
 }
 
 /**
@@ -225,15 +229,16 @@ export function engineWorkRefusal(engine: EngineWork): string | null {
   if (engine.state.state === 'starting' || engine.state.state === 'restarting')
     return RESET_REFUSALS.starting
   if (engine.inFlight > 0) return RESET_REFUSALS.inFlight
-  if (engine.groupsBeingEnded > 0) return RESET_REFUSALS.stillStopping
+  if (engine.stillEnding) return RESET_REFUSALS.stillStopping
   return null
 }
 
 /**
  * What a restart that came due while the engine's data was being reset says
- * as it waits for the reset to end (issue 637), as the `restarting` state's
- * reason. Like the supervisor's other restarting reasons it gives no step:
- * the engine starts by itself once the reset has ended, whichever way.
+ * as it waits for the reset to end (issue 637), at the head of the
+ * `restarting` state's reason, the failure's own reason after it. Like the
+ * supervisor's other restarting reasons it gives no step: the engine starts
+ * by itself once the reset has ended, whichever way.
  */
 export const RESTART_WAITS_FOR_RESET =
   'The engine data is being reset; the engine starts again once the reset has finished.'
@@ -277,8 +282,10 @@ export class Sidecar {
    */
   private readonly expired = new Map<JsonRpcClient, Set<number>>()
   private restartTimer: NodeJS.Timeout | null = null
+  /** A restart's wait has found a reset of the engine's data running, and not yet found it over (issue 637). */
+  private waitingOnReset = false
   private stableTimer: NodeJS.Timeout | null = null
-  /** An endChild() in progress, so stop() waits for it rather than passing it. */
+  /** An endChild() in progress, so stop() waits for it rather than passing it, and `stillEnding` says so. */
   private ending: Promise<void> | null = null
   /**
    * A child that had not exited when the last wait after SIGKILL lapsed,
@@ -370,13 +377,35 @@ export class Sidecar {
 
   /**
    * How many exited engines' process groups are being ended (issue 640):
-   * none for an engine whose group was empty as its exit was seen. The reset
-   * of the engine's data refuses while there are any (`engineWorkRefusal`,
-   * issue 637), since what is left in one may still be writing into the
-   * home; read only, here and in the tests.
+   * none for an engine whose group was empty as its exit was seen, for tests.
    */
   get groupsBeingEnded(): number {
     return this.groupsEnding.size
+  }
+
+  /**
+   * Whether an engine, or what one left running, is still being ended, so
+   * may still be writing into the home: the one question a person's retry
+   * and the reset of the engine's data both ask, and both answer "The
+   * engine is still stopping. Try again in a moment." (issue 637).
+   *
+   * - An engine being ended (`ending`): `failed()` says `stopped` before it
+   *   ends a live child it gave up on (a handshake that timed out, a stray
+   *   line on stdout), and a mismatch ends the child it found, each taking
+   *   up to `shutdownMs` and two `terminateMs`; the client is gone by then,
+   *   so nothing counts as in flight (issue 562).
+   * - An engine that outlived the last wait after SIGKILL and has not
+   *   exited since (`unended`, issue 562).
+   * - What an exited engine left running in its process group, being ended
+   *   (`groupsEnding`, issue 640).
+   *
+   * Read only.
+   */
+  get stillEnding(): boolean {
+    if (this.ending !== null) return true
+    if (this.groupsEnding.size > 0) return true
+    const unended = this.unended
+    return unended !== null && unended.exitCode === null && unended.signalCode === null
   }
 
   /**
@@ -409,16 +438,13 @@ export class Sidecar {
    * why not, as a sentence. Refused while quitting, with no interpreter at
    * all, for a mismatched engine, which would answer the same version, and
    * in every state but those two, so a press that races a state change
-   * starts nothing. Refused too while the engine given up on is still being
-   * ended: `failed()` says `stopped` before it ends a live child (a handshake
-   * that timed out, a stray line on stdout), and that can take
-   * `shutdownMs` and two `terminateMs`, so a retry then would start a second
-   * engine on the same home beside the first; while an engine that
-   * outlived the last wait after SIGKILL is still there (`unended`); and
-   * while what an engine that has exited left running in its process group
-   * is being ended (`groupsEnding`, issue 640). And while the engine's data
-   * is being reset, with the reset's own sentence (issue 637), after the
-   * refusals that say a retry cannot help at all, which outlast the reset.
+   * starts nothing. Refused too, as still stopping, while an engine or what
+   * one left running is still being ended (`stillEnding`, which the reset
+   * asks as well): a retry then would start a second engine on the same
+   * home beside the first, or beside its tools (issues 562, 640). And while
+   * the engine's data is being reset, with the reset's own sentence (issue
+   * 637), after the refusals that say a retry cannot help at all, which
+   * outlast the reset.
    * `start()` is no way back in: it returns once it has run.
    */
   retry(): string | null {
@@ -430,11 +456,7 @@ export class Sidecar {
       return RETRY_REFUSALS.notDown
     const reset = this.options.resetting()
     if (reset !== null) return reset
-    if (this.ending !== null) return RETRY_REFUSALS.stillStopping
-    if (this.groupsEnding.size > 0) return RETRY_REFUSALS.stillStopping
-    const unended = this.unended
-    if (unended !== null && unended.exitCode === null && unended.signalCode === null)
-      return RETRY_REFUSALS.stillStopping
+    if (this.stillEnding) return RETRY_REFUSALS.stillStopping
     this.log('trying again, as a person asked')
     // The failures that ended in giving up are forgiven: a retry that fails
     // at once is restarted as a first start's failure is, not given up on.
@@ -889,26 +911,37 @@ export class Sidecar {
         this.waitForReset(reset)
         return
       }
-      if (this.waitingForReset()) this.log('the reset of the engine data has ended; restarting')
+      if (this.waitingOnReset) {
+        this.waitingOnReset = false
+        this.log('the reset of the engine data has ended; restarting')
+      }
       this.launch()
     }, ms)
   }
 
-  /** A restart that found a reset running: say so once, and look again. */
+  /**
+   * A restart that found a reset running: say so once, and look again.
+   *
+   * The failure's own reason is kept, after the wait's sentence rather than
+   * before it. The status line is one line, cut with an ellipsis where it
+   * runs long, and a failure's reason can carry three lines of what the
+   * engine wrote: after it, the wait's sentence - the one thing on the line
+   * that is new, and what says why the engine has not started - would be
+   * the part cut. The failure has been on the line for the restart's whole
+   * wait before this, and assistive technology and the log have the whole.
+   */
   private waitForReset(reset: string): void {
-    if (!this.waitingForReset()) {
+    if (!this.waitingOnReset) {
+      this.waitingOnReset = true
       this.log(`the restart waits for the reset of the engine data to end: ${reset}`)
+      const failure = this._state.state === 'restarting' ? ` ${this._state.reason}` : ''
       this.setState({
         state: 'restarting',
         attempt: this.failures + 1,
-        reason: RESTART_WAITS_FOR_RESET,
+        reason: `${RESTART_WAITS_FOR_RESET}${failure}`,
       })
     }
     this.armRestart(this.bounds.resetPollMs)
-  }
-
-  private waitingForReset(): boolean {
-    return this._state.state === 'restarting' && this._state.reason === RESTART_WAITS_FOR_RESET
   }
 
   private armStable(): void {
