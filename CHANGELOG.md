@@ -10,6 +10,11 @@ links are inline, with no images and no reference-style links.
 
 ## [Unreleased]
 
+### Fixed
+
+- On a Mac, when the engine stops by itself, the tools it was running stop
+  too, before it starts again or the app quits.
+
 ## [1.0.0]
 
 ### Added

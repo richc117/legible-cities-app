@@ -389,12 +389,31 @@ up, or when the interpreter it was handed could not be spawned, the state
 says `retryable` and the Library offers **Try again** (issue 562): the
 supervisor's `retry()` forgives the failures and starts it with the whole
 budget again, refused while quitting, with no interpreter at all, for a
-mismatched engine, in every other state, and while the engine it gave up on
-is still being ended, and the bridge refuses it while the engine's data is
-being reset. On quit the app
+mismatched engine, in every other state, and while the engine it gave up on,
+or what that engine left running, is still being ended, and the bridge
+refuses it while the engine's data is being reset. On quit the app
 asks (`engine.shutdown`, 3 s), terminates (the group on POSIX, the tree with
-`taskkill /T /F` on Windows, 3 s), then kills, and only then exits. The
-state is one line in the interface's header, a polite live region.
+`taskkill /T /F` on Windows, 3 s), then kills, and only then exits.
+
+Those steps reach what the engine started - `loom`, `topo`, `ffmpeg` - only
+while the engine itself is there, and an engine that exits by itself (a
+crash, an exit after a stray line on its output, an exit after a shutdown it
+was asked for) leaves its children running, perhaps still writing into its
+home (issue 640). So on POSIX, however the engine ended, once its exit is
+reported - its stdio closed, or a second after the exit, so a child holding
+the pipe writes its last line first - the supervisor looks at its process
+group: if anything is left, it sends the group SIGTERM, then SIGKILL after
+3 s, and stops waiting 3 s after that, each step in the log. A restart waits
+for that before it starts the next engine, a person's **Try again** is
+refused meanwhile (the engine is "still stopping"), and a quit waits for it,
+so nothing the old engine started runs beside the next one on the same home
+or outlives the app. On Windows nothing of this is done, because nothing
+can be: there is no group, and by the time the exit is seen the engine's
+pid has gone, so `taskkill /T` has no tree to walk. What the engine started
+runs to its own end there; reaching it would take the engine putting its
+children in a job object, which is a change to the engine.
+
+The state is one line in the interface's header, a polite live region.
 Contract: `specs/004-sidecar-supervisor/contracts/sidecar.md`.
 
 The tests run the supervisor against a stand-in engine,

@@ -153,9 +153,14 @@ const MAX_TIMER_MS = 2_147_483_647
 /**
  * How long, after the engine has exited, its stdio may take to give up the
  * last lines: a grandchild that inherited a pipe must not hold a reason, or
- * a quit, for longer than this.
+ * a quit, for longer than this. What the engine left running in its process
+ * group is ended only then (issue 640), so such a grandchild writes its last
+ * line first.
  */
 export const STDIO_CLOSE_MS = 1_000
+
+/** How often a process group is looked at while it is being ended: nothing says when one empties. */
+const GROUP_POLL_MS = 25
 
 /**
  * Why the engine's data cannot be reset now, as far as the supervisor knows,
@@ -218,6 +223,16 @@ export class Sidecar {
    * engine beside it on the same home (issue 562).
    */
   private unended: ChildProcess | null = null
+  /**
+   * The engines that have exited, from their exit until their process group
+   * is known to be empty or the last wait after SIGKILL has lapsed (issue
+   * 640). What an engine starts - a `loom`, a `topo`, an `ffmpeg` - is in
+   * its group and does not end with it, so one that crashed, or left on its
+   * own, may leave work running that still writes into the home. A restart,
+   * a retry and a quit wait for these, so none of it runs beside the next
+   * engine on the same home, or outlives the app. POSIX only (`launch`).
+   */
+  private readonly groupsEnding = new Map<ChildProcess, Promise<void>>()
   private stopped: Promise<void> | null = null
 
   constructor(private readonly options: SidecarOptions) {
@@ -311,8 +326,10 @@ export class Sidecar {
    * ended: `failed()` says `stopped` before it ends a live child (a handshake
    * that timed out, a stray line on stdout), and that can take
    * `shutdownMs` and two `terminateMs`, so a retry then would start a second
-   * engine on the same home beside the first; and while an engine that
-   * outlived the last wait after SIGKILL is still there (`unended`).
+   * engine on the same home beside the first; while an engine that
+   * outlived the last wait after SIGKILL is still there (`unended`); and
+   * while what an engine that has exited left running in its process group
+   * is being ended (`groupsEnding`, issue 640).
    * `start()` is no way back in: it returns once it has run.
    */
   retry(): string | null {
@@ -323,6 +340,7 @@ export class Sidecar {
     if ((state.state !== 'stopped' && state.state !== 'unavailable') || !state.retryable)
       return RETRY_REFUSALS.notDown
     if (this.ending !== null) return RETRY_REFUSALS.stillStopping
+    if (this.groupsEnding.size > 0) return RETRY_REFUSALS.stillStopping
     const unended = this.unended
     if (unended !== null && unended.exitCode === null && unended.signalCode === null)
       return RETRY_REFUSALS.stillStopping
@@ -551,14 +569,22 @@ export class Sidecar {
     // A write to a pipe whose reader has gone must not take the app down.
     child.stdin.on('error', (error: Error) => this.log(`stdin: ${error.message}`))
 
-    // 'exit' settles the requests at once; the reason waits for 'close', when
+    // 'exit' settles the requests at once; the rest waits for 'close', when
     // the stderr pipe has given up its last lines, or one second, whichever
     // comes first (a grandchild holding the pipe must not hold the reason).
+    // Then, however the engine ended, what it left running in its process
+    // group is ended (issue 640), and an exit nobody asked for is reported.
+    let exitSeen = false
     let unexpected: string | null = null
     let reported = false
+    let closeLapse: NodeJS.Timeout | undefined
+    let groupEnded: (() => void) | null = null
     const report = (): void => {
-      if (reported || unexpected === null) return
+      if (reported || !exitSeen) return
       reported = true
+      clearTimeout(closeLapse)
+      if (groupEnded !== null) this.endGroup(child, groupEnded)
+      if (unexpected === null) return
       // A line with a path in it stays in the log; the reason is shown on screen.
       const shown = this.tail.filter((line) => !/[\\/]/.test(line)).slice(-3)
       const tail =
@@ -573,6 +599,23 @@ export class Sidecar {
       // Whatever this connection's engine was still doing has ended with it,
       // whoever was ending it; before the wait for the exit resolves.
       this.expired.delete(client)
+      exitSeen = true
+      closeLapse = setTimeout(report, STDIO_CLOSE_MS)
+      // What it started may outlive it in its group; a restart, a retry and
+      // a quit wait from now until `report` has seen to that. Before the wait
+      // for the exit resolves, so whoever awaits that finds this. On Windows
+      // there is no group, and nothing to be done here: `taskkill /T` walks
+      // the tree from the engine's pid, which has gone by now, so what the
+      // engine started runs to its own end. Reaching it there would take the
+      // engine running its children in a job object, a change to the engine.
+      if (this.platform !== 'win32' && child.pid !== undefined) {
+        this.groupsEnding.set(
+          child,
+          new Promise<void>((resolve) => {
+            groupEnded = resolve
+          }),
+        )
+      }
       exitedResolve()
       if (this.child !== child) return
       this.child = null
@@ -590,7 +633,6 @@ export class Sidecar {
         return
       }
       unexpected = describeExit(code, signal)
-      setTimeout(report, STDIO_CLOSE_MS)
     })
     child.once('close', report)
 
@@ -727,6 +769,9 @@ export class Sidecar {
       this.setState({ state: 'restarting', attempt, reason })
     }
     if (child !== null) await this.endChild(child, 'failure')
+    // And what it left running, before the next engine starts on the same
+    // home beside it (issue 640).
+    await this.groupsEnded()
     // stop() may have run while the child was being ended.
     if (this.stopping || giveUp) return
     this.restartTimer = setTimeout(
@@ -798,6 +843,9 @@ export class Sidecar {
     // the log files close once this resolves; wait for 'close', for as long
     // as an unexpected exit waits for its reason.
     await this.waitFor(this.stdioClosed, STDIO_CLOSE_MS)
+    // What an engine left running when it exited, however it exited, so
+    // nothing outlives the app (issue 640); each bounded by its own waits.
+    await this.groupsEnded()
   }
 
   /** Shut one child down: the request, then the group or the tree, then force. */
@@ -899,6 +947,91 @@ export class Sidecar {
         // Already gone.
       }
     }
+  }
+
+  /**
+   * What an engine that has exited left running in its process group, ended
+   * (issue 640): SIGTERM to the group, then SIGKILL once `terminateMs` has
+   * passed with anything left, then one more `terminateMs` to see it go.
+   * However the engine ended - a crash, or an exit when the app asked it
+   * to stop (a stray line, a failed handshake, a mismatch, a quit) - its
+   * children are in its group and outlive it, and the terminate and kill
+   * steps of `endChildNow` run only while the engine itself is still there.
+   * Called once its exit is reported (`launch`); `ended` settles its entry
+   * in `groupsEnding`. A group that is empty already settles it at once, so
+   * a retry the moment the exit is reported is not refused for nothing; one
+   * the steps above already emptied is empty. The group's id is the
+   * engine's pid, which the system gives no other process while the group
+   * has a member, so a group that is still there is still the engine's.
+   */
+  private endGroup(child: ChildProcess, ended: () => void): void {
+    const done = (): void => {
+      this.groupsEnding.delete(child)
+      ended()
+    }
+    const group = child.pid
+    if (group === undefined || !this.groupHolds(group)) {
+      done()
+      return
+    }
+    void this.endGroupNow(group).finally(done)
+  }
+
+  private async endGroupNow(group: number): Promise<void> {
+    this.log('the engine exited and what it started is still running; terminating its group')
+    this.signalGroup(group, 'SIGTERM')
+    if (await this.groupEmptied(group, this.bounds.terminateMs)) {
+      this.log("the engine's group ended on terminate")
+      return
+    }
+    this.log(
+      `the engine's group did not end on terminate within ${this.bounds.terminateMs} ms; killing it`,
+    )
+    this.signalGroup(group, 'SIGKILL')
+    if (await this.groupEmptied(group, this.bounds.terminateMs)) {
+      this.log("the engine's group ended on kill")
+      return
+    }
+    this.log(
+      `the engine's group did not end on kill within ${this.bounds.terminateMs} ms; it is still there`,
+    )
+  }
+
+  /** Every engine's group still being ended, once each has been (`groupsEnding`). */
+  private async groupsEnded(): Promise<void> {
+    await Promise.all(this.groupsEnding.values())
+  }
+
+  /**
+   * Whether anything is left in a process group. Signal 0 is checked and
+   * sent to no one: ESRCH says the group is empty, and EPERM that what is
+   * left is not the app's to signal, so not the app's to end either.
+   */
+  private groupHolds(group: number): boolean {
+    try {
+      process.kill(-group, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  private signalGroup(group: number, signal: NodeJS.Signals): void {
+    try {
+      process.kill(-group, signal)
+    } catch {
+      // ESRCH: the group emptied between the look and the signal.
+    }
+  }
+
+  /** True once the group is empty, false where `ms` passed first. */
+  private async groupEmptied(group: number, ms: number): Promise<boolean> {
+    const deadline = performance.now() + ms
+    while (this.groupHolds(group)) {
+      if (performance.now() >= deadline) return false
+      await new Promise<void>((resolve) => setTimeout(resolve, GROUP_POLL_MS))
+    }
+    return true
   }
 
   /** True where `exited` came within `ms`, false where the deadline came first. */
