@@ -608,6 +608,30 @@ export class ProjectStore {
     })
   }
 
+  /**
+   * Did a later build write this record, so that this one may not (ADR-056)?
+   * Yes only when the store reads the record and the parser marks it
+   * read-only, by the one rule every writer here refuses on. The engine
+   * bridge asks it, after `recordGone`, before a `map.build` may write
+   * `out/<id>` (issue 633): the record is never written here, so a draw
+   * would replace the later build's map and leave its `drawn` describing a
+   * page that is no longer there.
+   *
+   * A record that is not there is `recordGone`'s to say, and one that is
+   * there but cannot be read or parsed is not read-only, by the reasoning
+   * `recordGone` gives: the run's own read says what is wrong with it.
+   *
+   * Queued behind the project's writes, as `recordGone` is. Not counted as a
+   * write, and never rejects.
+   */
+  async readOnly(id: string): Promise<boolean> {
+    if (!ID_PATTERN.test(id) || !isValidProjectId(id)) return false
+    return this.#serial(id, async () => {
+      const result = await this.read(id)
+      return 'record' in result && result.readOnly
+    })
+  }
+
   async create(input: CreateProjectInput): Promise<ProjectRecord> {
     const name = input.name.trim()
     const mode = input.mode ?? DEFAULT_MODE

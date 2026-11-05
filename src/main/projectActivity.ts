@@ -20,15 +20,18 @@
 // and the run's closing `map.build` is refused by the bridge, which asks the
 // store whether `out` names a record at all (issue 505, `recordGone` in
 // `projects.ts`), so `out/<id>` is not made again for a project that is not
-// there. A `map.build` is refused here while the project exports, too
-// (`requestRefusal`, issue 505): the export plans against and captures the
-// page it would rewrite, and the export itself sends no `map.build`.
+// there. Of a record that is there it then asks whether a later build wrote
+// it (issue 633, `readOnly`), so the map of a project this build opens
+// read-only is not replaced. A `map.build` is refused here while the
+// project exports, too (`requestRefusal`, issue 505): the export plans
+// against and captures the page it would rewrite, and the export itself
+// sends no `map.build`.
 //
 // **Mark first, then ask.** The bridge checks `requestRefusal` and raises
-// the request's mark in one turn, and only then awaits the record lookup and
-// the guard. An export or a deletion that starts while it awaits therefore
-// meets the mark and is refused, as one during the engine's work would be;
-// the lookup's refusal releases the mark as the guard's does.
+// the request's mark in one turn, and only then awaits the two record
+// lookups and the guard. An export or a deletion that starts while it awaits
+// therefore meets the mark and is refused, as one during the engine's work
+// would be; a lookup's refusal releases the mark as the guard's does.
 //
 // **A mark follows the engine's answer, not its work.** A request the
 // supervisor's inactivity bound expired (`Sidecar.expire`, the `inactive`
@@ -56,17 +59,20 @@
 //     for at most `shutdownMs` the engine may still be at the work with no
 //     mark held.
 //
-// Two limits of the record lookup, which are not this count's: a record
-// that is there but cannot be read lets its `map.build` through (see
-// `recordGone`); and a lookup that lapses refuses but is abandoned, not
-// stopped, so a disk that stalls keeps one of the threads files are read
-// with until it answers. Only one per project: the lookup waits in the
-// project's queue in the store, so a second waits behind the first rather
-// than asking the disk again. That queue is also what a stalled stat holds:
-// the project's later writes and its deletion wait behind it, and a write
+// Two limits of the record lookups, which are not this count's: a record
+// that is there but cannot be read or parsed lets its `map.build` through
+// (see `recordGone` and `readOnly`); and a lookup that lapses refuses but is
+// abandoned, not stopped, so a disk that stalls keeps one of the threads
+// files are read with until it answers. Only one per project: each lookup
+// waits in the project's queue in the store, and `readOnly` is asked only
+// once `recordGone` has answered in time, so a lookup waits behind the one
+// before it rather than asking the disk again. Each has a bound of its own,
+// so a request can wait up to twice `FOLDERS_TIMEOUT_MS` before it is
+// refused. That queue is also what a stalled stat or read holds: the
+// project's later writes and its deletion wait behind it, and a write
 // waiting there counts in the store's `writing`, so the reset refuses with
-// "A project is being saved" until the disk answers. The lookup itself is
-// not counted.
+// "A project is being saved" until the disk answers. The lookups themselves
+// are not counted.
 //
 // A deletion is marked too, from the moment it is allowed to run to the end
 // of its removals, so a `map.build` sent in that window is refused rather

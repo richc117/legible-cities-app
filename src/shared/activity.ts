@@ -3,8 +3,8 @@
 // not foresee. In one place so the screen's own re-read at the moment of
 // confirming a deletion says what main would. The rule itself is held in
 // main (`src/main/projectActivity.ts`, and the engine bridge for a project
-// with no record); the screen's disabled buttons are the first line and
-// these are the last.
+// with no record or a read-only one); the screen's disabled buttons are the
+// first line and these are the last.
 
 /** An export of the project cannot start while its map is being written. */
 export const EXPORT_WHILE_DRAWING =
@@ -43,7 +43,21 @@ export const DRAW_WHILE_EXPORTING =
 export const REQUEST_FOR_NO_PROJECT = 'This project has been deleted.'
 
 /**
- * The same question, when the disk did not answer it within the deadline
- * every check over folders keeps (`FOLDERS_TIMEOUT_MS`).
+ * A map.build whose `out` names a project a later build of the app wrote,
+ * which this build opens read-only and never writes (issue 633, ADR-056):
+ * the draw would replace the later build's map under `out/<id>`. No control
+ * sends one, since every door on the screen is closed to such a project, so
+ * nothing shows it today. Worded as the screen's own sentences about that
+ * project are, and as the exporter's refusal of it (`READ_ONLY`).
  */
-export const REQUEST_UNCHECKED = 'This project could not be found in time. Try again.'
+export const REQUEST_FOR_READ_ONLY =
+  'This project was made by a newer version of the app and cannot be drawn here.'
+
+/**
+ * Either of the two questions above, whether the project has a record and
+ * whether a later build wrote it, when the disk did not answer it within the
+ * deadline every check over folders keeps (`FOLDERS_TIMEOUT_MS`). Each has a
+ * deadline of its own. Worded to be true of both: the second is asked of a
+ * record already found, so "could not be found" would be false of it.
+ */
+export const REQUEST_UNCHECKED = 'This project could not be read in time. Try again.'
