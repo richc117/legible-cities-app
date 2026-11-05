@@ -73,7 +73,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, posix, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { setTimeout } from 'node:timers'
 import { fileURLToPath } from 'node:url'
@@ -270,6 +270,9 @@ function git(repo, args) {
     encoding: 'utf8',
     windowsHide: true,
     timeout: GIT_TIMEOUT_MS,
+    // The whole index is read at once (trackedFiles), and the default 1 MiB
+    // would refuse a repository of some tens of thousands of files.
+    maxBuffer: 64 * 1024 * 1024,
     env: gitEnv(),
   })
 }
@@ -314,18 +317,47 @@ export function loadEntries(repo) {
   return { entries, unreadable }
 }
 
-/** Whether git tracks `file` (`ls-files` names neither an untracked nor an ignored one). */
-function tracked(repo, file) {
-  const result = git(repo, ['ls-files', '--error-unmatch', '--', file])
-  return !result.error && result.status === 0
+/**
+ * Every path git tracks in `repo`, from one `git ls-files -z`: a git per
+ * entry outgrew the unit suite's 30 s on a Windows runner (issue 670). It
+ * lists the index, so neither an untracked file nor an ignored one, each
+ * path relative to `repo` with `/` on every platform and ended by a NUL,
+ * never quoted (so `core.quotePath` does not apply). Throws where git
+ * cannot say: a failure is a refusal, never an index read as empty or full.
+ */
+export function trackedFiles(repo) {
+  const result = git(repo, ['ls-files', '-z'])
+  if (result.error || result.status !== 0) {
+    throw new Error(
+      `git could not list the files it tracks (${gitWhy(result)}): refusing, since a file ` +
+        'it does not track has nothing else holding its original',
+    )
+  }
+  return new Set(result.stdout.split('\0').filter((path) => path !== ''))
+}
+
+/**
+ * `file` as the index spells it, folded as git folds a pathspec before it
+ * looks, which is what `ls-files --error-unmatch -- <file>` did before
+ * issue 670: `./`, `/./` and `//` collapse, and on Windows a backslash is a
+ * separator. Case is kept, as git keeps it even where core.ignorecase is
+ * set. validateEntry has refused a backslash, an absolute path and `..` by
+ * the time an entry's file gets here.
+ */
+function indexPath(file) {
+  const slashed = process.platform === 'win32' ? file.replaceAll('\\', '/') : file
+  return posix.normalize(slashed)
 }
 
 /**
  * What is wrong with `file` as something to write to and put back: it is
  * missing, a symbolic link, resolves outside the repository, or git does not
  * track it (an untracked or ignored file has no other copy). Sentences.
+ * `tracked` is what trackedFiles read, for a caller looking at many files at
+ * once, and it is that caller's to keep fresh; without it the index is read
+ * for this call, so no answer outlives a change to the index.
  */
-export function fileProblems(repo, file) {
+export function fileProblems(repo, file, tracked = undefined) {
   const path = join(repo, file)
   let stat
   try {
@@ -345,7 +377,15 @@ export function fileProblems(repo, file) {
   } catch {
     return [`"file" ${file} could not be resolved`]
   }
-  if (!tracked(repo, file)) {
+  let index = tracked
+  if (index === undefined) {
+    try {
+      index = trackedFiles(repo)
+    } catch (error) {
+      return [`"file" ${file} cannot be checked: ${error.message}`]
+    }
+  }
+  if (!index.has(indexPath(file))) {
     return [
       `"file" ${file} is not tracked by git (it is untracked or ignored), so nothing else holds its original: ` +
         'commit it, or name a tracked file',
@@ -358,8 +398,9 @@ export function fileProblems(repo, file) {
  * Everything that can be said about an entry without running anything:
  * its shape, that both files are there and the file is safe to change, that
  * `find` is once, that the title is in the test. The problems, or none.
+ * `tracked` is passed on to fileProblems.
  */
-export function checkEntry(repo, entry) {
+export function checkEntry(repo, entry, tracked = undefined) {
   const shape = validateEntry(entry)
   if (shape.length > 0) return shape
   const problems = []
@@ -368,7 +409,7 @@ export function checkEntry(repo, entry) {
       `"test" is a browser test (${entry.test}): this job runs the unit tests only, until it learns the browser`,
     )
   }
-  const unsafe = fileProblems(repo, entry.file)
+  const unsafe = fileProblems(repo, entry.file, tracked)
   problems.push(...unsafe)
   if (unsafe.length === 0) {
     const problem = findProblem(readFileSync(join(repo, entry.file), 'utf8'), entry)
@@ -568,6 +609,7 @@ export function restoreFile(repo, file, original, mutated, keepIn, written = tru
  * baseline, which may have been the long part, and before the file is written.
  */
 export async function runEntry(repo, entry, workDir, baselines, outputFile, stopped = () => false) {
+  // No index passed: it is read again for the one file about to be changed.
   const problems = checkEntry(repo, entry)
   if (problems.length > 0) return { verdict: 'refused', seconds: 0, detail: problems.join('; ') }
   const clean = baseline(repo, entry, workDir, baselines)
@@ -647,11 +689,19 @@ export async function main(args, repo = process.cwd(), out = process.stdout) {
   }
   const { entries, unreadable } = loadEntries(repo)
   for (const line of unreadable) say(`refused  ${line}`)
+  // The index, read once for every entry looked at below; not once each.
+  let tracked
+  try {
+    tracked = trackedFiles(repo)
+  } catch (error) {
+    say(`refused: ${error.message}`)
+    return 1
+  }
 
   if (parsed.mode === 'check') {
     let bad = unreadable.length
     for (const item of entries) {
-      const problems = checkEntry(repo, item.entry)
+      const problems = checkEntry(repo, item.entry, tracked)
       const title = typeof item.entry?.title === 'string' ? item.entry.title : '(no title)'
       if (problems.length === 0) say(`ok       ${label(item)}  ${title}`)
       else {
@@ -676,7 +726,7 @@ export async function main(args, repo = process.cwd(), out = process.stdout) {
   const named = [
     ...new Set(
       chosen
-        .filter((item) => checkEntry(repo, item.entry).length === 0)
+        .filter((item) => checkEntry(repo, item.entry, tracked).length === 0)
         .map((item) => item.entry.file),
     ),
   ]

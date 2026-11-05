@@ -15,15 +15,17 @@
 import { spawnSync } from 'node:child_process'
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { delimiter, dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -62,6 +64,8 @@ interface Module {
   selected(entry: unknown, source: string, only?: string): boolean
   dirtyTree(repo: string, paths?: string[]): string[]
   dirtyRefusal(lines: string[]): string
+  trackedFiles(repo: string): Set<string>
+  fileProblems(repo: string, file: string, tracked?: Set<string>): string[]
   summary(rows: { verdict: string }[]): string
   baselineOf(report: unknown): { clean: boolean; why: string }
   parseArgs(args: string[]): { mode?: string; only?: string; error?: string }
@@ -451,12 +455,62 @@ describe('the dirty-tree refusal', () => {
   })
 })
 
+describe('which files git tracks', () => {
+  const NOT_TRACKED = /^"file" src\/new\.ts is not tracked by git \(it is untracked or ignored\)/
+
+  it('is read from the index at each call, so a file added between two calls is seen', async () => {
+    const { fileProblems, trackedFiles } = await load()
+    const { dir, put } = repository({ 'src/a.ts': 'x\n' })
+    expect(fileProblems(dir, 'src/a.ts')).toEqual([])
+    put('src/new.ts', 'y\n')
+    const before = trackedFiles(dir)
+    expect(fileProblems(dir, 'src/new.ts')).toEqual([expect.stringMatching(NOT_TRACKED)])
+    git(dir, 'add', 'src/new.ts')
+    expect(fileProblems(dir, 'src/new.ts')).toEqual([])
+    // A list read once is its reader's to keep fresh: it is not read again.
+    expect(fileProblems(dir, 'src/new.ts', before)).toEqual([expect.stringMatching(NOT_TRACKED)])
+    expect(fileProblems(dir, 'src/new.ts', trackedFiles(dir))).toEqual([])
+  })
+
+  it('takes a path as git took it: "./", "/./" and "//" fold, case does not', async () => {
+    const { fileProblems } = await load()
+    const { dir } = repository({ 'src/a.ts': 'x\n' })
+    for (const file of ['./src/a.ts', 'src/./a.ts', 'src//a.ts']) {
+      expect(fileProblems(dir, file), file).toEqual([])
+    }
+    // Missing on a file system that minds case, untracked on one that does not.
+    expect(fileProblems(dir, 'SRC/a.ts')).toHaveLength(1)
+    // A separator on Windows, as git reads it there; part of a name elsewhere.
+    // An entry never gets here with one: validateEntry refuses it first.
+    expect(fileProblems(dir, 'src\\a.ts')).toEqual(POSIX ? ['"file" src\\a.ts does not exist'] : [])
+  })
+
+  it('refuses, and says why, where git cannot list what it tracks', async () => {
+    const { fileProblems, trackedFiles } = await load()
+    const dir = mkdtempSync(join(tmpdir(), 'lc-mutations-test-'))
+    made.push(dir)
+    // A `.git` that is not one: git stops here whatever the folders above hold.
+    writeFileSync(join(dir, '.git'), 'not a repository\n')
+    mkdirSync(join(dir, 'src'))
+    writeFileSync(join(dir, 'src', 'a.ts'), 'x\n')
+    expect(() => trackedFiles(dir)).toThrow(/^git could not list the files it tracks \(.+\)/)
+    expect(fileProblems(dir, 'src/a.ts')).toEqual([
+      expect.stringMatching(/^"file" src\/a\.ts cannot be checked: git could not list/),
+    ])
+  })
+})
+
 describe("this repository's own mutations files", () => {
+  // The check starts one git for every entry together (issue 670): with a
+  // git per entry, 411 entries took 4.3 s on a Mac and outgrew the suite's
+  // 30 s on a Windows runner; with one, 0.1 s on the same Mac. The child is
+  // given 20 s, inside the test's 30 s, so that a slow check fails here
+  // with what it printed rather than as a test that timed out.
   it('are all well formed: every find once, every test and title present (--check)', () => {
     const result = spawnSync(process.execPath, [SCRIPT, '--check'], {
       cwd: repo,
       encoding: 'utf8',
-      timeout: 60_000,
+      timeout: 20_000,
       env: env(),
     })
     expect(result.stdout + result.stderr).toMatch(/entries checked, all well formed/)
@@ -539,6 +593,16 @@ describe('--check over a repository', () => {
     writeFileSync(join(dir, 'tests/unit/a.mutations.json'), '[{')
     const result = run('--check')
     expect(result.stdout).toMatch(/a\.mutations\.json: not JSON/)
+    expect(result.status).toBe(1)
+  })
+
+  it('refuses every entry, saying why, where git cannot list the files it tracks', () => {
+    const { dir, run } = checkout([good])
+    renameSync(join(dir, '.git'), join(dir, 'was-git'))
+    writeFileSync(join(dir, '.git'), 'not a repository\n')
+    const result = run('--check')
+    expect(result.stdout).toMatch(/^refused: git could not list the files it tracks \(.+\)/m)
+    expect(result.stdout).not.toContain('ok ')
     expect(result.status).toBe(1)
   })
 
@@ -654,4 +718,55 @@ describe('the job refuses before it runs anything', () => {
       expect(readFileSync(join(dir, 'lib/*.ts'), 'utf8')).toBe('export const x = a < b\n')
     },
   )
+})
+
+// Issue 670: a git per entry outgrew the suite's 30 s on a Windows runner.
+// A stand-in `git`, first on the PATH the script is given, writes down each
+// call's arguments and hands it to the real one. POSIX only, since Windows
+// finds git.exe and never a script called git; the code it counts is the
+// same on every platform.
+describe.skipIf(!POSIX)('the git processes the job starts', () => {
+  const ENTRIES = 30
+  function counted() {
+    const bin = mkdtempSync(join(tmpdir(), 'lc-mutations-test-'))
+    made.push(bin)
+    const log = join(bin, 'calls')
+    writeFileSync(
+      join(bin, 'git'),
+      '#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$LC_GIT_CALLS"\nPATH=$LC_GIT_REAL_PATH exec git "$@"\n',
+      { mode: 0o755 },
+    )
+    const files: Record<string, string> = {}
+    const list = []
+    for (let i = 0; i < ENTRIES; i += 1) {
+      files[`src/f${i}.ts`] = 'export const x = a < b\n'
+      list.push({ ...bites, file: `src/f${i}.ts` })
+    }
+    const lab = job(list, files, {
+      PATH: `${bin}${delimiter}${process.env.PATH}`,
+      LC_GIT_CALLS: log,
+      LC_GIT_REAL_PATH: process.env.PATH,
+    })
+    const calls = (): string[] =>
+      existsSync(log) ? readFileSync(log, 'utf8').split('\n').filter(Boolean) : []
+    return { ...lab, calls }
+  }
+
+  it('reads the index once for --check, however many entries there are', () => {
+    const { run, calls } = counted()
+    const result = run('--check')
+    expect(result.stdout).toContain(`${ENTRIES} entries checked, all well formed`)
+    expect(calls()).toEqual(['--literal-pathspecs ls-files -z'])
+  })
+
+  it('reads the index once to look at the entries before a run, then asks if the tree is clean', () => {
+    const { put, run, calls } = counted()
+    put('src/a.ts', SOURCE + '// my edit\n')
+    const result = run()
+    expect(result.stdout).toMatch(/refused: the tree under src and tests/)
+    expect(calls()).toEqual([
+      '--literal-pathspecs ls-files -z',
+      expect.stringMatching(/^--literal-pathspecs status --porcelain -- src tests src\/f0\.ts /),
+    ])
+  })
 })

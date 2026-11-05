@@ -1,0 +1,50 @@
+[
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "const problems = checkEntry(repo, item.entry, tracked)",
+    "replace": "const problems = checkEntry(repo, item.entry)",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "reads the index once for --check, however many entries there are",
+    "why": "--check would start a git for every entry again, which outgrew the unit suite's 30 s on a Windows runner (issue 670)."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": ".filter((item) => checkEntry(repo, item.entry, tracked).length === 0)",
+    "replace": ".filter((item) => checkEntry(repo, item.entry).length === 0)",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "reads the index once to look at the entries before a run, then asks if the tree is clean",
+    "why": "A run's look at every entry before it starts would start a git for each of them again."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "if (!index.has(indexPath(file))) {",
+    "replace": "if (index.size === 0) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "refuses a file git does not track, untracked or ignored, and leaves it as it was",
+    "why": "An untracked or ignored file, which nothing else holds a copy of, would be mutated, and its original lost if the restore failed."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "const result = git(repo, ['ls-files', '-z'])\n  if (result.error || result.status !== 0) {",
+    "replace": "const result = git(repo, ['ls-files', '-z'])\n  if (false) {",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "refuses every entry, saying why, where git cannot list the files it tracks",
+    "why": "A git that could not list the index would read as an index with nothing in it: every file called untracked, and what went wrong never said."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "index = trackedFiles(repo)",
+    "replace": "index = globalThis.lcTrackedFiles ??= trackedFiles(repo)",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "is read from the index at each call, so a file added between two calls is seen",
+    "why": "A list of tracked files kept for the life of the process would call a file added since untracked, and one removed since tracked."
+  },
+  {
+    "file": "scripts/mutations.mjs",
+    "find": "return posix.normalize(slashed)",
+    "replace": "return slashed",
+    "test": "tests/unit/mutations-runner.test.ts",
+    "title": "takes a path as git took it: \"./\", \"/./\" and \"//\" fold, case does not",
+    "why": "A path git folds, such as ./src/a.ts, would be called untracked though git tracks it, which it was not before issue 670."
+  }
+]
