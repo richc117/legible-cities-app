@@ -192,11 +192,12 @@ settings: {
   for a restart, which is this view's `engine.pending`, read each time a
   folder is judged and never kept. The exporter asks it again before every
   export. Its sentence does not call the folder waiting the engine data
-  folder: "that folder is inside the folder the engine data moves to at
-  the next start, which “Reset engine data” removes from then on", or
-  "that folder holds the folder the engine data moves to at the next
-  start; an export goes into a folder named after the project, which could
-  be that folder itself". So whichever of the two folders is chosen second
+  folder: "Choose another folder: that folder is inside the folder the
+  engine data moves to at the next start, which “Reset engine data”
+  removes from then on.", or "Choose another folder: that folder holds the
+  folder the engine data moves to at the next start, and an export goes
+  into a folder named after the project, which could be that folder
+  itself.". So whichever of the two folders is chosen second
   is the one refused.
 
   A project's name is shown whole up to 120 characters, the most a name
