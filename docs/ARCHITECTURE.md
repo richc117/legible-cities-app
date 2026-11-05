@@ -254,8 +254,11 @@ first interpreter of these that exists and by nothing else: the one
 `LEGIBLE_ENGINE_PYTHON` names; in development, the engine checkout's own
 `.venv`; in a packaged app, the bundled runtime under the app's resources,
 started with `PYTHONDONTWRITEBYTECODE=1` so nothing it imports is ever
-written into the bundle (see "Packaging" below). With none, the state is *unavailable* with a sentence that names the key to
-set, and the app is otherwise usable.
+written into the bundle (see "Packaging" below). With none, the state is *unavailable* with a sentence for whoever is
+looking at the screen, and the app is otherwise usable. When the bundled runtime is the one missing or
+failing, the sentence tells the person to reinstall the app and names no key (issue 547); in
+development, and where `LEGIBLE_ENGINE_PYTHON` names an interpreter that does not exist, it names the key to
+set.
 
 `src/main/sidecar.ts` spawns it with an argument array, `windowsHide`, a
 process group of its own on POSIX, and an environment built from an
