@@ -97,6 +97,9 @@ export const RUN_DEADLINE_MS = 8 * 60_000
 /** OSV pages a query's answer; more rounds than this is an answer gone wrong. */
 const MAX_PAGES = 20
 
+/** What an OSV id may hold, since it goes into a URL. */
+const SAFE_ID = /^[A-Za-z0-9._:-]+$/
+
 /** Records are read this many at a time. */
 const DETAIL_CONCURRENCY = 8
 
@@ -146,14 +149,21 @@ export const CANARIES = [
 const KNOWN = true
 const known = (...names) => Object.fromEntries(names.map((name) => [name, KNOWN]))
 
+/** In a shape, the rule for every key the shape does not name: a per-target map. */
+const ANY = '*'
+
 /**
  * Every key of the pins this watch knows how to read, as far down as a
  * component could be added: a key the pins gain anywhere in here and the
  * watch does not know refuses the run (`unknownPins`), so a component
  * cannot reach the installers unwatched. `KNOWN` marks what holds no
- * component of its own: metadata, the build's own tools, the per-target
- * build lines (the same components on each platform), and what UNWATCHED
- * covers whole.
+ * component of its own: metadata, the build's own tools, and what UNWATCHED
+ * covers whole. A per-target map is descended through `ANY`, so a target
+ * may be added but a library a target's licence record gains may not; the
+ * libraries FFmpeg's configure lines enable are read in `watchList`.
+ * Electron's FFmpeg is not descended: its trees, its build's dependencies
+ * and its components are one row of UNWATCHED, everything it links
+ * included, so a key added there names nothing the watch could ask about.
  */
 export const PINS_SHAPE = {
   $comment: KNOWN,
@@ -181,18 +191,32 @@ export const PINS_SHAPE = {
     // The packages are read from the requirements file; uv is a build tool.
     requirements: KNOWN,
     pip: known('note', 'version', 'sha256'),
-    // The same CPython on each platform; its zlib is read from the licence
-    // records, its other libraries are in UNWATCHED.
-    targets: KNOWN,
+    // The same CPython on each platform. A library the build compiles in
+    // with no licence entry of its own is recorded under `unlisted` with its
+    // version: zlib is read from there (`runtimeZlibs`), Expat and libmpdec
+    // are in UNWATCHED, and any other refuses the run until it is one or the
+    // other. `named_absent` and `not_linked` list licences that do not ship.
+    targets: {
+      [ANY]: {
+        ...known('asset', 'sha256', 'triple', 'full'),
+        licences: {
+          unlisted: known('LICENSE.zlib.txt', 'LICENSE.expat.txt', 'LICENSE.mpdecimal.txt'),
+          ...known('named_absent', 'not_linked'),
+        },
+      },
+    },
   },
   ffmpeg: {
-    ...known('version', 'note', 'licence', 'targets'),
+    ...known('version', 'note', 'licence'),
+    targets: {
+      [ANY]: known('runner', 'zlib', 'zlib_configure', 'x264_configure', 'configure', 'reports'),
+    },
     source: known('url', 'sha256', 'signature', 'signing_key', 'repo', 'tag', 'commit', 'licence'),
     x264: known('repo', 'commit', 'sha256', 'licence'),
     zlib: known('version', 'url', 'sha256', 'signature', 'signing_key', 'licence'),
   },
   electron_ffmpeg: {
-    // Electron's FFmpeg and what builds it: UNWATCHED says why.
+    // Electron's FFmpeg and what builds it, not descended: UNWATCHED says why.
     ...known(
       'note',
       'licence',
@@ -222,8 +246,8 @@ export const UNWATCHED = [
     why: "OSV holds no records keyed to Chromium's versions; its fixes reach the app as Electron releases, which Dependabot proposes.",
   },
   {
-    component: "Electron's FFmpeg library, and the libopus inside it",
-    why: "Chromium's fork of FFmpeg is pinned by a commit of the fork, which is not in the upstream history OSV's FFmpeg records name, and libopus's revision is recorded only in a note.",
+    component: "Electron's FFmpeg library, and everything it links (libopus among them)",
+    why: "Chromium's fork of FFmpeg is pinned by a commit of the fork, which is not in the upstream history OSV's FFmpeg records name, and what it links is pinned only as Chromium's trees, with no versions OSV could match.",
   },
   {
     component: 'bzip2 1.0.8, in the Windows LOOM tools',
@@ -282,8 +306,26 @@ export function unknownPins(value, shape = PINS_SHAPE, path = '') {
   const found = []
   for (const key of Object.keys(value)) {
     const at = path === '' ? key : `${path}.${key}`
-    if (!Object.hasOwn(shape, key)) found.push(at)
-    else found.push(...unknownPins(value[key], shape[key], at))
+    const rule = Object.hasOwn(shape, key) ? shape[key] : shape[ANY]
+    if (rule === undefined) found.push(at)
+    else found.push(...unknownPins(value[key], rule, at))
+  }
+  return found
+}
+
+/** FFmpeg's external libraries, which its configure lines enable: x264 alone is watched. */
+const FFMPEG_LIBRARIES = ['--enable-libx264']
+
+/** The configure options of `pins`' FFmpeg targets that enable a library the watch does not ask about. */
+function unwatchedLibraries(pins) {
+  const targets = pins.ffmpeg?.targets
+  const found = []
+  if (targets === null || typeof targets !== 'object') return found
+  for (const [target, entry] of Object.entries(targets)) {
+    const enabled = String(entry?.configure ?? '').match(/--enable-lib[\w-]+/g) ?? []
+    for (const option of enabled.filter((o) => !FFMPEG_LIBRARIES.includes(o))) {
+      found.push(`${option} (ffmpeg.targets.${target}.configure)`)
+    }
   }
   return found
 }
@@ -299,8 +341,9 @@ function runtimeZlibs(pins) {
   const found = []
   if (targets === null || typeof targets !== 'object') return found
   for (const [target, entry] of Object.entries(targets)) {
-    const library = entry?.licences?.unlisted?.['LICENSE.zlib.txt']?.library
-    if (library === undefined) continue
+    const unlisted = entry?.licences?.unlisted
+    if (!Object.hasOwn(unlisted ?? {}, 'LICENSE.zlib.txt')) continue
+    const library = unlisted['LICENSE.zlib.txt']?.library
     const match = typeof library === 'string' ? /^zlib (\d+(?:\.\d+)+),/.exec(library) : null
     if (match === null) {
       throw new Error(
@@ -327,6 +370,12 @@ export function watchList(pins, requirementsText) {
   if (unknown.length > 0) {
     throw new Error(
       `vendor/pins.json names ${unknown.join(', ')}, which the watch does not read: add a query for it, or a line in UNWATCHED saying why there is none, or, if it is no component, a key in PINS_SHAPE`,
+    )
+  }
+  const libraries = unwatchedLibraries(pins)
+  if (libraries.length > 0) {
+    throw new Error(
+      `vendor/pins.json builds FFmpeg with ${libraries.join(', ')}, which the watch does not ask about: add a query for it and a line in FFMPEG_LIBRARIES, or a line in UNWATCHED saying why there is none`,
     )
   }
   const list = []
@@ -426,16 +475,44 @@ export function cveIdOf(record) {
   return aliases.find((alias) => typeof alias === 'string' && pattern.test(alias)) ?? null
 }
 
+/** The ratings a CVE record gives, as `{ vector, rating }`: its CNA's, else its ADPs'. */
+function recordRatings(cveRecord) {
+  const adp = cveRecord?.containers?.adp
+  const containers = [cveRecord?.containers?.cna, ...(Array.isArray(adp) ? adp : [])]
+  const found = []
+  for (const container of containers) {
+    const metrics = Array.isArray(container?.metrics) ? container.metrics : []
+    for (const metric of metrics) {
+      for (const value of Object.values(metric ?? {})) {
+        const rating =
+          typeof value?.baseSeverity === 'string'
+            ? RATINGS[value.baseSeverity.toUpperCase()]
+            : undefined
+        if (rating !== undefined) found.push({ vector: value.vectorString, rating })
+      }
+    }
+    if (container === cveRecord?.containers?.cna && found.length > 0) break
+  }
+  return found
+}
+
 /**
- * The rating OSV's severity for `record` carries, as `{ rating, by }`:
- * "unrated" where OSV gives none; for a CVSS vector, the rating the CVE
- * record (`cveRecord`, or null) gives that very vector, its CNA's or an
- * ADP's; else the database's own word in OSV's record; else null, where
- * nothing names one.
+ * The rating OSV's severity for `record` carries, as `{ rating, by }`. For a
+ * CVSS vector, the rating the CVE record (`cveRecord`, or null) gives that
+ * very vector, its CNA's or an ADP's; else the database's own word in OSV's
+ * record; else null, where nothing names one. Where OSV gives no severity
+ * (the PSF's own ids), the highest rating the CVE record of its alias
+ * gives, so an id that OSV returns under the PSF's id alone is still held to
+ * the CVE's budget; "unrated" where there is none.
  */
 export function sourceRating(record, cveRecord) {
   const given = osvSeverity(record)
-  if (given === null) return { rating: 'unrated', by: 'OSV' }
+  if (given === null) {
+    const ratings = recordRatings(cveRecord).map((r) => r.rating)
+    if (ratings.length === 0) return { rating: 'unrated', by: 'OSV' }
+    const rating = ratings.reduce((a, b) => (RANK[b] > RANK[a] ? b : a))
+    return { rating, by: `the CVE record of its alias ${cveRecord?.cveMetadata?.cveId}` }
+  }
   if (given.startsWith('CVSS:')) {
     const adp = cveRecord?.containers?.adp
     const containers = [cveRecord?.containers?.cna, ...(Array.isArray(adp) ? adp : [])]
@@ -470,12 +547,17 @@ export function addDays(date, days) {
   return at.toISOString().slice(0, 10)
 }
 
-/** How many sentences a reason has: a full stop, ! or ? before a capital, a digit or the end. */
+/**
+ * How many sentences a reason has: a full stop, ! or ? before a space and a
+ * word, a digit or a quote, or before the end. A sentence may begin with a
+ * name written in lower case ("requests encodes ..."); a version number or
+ * a file name, with no space after its dots, ends none.
+ */
 export function sentences(text) {
   return (
     String(text)
       .trim()
-      .match(/[.!?][)"'`]*(?=\s+[A-Z0-9`"'(]|$)/g) ?? []
+      .match(/[.!?][)"'`]*(?=\s+[A-Za-z0-9_`"'(]|$)/g) ?? []
   ).length
 }
 
@@ -536,12 +618,9 @@ export function validateTriage(triage) {
       const given = entry.osv_severity
       if (given !== null && (typeof given !== 'string' || given === '')) {
         say('has an "osv_severity" that is neither null nor text')
-      } else if ((given === null) !== (entry.severity === 'unrated')) {
-        say(
-          given === null
-            ? 'is rated although OSV gives it no severity: "unrated"'
-            : 'is "unrated" although OSV gives it a severity: rate it from that',
-        )
+      } else if (given !== null && entry.severity === 'unrated') {
+        // Where OSV gives none, the rating is its CVE alias's, else "unrated".
+        say('is "unrated" although OSV gives it a severity: rate it from that')
       }
     }
     if ('verdict' in entry && !VERDICTS.includes(entry.verdict)) {
@@ -579,12 +658,15 @@ export function validateTriage(triage) {
  * source's needs no note: the budget it buys is no longer than the source's.
  */
 export function unexplainedRating(entry, source) {
-  if (entry.osv_severity === null || 'rating_note' in entry) return null
+  if ('rating_note' in entry) return null
   if (source === null) {
-    return `nothing rates the vector OSV gives (no CVE record names it): rate it, and say how in "rating_note"`
+    return entry.osv_severity === null
+      ? null
+      : `nothing rates the vector OSV gives (no CVE record names it): rate it, and say how in "rating_note"`
   }
   if (RANK[entry.severity] < RANK[source.rating]) {
-    return `rated ${entry.severity}, below the ${source.rating} ${source.by} gives, and no "rating_note" says why`
+    const held = entry.severity === 'unrated' ? 'held as unrated' : `rated ${entry.severity}`
+    return `${held}, below the ${source.rating} ${source.by} gives, and no "rating_note" says why`
   }
   return null
 }
@@ -664,9 +746,17 @@ export function judge({ watch, returned, details, ratings = {}, triage, today })
   return { untriaged, overdue, open, closed, dropped, returned: found.size }
 }
 
-/** Whether a judgement fails the run. */
+/**
+ * Whether a judgement fails the run: an id untriaged or overdue, or a
+ * triaged id OSV no longer returns. The last is most often a fix, whose
+ * entry comes out of the triage; but OSV answering part of what it used to
+ * looks the same, and a run that passed over it would call clean an answer
+ * it could not vouch for.
+ */
 export function failed(judgement) {
-  return judgement.untriaged.length > 0 || judgement.overdue.length > 0
+  return (
+    judgement.untriaged.length > 0 || judgement.overdue.length > 0 || judgement.dropped.length > 0
+  )
 }
 
 /**
@@ -798,8 +888,8 @@ export function report({ judgement, watch, returned, today, triaged, canaries = 
   )
   out.push(
     failed(judgement)
-      ? `**Failed:** ${judgement.untriaged.length} untriaged, ${judgement.overdue.length} past their due date. Triage each in vendor/vuln-triage.json (SECURITY.md says how).\n`
-      : '**Clean:** every id OSV returns is triaged, and no open one is past its due date.\n',
+      ? `**Failed:** ${judgement.untriaged.length} untriaged, ${judgement.overdue.length} past their due date, ${judgement.dropped.length} no longer returned. Triage each new id in vendor/vuln-triage.json, and take out the entry of each one no longer returned (SECURITY.md says how).\n`
+      : '**Clean:** every id OSV returns is triaged, no open one is past its due date, and OSV still returns every triaged id.\n',
   )
   return out.join('\n')
 }
@@ -846,6 +936,9 @@ async function call(
       controller.abort()
     }, wait)
   })
+  // The races below see the rejection; this keeps one nobody awaits from
+  // being an unhandled rejection.
+  expired.catch(() => undefined)
   try {
     let response
     try {
@@ -930,6 +1023,11 @@ export async function fetchOsv(
         if (typeof vuln?.id !== 'string' || vuln.id === '') {
           throw new OsvUnavailable('querybatch answered a vulnerability with no id')
         }
+        if (!SAFE_ID.test(vuln.id) || vuln.id === '.' || vuln.id === '..') {
+          throw new OsvUnavailable(
+            `querybatch answered the id ${JSON.stringify(vuln.id)}, which the watch will not put in a URL`,
+          )
+        }
         if (!found[index].includes(vuln.id)) found[index].push(vuln.id)
       }
       if (typeof result?.next_page_token === 'string' && result.next_page_token !== '') {
@@ -955,28 +1053,36 @@ export async function fetchOsv(
     }
     details[id] = record
   })
-  const ratings = {}
-  await inBatches(ids, async (id) => {
-    const record = details[id]
-    const cve = cveIdOf(record)
-    let cveRecord = null
-    if (osvSeverity(record)?.startsWith('CVSS:') && cve !== null) {
-      cveRecord = await call(
-        fetchImpl,
-        `${CVE_API}/${cve}`,
-        { method: 'GET' },
-        limits,
-        `the CVE record ${cve}`,
-        { missingOk: true, Failure: CveUnavailable },
+  // The CVE record each id is rated from: its own or its alias's, for a
+  // vector OSV gives, or for an id OSV gives no severity at all.
+  const rateFrom = new Map()
+  for (const id of ids) {
+    const given = osvSeverity(details[id])
+    const cve = cveIdOf(details[id])
+    if (cve !== null && (given === null || given.startsWith('CVSS:'))) rateFrom.set(id, cve)
+  }
+  const cveRecords = new Map()
+  await inBatches([...new Set(rateFrom.values())].sort(), async (cve) => {
+    const cveRecord = await call(
+      fetchImpl,
+      `${CVE_API}/${cve}`,
+      { method: 'GET' },
+      limits,
+      `the CVE record ${cve}`,
+      { missingOk: true, Failure: CveUnavailable },
+    )
+    if (cveRecord !== null && cveRecord?.cveMetadata?.cveId !== cve) {
+      throw new CveUnavailable(
+        `the CVE record ${cve} answered for ${cveRecord?.cveMetadata?.cveId ?? 'nothing'}`,
       )
-      if (cveRecord !== null && cveRecord?.cveMetadata?.cveId !== cve) {
-        throw new CveUnavailable(
-          `the CVE record ${cve} answered for ${cveRecord?.cveMetadata?.cveId ?? 'nothing'}`,
-        )
-      }
     }
-    ratings[id] = sourceRating(record, cveRecord)
+    cveRecords.set(cve, cveRecord)
   })
+  const ratings = {}
+  for (const id of ids) {
+    const cve = rateFrom.get(id)
+    ratings[id] = sourceRating(details[id], cve === undefined ? null : cveRecords.get(cve))
+  }
   return { returned, details, ratings, heard }
 }
 

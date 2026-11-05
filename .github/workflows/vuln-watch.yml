@@ -2,10 +2,11 @@
 # asks OSV about every component vendor/pins.json pins and every Python
 # package vendor/python-requirements.txt locks, reads each id's rating from
 # its CVE record, and judges the answer against vendor/vuln-triage.json. The
-# run fails on an id the triage does not cover and on an open one past its
-# due date; a red run is the notification, and it opens no issue. Its table,
-# read or not, is the job summary. SECURITY.md, "Vulnerabilities in what the
-# installers carry", says how to triage a new id.
+# run fails on an id the triage does not cover, on an open one past its due
+# date and on a triaged one OSV no longer returns; a red run is the
+# notification, and it opens no issue. Its table, read or not, is the job
+# summary. SECURITY.md, "Vulnerabilities in what the installers carry", says
+# how to triage a new id.
 #
 # A run that cannot reach OSV or the CVE records, that outlasts its own
 # deadline (RUN_DEADLINE_MS, eight minutes, inside timeout-minutes below), or

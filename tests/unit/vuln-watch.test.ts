@@ -62,6 +62,7 @@ interface Module {
   watchList(pins: unknown, requirements: string): Watched[]
   osvSeverity(record: unknown): string | null
   sourceRating(record: unknown, cveRecord: unknown): { rating: string; by: string } | null
+  cveIdOf(record: unknown): string | null
   validateTriage(triage: unknown): string[]
   addDays(date: string, days: number): string
   sentences(text: string): number
@@ -286,6 +287,33 @@ describe('the queries the pins make', () => {
     ).toThrow(/names ffmpeg\.x264\.fork,/)
   })
 
+  it("refuses a library a target's licence record or configure line gains", async () => {
+    const { watchList } = await load()
+    const pins = JSON.parse(readFileSync(join(repo, 'vendor', 'pins.json'), 'utf8')) as {
+      python: { targets: Record<string, { licences: { unlisted: Record<string, unknown> } }> }
+      ffmpeg: { targets: Record<string, { configure: string }> }
+    }
+    const requirements = readFileSync(join(repo, 'vendor', 'python-requirements.txt'), 'utf8')
+    // A new target is no new component.
+    const added = structuredClone(pins)
+    added.python.targets['linux-x64'] = structuredClone(added.python.targets['darwin-x64'])
+    added.ffmpeg.targets['linux-arm64'] = structuredClone(added.ffmpeg.targets['linux-x64'])
+    expect(() => watchList(added, requirements)).not.toThrow()
+
+    const openssl = structuredClone(pins)
+    openssl.python.targets['win-x64'].licences.unlisted['LICENSE.openssl-3.txt'] = {
+      library: 'OpenSSL 3.5.4, compiled into _ssl.pyd',
+    }
+    expect(() => watchList(openssl, requirements)).toThrow(
+      /names python\.targets\.win-x64\.licences\.unlisted\.LICENSE\.openssl-3\.txt,/,
+    )
+    const dav1d = structuredClone(pins)
+    dav1d.ffmpeg.targets['win-x64'].configure += ' --enable-libdav1d'
+    expect(() => watchList(dav1d, requirements)).toThrow(
+      /builds FFmpeg with --enable-libdav1d \(ffmpeg\.targets\.win-x64\.configure\)/,
+    )
+  })
+
   it("watches the Windows runtime's zlib at the version its licence record names", async () => {
     const { watchList } = await load()
     interface Recorded {
@@ -318,6 +346,10 @@ describe('the queries the pins make', () => {
     ])
     expect(() => watchList(at('zlib, from the externals'), REQUIREMENTS)).toThrow(
       /names no version the watch can read/,
+    )
+    // A record that is there and says no version is refused; only its absence is skipped.
+    expect(() => watchList(at(undefined), REQUIREMENTS)).toThrow(
+      /records its zlib as undefined, which names no version/,
     )
   })
 
@@ -353,6 +385,17 @@ describe("OSV's severity", () => {
     expect(osvSeverity({ severity: [v3] })).toBe(v3.score)
     expect(osvSeverity({ database_specific: { severity: 'MODERATE' } })).toBe('MODERATE')
     expect(osvSeverity({ id: 'PSF-2026-46' })).toBeNull()
+  })
+
+  it('takes a CVE id only when it is one, whole', async () => {
+    const { cveIdOf } = await load()
+    expect(cveIdOf({ id: 'CVE-2026-115557' })).toBe('CVE-2026-115557')
+    expect(cveIdOf({ id: 'PSF-2026-46', aliases: ['BIT-x', 'CVE-2026-115557'] })).toBe(
+      'CVE-2026-115557',
+    )
+    expect(cveIdOf({ id: 'GHSA-x', aliases: ['CVE-2026-12345/../../x'] })).toBeNull()
+    expect(cveIdOf({ id: 'GHSA-x', aliases: ['x/CVE-2026-12345'] })).toBeNull()
+    expect(cveIdOf({ id: 'CVE-2026-12345?x=1' })).toBeNull()
   })
 
   it("reads the rating of OSV's vector from the CVE record, else from OSV's record", async () => {
@@ -492,6 +535,25 @@ describe('the judgement', () => {
     expect(higher.code).toBe(EXIT.clean)
   })
 
+  it('holds an id OSV gives no severity to the rating of its CVE alias', async () => {
+    const { EXIT } = await load()
+    const unrated = await run({
+      triage: triageWith((entries) =>
+        entries.map((e) =>
+          e.id === 'PSF-2026-46' ? { ...e, severity: 'unrated', due: '2027-01-03' } : e,
+        ),
+      ),
+    })
+    expect(unrated.code).toBe(EXIT.findings)
+    expect(section(unrated.out, 'New or untriaged')).toContain(
+      'held as unrated, below the critical the CVE record of its alias CVE-2026-115557 gives',
+    )
+    // The fixture's entry takes the alias's rating, and with it its budget.
+    const psf = TRIAGE.entries.find((e) => e.id === 'PSF-2026-46')
+    expect([psf?.severity, psf?.osv_severity, psf?.due]).toEqual(['critical', null, '2026-11-18'])
+    expect((await run()).code).toBe(EXIT.clean)
+  })
+
   it('asks for a note where nothing rates the vector OSV gives', async () => {
     const { EXIT } = await load()
     const cves = { ...CVE.records }
@@ -517,18 +579,30 @@ describe('the judgement', () => {
     expect(late.out).toContain('**Failed:** 0 untriaged, 2 past their due date')
   })
 
-  // One id of a component gone is a fix; every id of it gone at once is not
-  // trusted ("an answer that cannot be trusted", below).
-  it('reports a triaged id OSV no longer returns, without failing on it', async () => {
+  // One id of a component gone is most often a fix, but OSV answering part
+  // of what it did looks the same, so it fails the run until the entry is
+  // taken out; every id of a component gone at once is not trusted at all
+  // ("an answer that cannot be trusted", below).
+  it('fails on a triaged id OSV no longer returns, and says to take it out', async () => {
     const { EXIT } = await load()
     const answers = new Map(
       OSV.answers.map(({ query, ids }) => [asked(query), ids.filter((id) => id !== 'PSF-2026-46')]),
     )
     const result = await run({ fetch: standIn({ answers }).fetch })
-    expect(result.code).toBe(EXIT.clean)
+    expect(result.code).toBe(EXIT.findings)
     const rows = section(result.out, 'Triaged, and no longer returned by OSV')
     expect(rows).toContain('returned by OSV: 1')
     expect(rows).toContain('| PSF-2026-46 | CPython 3.12.14 | open |')
+    expect(result.out).toContain(
+      '**Failed:** 0 untriaged, 0 past their due date, 1 no longer returned.',
+    )
+    expect(result.out).toContain('take out the entry of each one no longer returned')
+
+    const out = await run({
+      fetch: standIn({ answers }).fetch,
+      triage: triageWith((entries) => entries.filter((e) => e.id !== 'PSF-2026-46')),
+    })
+    expect(out.code).toBe(EXIT.clean)
   })
 
   it("follows OSV's pages, and asks again only for the query that has another", async () => {
@@ -613,14 +687,35 @@ describe('a failure to reach OSV', () => {
     expect(result.out).toBe('')
   })
 
+  // Its own 5 s, so a limit taken out shows as a timeout here, not at the
+  // suite's 30 s.
   it('gives each request its own time limit, against a fetch that never answers', async () => {
     const { EXIT, REQUEST_TIMEOUT_MS } = await load()
     expect(REQUEST_TIMEOUT_MS).toBe(30_000)
     const started = Date.now()
-    const result = await run({ fetch: () => new Promise<Response>(() => undefined), timeoutMs: 50 })
+    const result = await run({
+      fetch: () => new Promise<Response>(() => undefined),
+      timeoutMs: 50,
+      deadlineMs: 2_000,
+    })
     expect(result.code).toBe(EXIT.unreachable)
     expect(result.err).toContain('querybatch: no answer within 50 ms')
-    expect(Date.now() - started).toBeLessThan(2_000)
+    expect(Date.now() - started).toBeLessThan(1_000)
+  }, 5_000)
+
+  it('refuses an id it would not put in a URL', async () => {
+    const { EXIT } = await load()
+    const zlib = 'GIT https://github.com/madler/zlib @ v1.3.2'
+    const answers = new Map(
+      OSV.answers.map(({ query, ids }) => [asked(query), asked(query) === zlib ? ['../x'] : ids]),
+    )
+    const stand = standIn({ answers })
+    const result = await run({ fetch: stand.fetch })
+    expect(result.code).toBe(EXIT.unreachable)
+    expect(result.err).toContain(
+      'querybatch answered the id "../x", which the watch will not put in a URL',
+    )
+    expect(stand.calls.some((c) => c.url.includes('/x'))).toBe(false)
   })
 
   it("stops at its own deadline, inside the workflow job's timeout", async () => {
@@ -758,9 +853,8 @@ describe('the triage', () => {
     expect(await problems(entry({ severity: 'moderate' }))).toContain(
       'CVE-2026-0001: has severity "moderate", not one of critical, high, medium, low, unrated',
     )
-    expect(await problems(entry({ osv_severity: null }))).toEqual([
-      'CVE-2026-0001: is rated although OSV gives it no severity: "unrated"',
-    ])
+    // An id OSV gives no severity may carry its CVE alias's rating.
+    expect(await problems(entry({ osv_severity: null }))).toEqual([])
     expect(await problems(entry({ severity: 'unrated' }))).toEqual([
       'CVE-2026-0001: is "unrated" although OSV gives it a severity: rate it from that',
     ])
@@ -795,6 +889,12 @@ describe('the triage', () => {
     expect(sentences('Fixed in CPython 3.12.16, in the 20261026 release.')).toBe(1)
     expect(sentences('The build has no TLS (ADR-040). The proof refuses it.')).toBe(2)
   })
+
+  it('counts a sentence that begins with a name in lower case', async () => {
+    const { sentences } = await load()
+    expect(sentences('Only ASCII reaches it. requests encodes the rest first.')).toBe(2)
+    expect(sentences('The pin is 3.12.14. pandas reads it with extractfile.')).toBe(2)
+  })
 })
 
 describe('vendor/vuln-triage.json', () => {
@@ -820,12 +920,14 @@ describe('vendor/vuln-triage.json', () => {
       expect(watched, e.id).toContain(`${e.component} ${e.version}`)
   })
 
-  // The fixture is four of these entries, as the tests read them. One the
-  // triage still holds must read the same in both, so a reason or a verdict
-  // changed here is changed there in the same change; one taken out of the
-  // triage, its fix shipped, stays in the fixture, which needs no edit for it.
+  // The fixture is four of these entries, as the tests read them, keyed as
+  // the triage keys them: id, component and version. One the triage still
+  // holds must read the same in both, so a reason or a verdict changed here
+  // is changed there in the same change; one taken out of the triage, its
+  // fix shipped, or moved to a new version by a pin, stays in the fixture,
+  // which needs no edit for it.
   it('agrees with the fixture triage the tests run on, for every entry it still holds', () => {
-    const key = (e: Entry): string => `${e.id} ${e.component}`
+    const key = (e: Entry): string => `${e.id} ${e.component} ${e.version}`
     const held = new Map(committed.entries.map((e) => [key(e), e]))
     for (const e of TRIAGE.entries) {
       const now = held.get(key(e))

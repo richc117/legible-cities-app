@@ -18,7 +18,7 @@
       "id": "PSF-2026-46",
       "component": "CPython",
       "version": "3.12.14",
-      "severity": "unrated",
+      "severity": "critical",
       "osv_severity": null,
       "verdict": "open",
       "reason": "The same issue as CVE-2026-115557, under the PSF's id. The locked certifi 2026.10.19 carries none of the roots the compromised intermediates chain to, but REQUESTS_CA_BUNDLE, which the app passes to the engine, can name a bundle that does, and only the denylist in CPython 3.12.16 refuses the chain then. OSV lists 3.12.0-3.12.15 as affected.",
