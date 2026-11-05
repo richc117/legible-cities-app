@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Four entries of vendor/vuln-triage.json as first written, one for each id in osv.json, for tests/unit/vuln-watch.test.ts."
+    "Four entries of vendor/vuln-triage.json, one for each id in osv.json, for tests/unit/vuln-watch.test.ts, which holds each to its committed entry while the committed triage still has it."
   ],
   "entries": [
     {
@@ -10,7 +10,7 @@
       "severity": "critical",
       "osv_severity": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H",
       "verdict": "open",
-      "reason": "The engine downloads every feed over HTTPS through requests and urllib3 on this ssl module, verifying against certifi's bundle, which carries an eMudhra root (emSign Root CA - G1 is still in certifi 2026.10.23, newer than the pinned 2026.10.19), so without the denylist 3.12.14 would accept a forged certificate under the compromised eMudhra intermediates. CPython 3.12.16 carries the fix, in python-build-standalone 20261026, so it needs a pin move.",
+      "reason": "The compromised eMudhra intermediates chain to emSign Root TLS CA - G3, emSign Root CS CA - G3, AAA Certificate Services (through Sectigo's cross-signs) and emSign ECC Root CA - G3 (the disclosure's roots.json), and the locked certifi 2026.10.19 carries none of them (read at its 2026.10.19 tag, which restored only the unaffected emSign roots), so the engine's feed downloads, which requests verifies against that bundle, refuse such a chain by default. They reach it when REQUESTS_CA_BUNDLE, which the app passes to the engine, names a bundle that still carries one of those roots, and a certifi bump cannot close that path, since certifi holds roots, not a denylist of intermediates, and that bundle is not certifi's. OSV lists 3.12.0-3.12.15 as affected; 3.12.16, in python-build-standalone 20261026, carries the denylist, so the fix is a pin move.",
       "triaged": "2026-11-04",
       "due": "2026-11-18"
     },
@@ -21,7 +21,7 @@
       "severity": "unrated",
       "osv_severity": null,
       "verdict": "open",
-      "reason": "The same issue as CVE-2026-115557, under the PSF's id. The engine downloads every feed over HTTPS on this ssl module, which lacks the denylist in 3.12.14, so it is open with that entry's due date; CPython 3.12.16 carries the fix.",
+      "reason": "The same issue as CVE-2026-115557, under the PSF's id. The locked certifi 2026.10.19 carries none of the roots the compromised intermediates chain to, but REQUESTS_CA_BUNDLE, which the app passes to the engine, can name a bundle that does, and only the denylist in CPython 3.12.16 refuses the chain then. OSV lists 3.12.0-3.12.15 as affected.",
       "triaged": "2026-11-04",
       "due": "2026-11-18"
     },
