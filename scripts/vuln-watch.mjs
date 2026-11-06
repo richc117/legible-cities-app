@@ -239,7 +239,7 @@ export const PINS_SHAPE = {
 export const UNWATCHED = [
   {
     component:
-      "The Python runtime's own libraries (OpenSSL, SQLite, libffi, xz, bzip2, mpdecimal, Expat, Tcl/Tk, libuuid)",
+      "The Python runtime's own libraries (OpenSSL, SQLite, libffi, xz, bzip2, mpdecimal, Expat, libuuid)",
     why: "vendor/pins.json records the python-build-standalone release, not their versions; the Windows build's licence records name Expat's and libmpdec's in passing, and watching them waits on a triage of their matches. Its zlib is watched at the version its licence record names.",
   },
   {

@@ -208,6 +208,26 @@ interface TreeOptions {
   record?: 'missing' | 'unreadable' | 'other-commit' | 'other-requirements'
   /** The licence lists the tree is made from, where not the repository's for the target. */
   lists?: LicenceLists
+  /** Leave in the runtime the Tcl/Tk files scripts/vendor-python.sh strips (issue 679). */
+  tclTk?: boolean
+}
+
+/** Tcl/Tk as python-build-standalone's release 20261026 lays it out, among the files the strip removes. */
+const TCL_TK: Record<Target, string[]> = {
+  'darwin-arm64': [
+    'lib/libtcl9.0.dylib',
+    'lib/libtcl9tk9.0.dylib',
+    'lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so',
+    'lib/thread3.0.6/libtcl9thread3.0.6.dylib',
+  ],
+  'darwin-x64': ['lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so'],
+  'win-x64': [
+    'DLLs/_tkinter.pyd',
+    'DLLs/tcl86t.dll',
+    'DLLs/tk86t.dll',
+    'DLLs/zlib1.dll',
+    'tcl/tix8.4.3/tix84.dll',
+  ],
 }
 
 /**
@@ -355,6 +375,9 @@ function tree(
     put(join(windows ? python : lib, 'LICENSE.txt'), 'PSF\n')
     licenceTexts(target, python, options.licences, options.lists)
     vendorRecord(python, options.record)
+    if (options.tclTk === true) {
+      for (const file of TCL_TK[target]) put(join(python, ...file.split('/')), header(target))
+    }
     const site = join(lib, 'site-packages')
     mkdirSync(
       join(site, distInfo('openschematicmaps', options.engineVersion ?? PINS.engine.version)),
@@ -879,6 +902,39 @@ describe('check-vendored.mjs, as the build runs it', () => {
     )
   })
 
+  // Issue 679: Tcl/Tk is stripped on every target, Windows' zlib1.dll with
+  // it, so a runtime still carrying any of it is refused by the check the
+  // vendor job makes once it has stripped the runtime and by the build's.
+  it('refuses a runtime that still carries Tcl/Tk, as the vendor job and the build check it', () => {
+    for (const target of ['darwin-arm64', 'win-x64'] as const) {
+      const carried = `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${TCL_TK[target].join(', ')}\n`
+      const built = check(target, vendorTree(target, { tclTk: true }))
+      expect(built.status, target).toBe(1)
+      expect(built.stderr).toContain(`  ${target}: ${carried}`)
+      const vendor = vendorTree(target, { tclTk: true })
+      const alone = spawnSync(
+        process.execPath,
+        [
+          SCRIPT,
+          target,
+          '--packages',
+          join(vendor, 'python', target, 'python'),
+          '--pins',
+          PINS_FILE,
+        ],
+        { encoding: 'utf8', timeout: 30_000, windowsHide: true },
+      )
+      expect(alone.status, target).toBe(1)
+      expect(alone.stderr).toContain(`  ${carried}`)
+    }
+    // Windows' zlib1.dll alone, which only Tcl's library imported.
+    const vendor = vendorTree('win-x64')
+    put(join(vendor, 'python', 'win-x64', 'python', 'DLLs', 'zlib1.dll'), header('win-x64'))
+    expect(check('win-x64', vendor).stderr).toContain(
+      'win-x64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: DLLs/zlib1.dll\n',
+    )
+  })
+
   it('says how to call it when the target is not one', () => {
     const result = check('linux-x64', scratch())
     expect(result.status).toBe(2)
@@ -1055,6 +1111,17 @@ describe('the afterPack hook, where the packaged app will look', () => {
       }),
     ).rejects.toThrow(
       'win-x64: engine was built from commit d9c465fda2f53b96f1d226a0fd1f9abf877d6ec6',
+    )
+  })
+
+  it('refuses a packaged runtime that still carries Tcl/Tk (issue 679)', async () => {
+    const { afterPack } = await load()
+    await expect(
+      afterPack(packaged('win-x64', { bytecodeFlags: 1, tclTk: true }), {
+        LEGIBLE_VENDOR_TARGET: 'win-x64',
+      }),
+    ).rejects.toThrow(
+      `win-x64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${TCL_TK['win-x64'].join(', ')}`,
     )
   })
 

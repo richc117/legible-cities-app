@@ -6,5 +6,29 @@
     "test": "tests/unit/check-vendored.test.ts",
     "title": "refuses a named_absent text that is carried",
     "why": "A named_absent entry no longer held to being absent: once the archive carries the text, the reason recorded for owing nothing stays in the pins unread, and the new release passes without anyone rereading the list."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      else if (TCL_TK.test(entry.name)) found.push(",
+    "replace": "      else if (false) found.push(",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "still carries Tcl/Tk",
+    "why": "The guard on the strip gone: a runtime vendored without the strip, or from a release that lays Tcl/Tk out under other names, ships its libraries and Windows' zlib1.dll again, code the app never loads under advisories nothing watches."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "|zlib1\\.dll)$/i",
+    "replace": ")$/i",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a runtime that still carries Tcl/Tk",
+    "why": "Windows' zlib1.dll let through: it is the one file of the strip that is not named for Tcl or Tk, and the zlib OSV reports advisories against."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      ...checkPythonStripped({ python: options.packages }),\n",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a runtime that still carries Tcl/Tk",
+    "why": "The vendor job's check no longer asks about Tcl/Tk: --packages is the one check vendor-python.sh makes after the strip, so a strip that missed something would be found only at packaging, after the artefact was uploaded."
   }
 ]
