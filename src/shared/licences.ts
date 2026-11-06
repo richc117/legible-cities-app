@@ -85,9 +85,9 @@ export const BUNDLED_COMPONENTS: readonly BundledComponent[] = [
     notice: 'python-build-standalone (ADR-020, ADR-038)',
   },
   {
-    name: 'The libraries linked into Python: OpenSSL, libffi, xz, bzip2, zlib, mpdecimal, Expat, SQLite, Tcl/Tk, Tix and libuuid',
+    name: 'The libraries linked into Python: OpenSSL, libffi, xz, bzip2, zlib, mpdecimal, Expat, SQLite and libuuid',
     licence:
-      'Apache-2.0 (OpenSSL); MIT (libffi, Expat); 0BSD (xz); bzip2-1.0.6; Zlib; BSD-2-Clause (mpdecimal); public domain (SQLite); TCL (Tcl/Tk, Tix); BSD-3-Clause (libuuid); each text in the licence texts',
+      'Apache-2.0 (OpenSSL); MIT (libffi, Expat); 0BSD (xz); bzip2-1.0.6; Zlib; BSD-2-Clause (mpdecimal); public domain (SQLite); BSD-3-Clause (libuuid); each text in the licence texts',
     identifiers: [
       'Apache-2.0',
       'MIT',
@@ -96,7 +96,6 @@ export const BUNDLED_COMPONENTS: readonly BundledComponent[] = [
       'Zlib',
       'BSD-2-Clause',
       'public domain',
-      'TCL',
       'BSD-3-Clause',
     ],
     notice: 'Libraries linked into the Python runtime',
