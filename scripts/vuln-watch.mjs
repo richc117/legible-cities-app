@@ -383,7 +383,10 @@ export function ffmpegConfigure(pins) {
  * installers do not ship: python-build-standalone's macOS builds, whose
  * metadata has every zlib user link `z` with system: true (their libpython
  * links /usr/lib/libz.1.dylib), and whose licence records list no zlib under
- * `unlisted`. Every other target carries a zlib of its own.
+ * `unlisted`. Every other target carries a zlib of its own. The vendor job
+ * and the packaging check hold the macOS builds to it: scripts/
+ * check-vendored.mjs (systemZlibProblems) refuses a macOS runtime whose
+ * metadata has a zlib link without system: true, or no system zlib at all.
  */
 const SYSTEM_ZLIB = /^darwin-/
 

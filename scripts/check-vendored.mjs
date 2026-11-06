@@ -296,6 +296,52 @@ export function namedLicences(metadata) {
   )
 }
 
+/** A link the build metadata gives that is zlib's, under any name it has used. */
+const ZLIB_LINK = /^(?:z|zlib|zlib-?ng)$/i
+
+/**
+ * Whether a macOS build still links the operating system's zlib, and only
+ * that one. python-build-standalone's macOS builds have: every zlib link in
+ * their metadata is `z` with system: true, so the runtime carries no zlib,
+ * the pins owe no zlib text under `unlisted`, and scripts/vuln-watch.mjs
+ * (SYSTEM_ZLIB) asks OSV about no zlib for them. A build that linked a zlib
+ * of its own, or no longer named the system's, would break all three
+ * silently. Until release 20261026 a named_absent entry for zlib-ng's text
+ * stood guard here by accident; this is the guard on purpose.
+ *
+ * @returns {string[]} the problems, each a phrase to follow "python "
+ */
+export function systemZlibProblems(metadata) {
+  const problems = []
+  let system = 0
+  const visit = (where, links) => {
+    if (!Array.isArray(links)) return
+    for (const link of links) {
+      if (!ZLIB_LINK.test(String(link?.name ?? ''))) continue
+      if (link.system === true) system += 1
+      else {
+        problems.push(
+          `has build metadata in which ${where} links ${link.name} without system: true, a zlib of the runtime's own; the macOS pins record none and the vulnerability watch asks about none (SYSTEM_ZLIB, scripts/vuln-watch.mjs), so record its version and teach the watch it`,
+        )
+      }
+    }
+  }
+  visit('the interpreter', metadata?.build_info?.core?.links)
+  const extensions = metadata?.build_info?.extensions
+  if (extensions !== null && typeof extensions === 'object') {
+    for (const [extension, variants] of Object.entries(extensions)) {
+      if (!Array.isArray(variants)) continue
+      for (const variant of variants) visit(extension, variant?.links)
+    }
+  }
+  if (system === 0 && problems.length === 0) {
+    problems.push(
+      "has build metadata in which nothing links the system's zlib (`z` with system: true); the macOS pins and the vulnerability watch (SYSTEM_ZLIB, scripts/vuln-watch.mjs) rest on it, so read again where this build's zlib comes from",
+    )
+  }
+  return problems
+}
+
 /**
  * Whether the runtime's licence texts, the build metadata they came with and
  * the lists in `python.targets.<target>.licences` agree (issue 108, ADR-042).
@@ -334,6 +380,7 @@ export function checkPythonLicences({ python, target, pins }) {
       `has build metadata for ${metadata.python_version} ${metadata.target_triple}, not ${pins.python.version} ${pin.triple}`,
     )
   }
+  if (target.startsWith('darwin-')) problems.push(...systemZlibProblems(metadata))
 
   const carried = new Set(list(folder).filter((name) => isFile(join(folder, name))))
   const named = namedLicences(metadata)
@@ -405,17 +452,35 @@ export function checkPythonLicences({ python, target, pins }) {
 }
 
 /**
- * What scripts/vendor-python.sh strips of Tcl/Tk on every target (issue
- * 679), as file names: the _tkinter extension and what goes with it, a
- * shared library of Tcl, Tk, Tix or one of Tcl's packages, and Windows'
- * zlib1.dll, which only Tcl's library imports.
+ * The names scripts/vendor-python.sh's strip removes outside site-packages
+ * (issue 679), its `find -name` patterns written as one expression, case and
+ * all: `_tkinter*`, `libtcl*`, `tcl`, `tcl[0-9]*`, `tk[0-9]*`, `itcl[0-9]*`,
+ * `thread[0-9]*` and `zlib1.dll`. A folder so named is the strip's whole.
  */
-const TCL_TK = /^(?:_tkinter\..+|(?:lib)?(?:tcl|tk|tix|itcl).*\.(?:dll|dylib|so)|zlib1\.dll)$/i
+const STRIPPED =
+  /^(?:_tkinter.*|libtcl.*|tcl|tcl[0-9].*|tk[0-9].*|itcl[0-9].*|thread[0-9].*|zlib1\.dll)$/
 
 /**
- * Refuse a runtime that still carries Tcl/Tk. Only tkinter loads it and the
- * sidecar never imports tkinter, so shipped it is code the app never runs,
- * with advisories of its own that nothing here watches.
+ * A Tcl/Tk binary by its file name, wherever it is: the _tkinter extension
+ * and what goes with it (`_tkinter.` and anything), and a shared library of
+ * Tcl, Tk, Tix, itcl or Tcl's thread package (every one release 20261026
+ * ships: tcl86t.dll, tclreg13.dll, libtcl9thread3.0.6.dylib,
+ * libthread3.0.6.dylib and the rest). Not zlib1.dll: it is Tcl's only in
+ * the runtime's own DLLs, where STRIPPED names it, and a package in
+ * site-packages may carry a zlib1.dll of its own that is nothing of Tcl's.
+ */
+const TCL_TK_BINARY =
+  /^(?:_tkinter\..+|(?:lib)?(?:(?:tcl|tk|tix|itcl).*|thread[0-9].*)\.(?:dll|dylib|so))$/i
+
+/**
+ * Refuse a runtime that still carries what the strip removes of Tcl/Tk.
+ * Only tkinter loads it and the sidecar never imports tkinter, so shipped
+ * it is code the app never runs, with advisories of its own that nothing
+ * here watches. Outside site-packages, anything named as the strip names it,
+ * file or folder, zlib1.dll among them; anywhere, site-packages included, a
+ * file TCL_TK_BINARY names. Tcl's scripts or a zlib1.dll in a package's
+ * folder are not looked for. A folder it cannot read is a problem, never a
+ * pass.
  *
  * @param {object} options
  * @param {string} options.python the runtime's root, the `python` folder
@@ -423,24 +488,38 @@ const TCL_TK = /^(?:_tkinter\..+|(?:lib)?(?:tcl|tk|tix|itcl).*\.(?:dll|dylib|so)
  */
 export function checkPythonStripped({ python }) {
   const found = []
-  const walk = (dir) => {
+  const unread = []
+  const name = (path) => relative(python, path).split(sep).join('/') || python
+  const walk = (dir, packages) => {
     let entries
     try {
       entries = readdirSync(dir, { withFileTypes: true })
-    } catch {
+    } catch (error) {
+      unread.push(`${name(dir)} (${error?.code ?? String(error)})`)
       return
     }
     for (const entry of entries) {
       const path = join(dir, entry.name)
-      if (entry.isDirectory()) walk(path)
-      else if (TCL_TK.test(entry.name)) found.push(relative(python, path).split(sep).join('/'))
+      if (!packages && STRIPPED.test(entry.name)) {
+        found.push(entry.isDirectory() ? `${name(path)}/` : name(path))
+      } else if (entry.isDirectory()) {
+        walk(path, packages || entry.name === 'site-packages')
+      } else if (TCL_TK_BINARY.test(entry.name)) {
+        found.push(name(path))
+      }
     }
   }
-  walk(python)
-  if (found.length === 0) return []
-  return [
-    `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${found.sort().join(', ')}`,
-  ]
+  walk(python, false)
+  const problems = []
+  if (unread.length > 0) {
+    problems.push(`python could not be read whole to look for Tcl/Tk: ${unread.sort().join(', ')}`)
+  }
+  if (found.length > 0) {
+    problems.push(
+      `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${found.sort().join(', ')}`,
+    )
+  }
+  return problems
 }
 
 /** Each installed distribution's name and version, from its `.dist-info` folder. */

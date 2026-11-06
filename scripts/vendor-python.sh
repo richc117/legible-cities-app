@@ -239,9 +239,11 @@ cp "$work/$notices_file" "$stage/python/licenses/$notices_file"
 # whatever compiler the image has.
 #
 # pip first, at python.pip's version, from a requirement written here with
-# the pinned wheel's hash. The asset of the pinned release already carries
-# that version, so pip changes nothing and the asset's checksum covers it; at
-# another release pip fetches the pinned wheel and checks it.
+# the pinned wheel's hash. Where the asset carries that version already, pip
+# changes nothing and the asset's checksum covers it. Release 20261026's
+# assets carry pip 26.2.2, not the pin, so pip fetches the pinned wheel,
+# checks it against the hash and puts it in place of the asset's: the
+# runtime ships the pinned pip, covered by python.pip's hash.
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 printf 'pip==%s --hash=sha256:%s\n' "$pip_version" "$pip_sha256" > "$work/pip.txt"
 "$py" -m pip install --quiet --require-hashes --only-binary :all: -r "$(absolute "$work")/pip.txt"
@@ -285,12 +287,17 @@ find "$stage" \( -name '*.pyc' -o -name '*.pdb' \) -type f -delete 2>/dev/null |
 # tk86t.dll, and zlib1.dll, a zlib that release 20261026's Tcl 8.6.15
 # brought for itself; on macOS lib/'s libtcl*.dylib, tcl9, tcl9.0, tk9.0,
 # itcl* and thread*. Nothing else links them: read from every PE's imports
-# and every Mach-O's load commands on 5 Nov 2026, only _tkinter imports
-# Tcl's and Tk's libraries and only tcl86t.dll imports zlib1.dll. Shipped,
-# they were code the app never loads, with advisories of their own nobody
-# watched. Their licence texts stay in licenses/, which PYTHON.json still
-# names them from.
-find "$stage" \( -name '_tkinter*' -o -name 'libtcl*' -o -name 'tcl' -o -name 'tcl[0-9]*' -o -name 'tk[0-9]*' -o -name 'itcl[0-9]*' -o -name 'thread[0-9]*' -o -name 'zlib1.dll' \) -prune -exec rm -rf {} + 2>/dev/null || true
+# and every Mach-O's load commands on 5 Nov 2026, outside Tcl and Tk
+# themselves only _tkinter imports their libraries, and only tcl86t.dll
+# imports zlib1.dll. Shipped, they were code the app never loads, with
+# advisories of their own nobody watched. Their licence texts stay in
+# licenses/, which PYTHON.json still names them from. site-packages is left
+# alone: the names are the runtime's own, and a package's file that shares
+# one (Pillow's PIL/_tkinter_finder.py) is the package's, whose loss
+# --packages below would not notice, as it reads only dist-info.
+# scripts/check-vendored.mjs still looks there, and refuses a Tcl/Tk library
+# wherever it finds one.
+find "$stage" -path '*/site-packages' -prune -o \( -name '_tkinter*' -o -name 'libtcl*' -o -name 'tcl' -o -name 'tcl[0-9]*' -o -name 'tk[0-9]*' -o -name 'itcl[0-9]*' -o -name 'thread[0-9]*' -o -name 'zlib1.dll' \) -prune -exec rm -rf {} + 2>/dev/null || true
 
 # The packages and the record, and that no Tcl/Tk is left, checked on the
 # runtime as it will ship.
