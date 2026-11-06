@@ -14,9 +14,12 @@
 # sha256sum, neither of which all three runners are sure to have.
 #
 # Why the checksum is ours rather than upstream's: python-build-standalone
-# publishes no checksum manifest and no per-asset .sha256 file. The hash in
-# pins.json was computed on first download; every later build is checked
-# against it, so a silently changed asset fails the build instead of shipping.
+# publishes a SHA256SUMS asset with each release, but it sits on the same
+# Release as the assets it lists, so whoever could replace an asset could
+# replace its line. The hash in pins.json was computed on download and
+# checked against that file and GitHub's digest; every later build is
+# checked against it, so a silently changed asset fails the build instead of
+# shipping.
 #
 # The licence texts (issue 108, ADR-042): the install_only asset carries
 # CPython's LICENSE.txt and nothing for the libraries linked into the

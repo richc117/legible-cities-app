@@ -1,0 +1,10 @@
+[
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      if (carried.has(name)) {\n",
+    "replace": "      if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a named_absent text that is carried",
+    "why": "A named_absent entry no longer held to being absent: once the archive carries the text, the reason recorded for owing nothing stays in the pins unread, and the new release passes without anyone rereading the list."
+  }
+]

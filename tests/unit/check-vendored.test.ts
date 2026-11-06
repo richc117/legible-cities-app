@@ -206,6 +206,8 @@ interface TreeOptions {
   pipVersion?: string
   /** Spoil the record vendor-python.sh writes into the runtime one way. */
   record?: 'missing' | 'unreadable' | 'other-commit' | 'other-requirements'
+  /** The licence lists the tree is made from, where not the repository's for the target. */
+  lists?: LicenceLists
 }
 
 /**
@@ -268,10 +270,15 @@ function vendorRecord(python: string, spoil: TreeOptions['record']): void {
  * every unlisted and not_linked text, and CPython's notices; and each
  * unlisted entry's file carrying its strings.
  */
-function licenceTexts(target: Target, python: string, spoil: TreeOptions['licences']): void {
+function licenceTexts(
+  target: Target,
+  python: string,
+  spoil: TreeOptions['licences'],
+  given?: LicenceLists,
+): void {
   if (spoil === 'folder-missing') return
   const pin = PINS.python.targets[target]
-  const lists = pin.licences
+  const lists = given ?? pin.licences
   const named = ['LICENSE.bzip2.txt', ...Object.keys(lists.named_absent)]
   const bz2 = { variant: 'default', license_paths: named.map((name) => `licenses/${name}`) }
   put(
@@ -346,7 +353,7 @@ function tree(
       `#define PY_VERSION              "${options.pythonVersion ?? PINS.python.version}"\n`,
     )
     put(join(windows ? python : lib, 'LICENSE.txt'), 'PSF\n')
-    licenceTexts(target, python, options.licences)
+    licenceTexts(target, python, options.licences, options.lists)
     vendorRecord(python, options.record)
     const site = join(lib, 'site-packages')
     mkdirSync(
@@ -777,13 +784,30 @@ describe('check-vendored.mjs, as the build runs it', () => {
   })
 
   it('refuses a named_absent text that is carried, a listed text that is not, and unreadable metadata', () => {
-    const mac = PINS.python.targets['darwin-arm64'].licences
-    const carried = refusal('darwin-arm64', 'absent-carried')
-    for (const name of Object.keys(mac.named_absent)) {
-      expect(carried).toContain(
-        `darwin-arm64: python carries ${name}, which named_absent says the archive lacks; take it off that list`,
-      )
-    }
+    // A named_absent entry of the test's own, in the pins and in the tree's
+    // metadata alike: the repository's lists may hold none (release 20261026
+    // carries the one text the macOS metadata used to name without it).
+    const absent = 'LICENSE.absent.txt'
+    const moved = JSON.parse(PINS_TEXT)
+    const mac: LicenceLists = moved.python.targets['darwin-arm64'].licences
+    mac.named_absent[absent] = 'a text the metadata names and the archive was found not to carry'
+    const dir = scratch()
+    const pins = join(dir, 'pins.json')
+    writeFileSync(pins, JSON.stringify(moved))
+    writeFileSync(join(dir, 'python-requirements.txt'), REQUIREMENTS_TEXT)
+    // Named and not carried, the entry is true and the tree passes.
+    const held = check('darwin-arm64', vendorTree('darwin-arm64', { lists: mac }), pins)
+    expect(held.stderr).toBe('')
+    expect(held.status).toBe(0)
+    const carried = check(
+      'darwin-arm64',
+      vendorTree('darwin-arm64', { lists: mac, licences: 'absent-carried' }),
+      pins,
+    )
+    expect(carried.status).toBe(1)
+    expect(carried.stderr).toContain(
+      `darwin-arm64: python carries ${absent}, which named_absent says the archive lacks; take it off that list`,
+    )
     const win = PINS.python.targets['win-x64'].licences
     const missing = refusal('win-x64', 'listed-not-carried')
     const unlisted = Object.keys(win.unlisted)[0]

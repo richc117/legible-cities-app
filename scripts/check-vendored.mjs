@@ -275,9 +275,9 @@ export function licencePaths(python) {
  *
  * An extension may list more than one build variant; only the one built
  * into the runtime counts, which python-build-standalone marks `default`
- * (and lists first). At release 20260901 no extension on any target has
- * more than one, so this only keeps a text for a variant that is not
- * shipped from being required.
+ * (and lists first). At release 20261026, as at 20260901, no extension on
+ * any target has more than one, so this only keeps a text for a variant
+ * that is not shipped from being required.
  */
 export function namedLicences(metadata) {
   const paths = []
@@ -298,9 +298,10 @@ export function namedLicences(metadata) {
 /**
  * Whether the runtime's licence texts, the build metadata they came with and
  * the lists in `python.targets.<target>.licences` agree (issue 108, ADR-042).
- * The metadata alone is not enough: on macOS it names a zlib-ng text the
- * archive does not carry, and on Windows it names nothing for the zlib,
- * Expat and libmpdec compiled into the DLLs. So three reviewed lists say
+ * The metadata alone is not enough: on Windows it names nothing for the
+ * zlib, Expat and libmpdec compiled into the DLLs, and at release 20260901
+ * it named on macOS a zlib-ng text the archive did not carry (from 20261026
+ * the archive carries it). So three reviewed lists say
  * what the metadata does not, and every entry is held to still being true;
  * the strings an `unlisted` entry gives are looked for in the file it names,
  * so the reason for listing it is proved again on every check.
