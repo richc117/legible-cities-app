@@ -13,8 +13,9 @@
 // runs it before a runtime is vendored, as the same check runs here later.
 // With --packages it checks only one runtime's packages against
 // vendor/python-requirements.txt and python.pip, and its vendor record
-// against engine.commit and python.requirements.sha256 (issue 434):
-// scripts/vendor-python.sh runs it once it has installed them.
+// against engine.commit and python.requirements.sha256 (issue 434), and
+// that it carries no Tcl/Tk (issue 679): scripts/vendor-python.sh runs it
+// once it has installed them and stripped the runtime.
 //
 // Targets: darwin-arm64, darwin-x64, win-x64. The tree it reads is the one
 // .github/workflows/build.yml lays out from the same run's vendor artefacts:
@@ -57,7 +58,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
@@ -401,6 +402,45 @@ export function checkPythonLicences({ python, target, pins }) {
     }
   }
   return problems
+}
+
+/**
+ * What scripts/vendor-python.sh strips of Tcl/Tk on every target (issue
+ * 679), as file names: the _tkinter extension and what goes with it, a
+ * shared library of Tcl, Tk, Tix or one of Tcl's packages, and Windows'
+ * zlib1.dll, which only Tcl's library imports.
+ */
+const TCL_TK = /^(?:_tkinter\..+|(?:lib)?(?:tcl|tk|tix|itcl).*\.(?:dll|dylib|so)|zlib1\.dll)$/i
+
+/**
+ * Refuse a runtime that still carries Tcl/Tk. Only tkinter loads it and the
+ * sidecar never imports tkinter, so shipped it is code the app never runs,
+ * with advisories of its own that nothing here watches.
+ *
+ * @param {object} options
+ * @param {string} options.python the runtime's root, the `python` folder
+ * @returns {string[]} the problems, each beginning with the component it is about
+ */
+export function checkPythonStripped({ python }) {
+  const found = []
+  const walk = (dir) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) walk(path)
+      else if (TCL_TK.test(entry.name)) found.push(relative(python, path).split(sep).join('/'))
+    }
+  }
+  walk(python)
+  if (found.length === 0) return []
+  return [
+    `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${found.sort().join(', ')}`,
+  ]
 }
 
 /** Each installed distribution's name and version, from its `.dist-info` folder. */
@@ -866,6 +906,9 @@ export function checkTree({ target, paths, pins, requirements, bytecode = false,
     })) {
       problems.push(`${target}: ${problem}`)
     }
+    for (const problem of checkPythonStripped({ python: paths.python })) {
+      problems.push(`${target}: ${problem}`)
+    }
     if (bytecode) {
       const { sources, missing, timestamped } = bytecodeOf(runtime.lib)
       if (sources === 0) {
@@ -1240,19 +1283,22 @@ function main(argv) {
   }
   if (options.packages !== null) {
     const pins = JSON.parse(readFileSync(options.pinsFile, 'utf8'))
-    const problems = checkPythonPackages({
-      python: options.packages,
-      target: options.target,
-      pins,
-      requirements: readRequirements(options.pinsFile),
-    })
+    const problems = [
+      ...checkPythonPackages({
+        python: options.packages,
+        target: options.target,
+        pins,
+        requirements: readRequirements(options.pinsFile),
+      }),
+      ...checkPythonStripped({ python: options.packages }),
+    ]
     if (problems.length > 0) {
       process.stderr.write(`the ${options.target} runtime is not the one the pins name:\n`)
       for (const problem of problems) process.stderr.write(`  ${problem}\n`)
       return 1
     }
     process.stdout.write(
-      `${options.target}: the runtime carries the packages ${REQUIREMENTS} and python.pip pin, at those versions and no others, and records engine.commit\n`,
+      `${options.target}: the runtime carries the packages ${REQUIREMENTS} and python.pip pin, at those versions and no others, records engine.commit, and carries no Tcl/Tk\n`,
     )
     return 0
   }

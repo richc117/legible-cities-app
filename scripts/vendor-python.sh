@@ -265,12 +265,11 @@ echo "installed, as pip freeze reports it:"
 # What this runtime was built from that only this script knows: the
 # engine's commit as checked out and the hash of the manifest it installed.
 # scripts/check-vendored.mjs holds both to the pins, and the packages the
-# runtime carries to the manifest and python.pip, here and again at
-# packaging, where the record travels with the runtime.
+# runtime carries to the manifest and python.pip, once it is stripped below
+# and again at packaging, where the record travels with the runtime.
 # shellcheck disable=SC2016 # "$comment" is the record's key, not a variable
 printf '{\n  "$comment": "Written by scripts/vendor-python.sh: what this runtime was built from. scripts/check-vendored.mjs holds it to vendor/pins.json.",\n  "engine": { "tag": "%s", "version": "%s", "commit": "%s" },\n  "requirements_sha256": "%s"\n}\n' \
   "$engine_tag" "$engine_version" "$engine_head" "$requirements_got" > "$stage/python/vendor-record.json"
-"$node_bin" scripts/check-vendored.mjs "$target" --packages "$(absolute "$stage/python")"
 
 # Strip what never runs in a sidecar. Measured at 78 MB and 4184 files on
 # macOS arm64; see the spike report. The .pdb files are Windows' debug
@@ -279,6 +278,23 @@ find "$stage" -type d -name '__pycache__' -prune -exec rm -rf {} + 2>/dev/null |
 find "$stage" -type d \( -name 'tests' -o -name 'test' -o -name 'idle_test' \) -prune -exec rm -rf {} + 2>/dev/null || true
 find "$stage" -type d \( -name 'idlelib' -o -name 'tkinter' -o -name 'turtledemo' \) -prune -exec rm -rf {} + 2>/dev/null || true
 find "$stage" \( -name '*.pyc' -o -name '*.pdb' \) -type f -delete 2>/dev/null || true
+# Tcl/Tk, on every target (issue 679). Only tkinter loads it, and the
+# sidecar never imports tkinter, whose package the line above removes. What
+# goes is the _tkinter extension and every library and script folder of
+# Tcl, Tk and their packages: on Windows tcl/ and DLLs/'s tcl86t.dll and
+# tk86t.dll, and zlib1.dll, a zlib that release 20261026's Tcl 8.6.15
+# brought for itself; on macOS lib/'s libtcl*.dylib, tcl9, tcl9.0, tk9.0,
+# itcl* and thread*. Nothing else links them: read from every PE's imports
+# and every Mach-O's load commands on 5 Nov 2026, only _tkinter imports
+# Tcl's and Tk's libraries and only tcl86t.dll imports zlib1.dll. Shipped,
+# they were code the app never loads, with advisories of their own nobody
+# watched. Their licence texts stay in licenses/, which PYTHON.json still
+# names them from.
+find "$stage" \( -name '_tkinter*' -o -name 'libtcl*' -o -name 'tcl' -o -name 'tcl[0-9]*' -o -name 'tk[0-9]*' -o -name 'itcl[0-9]*' -o -name 'thread[0-9]*' -o -name 'zlib1.dll' \) -prune -exec rm -rf {} + 2>/dev/null || true
+
+# The packages and the record, and that no Tcl/Tk is left, checked on the
+# runtime as it will ship.
+"$node_bin" scripts/check-vendored.mjs "$target" --packages "$(absolute "$stage/python")"
 
 # The check runs what the app runs, and writes no bytecode back into the
 # runtime it has just stripped (the size below is what ships).
