@@ -269,16 +269,25 @@ export function licencePaths(python) {
 }
 
 /**
+ * The build variant of an extension that is built into the runtime, of the
+ * ones its metadata lists: the one python-build-standalone marks `default`
+ * (and lists first), else the first. Null when it lists none.
+ */
+function shippedVariant(variants) {
+  if (!Array.isArray(variants) || variants.length === 0) return null
+  return variants.find((variant) => variant?.variant === 'default') ?? variants[0]
+}
+
+/**
  * The licence texts python-build-standalone's metadata names: the runtime's
  * own and every extension module's, as file names in `licenses/`. A path
  * outside that folder is kept as it is, so it matches no file and is
  * reported rather than skipped.
  *
  * An extension may list more than one build variant; only the one built
- * into the runtime counts, which python-build-standalone marks `default`
- * (and lists first). At release 20261026, as at 20260901, no extension on
- * any target has more than one, so this only keeps a text for a variant
- * that is not shipped from being required.
+ * into the runtime counts (`shippedVariant`). At release 20261026, as at
+ * 20260901, no extension on any target has more than one, so this only
+ * keeps a text for a variant that is not shipped from being required.
  */
 export function namedLicences(metadata) {
   const paths = []
@@ -286,8 +295,7 @@ export function namedLicences(metadata) {
   const extensions = metadata?.build_info?.extensions
   if (extensions !== null && typeof extensions === 'object') {
     for (const variants of Object.values(extensions)) {
-      if (!Array.isArray(variants) || variants.length === 0) continue
-      const installed = variants.find((variant) => variant?.variant === 'default') ?? variants[0]
+      const installed = shippedVariant(variants)
       if (Array.isArray(installed?.license_paths)) paths.push(...installed.license_paths)
     }
   }
@@ -299,6 +307,9 @@ export function namedLicences(metadata) {
 /** A link the build metadata gives that is zlib's, under any name it has used. */
 const ZLIB_LINK = /^(?:z|zlib|zlib-?ng)$/i
 
+/** A licence text of zlib's, as the metadata names it. */
+const ZLIB_TEXT = /(?:^|\/)LICENSE\.zlib(?:-ng)?\.txt$/
+
 /**
  * Whether a macOS build still links the operating system's zlib, and only
  * that one. python-build-standalone's macOS builds have: every zlib link in
@@ -309,15 +320,21 @@ const ZLIB_LINK = /^(?:z|zlib|zlib-?ng)$/i
  * silently. Until release 20261026 a named_absent entry for zlib-ng's text
  * stood guard here by accident; this is the guard on purpose.
  *
+ * Only the variant built into the runtime is read, as for the licence
+ * texts. An extension that owes a zlib text must link a zlib, so one with
+ * zlib compiled in, beside others that link the system's, is refused too.
+ *
  * @returns {string[]} the problems, each a phrase to follow "python "
  */
 export function systemZlibProblems(metadata) {
   const problems = []
   let system = 0
+  /** The zlib links among `links`, each refused unless it is the system's. */
   const visit = (where, links) => {
-    if (!Array.isArray(links)) return
-    for (const link of links) {
-      if (!ZLIB_LINK.test(String(link?.name ?? ''))) continue
+    const found = Array.isArray(links)
+      ? links.filter((link) => ZLIB_LINK.test(String(link?.name ?? '')))
+      : []
+    for (const link of found) {
       if (link.system === true) system += 1
       else {
         problems.push(
@@ -325,13 +342,23 @@ export function systemZlibProblems(metadata) {
         )
       }
     }
+    return found
   }
   visit('the interpreter', metadata?.build_info?.core?.links)
   const extensions = metadata?.build_info?.extensions
   if (extensions !== null && typeof extensions === 'object') {
     for (const [extension, variants] of Object.entries(extensions)) {
-      if (!Array.isArray(variants)) continue
-      for (const variant of variants) visit(extension, variant?.links)
+      const variant = shippedVariant(variants)
+      if (variant === null) continue
+      const found = visit(extension, variant.links)
+      const owes = Array.isArray(variant.license_paths)
+        ? variant.license_paths.filter((path) => ZLIB_TEXT.test(String(path)))
+        : []
+      if (owes.length > 0 && found.length === 0) {
+        problems.push(
+          `has build metadata in which ${extension} owes ${owes.map((path) => String(path).split('/').pop()).join(' and ')} but links no zlib, so its zlib is compiled in rather than the system's; the macOS pins record none and the vulnerability watch asks about none (SYSTEM_ZLIB, scripts/vuln-watch.mjs)`,
+        )
+      }
     }
   }
   if (system === 0 && problems.length === 0) {
@@ -456,21 +483,23 @@ export function checkPythonLicences({ python, target, pins }) {
  * (issue 679), its `find -name` patterns written as one expression, case and
  * all: `_tkinter*`, `libtcl*`, `tcl`, `tcl[0-9]*`, `tk[0-9]*`, `itcl[0-9]*`,
  * `thread[0-9]*` and `zlib1.dll`. A folder so named is the strip's whole.
+ * A unit test reads the strip's line and holds its names to these.
  */
-const STRIPPED =
+export const STRIPPED =
   /^(?:_tkinter.*|libtcl.*|tcl|tcl[0-9].*|tk[0-9].*|itcl[0-9].*|thread[0-9].*|zlib1\.dll)$/
 
 /**
  * A Tcl/Tk binary by its file name, wherever it is: the _tkinter extension
- * and what goes with it (`_tkinter.` and anything), and a shared library of
- * Tcl, Tk, Tix, itcl or Tcl's thread package (every one release 20261026
- * ships: tcl86t.dll, tclreg13.dll, libtcl9thread3.0.6.dylib,
- * libthread3.0.6.dylib and the rest). Not zlib1.dll: it is Tcl's only in
- * the runtime's own DLLs, where STRIPPED names it, and a package in
- * site-packages may carry a zlib1.dll of its own that is nothing of Tcl's.
+ * (`_tkinter.` and an extension module's suffix: .so, .pyd, .dll or .dylib,
+ * not a typeshed stub's .pyi), and a shared library of Tcl, Tk, Tix, itcl or
+ * Tcl's thread package (every one release 20261026 ships: tcl86t.dll,
+ * tclreg13.dll, libtcl9thread3.0.6.dylib, libthread3.0.6.dylib and the
+ * rest). Not zlib1.dll, nor _tkinter's .pdb and .lib: those are Tcl's or
+ * _tkinter's only in the runtime's own folders, where STRIPPED names them,
+ * and a package may carry a zlib1.dll of its own that is nothing of Tcl's.
  */
 const TCL_TK_BINARY =
-  /^(?:_tkinter\..+|(?:lib)?(?:(?:tcl|tk|tix|itcl).*|thread[0-9].*)\.(?:dll|dylib|so))$/i
+  /^(?:_tkinter\.(?:.+\.)?(?:so|pyd|dll|dylib)|(?:lib)?(?:(?:tcl|tk|tix|itcl).*|thread[0-9].*)\.(?:dll|dylib|so))$/i
 
 /**
  * Refuse a runtime that still carries what the strip removes of Tcl/Tk.

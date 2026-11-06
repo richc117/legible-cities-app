@@ -99,6 +99,7 @@ interface Module {
     pinsFile?: string,
   ): Promise<void>
   checkPythonStripped(options: { python: string }): string[]
+  STRIPPED: RegExp
 }
 // A URL built at run time, so the type checker does not look for declarations of a
 // plain JavaScript module; the interface above is the part the tests use.
@@ -206,6 +207,12 @@ interface TreeOptions {
     | 'zlib-own'
     /** No zlib link at all, as a zlib compiled into the interpreter would read. */
     | 'zlib-none'
+    /** One extension owing zlib's text with no zlib link, beside one linking the system's. */
+    | 'zlib-compiled-in'
+    /** A variant that is not shipped, listed first, linking a zlib of its own. */
+    | 'zlib-unshipped-own'
+    /** The shipped variant, listed second, linking a zlib of its own. */
+    | 'zlib-shipped-own'
   /** Spoil the runtime's packages one way against the manifest (issue 434). */
   packages?: 'missing' | 'other-version' | 'unlisted' | 'tzdata-everywhere' | 'tzdata-nowhere'
   pipVersion?: string
@@ -319,22 +326,45 @@ function vendorRecord(python: string, spoil: TreeOptions['record']): void {
 }
 
 /**
- * The extensions that link zlib in a build's metadata: on macOS `zlib` and
- * `binascii`, each linking the system's `z` as release 20261026's do; on
- * Windows none, zlib being compiled into the interpreter. 'zlib-own' gives
- * binascii a static zlib of its own instead, on any target; 'zlib-none'
- * leaves them out.
+ * The extensions that link zlib in a build's metadata, and the texts they
+ * name: on macOS `zlib` and `binascii`, each linking the system's `z` and
+ * naming zlib's text, as release 20261026's do; on Windows none, zlib being
+ * compiled into the interpreter. The 'zlib-' spoils change binascii, and
+ * 'zlib-own' applies on any target, naming no text off macOS; 'zlib-none'
+ * leaves both out.
  */
-function zlibUsers(target: Target, spoil: TreeOptions['licences']): Record<string, unknown> {
-  if (spoil === 'zlib-none' || (!target.startsWith('darwin-') && spoil !== 'zlib-own')) return {}
-  const system = [{ variant: 'default', links: [{ name: 'z', system: true }] }]
-  return {
-    zlib: system,
-    binascii:
-      spoil === 'zlib-own'
-        ? [{ variant: 'default', links: [{ name: 'z', path_static: 'build/lib/libz.a' }] }]
-        : system,
+function zlibUsers(
+  target: Target,
+  spoil: TreeOptions['licences'],
+): { extensions: Record<string, unknown>; texts: string[] } {
+  const darwin = target.startsWith('darwin-')
+  if (spoil === 'zlib-none' || (!darwin && spoil !== 'zlib-own')) {
+    return { extensions: {}, texts: [] }
   }
+  const texts = darwin ? ['LICENSE.zlib.txt'] : []
+  const variant = (link: Record<string, unknown> | null, name = 'default') => ({
+    variant: name,
+    links: link === null ? [] : [link],
+    license_paths: texts.map((text) => `licenses/${text}`),
+  })
+  const system = { name: 'z', system: true }
+  const own = { name: 'z', path_static: 'build/lib/libz.a' }
+  let binascii = [variant(system)]
+  switch (spoil) {
+    case 'zlib-own':
+      binascii = [variant(own)]
+      break
+    case 'zlib-compiled-in':
+      binascii = [variant(null)]
+      break
+    case 'zlib-unshipped-own':
+      binascii = [variant(own, 'other'), variant(system)]
+      break
+    case 'zlib-shipped-own':
+      binascii = [variant(system, 'other'), variant(own)]
+      break
+  }
+  return { extensions: { zlib: [variant(system)], binascii }, texts }
 }
 
 /**
@@ -355,6 +385,7 @@ function licenceTexts(
   const lists = given ?? pin.licences
   const named = ['LICENSE.bzip2.txt', ...Object.keys(lists.named_absent)]
   const bz2 = { variant: 'default', license_paths: named.map((name) => `licenses/${name}`) }
+  const zlib = zlibUsers(target, spoil)
   put(
     join(python, 'PYTHON.json'),
     spoil === 'metadata-unreadable'
@@ -370,7 +401,7 @@ function licenceTexts(
                 spoil === 'unshipped-variant'
                   ? [bz2, { variant: 'other', license_paths: ['licenses/LICENSE.unshipped.txt'] }]
                   : [bz2],
-              ...zlibUsers(target, spoil),
+              ...zlib.extensions,
             },
           },
         }),
@@ -379,6 +410,7 @@ function licenceTexts(
   const carried = [
     'LICENSE.cpython.txt',
     'LICENSE.bzip2.txt',
+    ...zlib.texts,
     ...Object.keys(lists.unlisted),
     ...lists.not_linked,
   ]
@@ -999,6 +1031,8 @@ describe('check-vendored.mjs, as the build runs it', () => {
     const site = join(python, 'lib', 'python3.12', 'site-packages')
     put(join(site, 'PIL', '_tkinter_finder.py'), '# Pillow finds tkinter here\n')
     put(join(site, 'PIL', '.dylibs', 'libtiff.6.dylib'), header('darwin-arm64'))
+    // A typeshed stub, as jedi and mypy carry one.
+    put(join(site, 'typeshed', 'stdlib', '_tkinter.pyi'), 'def create() -> None: ...\n')
     put(join(python, 'lib', 'python3.12', 'threading.py'), '# the standard library\n')
     const passed = check('darwin-arm64', vendor)
     expect(passed.stderr).toBe('')
@@ -1068,10 +1102,52 @@ describe('check-vendored.mjs, as the build runs it', () => {
     expect(windows.status).toBe(0)
   })
 
+  // An extension that owes zlib's text and links no zlib has it compiled
+  // in, though another extension links the system's; and only the variant
+  // built into the runtime counts, wherever the metadata lists it.
+  it('refuses a macOS extension with zlib compiled in, reading only the shipped variant', () => {
+    expect(refusal('darwin-arm64', 'zlib-compiled-in')).toContain(
+      'darwin-arm64: python has build metadata in which binascii owes LICENSE.zlib.txt but links no zlib, so its zlib is compiled in rather than the system',
+    )
+    const unshipped = check(
+      'darwin-x64',
+      vendorTree('darwin-x64', { licences: 'zlib-unshipped-own' }),
+    )
+    expect(unshipped.stderr).toBe('')
+    expect(unshipped.status).toBe(0)
+    expect(refusal('darwin-arm64', 'zlib-shipped-own')).toContain(
+      "darwin-arm64: python has build metadata in which binascii links z without system: true, a zlib of the runtime's own",
+    )
+  })
+
   it('says how to call it when the target is not one', () => {
     const result = check('linux-x64', scratch())
     expect(result.status).toBe(2)
     expect(result.stderr).toContain('usage:')
+  })
+})
+
+// Issue 679: the strip in scripts/vendor-python.sh and the guard here are
+// two spellings of one list, and nothing else reads the script. Were the
+// prune dropped, the strip would delete a package's file that shares a name
+// silently; were a name dropped from either side, they would disagree.
+describe("scripts/vendor-python.sh's Tcl/Tk strip", () => {
+  it('prunes site-packages and removes exactly the names the check holds it to', async () => {
+    const script = readFileSync(join(repo, 'scripts', 'vendor-python.sh'), 'utf8')
+    const lines = script
+      .split('\n')
+      .filter((line) => line.startsWith('find "$stage"') && line.includes("-name 'libtcl*'"))
+    expect(lines, "the strip's one find line, naming libtcl*").toHaveLength(1)
+    const [line] = lines
+    expect(line.startsWith(`find "$stage" -path '*/site-packages' -prune -o \\(`), line).toBe(true)
+    const globs = [...line.matchAll(/-name '([^']+)'/g)].map((match) => match[1])
+    const converted = globs.map((glob) => glob.replace(/\./g, '\\.').replace(/\*/g, '.*'))
+    const { STRIPPED } = await load()
+    expect(STRIPPED.flags, 'find -name is case-sensitive').toBe('')
+    const alternatives = /^\^\(\?:(.*)\)\$$/.exec(STRIPPED.source)?.[1]?.split('|')
+    expect(alternatives, `STRIPPED is one group of alternatives: ${STRIPPED.source}`).toBeDefined()
+    expect(new Set(converted)).toEqual(new Set(alternatives))
+    expect(converted).toHaveLength(new Set(converted).size)
   })
 })
 

@@ -86,5 +86,45 @@
     "test": "tests/unit/check-vendored.test.ts",
     "title": "refuses a macOS build that links a zlib of its own",
     "why": "The macOS zlib tripwire written but never asked: neither the vendor job's licence check nor the packaging check would notice a build that stopped linking the system's libz."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      if (owes.length > 0 && found.length === 0) {\n",
+    "replace": "      if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a macOS extension with zlib compiled in",
+    "why": "An extension that owes zlib's text and links no zlib passes while another links the system's: a zlib compiled into it ships unrecorded, and the watch asks about none."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "  return variants.find((variant) => variant?.variant === 'default') ?? variants[0]\n",
+    "replace": "  return variants[0]\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "reading only the shipped variant",
+    "why": "The first variant read in place of the one built into the runtime: a shipped variant listed second, linking a zlib of its own, passes behind an unshipped one linking the system's."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "_tkinter\\.(?:.+\\.)?(?:so|pyd|dll|dylib)|",
+    "replace": "_tkinter\\..+|",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "passes what only shares a name",
+    "why": "Any _tkinter.* file in a package refused, a typeshed stub _tkinter.pyi among them: a runtime carrying jedi or mypy would never be vendored."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": " -path '*/site-packages' -prune -o",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "prunes site-packages and removes exactly the names the check holds it to",
+    "why": "The strip reaching into site-packages again: a package's file that shares a name, Pillow's PIL/_tkinter_finder.py, is deleted silently, as --packages reads only dist-info."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": " -o -name 'zlib1.dll'",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "prunes site-packages and removes exactly the names the check holds it to",
+    "why": "A name dropped from the strip and kept in the check: Tcl's zlib1.dll ships again, and only the packaging check would refuse it, after the vendor job uploaded the runtime."
   }
 ]
