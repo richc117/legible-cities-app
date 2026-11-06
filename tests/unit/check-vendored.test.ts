@@ -98,6 +98,7 @@ interface Module {
     env: Record<string, string | undefined>,
     pinsFile?: string,
   ): Promise<void>
+  checkPythonStripped(options: { python: string }): string[]
 }
 // A URL built at run time, so the type checker does not look for declarations of a
 // plain JavaScript module; the interface above is the part the tests use.
@@ -201,6 +202,10 @@ interface TreeOptions {
     | 'absent-carried'
     | 'listed-not-carried'
     | 'unshipped-variant'
+    /** A zlib link of the runtime's own beside the system's, as a static zlib would read. */
+    | 'zlib-own'
+    /** No zlib link at all, as a zlib compiled into the interpreter would read. */
+    | 'zlib-none'
   /** Spoil the runtime's packages one way against the manifest (issue 434). */
   packages?: 'missing' | 'other-version' | 'unlisted' | 'tzdata-everywhere' | 'tzdata-nowhere'
   pipVersion?: string
@@ -212,22 +217,52 @@ interface TreeOptions {
   tclTk?: boolean
 }
 
-/** Tcl/Tk as python-build-standalone's release 20261026 lays it out, among the files the strip removes. */
-const TCL_TK: Record<Target, string[]> = {
-  'darwin-arm64': [
-    'lib/libtcl9.0.dylib',
-    'lib/libtcl9tk9.0.dylib',
-    'lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so',
-    'lib/thread3.0.6/libtcl9thread3.0.6.dylib',
-  ],
-  'darwin-x64': ['lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so'],
-  'win-x64': [
-    'DLLs/_tkinter.pyd',
-    'DLLs/tcl86t.dll',
-    'DLLs/tk86t.dll',
-    'DLLs/zlib1.dll',
-    'tcl/tix8.4.3/tix84.dll',
-  ],
+/**
+ * Tcl/Tk as python-build-standalone's release 20261026 lays it out, some of
+ * the files the strip removes, and what the check names of them: a file
+ * outside site-packages by itself, and a folder the strip names as the
+ * folder.
+ */
+const TCL_TK: Record<Target, { files: string[]; named: string[] }> = {
+  'darwin-arm64': {
+    files: [
+      'lib/libtcl9.0.dylib',
+      'lib/libtcl9tk9.0.dylib',
+      'lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so',
+      'lib/tcl9.0/init.tcl',
+      'lib/thread3.0.6/libtcl9thread3.0.6.dylib',
+      'lib/thread3.0.6/libthread3.0.6.dylib',
+    ],
+    named: [
+      'lib/libtcl9.0.dylib',
+      'lib/libtcl9tk9.0.dylib',
+      'lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so',
+      'lib/tcl9.0/',
+      'lib/thread3.0.6/',
+    ],
+  },
+  'darwin-x64': {
+    files: [
+      'lib/itcl4.3.8/libitcl4.3.8.dylib',
+      'lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so',
+      'lib/tk9.0/tk.tcl',
+    ],
+    named: [
+      'lib/itcl4.3.8/',
+      'lib/python3.12/lib-dynload/_tkinter.cpython-312-darwin.so',
+      'lib/tk9.0/',
+    ],
+  },
+  'win-x64': {
+    files: [
+      'DLLs/_tkinter.pyd',
+      'DLLs/tcl86t.dll',
+      'DLLs/tk86t.dll',
+      'DLLs/zlib1.dll',
+      'tcl/tix8.4.3/tix84.dll',
+    ],
+    named: ['DLLs/_tkinter.pyd', 'DLLs/tcl86t.dll', 'DLLs/tk86t.dll', 'DLLs/zlib1.dll', 'tcl/'],
+  },
 }
 
 /**
@@ -284,6 +319,25 @@ function vendorRecord(python: string, spoil: TreeOptions['record']): void {
 }
 
 /**
+ * The extensions that link zlib in a build's metadata: on macOS `zlib` and
+ * `binascii`, each linking the system's `z` as release 20261026's do; on
+ * Windows none, zlib being compiled into the interpreter. 'zlib-own' gives
+ * binascii a static zlib of its own instead, on any target; 'zlib-none'
+ * leaves them out.
+ */
+function zlibUsers(target: Target, spoil: TreeOptions['licences']): Record<string, unknown> {
+  if (spoil === 'zlib-none' || (!target.startsWith('darwin-') && spoil !== 'zlib-own')) return {}
+  const system = [{ variant: 'default', links: [{ name: 'z', system: true }] }]
+  return {
+    zlib: system,
+    binascii:
+      spoil === 'zlib-own'
+        ? [{ variant: 'default', links: [{ name: 'z', path_static: 'build/lib/libz.a' }] }]
+        : system,
+  }
+}
+
+/**
  * The licence texts a runtime carries for `target`, agreeing with the pins'
  * lists: build metadata naming CPython's text, bzip2's and every
  * named_absent text; the folder holding what the metadata names but those,
@@ -316,6 +370,7 @@ function licenceTexts(
                 spoil === 'unshipped-variant'
                   ? [bz2, { variant: 'other', license_paths: ['licenses/LICENSE.unshipped.txt'] }]
                   : [bz2],
+              ...zlibUsers(target, spoil),
             },
           },
         }),
@@ -376,7 +431,7 @@ function tree(
     licenceTexts(target, python, options.licences, options.lists)
     vendorRecord(python, options.record)
     if (options.tclTk === true) {
-      for (const file of TCL_TK[target]) put(join(python, ...file.split('/')), header(target))
+      for (const file of TCL_TK[target].files) put(join(python, ...file.split('/')), header(target))
     }
     const site = join(lib, 'site-packages')
     mkdirSync(
@@ -906,8 +961,8 @@ describe('check-vendored.mjs, as the build runs it', () => {
   // it, so a runtime still carrying any of it is refused by the check the
   // vendor job makes once it has stripped the runtime and by the build's.
   it('refuses a runtime that still carries Tcl/Tk, as the vendor job and the build check it', () => {
-    for (const target of ['darwin-arm64', 'win-x64'] as const) {
-      const carried = `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${TCL_TK[target].join(', ')}\n`
+    for (const target of ['darwin-arm64', 'darwin-x64', 'win-x64'] as const) {
+      const carried = `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${TCL_TK[target].named.join(', ')}\n`
       const built = check(target, vendorTree(target, { tclTk: true }))
       expect(built.status, target).toBe(1)
       expect(built.stderr).toContain(`  ${target}: ${carried}`)
@@ -933,6 +988,84 @@ describe('check-vendored.mjs, as the build runs it', () => {
     expect(check('win-x64', vendor).stderr).toContain(
       'win-x64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: DLLs/zlib1.dll\n',
     )
+  })
+
+  // The strip leaves site-packages alone, so a package's file that only
+  // shares a name with Tcl/Tk stays and passes; a Tcl/Tk binary there is
+  // still refused, loudly, as the safe direction.
+  it("looks for Tcl/Tk's binaries in site-packages too, and passes what only shares a name", () => {
+    const vendor = vendorTree('darwin-arm64')
+    const python = join(vendor, 'python', 'darwin-arm64', 'python')
+    const site = join(python, 'lib', 'python3.12', 'site-packages')
+    put(join(site, 'PIL', '_tkinter_finder.py'), '# Pillow finds tkinter here\n')
+    put(join(site, 'PIL', '.dylibs', 'libtiff.6.dylib'), header('darwin-arm64'))
+    put(join(python, 'lib', 'python3.12', 'threading.py'), '# the standard library\n')
+    const passed = check('darwin-arm64', vendor)
+    expect(passed.stderr).toBe('')
+    expect(passed.status).toBe(0)
+    put(join(site, 'tcltk', 'libthread3.0.6.dylib'), header('darwin-arm64'))
+    put(join(site, 'tcltk', '_tkinter.cpython-312-darwin.so'), header('darwin-arm64'))
+    const refused = check('darwin-arm64', vendor)
+    expect(refused.status).toBe(1)
+    expect(refused.stderr).toContain(
+      'darwin-arm64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: lib/python3.12/site-packages/tcltk/_tkinter.cpython-312-darwin.so, lib/python3.12/site-packages/tcltk/libthread3.0.6.dylib\n',
+    )
+    // A package's own zlib1.dll is nothing of Tcl's; Tcl's library is.
+    const windows = vendorTree('win-x64')
+    const winSite = join(windows, 'python', 'win-x64', 'python', 'Lib', 'site-packages')
+    put(join(winSite, 'PIL', '_tkinter_finder.py'), '# Pillow finds tkinter here\n')
+    put(join(winSite, 'somepkg.libs', 'zlib1.dll'), header('win-x64'))
+    const winPassed = check('win-x64', windows)
+    expect(winPassed.stderr).toBe('')
+    expect(winPassed.status).toBe(0)
+    put(join(winSite, 'tcltk', 'tcl86t.dll'), header('win-x64'))
+    expect(check('win-x64', windows).stderr).toContain(
+      'win-x64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: Lib/site-packages/tcltk/tcl86t.dll\n',
+    )
+  })
+
+  // A folder the check cannot read could hold anything. Skipped on Windows,
+  // where chmod cannot take away the right to list a folder, and as root,
+  // who lists it anyway.
+  it.skipIf(!posixHost || process.getuid?.() === 0)(
+    'never calls clean a runtime it could not read whole',
+    async () => {
+      const vendor = vendorTree('darwin-arm64')
+      const python = join(vendor, 'python', 'darwin-arm64', 'python')
+      const shut = join(python, 'lib', 'python3.12', 'shut')
+      put(join(shut, 'inside.txt'), 'unseen\n')
+      chmodSync(shut, 0o000)
+      try {
+        const result = check('darwin-arm64', vendor)
+        expect(result.status).toBe(1)
+        expect(result.stderr).toContain(
+          'darwin-arm64: python could not be read whole to look for Tcl/Tk: lib/python3.12/shut (EACCES)\n',
+        )
+      } finally {
+        chmodSync(shut, 0o755)
+      }
+      const { checkPythonStripped } = await load()
+      const nowhere = join(scratch(), 'python')
+      expect(checkPythonStripped({ python: nowhere })).toEqual([
+        `python could not be read whole to look for Tcl/Tk: ${nowhere} (ENOENT)`,
+      ])
+    },
+  )
+
+  // Removing zlib-ng's named_absent entry (release 20261026) removed the
+  // one check that would have noticed a macOS build stop linking the
+  // system's libz, which the macOS pins and the vulnerability watch rest on.
+  it("refuses a macOS build that links a zlib of its own, or none of the system's", () => {
+    expect(refusal('darwin-arm64', 'zlib-own')).toContain(
+      "darwin-arm64: python has build metadata in which binascii links z without system: true, a zlib of the runtime's own",
+    )
+    expect(refusal('darwin-x64', 'zlib-none')).toContain(
+      "darwin-x64: python has build metadata in which nothing links the system's zlib (`z` with system: true)",
+    )
+    // Windows carries a zlib of its own, recorded under `unlisted`.
+    const windows = check('win-x64', vendorTree('win-x64', { licences: 'zlib-own' }))
+    expect(windows.stderr).toBe('')
+    expect(windows.status).toBe(0)
   })
 
   it('says how to call it when the target is not one', () => {
@@ -1121,7 +1254,7 @@ describe('the afterPack hook, where the packaged app will look', () => {
         LEGIBLE_VENDOR_TARGET: 'win-x64',
       }),
     ).rejects.toThrow(
-      `win-x64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${TCL_TK['win-x64'].join(', ')}`,
+      `win-x64: python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${TCL_TK['win-x64'].named.join(', ')}`,
     )
   })
 
