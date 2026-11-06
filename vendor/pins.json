@@ -77,9 +77,9 @@
   },
   "python": {
     "source": "https://github.com/astral-sh/python-build-standalone",
-    "release": "20260901",
-    "version": "3.12.14",
-    "note": "Upstream publishes no checksum manifest and no per-asset .sha256, so these hashes were computed on first download and are what every later build is checked against. A changed hash means the asset changed, which is the point.",
+    "release": "20261026",
+    "version": "3.12.16",
+    "note": "Upstream publishes a SHA256SUMS asset beside each release's assets, and no per-asset .sha256. These hashes are our own record: each was computed on download on 2026-11-05 and matched both that file's line for the asset and the digest GitHub records for it, and they are what every later build is checked against, so an asset replaced together with its line still fails. A changed hash means the asset changed, which is the point.",
     "requirements": {
       "note": "The sha256 of vendor/python-requirements.txt: every package the runtime carries besides the engine and pip, exported from the engine's uv.lock at engine.tag by scripts/lock-python.sh (`uv export --frozen --no-dev --hashes --no-emit-project`), each at one version with the sha256 of every file it may be installed from (issue 434). scripts/vendor-python.sh refuses a file with another hash and installs it with `pip install --require-hashes --only-binary :all:`, the engine's own wheel after it with --no-deps, then `pip check`; it records the hash inside the runtime, and scripts/check-vendored.mjs refuses, in the vendor job and again at packaging, a file or a record with another hash and a runtime carrying any package, or any version, the file does not list for its target (its environment markers judged for that target). A move of the engine pin or of its lock moves this hash with it, and costs a vendor run.",
       "sha256": "755a31851071de92eaf35ebb8c4f1ac550fa06103db5212bff6599249ed300e1",
@@ -94,69 +94,67 @@
       }
     },
     "pip": {
-      "note": "pip at one version: scripts/vendor-python.sh installs `pip==version` with this wheel's hash under --require-hashes, never `--upgrade pip`, which took whatever was newest that day, and scripts/check-vendored.mjs refuses a runtime carrying any other pip. Every target's install_only asset of release 20260901 already carries pip 26.2.1 (its site-packages/pip-26.2.1.dist-info, read from the three assets, each matching its sha256 below, on 16 Oct 2026), so the install changes nothing there and the asset's checksum covers that pip; at another release it fetches this wheel from PyPI and checks it. `sha256` is PyPI's digest for pip-26.2.1-py3-none-any.whl, and the wheel downloaded on 16 Oct 2026 hashed to it.",
+      "note": "pip at one version: scripts/vendor-python.sh installs `pip==version` with this wheel's hash under --require-hashes, never `--upgrade pip`, which took whatever was newest that day, and scripts/check-vendored.mjs refuses a runtime carrying any other pip. Every target's install_only asset of release 20261026 carries pip 26.2.2, not this pin (its site-packages/pip-26.2.2.dist-info, read from the three assets, each matching its sha256 below, on 5 Nov 2026), so the install fetches this wheel from PyPI, checks it against this hash and replaces the asset's pip with it: the runtime ships pip 26.2.1, covered by this hash rather than by the asset's checksum. `sha256` is PyPI's digest for pip-26.2.1-py3-none-any.whl, and the wheel downloaded on 16 Oct 2026 hashed to it.",
       "version": "26.2.1",
       "sha256": "71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e"
     },
     "targets": {
       "darwin-arm64": {
-        "asset": "cpython-3.12.14+20260901-aarch64-apple-darwin-install_only.tar.gz",
-        "sha256": "3ee3ee547cedfeb7c2b16b2b7156039f7b470bb8f857e226fd3d2eb11db83c76",
+        "asset": "cpython-3.12.16+20261026-aarch64-apple-darwin-install_only.tar.gz",
+        "sha256": "fbf4afef53c2a6b72bb741bc06d5671a9dfaf87bd84e5aa73ac9b3d0d589f14e",
         "triple": "aarch64-apple-darwin",
         "full": {
-          "asset": "cpython-3.12.14+20260901-aarch64-apple-darwin-pgo+lto-full.tar.zst",
-          "sha256": "dbefa04d4107b449e17022f9c78d3eacbd37a1aa8c166c6220dbd95addf3f318"
+          "asset": "cpython-3.12.16+20261026-aarch64-apple-darwin-pgo+lto-full.tar.zst",
+          "sha256": "016758f4881e5f71d63eddfbcdd53f25c5a9152435a863e4dc0770758eae32c3"
         },
         "licences": {
           "unlisted": {},
-          "named_absent": {
-            "LICENSE.zlib-ng.txt": "Named beside LICENSE.zlib.txt by zlib, binascii, _sqlite3 and _tkinter, each of which links `z` with system: true, the operating system's own libz, which is not shipped; the metadata is shared with the Linux builds, which link zlib-ng. No zlib text is owed on macOS, and LICENSE.zlib.txt ships anyway."
-          },
+          "named_absent": {},
           "not_linked": [
             "LICENSE.bdb.txt",
             "LICENSE.libX11.txt",
             "LICENSE.libXau.txt",
             "LICENSE.libxcb.txt",
-            "LICENSE.tix.txt"
+            "LICENSE.tix.txt",
+            "LICENSE.zstd.txt"
           ]
         }
       },
       "darwin-x64": {
-        "asset": "cpython-3.12.14+20260901-x86_64-apple-darwin-install_only.tar.gz",
-        "sha256": "2e31b23f3f1319f707d0e620b48847a0046577541d357276821f9f1b5492e0ba",
+        "asset": "cpython-3.12.16+20261026-x86_64-apple-darwin-install_only.tar.gz",
+        "sha256": "a962e47df522889eaa7ff0d6a56203f1079f68aabb65ffdbe8455f362bc769f3",
         "triple": "x86_64-apple-darwin",
         "full": {
-          "asset": "cpython-3.12.14+20260901-x86_64-apple-darwin-pgo+lto-full.tar.zst",
-          "sha256": "47fdddfa61d5f76472b7fc303c38689504d1ccec430d0017c5fa8459d0d567bf"
+          "asset": "cpython-3.12.16+20261026-x86_64-apple-darwin-pgo+lto-full.tar.zst",
+          "sha256": "2839e81f9be73bf12dcbb84ad47e6e7a732700a689c3c713ac67ad4b5e9c9af5"
         },
         "licences": {
           "unlisted": {},
-          "named_absent": {
-            "LICENSE.zlib-ng.txt": "Named beside LICENSE.zlib.txt by zlib, binascii, _sqlite3 and _tkinter, each of which links `z` with system: true, the operating system's own libz, which is not shipped; the metadata is shared with the Linux builds, which link zlib-ng. No zlib text is owed on macOS, and LICENSE.zlib.txt ships anyway."
-          },
+          "named_absent": {},
           "not_linked": [
             "LICENSE.bdb.txt",
             "LICENSE.libX11.txt",
             "LICENSE.libXau.txt",
             "LICENSE.libxcb.txt",
-            "LICENSE.tix.txt"
+            "LICENSE.tix.txt",
+            "LICENSE.zstd.txt"
           ]
         }
       },
       "win-x64": {
-        "asset": "cpython-3.12.14+20260901-x86_64-pc-windows-msvc-install_only.tar.gz",
-        "sha256": "e90c1b6419da3bd812dd73bb3de40287a21abf153438147639ec5e20375ea93f",
+        "asset": "cpython-3.12.16+20261026-x86_64-pc-windows-msvc-install_only.tar.gz",
+        "sha256": "590dfcbe3a34c07301e6332e13e2188b98655cd072b08afa45a7998dc4c22bc5",
         "triple": "x86_64-pc-windows-msvc",
         "full": {
-          "asset": "cpython-3.12.14+20260901-x86_64-pc-windows-msvc-pgo-full.tar.zst",
-          "sha256": "b7cf8be5cd5222d1e456fbf71257efe558d84fe092757b6892c16584e5df01c2"
+          "asset": "cpython-3.12.16+20261026-x86_64-pc-windows-msvc-pgo-full.tar.zst",
+          "sha256": "37b4eb2818fee605fefa75ed156c4f2e1aaeaebaf662f9b30177c842ee16c48f"
         },
         "licences": {
           "unlisted": {
             "LICENSE.expat.txt": {
-              "library": "Expat 2.8.3, from CPython's Modules/expat, compiled into pyexpat.pyd; the pyexpat entry has no licence",
+              "library": "Expat 2.9.0, from CPython's Modules/expat, compiled into pyexpat.pyd; the pyexpat entry has no licence",
               "file": "DLLs/pyexpat.pyd",
-              "contains": ["\u0000expat_2.8.3\u0000"]
+              "contains": ["\u0000expat_2.9.0\u0000"]
             },
             "LICENSE.mpdecimal.txt": {
               "library": "libmpdec 2.5.1, from CPython's Modules/_decimal/libmpdec, compiled into _decimal.pyd; the _decimal entry has no licence",
@@ -164,7 +162,7 @@
               "contains": ["libmpdec: internal error", "\u00002.5.1\u0000"]
             },
             "LICENSE.zlib.txt": {
-              "library": "zlib 1.3.2, from CPython's Windows externals, compiled into python312.dll; zlib and binascii are in_core with no licence",
+              "library": "zlib 1.3.2, python-build-standalone's own download of zlib's release, which its Windows build gives CPython as zlibDir (CPython's get_externals.bat names 1.3.1), compiled into python312.dll; zlib and binascii are in_core with no licence",
               "file": "python312.dll",
               "contains": [
                 "incorrect header check",
@@ -181,20 +179,21 @@
             "LICENSE.libxcb.txt",
             "LICENSE.libedit.txt",
             "LICENSE.ncurses.txt",
-            "LICENSE.openssl-1.1.txt"
+            "LICENSE.zlib-ng.txt",
+            "LICENSE.zstd.txt"
           ]
         }
       }
     },
     "licence": "PSF-2.0 (CPython); MPL-2.0 (the project's build scripts)",
-    "licence_check": "Verified 2026-09-07: the interpreter links libedit, not GNU readline, and _dbm links only libSystem - no GDBM. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset, listed 2026-09-12, has no readline and no _dbm or _gdbm extension; darwin-x64 has the same names as darwin-arm64.",
+    "licence_check": "Verified 2026-11-05 on release 20261026, all three assets: on darwin-arm64 and darwin-x64 the interpreter and libpython link the system's libedit, not GNU readline (the readline entry links `edit` with system: true), and _dbm links only libSystem - no GDBM, and no _gdbm extension. Both are GPL components that must stay out; see THIRD_PARTY_NOTICES.md. The Windows asset has no readline and no _dbm or _gdbm extension, in its tree or its build metadata.",
     "licence_texts": {
-      "note": "The licence texts the runtime owes (issue 108, ADR-042). The install_only asset carries CPython's LICENSE.txt only; each target's `full` archive, the same build before python-build-standalone repackaged it, carries a `licenses/` folder and PYTHON.json, whose build metadata names the licence file of each extension module's linked libraries. scripts/vendor-python.sh fetches the full archive, checks `full.sha256` (computed on download on 2026-09-13 and matching the digest GitHub records for the asset), extracts only `licenses/` and PYTHON.json, and ships both under the runtime; scripts/check-vendored.mjs then requires the metadata, the folder and three reviewed lists per target to agree, in the vendor job and again at packaging. `unlisted`: texts owed that the metadata names for nothing, each with the file it is compiled into and strings that prove it, looked for in that file on every run. A version in `contains` is written as the C string it is in the binary, between NUL characters (\\u0000), so a later version that merely begins with it (1.3.2.1) does not pass. `named_absent`: texts the metadata names that the archive does not carry, each with why nothing is owed. `not_linked`: texts carried that no extension names. Every text named must be carried or be named_absent; every text carried must be named, unlisted or not_linked, once; and every entry must still be true. A new python-build-standalone release therefore fails the job until a person rereads these lists against the new metadata: that is the intended cost. Measured in specs/027-licences/research.md.",
+      "note": "The licence texts the runtime owes (issue 108, ADR-042). The install_only asset carries CPython's LICENSE.txt only; each target's `full` archive, the same build before python-build-standalone repackaged it, carries a `licenses/` folder and PYTHON.json, whose build metadata names the licence file of each extension module's linked libraries. scripts/vendor-python.sh fetches the full archive, checks `full.sha256` (computed on download on 2026-11-05 and matching the digest GitHub records for the asset), extracts only `licenses/` and PYTHON.json, and ships both under the runtime; scripts/check-vendored.mjs then requires the metadata, the folder and three reviewed lists per target to agree, in the vendor job and again at packaging. `unlisted`: texts owed that the metadata names for nothing, each with the file it is compiled into and strings that prove it, looked for in that file on every run. A version in `contains` is written as the C string it is in the binary, between NUL characters (\\u0000), so a later version that merely begins with it (1.3.2.1) does not pass. `named_absent`: texts the metadata names that the archive does not carry, each with why nothing is owed. `not_linked`: texts carried that no extension names. Every text named must be carried or be named_absent; every text carried must be named, unlisted or not_linked, once; and every entry must still be true. A new python-build-standalone release therefore fails the job until a person rereads these lists against the new metadata: that is the intended cost. First measured in specs/027-licences/research.md, for release 20260901; reread for release 20261026 on 2026-11-05 (issue 679).",
       "cpython_incorporated": {
-        "note": "CPython's Doc/license.rst at the pinned version's tag: its 'Licenses and Acknowledgements for Incorporated Software' (HACL*, BLAKE2, SipHash, dtoa, asyncio's and the other notices) are not in the LICENSE.txt the runtime ships. Fetched by commit, checked against sha256 (computed on download on 2026-09-13), and shipped as `file` inside the runtime's licenses folder.",
-        "tag": "v3.12.14",
-        "commit": "2abcf904b8dac8c999d2b3aac76681abb333798a",
-        "url": "https://raw.githubusercontent.com/python/cpython/2abcf904b8dac8c999d2b3aac76681abb333798a/Doc/license.rst",
+        "note": "CPython's Doc/license.rst at the pinned version's tag: its 'Licenses and Acknowledgements for Incorporated Software' (HACL*, BLAKE2, SipHash, dtoa, asyncio's and the other notices) are not in the LICENSE.txt the runtime ships. Fetched by commit, checked against sha256 (computed on download on 2026-11-05; the text at v3.12.16 is byte for byte the one at v3.12.14), and shipped as `file` inside the runtime's licenses folder.",
+        "tag": "v3.12.16",
+        "commit": "2c2462afc5d978d31f3d073001fc202d269917ff",
+        "url": "https://raw.githubusercontent.com/python/cpython/2c2462afc5d978d31f3d073001fc202d269917ff/Doc/license.rst",
         "sha256": "341832873fd316a37927e79385093fbbfd40a467428480835fe435a80cadf4e5",
         "file": "CPython-Doc-license.rst"
       }

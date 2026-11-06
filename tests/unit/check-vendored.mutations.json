@@ -1,0 +1,130 @@
+[
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      if (carried.has(name)) {\n",
+    "replace": "      if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a named_absent text that is carried",
+    "why": "A named_absent entry no longer held to being absent: once the archive carries the text, the reason recorded for owing nothing stays in the pins unread, and the new release passes without anyone rereading the list."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      } else if (TCL_TK_BINARY.test(entry.name)) {\n",
+    "replace": "      } else if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "looks for Tcl/Tk's binaries in site-packages too",
+    "why": "The guard on Tcl/Tk's binaries gone: one left under a name the strip does not know, or among a package's files, ships again, code the app never loads under advisories nothing watches."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      if (!packages && STRIPPED.test(entry.name)) {\n",
+    "replace": "      if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a runtime that still carries Tcl/Tk",
+    "why": "The guard no longer mirrors the strip: a folder of Tcl's scripts the strip should have removed, lib/tcl9.0 or tcl/, passes because no binary sits in it."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "|thread[0-9].*)\\.(?:dll|dylib|so)",
+    "replace": ")\\.(?:dll|dylib|so)",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "looks for Tcl/Tk's binaries in site-packages too",
+    "why": "Tcl's thread library, libthread3.0.6.dylib, let through: its name begins with neither tcl nor tk, so only this alternative names it."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "        walk(path, packages || entry.name === 'site-packages')\n",
+    "replace": "        walk(path, false)\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "passes what only shares a name",
+    "why": "The guard holding site-packages to the strip's names, which the strip leaves alone there: Pillow's PIL/_tkinter_finder.py would refuse every runtime that carried Pillow."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "|thread[0-9].*|zlib1\\.dll)$/\n",
+    "replace": "|thread[0-9].*)$/\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a runtime that still carries Tcl/Tk",
+    "why": "Windows' zlib1.dll let through in the runtime's own DLLs: it is the one file of the strip that is not named for Tcl or Tk, and the zlib OSV reports advisories against."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      ...checkPythonStripped({ python: options.packages }),\n",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a runtime that still carries Tcl/Tk",
+    "why": "The vendor job's check no longer asks about Tcl/Tk: --packages is the one check vendor-python.sh makes after the strip, so a strip that missed something would be found only at packaging, after the artefact was uploaded."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      unread.push(`${name(dir)} (${error?.code ?? String(error)})`)\n",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "never calls clean a runtime it could not read whole",
+    "why": "A folder the guard could not list counted as one holding nothing, so a runtime it never saw, or never found, passed as stripped."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      if (link.system === true) system += 1\n",
+    "replace": "      if (true) system += 1\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a macOS build that links a zlib of its own",
+    "why": "A macOS build linking a zlib of its own passes: the runtime then ships a zlib whose version the pins do not record and the vulnerability watch never asks about."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "  if (system === 0 && problems.length === 0) {\n",
+    "replace": "  if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a macOS build that links a zlib of its own",
+    "why": "A macOS build whose metadata names no zlib link at all passes, as a zlib compiled into the interpreter would read, and the watch's SYSTEM_ZLIB goes on assuming the system's."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "  if (target.startsWith('darwin-')) problems.push(...systemZlibProblems(metadata))\n",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a macOS build that links a zlib of its own",
+    "why": "The macOS zlib tripwire written but never asked: neither the vendor job's licence check nor the packaging check would notice a build that stopped linking the system's libz."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "      if (owes.length > 0 && found.length === 0) {\n",
+    "replace": "      if (false) {\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "refuses a macOS extension with zlib compiled in",
+    "why": "An extension that owes zlib's text and links no zlib passes while another links the system's: a zlib compiled into it ships unrecorded, and the watch asks about none."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "  return variants.find((variant) => variant?.variant === 'default') ?? variants[0]\n",
+    "replace": "  return variants[0]\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "reading only the shipped variant",
+    "why": "The first variant read in place of the one built into the runtime: a shipped variant listed second, linking a zlib of its own, passes behind an unshipped one linking the system's."
+  },
+  {
+    "file": "scripts/check-vendored.mjs",
+    "find": "_tkinter\\.(?:.+\\.)?(?:so|pyd|dll|dylib)|",
+    "replace": "_tkinter\\..+|",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "passes what only shares a name",
+    "why": "Any _tkinter.* file in a package refused, a typeshed stub _tkinter.pyi among them: a runtime carrying jedi or mypy would never be vendored."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": " -path '*/site-packages' -prune -o",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "prunes site-packages and removes exactly the names the check holds it to",
+    "why": "The strip reaching into site-packages again: a package's file that shares a name, Pillow's PIL/_tkinter_finder.py, is deleted silently, as --packages reads only dist-info."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": " -o -name 'zlib1.dll'",
+    "replace": "",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "prunes site-packages and removes exactly the names the check holds it to",
+    "why": "A name dropped from the strip and kept in the check: Tcl's zlib1.dll ships again, and only the packaging check would refuse it, after the vendor job uploaded the runtime."
+  }
+]
