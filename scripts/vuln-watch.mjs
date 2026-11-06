@@ -381,8 +381,9 @@ export function ffmpegConfigure(pins) {
 /**
  * The Python runtimes that link the operating system's zlib, which the
  * installers do not ship: python-build-standalone's macOS builds, whose
- * licence records say so under `named_absent`. Every other target carries
- * a zlib of its own.
+ * metadata has every zlib user link `z` with system: true (their libpython
+ * links /usr/lib/libz.1.dylib), and whose licence records list no zlib under
+ * `unlisted`. Every other target carries a zlib of its own.
  */
 const SYSTEM_ZLIB = /^darwin-/
 

@@ -10,6 +10,12 @@ links are inline, with no images and no reference-style links.
 
 ## [Unreleased]
 
+### Security
+
+- The bundled Python is 3.12.16, which refuses certificates from the
+  compromised eMudhra intermediates when a feed is downloaded, even through
+  a certificate bundle that still trusts their roots (CVE-2026-115557).
+
 ## [1.0.0]
 
 ### Added
