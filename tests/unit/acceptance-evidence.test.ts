@@ -59,7 +59,10 @@ let dir = ''
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'lc-evidence-test-'))
 })
-afterEach(() => rmSync(dir, { recursive: true, force: true }))
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true })
+  rmSync(`${dir}-key`, { recursive: true, force: true })
+})
 
 /** A locator that writes the next picture of a queue each time it is shot. */
 function camera(...queue: Rgb[]): Shootable & { taken: number } {
@@ -361,8 +364,13 @@ describe('the manifest', () => {
       expect(name).toMatch(/^8-[0-9a-f]{10}\.png$/)
     expect(Object.keys(a.check as object).sort()).toEqual(Object.keys(b.check as object).sort())
     expect(manifest).not.toMatch(/control|recheck/i)
+    // No machine check, value or outcome: those are the record's, read after the verdicts.
+    expect(manifest).not.toMatch(/"check"|"value"|"outcome"|"threshold"|measured/i)
+    expect(Object.keys(a)).not.toContain('check')
+    // And the key is not among the evidence.
+    expect(readdirSync(dir).filter((n) => n.includes('key'))).toEqual([])
     // Only the key file says which is which.
-    const key = JSON.parse(readFileSync(join(dir, 'evidence-key.json'), 'utf8')) as {
+    const key = JSON.parse(readFileSync(join(`${dir}-key`, 'evidence-key.json'), 'utf8')) as {
       controls: string[]
     }
     expect(key.controls).toEqual(['8-ground'])
@@ -406,7 +414,7 @@ describe('the manifest', () => {
       const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 20))
       pair.target = camera(picture(BG, 4000))
       await evidence.finish(pair, { wait: async () => undefined })
-      const key = JSON.parse(readFileSync(join(where, 'evidence-key.json'), 'utf8')) as {
+      const key = JSON.parse(readFileSync(join(`${where}-key`, 'evidence-key.json'), 'utf8')) as {
         pictures: Record<string, string>
       }
       return { kept: evidence.entries[0].images, key: key.pictures }

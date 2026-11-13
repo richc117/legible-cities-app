@@ -334,3 +334,13 @@ jobs:
           path: ${{ runner.temp }}/acceptance/evidence/
           if-no-files-found: warn
           retention-days: 30
+
+      # The key to the control pairs, apart from the evidence: the reviewer
+      # opens it only after every verdict is written.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: acceptance-evidence-key-${{ matrix.target }}
+          path: ${{ runner.temp }}/acceptance/evidence-key/
+          if-no-files-found: warn
+          retention-days: 30

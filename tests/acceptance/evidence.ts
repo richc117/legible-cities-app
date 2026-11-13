@@ -444,6 +444,17 @@ export class Evidence {
     mkdirSync(this.#work, { recursive: true })
   }
 
+  /**
+   * Where the key is written: a folder of its own beside the evidence's, and
+   * uploaded as an artefact of its own, so the reviewer's evidence holds
+   * neither the key nor any machine check.
+   */
+  get keyDir(): string {
+    const dir = `${this.#dir}-key`
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
   /** Where a working file lives; what is kept for the reviewer is copied out of it by `add`. */
   pathOf(file: string): string {
     return join(this.#work, file)
@@ -655,7 +666,7 @@ export class Evidence {
     // In step and id order, so that position says nothing of what an entry is.
     const listed = [...this.entries]
       .sort((a, b) => a.step - b.step || a.id.localeCompare(b.id))
-      .map((e) => ({ ...e, control: undefined }))
+      .map((e) => ({ ...e, control: undefined, check: undefined }))
     writeFileSync(
       join(this.#dir, 'evidence.json'),
       `${JSON.stringify({ tolerance: TOLERANCE, entries: listed }, null, 2)}\n`,
@@ -663,7 +674,7 @@ export class Evidence {
     // Which entries are control pairs, kept apart so the reviewer reads the
     // manifest without knowing: opened only after every verdict is written.
     writeFileSync(
-      join(this.#dir, 'evidence-key.json'),
+      join(this.keyDir, 'evidence-key.json'),
       `${JSON.stringify(
         {
           controls: this.entries.filter((e) => e.control).map((e) => e.id),

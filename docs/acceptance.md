@@ -1275,8 +1275,9 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   preview, or an export's frames (a contact sheet of five, and its first
   and last frame in full).
 - `evidence/evidence.json` has an entry per question: the row's own
-  not-automated sentence, the images, the question, the text expected in
-  them, and the machine check with its value and its threshold.
+  not-automated sentence, the images, the question and the text expected in
+  them. The machine checks, with their values and thresholds, are the
+  record's ("Measured: ...") and are not in it.
 - A comparison is **A1, A2, B**: two shots at the same settings, the map
   paused and its clock read twice first (and after B), give the noise; B, at
   the changed setting, should differ from A1 by more. A check **fails** a
@@ -1301,15 +1302,17 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
 - The manifest holds **two control pairs**: the same settings, asked as if
   they had changed (the theme, and the line width), under ids and files that
   look like any other entry's. Which they are is in
-  `evidence/evidence-key.json`, uploaded beside it.
+  `evidence-key.json`, uploaded as an artefact of its own
+  (`acceptance-evidence-key-<system>`), apart from the evidence.
 
 ### The reviewer's protocol
 
 The assistant or the maintainer reviews the evidence of each run, and
 records a verdict per entry in the second table of the results template.
 
-1. Open `evidence.json` and every image it names. Do not read the machine
-   check first, and do not open `evidence-key.json`.
+1. Open `evidence.json` and every image it names, and nothing else:
+   `evidence.json` holds, for each entry, the pictures, the question, the
+   expected text and the row's not-automated sentence, and no machine check.
 2. For each entry, write one sentence of what is visible before any verdict.
 3. For a pair, name the visible difference in your own words. If the
    difference asked about cannot be seen, the verdict is not "looks right",
@@ -1319,9 +1322,11 @@ records a verdict per entry in the second table of the results template.
 5. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
    `pass`: this table is a reviewer's reading, not a step's result, and a
    step stays "pass, part not automated" however it reads.
-6. Only after every verdict is written, open `evidence-key.json`. If a
-   control pair was answered "looks right", the review is not to be trusted:
-   say so, and read it again.
+6. Only after every verdict is written, read the run's record, whose rows say
+   what was kept and what was measured ("Evidence kept: ... Measured: ...").
+7. Last, open `evidence-key.json` from its own artefact. If a control pair
+   was answered "looks right", the review is not to be trusted: say so, and
+   read it again.
 
 ## Failures
 

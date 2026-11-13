@@ -198,5 +198,13 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "keeps a picture named by two entries once",
     "why": "A picture listed by two entries would be copied twice, and the copies would be byte for byte the same."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": ".map((e) => ({ ...e, control: undefined, check: undefined }))",
+    "replace": ".map((e) => ({ ...e, control: undefined }))",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "The manifest would carry the machine checks, and a control's empty check would give it away."
   }
 ]
