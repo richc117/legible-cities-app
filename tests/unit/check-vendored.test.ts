@@ -1094,6 +1094,58 @@ describe('electron-builder.yml', () => {
     return config.slice(start, next === -1 ? config.length : body + next)
   }
 
+  // The Mac's signature (ADR-062). This file is the ad-hoc build every
+  // branch and pull request makes, with no certificate anywhere near it; the
+  // Developer ID build is the release config beside it, used in signing
+  // mode only.
+  it('stays ad hoc, and keeps the bytecode out of the signer', () => {
+    // Mutation: the Team ID written into the base config, so every branch
+    // build asks for a certificate no branch has, and fails.
+    const mac = section('mac')
+    expect(mac).toMatch(/^ {2}identity: '-'$/m)
+    expect(mac).toMatch(/^ {2}forceCodeSigning: true$/m)
+    expect(config).not.toMatch(/^\s*notarize:/m)
+    expect(section('dmg')).not.toMatch(/^\s*sign:/m)
+    // The pattern as electron-builder builds it (`new RegExp` of the string,
+    // tried against each file's path): bytecode and nothing that runs.
+    const written = /^ {2}signIgnore: '([^'\n]+)'$/m.exec(mac)
+    expect(written, 'mac.signIgnore is one single-quoted pattern').not.toBeNull()
+    const ignored = new RegExp((written as RegExpExecArray)[1])
+    const resources = '/release/mac-arm64/Legible Cities.app/Contents/Resources'
+    expect(ignored.test(`${resources}/python/lib/python3.12/__pycache__/os.cpython-312.pyc`)).toBe(
+      true,
+    )
+    for (const signed of [
+      `${resources}/python/bin/python3`,
+      `${resources}/python/lib/python3.12/lib-dynload/_ssl.cpython-312-darwin.so`,
+      `${resources}/python/lib/libpython3.12.dylib`,
+      `${resources}/loom/gtfs2graph`,
+      `${resources}/ffmpeg/ffmpeg`,
+      // A name that only contains the letters is not bytecode.
+      `${resources}/python/lib/python3.12/site-packages/x.pyc.so`,
+    ]) {
+      expect(ignored.test(signed), signed).toBe(false)
+    }
+  })
+
+  it('has a release config that extends it and changes three keys and nothing else', () => {
+    // Mutation: a fourth key in the release config (`hardenedRuntime:
+    // false`, an entitlements file, a zip target), so the signed build is no
+    // longer the build every branch tested under another identity.
+    const release = readFileSync(join(repo, 'electron-builder.release.yml'), 'utf8')
+    const lines = release.split('\n').filter((line) => line.trim() !== '' && !/^[ \t]*#/.test(line))
+    // The identity is the Developer ID Team ID, quoted so an all-digit one
+    // stays a string; TEAMID_TBD is the placeholder the signing step refuses.
+    expect(lines).toEqual([
+      'extends: ./electron-builder.yml',
+      'mac:',
+      expect.stringMatching(/^ {2}identity: '(?:TEAMID_TBD|[A-Z0-9]{10})'$/),
+      '  notarize: false',
+      'dmg:',
+      '  sign: true',
+    ])
+  })
+
   // electron-builder falls back to its own default icon when a named one is
   // missing: any generic icon under build/, then the framework's, with only
   // a warning in a log nobody reads (app-builder-lib's iconConverter). So

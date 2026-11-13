@@ -1,0 +1,34 @@
+# The Developer ID build of the Mac installers (ADR-062): everything in
+# electron-builder.yml, with three keys changed and nothing about the layout.
+# .github/workflows/build.yml packages with this file only in signing mode,
+# a Mac target on a pushed v* tag or a dispatch that asks for it, and there
+# gives electron-builder the certificate through CSC_LINK and
+# CSC_KEY_PASSWORD; it imports the certificate into a keychain of its own,
+# signs every nested Mach-O and the app with the hardened runtime and its
+# template entitlements, as the ad-hoc build does, and signs the disk image.
+# Every other build uses electron-builder.yml alone and stays ad hoc.
+#
+# The values live in this file, not in `-c.` overrides on the command line,
+# which would read an all-digit identity as a number and `true` as a string.
+#
+# No entitlements file: electron-builder's template is what the ad-hoc build
+# already carries, `com.apple.security.cs.disable-library-validation`
+# among its three, which ADR-043 needs kept.
+extends: ./electron-builder.yml
+mac:
+  # The Developer ID Team ID: ten characters, public (it is printed in every
+  # signature), and quoted, so one that is all digits stays a string. It is
+  # matched as a substring of a certificate's name in the keychain;
+  # scripts/verify-mac-signing.mjs then holds the signature to a "Developer
+  # ID Application" certificate of this team. TEAMID_TBD is a placeholder:
+  # build.yml's signing step and that script refuse to run while it stands.
+  identity: 'TEAMID_TBD'
+  # electron-builder's own notarisation is off: it has no timeout, cannot
+  # notarise or staple a disk image, and would need the notary's key in the
+  # step that runs npm code. scripts/notarize-dmg.mjs notarises the disk
+  # image in a later step of its own.
+  notarize: false
+dmg:
+  # The disk image is what a person downloads and what is notarised and
+  # stapled, so it carries a signature of its own.
+  sign: true
