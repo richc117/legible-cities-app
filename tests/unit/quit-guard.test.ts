@@ -654,13 +654,20 @@ describe('the guard in index.ts', () => {
       /if \(process\.platform !== 'darwin'\) quitGuard\.quit\(\)/,
     ])
       expect(index).toMatch(through)
-    // And no other file of the main process quits the app at all.
-    for (const file of readdirSync(main).filter((name) => name.endsWith('.ts'))) {
-      if (file === 'index.ts') continue
+    // And no other file of the main process quits the app at all, in any
+    // folder of it.
+    const others = readdirSync(main, { recursive: true, encoding: 'utf8' }).filter(
+      (file) => file.endsWith('.ts') && file !== 'index.ts',
+    )
+    expect(others.length, 'the folder was read').toBeGreaterThan(20)
+    expect(
+      others.some((file) => /[\\/]/.test(file)),
+      'and its folders with it',
+    ).toBe(true)
+    for (const file of others)
       expect(code(readFileSync(join(main, file), 'utf8')), file).not.toMatch(
         /\bapp\.(?:quit|exit)\(/,
       )
-    }
   })
 
   it('hands before-quit and the window’s close to the composed handlers, over the one guard', () => {

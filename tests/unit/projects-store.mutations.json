@@ -22,5 +22,13 @@
     "test": "tests/unit/projects-store.test.ts",
     "title": "keeps the name it had when a write fails, and forgets a project that is deleted",
     "why": "A deleted project's name kept for as long as the app runs."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "    await this.writeAtomic(id, carried.onto(written, renewed))\n    this.#names.set(id, written.name)\n",
+    "replace": "    this.#names.set(id, written.name)\n    await this.writeAtomic(id, carried.onto(written, renewed))\n",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "keeps the name it had when a write fails, and forgets a project that is deleted",
+    "why": "The name kept before the write has landed: a rename the disk refused is said in the quit's question as though it had been made."
   }
 ]

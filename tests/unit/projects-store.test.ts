@@ -520,8 +520,20 @@ describe('nameOf', () => {
 
   it('keeps the name it had when a write fails, and forgets a project that is deleted', async () => {
     const made = await store.create({ name: 'Lille', feed: 'la-metro-rail' })
-    await expect(store.rename(made.id, '   ')).rejects.toThrow()
-    expect(store.nameOf(made.id)).toBe('Lille')
+    // A store on the same home whose rename into place is refused: the
+    // record is read, the new name validated, and the write itself fails.
+    const refused: Rename = async () => {
+      throw Object.assign(new Error('refused'), { code: 'EIO' })
+    }
+    const failing = new ProjectStore(home, (message) => lines.push(message), { rename: refused })
+    await failing.get(made.id)
+    expect(failing.nameOf(made.id)).toBe('Lille')
+    await expect(failing.rename(made.id, 'Lille, again')).rejects.toThrow(
+      'the project could not be saved',
+    )
+    expect(failing.nameOf(made.id), 'the name the record still holds').toBe('Lille')
+    expect((await readRecord(made.id)).name).toBe('Lille')
+
     await store.delete(made.id)
     expect(store.nameOf(made.id)).toBeNull()
   })
