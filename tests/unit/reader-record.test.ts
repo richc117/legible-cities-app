@@ -167,10 +167,24 @@ describe('the parts and the walkthrough', () => {
     for (const m of partsSource.matchAll(/words:\s*(?:async\s*\(\)\s*=>\s*)?\[/g)) {
       arrays.push(bracketed((m.index ?? 0) + m[0].length - 1))
     }
+    // Each array literal among a walk's arguments, the call read to its
+    // own closing parenthesis, so a locator before the array is passed over.
     for (const m of partsSource.matchAll(/\.walk(?:Back|Into)?\(/g)) {
-      const open = partsSource.indexOf('[', m.index ?? 0)
-      const close = partsSource.indexOf(')', m.index ?? 0)
-      if (open >= 0 && open < close) arrays.push(bracketed(open))
+      const start = (m.index ?? 0) + m[0].length - 1
+      let depth = 0
+      let end = start
+      for (; end < partsSource.length; end += 1) {
+        if (partsSource[end] === '(') depth += 1
+        if (partsSource[end] === ')') depth -= 1
+        if (depth === 0) break
+      }
+      for (let at = start; at < end; at += 1) {
+        if (partsSource[at] === '[') {
+          const array = bracketed(at)
+          arrays.push(array)
+          at += array.length - 1
+        }
+      }
     }
     expect(arrays.length).toBeGreaterThan(8)
     expect(arrays.filter((a) => /['"`]/.test(a))).toEqual([])
