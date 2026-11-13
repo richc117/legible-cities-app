@@ -126,6 +126,7 @@ you add a row, fill this column from your record's header.
 | 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its "no undo stack" |
 | 062 | Reserved: issue 686's record, written in its own pull request | - | - |
 | 063 | [The 1.0 gate is machines, the assistant's review, and one sitting](063-the-1-0-gate-is-machines-a-review-and-one-sitting.md) | Proposed | See also 037, 054 |
+| 064 | [The coordinating session merges and cuts release candidates](064-the-coordinating-session-merges-and-cuts-candidates.md) | Accepted | - |
 
 ## Amending rather than superseding
 
