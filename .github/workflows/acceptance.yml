@@ -323,3 +323,14 @@ jobs:
             ${{ runner.temp }}/acceptance/*.png
           if-no-files-found: warn
           retention-days: 30
+
+      # The pictures a reviewer reads, and the manifest that names them
+      # (docs/acceptance.md, "The visual evidence"): one artefact a system, so
+      # a run keeps both. A run that fails still has what it took.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: acceptance-evidence-${{ matrix.target }}
+          path: ${{ runner.temp }}/acceptance/evidence/
+          if-no-files-found: warn
+          retention-days: 30

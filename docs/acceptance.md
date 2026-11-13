@@ -119,7 +119,9 @@ person:
   does not contain the commit that brought the attest job has none, so the
   record says "not attested (before 1.0)" and the step "pass, part not
   automated" rather than a failure.
-- **Judgement**: whether a map, a colour, a theme or a GIF looks right,
+- **Judgement**: whether a map, a colour, a theme or a GIF looks right (the
+  run keeps the pictures and measures what it can: see [the visual
+  evidence](#the-visual-evidence)),
   whether the page's rows follow a line order (step 10's two checks),
   whether a drag feels right (the spec drags the picker with the mouse and
   checks it stays open, and a line of the order by its grip and checks
@@ -1259,6 +1261,54 @@ Then uninstall the app again, as step 21 says.
 
 Result: ____
 
+## The visual evidence
+
+About twenty-five rows ask whether something looks right. A machine cannot
+judge that, so those rows stay "Not automated: whether ... looks right" in
+the run's record, whatever the machine measured. What the run adds is the
+pictures a reviewer needs, kept beside the record in `evidence/`
+(`tests/acceptance/evidence.ts`), and a measurement of the difference that
+must exist. The record's row gains "Evidence kept: <names>. Measured:
+<numbers>." after its not-automated sentence.
+
+- `evidence/<step>-<name>.png` are the pictures: the map's frame, cell 06's
+  preview, or an export's frames (a contact sheet of five, and its first
+  and last frame in full).
+- `evidence/evidence.json` has an entry per question: the row's own
+  not-automated sentence, the images, the question, the text expected in
+  them, and the machine check with its value and its threshold.
+- A comparison is **A1, A2, B**: two shots at the same settings, the map
+  paused and its clock read twice first, give the noise; B, at the changed
+  setting, must differ from A1 by more than that. A check **fails** on what
+  needs no threshold: a blank frame (fewer than 1% of its pixels more than
+  8 from the corner pixel), a picture that was not taken, a changed setting
+  that changed nothing, or a change no larger than the noise; and, for the
+  trains, two shots a second apart that are the same. Every other number is
+  a **note** until a measuring run on each system has set its threshold, at
+  half the smallest difference it saw (`THRESHOLDS` in `evidence.ts`).
+- The manifest holds **two control pairs**: the same settings, asked as if
+  they had changed (the theme, and the line width). They are marked
+  `control` and their question is the real one.
+
+### The reviewer's protocol
+
+The assistant or the maintainer reviews the evidence of each run, and
+records a verdict per entry in the second table of the results template.
+
+1. Read the control pairs first. If a control is answered "looks right",
+   the review is not to be trusted: stop and say so.
+2. Open `evidence.json` and every image it names. Do not read the machine
+   check first.
+3. For each entry, write one sentence of what is visible before any verdict.
+4. For a pair, name the visible difference in your own words. If the
+   difference asked about cannot be seen, the verdict is not "looks right",
+   whatever the number says.
+5. Where the entry lists expected text, compare the text in the image with
+   those strings.
+6. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
+   `pass`: this table is a reviewer's reading, not a step's result, and a
+   step stays "pass, part not automated" however it reads.
+
 ## Failures
 
 Every failure becomes an issue of its own, one per defect, even when two
@@ -1322,6 +1372,12 @@ Copy everything in the block below into a new issue titled
 | 20 | Reset engine data | pass / fail | |
 | 21 | Uninstall, and what is left | pass / fail | |
 | 22 | Update over 0.1.0 | pass / fail | |
+
+## Visual evidence
+
+| Entry (id in evidence.json) | What is visible | Verdict |
+|---|---|---|
+| (one row per entry, the control pairs first) | (one sentence, before the verdict) | looks right / looks wrong / cannot tell |
 
 ## Versions from Settings
 

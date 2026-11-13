@@ -1,0 +1,106 @@
+[
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (change.pixels <= noise.pixels)",
+    "replace": "if (change.pixels < noise.pixels)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails when the change is no more than the noise",
+    "why": "A changed setting that changed no more than two shots at the same settings would pass: the comparison would measure the noise and call it a difference."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "blank: fraction < 0.01",
+    "replace": "blank: fraction <= 0.01",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "is fewer than 1% of the pixels more than 8 from the corner pixel",
+    "why": "The blank frame's boundary moved: a frame holding exactly 1% of drawn pixels would be called blank."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "pixelDifference(a.data, b.data, a.width, 0, TOLERANCE)",
+    "replace": "pixelDifference(a.data, b.data, a.width, 0, 0)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "counts a difference at the tolerance of 8, never below it",
+    "why": "Differences judged at no tolerance: rasteriser noise of a few levels would read as a changed picture."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (a.width !== b.width || a.height !== b.height) {",
+    "replace": "if (false) {",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says two sizes differ in every pixel",
+    "why": "Two shots of different sizes would reach the pixel comparison and throw, instead of being reported as a difference."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (ends.pixels === 0)\n",
+    "replace": "  if (ends.pixels < 0)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants an export with no blank frame and a first frame unlike the last",
+    "why": "An export whose first and last frames are the same, a motionless reel, would pass."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (after <= before)",
+    "replace": "if (after < before)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants a new colour to rise from none",
+    "why": "A line colour that is no more on the map than before it was chosen would pass."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (change.fraction < threshold)",
+    "replace": "if (change.fraction > threshold)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails under a threshold once one is set",
+    "why": "A threshold set by a measuring run would fail the large changes and pass the small ones."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (widthBefore === widthAfter)",
+    "replace": "if (false)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants the face loaded and the label measured differently",
+    "why": "A typeface that was chosen but did not change a label's measured width would pass."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (pair.control) this.add({",
+    "replace": "    if (false) this.add({",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "The manifest would hold no control pair, and the reviewer could not tell whether a reading is to be trusted."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    await locator.screenshot({ path })\n    this.#read(path)\n",
+    "replace": "    await locator.screenshot({ path })\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps a shot as <id>.png, and throws for one that was not written",
+    "why": "A shot that was never written would be kept as evidence without a word."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (difference(before, this.#read(path)).pixels === 0) return",
+    "replace": "if (difference(before, this.#read(path)).pixels === -1) return",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "settles on the first two shots that agree",
+    "why": "A picture that has stopped changing would never be known to have, and every shot would be reported as unsettled."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "outcome: 'fail', said: 'no pixel changed in a second of playing'",
+    "replace": "outcome: 'note', said: 'no pixel changed in a second of playing'",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails when the trains did not move in a second",
+    "why": "A map whose trains do not move would be noted, not failed."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "return { ...base, outcome: 'note', said: `${measured}; no threshold is set yet` }",
+    "replace": "return { ...base, outcome: 'fail', said: `${measured}; no threshold is set yet` }",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "only notes the number while no threshold is set",
+    "why": "A number with no threshold behind it would fail a step on the first run, before any measuring run set one."
+  }
+]
