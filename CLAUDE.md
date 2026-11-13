@@ -76,6 +76,10 @@ which is what the engine draws.
 bin/preflight                     # refuses personal paths, addresses, keys, session links
 bin/preflight --message-file F    # the same, over a commit message being written
 bin/test-hooks                    # the .claude/hooks/ allow and refuse tables
+bin/test-landing                  # the table over the three tools below, against stand-in gh, git, npm and lockf
+bin/land <pr> [--dry-run]         # merge a pull request as /lanes step 9 says: rebase, rebuild, lease push, checks, scanned squash, clean-up
+bin/candidate tag|publish <N>     # cut v<version>-rc.<N> on origin/main, then publish its draft as a pre-release; never a final
+bin/e2e-serial [args]             # npm run test:e2e under one machine-wide lock, in a macOS desktop session only
 gitleaks git --staged --redact    # keys and tokens in the staged changes
 gitleaks dir . --redact           # the same, over the whole working tree
 pre-commit run --all-files        # the hooks, without committing
