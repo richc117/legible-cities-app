@@ -82,6 +82,7 @@ import {
 import { MINUTE, SECOND, bringToFront, inside, launchApp, real, sleep, until } from './harness'
 import {
   Evidence,
+  stepResult,
   frameAt,
   judgeBlank,
   judgeTypeface,
@@ -90,7 +91,7 @@ import {
   type Check,
   type EntryInit,
   type Pair,
-  type Rgb,
+  type Sampled,
   type Shootable,
 } from './evidence'
 import { tagContains as gitTagContains, tagSourceContains, writtenSince } from './pure.mjs'
@@ -385,16 +386,20 @@ interface FfprobeAnswer {
  * by the bundled ffmpeg: what the contact sheet and the blank check are made
  * from (tests/acceptance/evidence.ts).
  */
-function sampledFrames(resources: string, file: string): Rgb[] {
+function sampledFrames(resources: string, file: string): Sampled {
   const probe = ffprobe(resources, file)
   const video = probe.streams?.find((s) => s.codec_type === 'video')
   const seconds = Number(probe.format?.duration)
   if (video?.width === undefined || video.height === undefined)
     throw new Error(`the bundled ffprobe gave no size for ${basename(file)}`)
   const exe = join(resources, 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
-  return sampleTimes(Number.isFinite(seconds) && seconds > 0 ? seconds : 1).map((t) =>
-    frameAt(exe, file, t, [video.width as number, video.height as number]),
-  )
+  const times = sampleTimes(Number.isFinite(seconds) && seconds > 0 ? seconds : 1)
+  return {
+    times,
+    frames: times.map((t) =>
+      frameAt(exe, file, t, [video.width as number, video.height as number]),
+    ),
+  }
 }
 
 /** The macOS version by its marketing number, or the kernel's elsewhere. */
@@ -674,11 +679,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
         }),
       )
     })
-  const evAfter = (log: StepLog, key: string, options: { colour?: string } = {}): Promise<void> =>
+  const evAfter = (
+    log: StepLog,
+    key: string,
+    options: { colour?: () => Promise<string> } = {},
+  ): Promise<void> =>
     log.soft(`evidence: the picture after ${key}`, async () => {
       const pair = pairs.get(key)
       if (pair === undefined) throw new Error('the pictures before it were not taken')
-      await evidence.finish(pair, options)
+      await evidence.finish(pair, {
+        colour: options.colour === undefined ? undefined : await options.colour(),
+        window: page(),
+      })
     })
   /** An entry for a check the run made on a measurement that is not a picture difference. */
   const measured = (init: EntryInit, check: Check): void => evidence.keep(init, [], check)
@@ -882,13 +894,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const shot = join(OUT, `acceptance-${PLATFORM}-step-${String(n).padStart(2, '0')}.png`)
         await session.page.screenshot({ path: shot, fullPage: true }).catch(() => undefined)
       }
-      const result: Result = failed
-        ? 'fail'
-        : log.unchecked.length > 0
-          ? 'pass, part not checked'
-          : log.unautomated.length > 0
-            ? 'pass, part not automated'
-            : 'pass'
+      const result: Result = stepResult({
+        failed,
+        unchecked: log.unchecked.length,
+        unautomated: log.unautomated.length,
+      })
       const notes = [
         ...(thrown === null ? [] : [`Stopped: ${thrown}`]),
         ...log.problems.map((p) => `Failed: ${p}`),
@@ -2242,7 +2252,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       await log.soft(
         'evidence: the typeface is loaded and a label measures differently',
         async () => {
-          const now = await measureLabel(window, labelBefore?.label ?? undefined)
+          const now = await measureLabel(window, labelBefore?.label ?? undefined, {
+            face: /inter/i,
+          })
           measured(
             {
               id: '8-typeface-label',
@@ -2464,7 +2476,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
       })
       await evAfter(log, '9-colour', {
-        colour: (await recordOf(window, LA)).colors[line] as string,
+        colour: async () => (await recordOf(window, LA)).colors[line] as string,
       })
 
       // Reset is in the chip's panel (issue 284), so the chip opens it again.
@@ -2549,7 +2561,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
       // the map carries a choice (`projects.completeLines`).
       await log.soft('the line options: bold, cased and dashed, then reset', async () => {
         await panel
-          .getByRole('button', { name: new RegExp(`^Line options for line ${line},`) })
+          .getByRole('button', {
+            name: new RegExp(
+              `^Line options for line ${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},`,
+            ),
+          })
           .click()
         const group = panel.getByRole('group', {
           name: `Line options for line ${line}`,
@@ -2583,9 +2599,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await choose(
           '9-width',
           'Width',
-          '1.5',
-          (now) => of(now)?.width === 1.5,
-          `The third picture is the map after line ${line} was made heavy. Is line ${line} drawn thicker than in the first two, with its neighbours moved out to make room?`,
+          '1.25',
+          (now) => of(now)?.width === 1.25,
+          `The third picture is the map after line ${line} was made bold. Is line ${line} drawn thicker than in the first two, with its neighbours moved out to make room?`,
         )
         await choose(
           '9-casing',
@@ -3236,6 +3252,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
           },
           sampledFrames(session.resources, gif.path),
           'gif-frames',
+          // The opening is the card and then the draw-in, at their defaults of 2
+          // and 6 seconds: a frame in it may be nearly empty and is not judged.
+          { openingSeconds: 8 },
         )
         // The same pictures answer the other two sentences of the row.
         const names = ['sheet', 'first', 'last'].map((n) => evidence.pathOf(`12-gif-${n}.png`))

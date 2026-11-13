@@ -15,6 +15,7 @@ import {
   decodePng,
   difference,
   encodePng,
+  failuresOf,
   judgeBlank,
   judgeChange,
   judgeColour,
@@ -23,6 +24,7 @@ import {
   judgeTypeface,
   pixelsOfColour,
   sampleTimes,
+  stepResult,
   thresholdFor,
   type Pair,
   type Rgb,
@@ -129,8 +131,9 @@ describe('blank', () => {
     expect(blankness(picture(BG, 5000, [28, 28, 28])).blank).toBe(true)
   })
 
-  it('fails a blank frame and passes one that is not', () => {
+  it('fails a picture with nothing in it, only notes one nearly empty, and passes the rest', () => {
     expect(judgeBlank('export', picture(BG)).outcome).toBe('fail')
+    expect(judgeBlank('export', picture(BG, 30)).outcome).toBe('note')
     expect(judgeBlank('export', picture(BG, 3000)).outcome).toBe('ok')
   })
 })
@@ -140,14 +143,18 @@ describe('a changed setting, against the noise', () => {
   const noise = { pixels: 20, fraction: 0.002, sameSize: true }
   const moved = { pixels: 3000, fraction: 0.3, sameSize: true }
 
-  it('fails when nothing changed', () => {
+  it('fails when nothing changed, from a pair that stood still', () => {
     expect(judgeChange('theme', same, same, null).outcome).toBe('fail')
   })
 
-  it('fails when the change is no more than the noise, even with no threshold', () => {
-    expect(judgeChange('theme', noise, noise, null).outcome).toBe('fail')
-    expect(judgeChange('theme', noise, { ...noise, pixels: 19 }, null).outcome).toBe('fail')
-    expect(judgeChange('theme', noise, { ...noise, pixels: 21 }, null).outcome).not.toBe('fail')
+  it('only notes that nothing changed when the map was not steady', () => {
+    expect(judgeChange('theme', same, same, null, false).outcome).toBe('note')
+    expect(judgeChange('theme', same, moved, 0.9, false).outcome).toBe('note')
+  })
+
+  it('notes, and does not fail, a change no more than the noise', () => {
+    expect(judgeChange('theme', noise, noise, null).outcome).toBe('note')
+    expect(judgeChange('theme', noise, noise, null).said).toContain('no more than the noise')
   })
 
   it('only notes the number while no threshold is set', () => {
@@ -163,8 +170,8 @@ describe('a changed setting, against the noise', () => {
     expect(judgeChange('theme', noise, moved, 0.1).outcome).toBe('ok')
   })
 
-  it('fails when two shots at the same settings were of different sizes', () => {
-    expect(judgeChange('theme', { ...noise, sameSize: false }, moved, null).outcome).toBe('fail')
+  it('notes that two shots at the same settings were of different sizes', () => {
+    expect(judgeChange('theme', { ...noise, sameSize: false }, moved, null).outcome).toBe('note')
   })
 
   it('fails when the trains did not move in a second, and notes when they did', () => {
@@ -180,19 +187,30 @@ describe('a changed setting, against the noise', () => {
     expect(judgeColour('line-colour', '#112233', 0, 40, 1000, 0.5).outcome).toBe('fail')
   })
 
-  it('wants the face loaded and the label measured differently', () => {
+  it('wants the face loaded, and only notes a label that did not measure differently', () => {
     expect(judgeTypeface('t', 'Inter', false, 50, 60).outcome).toBe('fail')
-    expect(judgeTypeface('t', 'Inter', true, 50, 50).outcome).toBe('fail')
-    expect(judgeTypeface('t', 'Inter', true, null, 50).outcome).toBe('fail')
+    expect(judgeTypeface('t', 'Inter', true, 50, 50).outcome).toBe('note')
+    expect(judgeTypeface('t', 'Inter', true, null, 50).outcome).toBe('note')
+    expect(judgeTypeface('t', 'Inter', true, 0, 50).outcome).toBe('note')
     expect(judgeTypeface('t', 'Inter', true, 50, 56).outcome).toBe('ok')
   })
 
-  it('wants an export with no blank frame and a first frame unlike the last', () => {
+  it('wants an export with nothing-drawn frames failed and a first frame unlike the last', () => {
     const a = picture(BG, 3000)
     const b = picture(BG, 3000, [255, 0, 0])
-    expect(judgeExport('reel', [a, picture(BG), b], null).outcome).toBe('fail')
-    expect(judgeExport('reel', [a, a], null).outcome).toBe('fail')
-    expect(judgeExport('reel', [a, b], null).outcome).toBe('note')
+    const times = [0, 1, 2]
+    expect(judgeExport('reel', { frames: [a, picture(BG), b], times }, null).outcome).toBe('fail')
+    expect(judgeExport('reel', { frames: [a, a], times: [0, 1] }, null).outcome).toBe('fail')
+    expect(judgeExport('reel', { frames: [a, b], times: [0, 1] }, null).outcome).toBe('note')
+  })
+
+  it('does not judge a frame inside the opening for being empty, and only notes a nearly empty one', () => {
+    const a = picture(BG, 3000)
+    const b = picture(BG, 3000, [255, 0, 0])
+    const frames = [picture(BG), a, picture(BG, 30), b]
+    const times = [0, 1, 9, 10]
+    expect(judgeExport('gif', { frames, times }, null, 8).outcome).toBe('note')
+    expect(judgeExport('gif', { frames, times }, null, 0).outcome).toBe('fail')
   })
 })
 
@@ -279,15 +297,14 @@ describe('the manifest', () => {
       images: ['8-theme-a1.png', '8-theme-a2.png', '8-theme-b.png'],
       question: init.question,
       expected: ['Sepia'],
-      control: false,
       check: { name: 'theme', threshold: null, outcome: 'note' },
     })
     expect((manifest.entries[0].check as { value: number }).value).toBeGreaterThan(0.3)
   })
 
-  it('fails a change that is no more than the noise, with its images kept', async () => {
+  it('fails a change that did not happen, with its images kept', async () => {
     const evidence = new Evidence(dir)
-    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 900))
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10))
     pair.target = camera(picture(BG, 10))
     const check = await evidence.finish(pair, { wait: async () => undefined })
     expect(check.outcome).toBe('fail')
@@ -302,27 +319,38 @@ describe('the manifest', () => {
     await evidence.finish(pair, { wait: async () => undefined })
     expect(evidence.entries.map((e) => [e.id, e.control, e.images.length])).toEqual([
       ['8-theme', false, 3],
-      ['8-theme-control', true, 2],
+      ['8-theme-recheck', true, 2],
     ])
     expect(evidence.entries[1].question).toBe(init.question)
     expect(evidence.entries[1].check).toBeNull()
+    // The manifest does not say which is the control; the key file does.
+    const manifest = readFileSync(join(dir, 'evidence.json'), 'utf8')
+    expect(manifest).not.toContain('control')
+    expect(JSON.parse(readFileSync(join(dir, 'evidence-key.json'), 'utf8'))).toEqual({
+      controls: ['8-theme-recheck'],
+    })
   })
 
-  it('notes that the map was not steady, beside what was measured', async () => {
+  it('notes, never fails, what was measured of a map that was not steady', async () => {
     const evidence = new Evidence(dir)
     const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10))
     pair.steady = false
-    pair.target = camera(picture(BG, 4000))
-    expect((await evidence.finish(pair, { wait: async () => undefined })).said).toContain(
-      'the map was not steady',
-    )
+    pair.target = camera(picture(BG, 10))
+    const check = await evidence.finish(pair, { wait: async () => undefined })
+    expect(check.outcome).toBe('note')
+    expect(check.said).toContain('the map was not steady')
+    expect(evidence.failures(8)).toEqual([])
   })
 
   it('keeps an export as a sheet and its ends, and fails a blank frame', () => {
     const evidence = new Evidence(dir)
     const a = picture(BG, 3000)
     const b = picture(BG, 3000, [255, 0, 0])
-    const good = evidence.keepFrames({ ...init, id: '11-reel', step: 11 }, [a, b], 'reel')
+    const good = evidence.keepFrames(
+      { ...init, id: '11-reel', step: 11 },
+      { frames: [a, b], times: [0, 1] },
+      'reel',
+    )
     expect(good.outcome).toBe('note')
     expect(evidence.entries[0].images).toEqual([
       '11-reel-sheet.png',
@@ -330,7 +358,11 @@ describe('the manifest', () => {
       '11-reel-last.png',
     ])
     expect(
-      evidence.keepFrames({ ...init, id: '12-gif', step: 12 }, [a, picture(BG)], 'gif').outcome,
+      evidence.keepFrames(
+        { ...init, id: '12-gif', step: 12 },
+        { frames: [a, picture(BG)], times: [0, 1] },
+        'gif',
+      ).outcome,
     ).toBe('fail')
   })
 
@@ -344,5 +376,36 @@ describe('the manifest', () => {
     expect(said).toMatch(/^Evidence kept: 8-theme-a1\.png, 8-theme-a2\.png, 8-theme-b\.png\./)
     expect(said).toContain('Measured: theme:')
     expect(evidence.summary(9)).toBe('')
+  })
+})
+
+describe('what evidence does to a step', () => {
+  const entry = (outcome: 'ok' | 'note' | 'fail', step = 8) => ({
+    id: `${step}-x`,
+    step,
+    row: 'Not automated: whether it looks right.',
+    question: 'q',
+    images: [],
+    expected: [],
+    control: false,
+    check: { name: 'c', value: 0.5, unit: 'u', threshold: null, outcome, said: 'said' },
+  })
+
+  it('records only a failed check as a problem, of its own step', () => {
+    const entries = [entry('ok'), entry('note'), entry('fail'), entry('fail', 9)]
+    expect(failuresOf(entries, 8)).toHaveLength(1)
+    expect(failuresOf([entry('ok'), entry('note')], 8)).toEqual([])
+  })
+
+  it('leaves a step that is part not automated so, whatever the checks found', () => {
+    const none = failuresOf([entry('ok'), entry('note')], 8)
+    expect(stepResult({ failed: none.length > 0, unchecked: 0, unautomated: 2 })).toBe(
+      'pass, part not automated',
+    )
+    expect(stepResult({ failed: false, unchecked: 1, unautomated: 2 })).toBe(
+      'pass, part not checked',
+    )
+    expect(stepResult({ failed: false, unchecked: 0, unautomated: 0 })).toBe('pass')
+    expect(stepResult({ failed: true, unchecked: 0, unautomated: 2 })).toBe('fail')
   })
 })

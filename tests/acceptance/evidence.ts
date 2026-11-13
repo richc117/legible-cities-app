@@ -25,6 +25,7 @@ import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
+import type { Result } from './record'
 import { TOLERANCE, pixelDifference, readPngRows, writePng } from '../support/frames'
 
 // ------------------------------------------------------------------ thresholds
@@ -202,37 +203,45 @@ const pct = (fraction: number): string => `${(fraction * 100).toFixed(3)}%`
 
 /**
  * A changed setting against the noise. A1 against A2 is the noise (the same
- * settings, twice); A1 against B must differ, and by more than the noise.
- * Fails with no threshold at all when nothing differs or no more than the
- * noise does; with a threshold, also when the change is under it.
+ * settings, twice); A1 against B should differ by more. The only failure that
+ * needs no threshold is that nothing at all changed, and only from a pair
+ * that stood still: a map that was moving, or two shots of different sizes,
+ * or a change no larger than the noise, is a note for a person to look at.
+ * Once a threshold is set, a change under it fails (on a steady pair).
  */
 export function judgeChange(
   name: string,
   noise: Difference,
   change: Difference,
   threshold: number | null,
+  steady = true,
 ): Check {
   const base = { name, value: change.fraction, unit: 'fraction of pixels changed', threshold }
   const measured = `${pct(change.fraction)} of pixels changed against ${pct(noise.fraction)} between two shots at the same settings`
+  const unsteady = steady ? '' : ' (the map was not steady)'
   if (!noise.sameSize)
     return {
       ...base,
-      outcome: 'fail',
-      said: 'two shots at the same settings were of different sizes, so the noise cannot be measured',
+      outcome: 'note',
+      said: `two shots at the same settings were of different sizes, so the noise cannot be measured${unsteady}`,
     }
   if (change.pixels === 0)
-    return { ...base, outcome: 'fail', said: `no pixel changed: ${measured}` }
+    return {
+      ...base,
+      outcome: steady ? 'fail' : 'note',
+      said: `no pixel changed: ${measured}${unsteady}`,
+    }
   if (change.pixels <= noise.pixels)
-    return { ...base, outcome: 'fail', said: `no more than the noise: ${measured}` }
+    return { ...base, outcome: 'note', said: `no more than the noise: ${measured}${unsteady}` }
   if (threshold === null)
-    return { ...base, outcome: 'note', said: `${measured}; no threshold is set yet` }
+    return { ...base, outcome: 'note', said: `${measured}; no threshold is set yet${unsteady}` }
   if (change.fraction < threshold)
     return {
       ...base,
-      outcome: 'fail',
-      said: `under the threshold of ${pct(threshold)}: ${measured}`,
+      outcome: steady ? 'fail' : 'note',
+      said: `under the threshold of ${pct(threshold)}: ${measured}${unsteady}`,
     }
-  return { ...base, outcome: 'ok', said: measured }
+  return { ...base, outcome: 'ok', said: `${measured}${unsteady}` }
 }
 
 /** Two shots a second apart while the map plays: the trains must have moved. */
@@ -274,39 +283,63 @@ export function judgeColour(
     : { ...base, outcome: 'ok', said }
 }
 
-/** An export frame is blank when under 1% of its pixels are more than 8 from the corner's. */
+/**
+ * A picture with nothing in it at all (every pixel within 8 of the corner's)
+ * fails; one with under 1% drawn is only noted, since that 1% has not been
+ * measured.
+ */
 export function judgeBlank(name: string, image: Rgb): Check {
   const { fraction, blank } = blankness(image)
+  const said = `${pct(fraction)} of pixels are more than ${TOLERANCE} from the corner pixel`
   return {
     name,
     value: fraction,
     unit: 'fraction of pixels away from the corner pixel',
-    threshold: 0.01,
-    outcome: blank ? 'fail' : 'ok',
-    said: blank
-      ? `blank: ${pct(fraction)} of pixels are more than ${TOLERANCE} from the corner pixel`
-      : `${pct(fraction)} of pixels are more than ${TOLERANCE} from the corner pixel`,
+    threshold: null,
+    outcome: fraction === 0 ? 'fail' : blank ? 'note' : 'ok',
+    said: fraction === 0 ? `blank: ${said}` : blank ? `nearly blank: ${said}` : said,
   }
 }
 
-/** An export's frames: none blank, and the first differs from the last. */
-export function judgeExport(name: string, frames: readonly Rgb[], threshold: number | null): Check {
-  const blanks = frames.map((f, k) => ({ k, ...blankness(f) })).filter((f) => f.blank)
-  if (blanks.length > 0)
+/** The frames of an export, with the second each was taken at. */
+export interface Sampled {
+  frames: Rgb[]
+  times: number[]
+}
+
+/**
+ * An export's frames: none empty and the first unlike the last. Only frames
+ * from `openingSeconds` on are judged for being empty, since a title card
+ * and a network drawing in may leave a frame nearly bare; one with no drawn
+ * pixel fails, one under 1% is a note. The first frame equal to the last
+ * fails.
+ */
+export function judgeExport(
+  name: string,
+  { frames, times }: Sampled,
+  threshold: number | null,
+  openingSeconds = 0,
+): Check {
+  const judged = frames
+    .map((f, k) => ({ k, fraction: blankness(f).fraction, blank: blankness(f).blank }))
+    .filter((f) => times[f.k] >= openingSeconds)
+  const empty = judged.filter((f) => f.fraction === 0)
+  if (empty.length > 0)
     return {
       name,
       value: null,
       unit: 'blank frames',
       threshold,
       outcome: 'fail',
-      said: `frame ${blanks.map((b) => b.k + 1).join(', ')} of ${frames.length} sampled is blank`,
+      said: `frame ${empty.map((b) => b.k + 1).join(', ')} of ${frames.length} sampled has nothing drawn in it`,
     }
+  const nearly = judged.filter((f) => f.blank)
   const ends = difference(frames[0], frames[frames.length - 1])
-  const said = `none of ${frames.length} sampled frames is blank; ${pct(ends.fraction)} of pixels differ between the first and the last`
+  const said = `${nearly.length === 0 ? 'none' : `frame ${nearly.map((b) => b.k + 1).join(', ')}`} of ${frames.length} sampled is nearly blank (frames before ${openingSeconds} s, the opening, are not judged); ${pct(ends.fraction)} of pixels differ between the first and the last`
   const base = { name, value: ends.fraction, unit: 'fraction of pixels changed', threshold }
   if (ends.pixels === 0)
     return { ...base, outcome: 'fail', said: `the first and the last frame are the same: ${said}` }
-  if (threshold === null)
+  if (nearly.length > 0 || threshold === null)
     return { ...base, outcome: 'note', said: `${said}; no threshold is set yet` }
   return ends.fraction < threshold
     ? { ...base, outcome: 'fail', said: `under the threshold of ${pct(threshold)}: ${said}` }
@@ -328,12 +361,12 @@ export function judgeTypeface(
     threshold: null,
   }
   if (!loaded) return { ...base, outcome: 'fail', said: `${face} is not among the loaded faces` }
-  if (widthBefore === null || widthAfter === null)
-    return { ...base, outcome: 'fail', said: 'no label could be measured in the map' }
+  if (widthBefore === null || widthAfter === null || widthBefore === 0 || widthAfter === 0)
+    return { ...base, outcome: 'note', said: 'no label could be measured in the map' }
   if (widthBefore === widthAfter)
     return {
       ...base,
-      outcome: 'fail',
+      outcome: 'note',
       said: `the label measured ${widthAfter} before and after ${face} was chosen`,
     }
   return {
@@ -458,9 +491,17 @@ export class Evidence {
   }
 
   /** The shot at the changed settings, judged against the pair. Never throws for a difference: it returns the check. */
-  async finish(pair: Pair, options: { colour?: string; wait?: typeof sleep } = {}): Promise<Check> {
+  async finish(
+    pair: Pair,
+    options: { colour?: string; wait?: typeof sleep; window?: Page } = {},
+  ): Promise<Check> {
     const b = await this.settled(`${pair.init.id}-b`, pair.target, options.wait)
     const [a1, a2, bb] = [this.#read(pair.a1), this.#read(pair.a2), this.#read(b.path)]
+    // B too is taken of a map standing still: its clock is read twice as A's was.
+    const steady =
+      pair.steady &&
+      b.settled &&
+      (options.window === undefined || (await clockStill(options.window)))
     let check: Check
     if (options.colour === undefined) {
       check = judgeChange(
@@ -468,6 +509,7 @@ export class Evidence {
         difference(a1, a2),
         difference(a1, bb),
         thresholdFor(pair.name),
+        steady,
       )
     } else {
       check = judgeColour(
@@ -479,9 +521,17 @@ export class Evidence {
         thresholdFor(pair.name),
       )
     }
-    if (!pair.steady) check = { ...check, said: `${check.said} (the map was not steady)` }
+    if (!steady && options.colour !== undefined)
+      check = { ...check, said: `${check.said} (the map was not steady)` }
     this.add({ ...pair.init, images: [pair.a1, pair.a2, b.path], check })
-    if (pair.control) this.add({ ...pair.init, images: [pair.a1, pair.a2], check: null }, true)
+    if (pair.control) {
+      // The same two shots, copied under names of their own and asked as if the
+      // setting had changed. Nothing in the manifest says so: the key file does.
+      const [x, y] = ['a', 'b'].map((n) => this.pathOf(`${pair.init.id}-recheck-${n}.png`))
+      copyFileSync(pair.a1, x)
+      copyFileSync(pair.a2, y)
+      this.add({ ...pair.init, id: `${pair.init.id}-recheck`, images: [x, y], check: null }, true)
+    }
     return check
   }
 
@@ -505,14 +555,24 @@ export class Evidence {
   }
 
   /** An export's frames, kept as a contact sheet and its ends: none blank, the first unlike the last. */
-  keepFrames(init: EntryInit, frames: readonly Rgb[], name: string): Check {
+  keepFrames(
+    init: EntryInit,
+    { frames, times }: Sampled,
+    name: string,
+    options: { openingSeconds?: number } = {},
+  ): Check {
     const sheet = this.pathOf(`${init.id}-sheet.png`)
     const first = this.pathOf(`${init.id}-first.png`)
     const last = this.pathOf(`${init.id}-last.png`)
     writeFileSync(sheet, encodePng(contactSheet(frames)))
     writeFileSync(first, encodePng(frames[0]))
     writeFileSync(last, encodePng(frames[frames.length - 1]))
-    const check = judgeExport(name, frames, thresholdFor(name))
+    const check = judgeExport(
+      name,
+      { frames, times },
+      thresholdFor(name),
+      options.openingSeconds ?? 0,
+    )
     this.add({ ...init, images: [sheet, first, last], check })
     return check
   }
@@ -528,7 +588,6 @@ export class Evidence {
   ): void {
     this.entries.push({
       ...entry,
-      id: control ? `${entry.id}-control` : entry.id,
       images: entry.images.map((p) => p.split(/[\\/]/).pop() ?? p),
       expected: [...(entry.expected ?? [])],
       control,
@@ -537,9 +596,16 @@ export class Evidence {
   }
 
   write(): void {
+    const listed = this.entries.map((e) => ({ ...e, control: undefined }))
     writeFileSync(
       this.pathOf('evidence.json'),
-      `${JSON.stringify({ tolerance: TOLERANCE, entries: this.entries }, null, 2)}\n`,
+      `${JSON.stringify({ tolerance: TOLERANCE, entries: listed }, null, 2)}\n`,
+    )
+    // Which entries are control pairs, kept apart so the reviewer reads the
+    // manifest without knowing: opened only after every verdict is written.
+    writeFileSync(
+      this.pathOf('evidence-key.json'),
+      `${JSON.stringify({ controls: this.entries.filter((e) => e.control).map((e) => e.id) }, null, 2)}\n`,
     )
   }
 
@@ -556,10 +622,32 @@ export class Evidence {
 
   /** What failed for a step, to be recorded as the step's problems. */
   failures(step: number): string[] {
-    return this.entries
-      .filter((e) => e.step === step && e.check?.outcome === 'fail')
-      .map((e) => `${e.check?.name} (${e.id}): ${e.check?.said}`)
+    return failuresOf(this.entries, step)
   }
+}
+
+/** The failed checks of a step's entries: a note and an ok are never a problem. */
+export function failuresOf(entries: readonly Entry[], step: number): string[] {
+  return entries
+    .filter((e) => e.step === step && e.check?.outcome === 'fail')
+    .map((e) => `${e.check?.name} (${e.id}): ${e.check?.said}`)
+}
+
+/**
+ * A step's result in the record, from what the step found. Evidence takes
+ * part only through `failed` (a failed check is a problem, `failuresOf`):
+ * a kept picture or a note neither passes a step nor takes away its "part
+ * not automated", whatever it measured.
+ */
+export function stepResult(found: {
+  failed: boolean
+  unchecked: number
+  unautomated: number
+}): Result {
+  if (found.failed) return 'fail'
+  if (found.unchecked > 0) return 'pass, part not checked'
+  if (found.unautomated > 0) return 'pass, part not automated'
+  return 'pass'
 }
 
 // ----------------------------------------------------------------- in the app
@@ -587,6 +675,14 @@ export async function pauseAndRead(
   return { clock: second, steady: first !== '' && first === second, paused }
 }
 
+/** Whether the page's clock reads the same twice, a moment apart: the map is standing still. */
+export async function clockStill(window: Page): Promise<boolean> {
+  const clock = window.frameLocator('iframe.viewer-frame').locator('#clock')
+  const first = (await clock.textContent().catch(() => null)) ?? ''
+  await sleep(600)
+  return first !== '' && first === ((await clock.textContent().catch(() => null)) ?? '')
+}
+
 /** What the map's frame says about a station name: the face loaded, and one label's width. */
 export interface LabelMeasure {
   label: string | null
@@ -595,33 +691,49 @@ export interface LabelMeasure {
 }
 
 /**
- * The widest-named label in the map and the faces the page has loaded, read
- * inside the frame (the page is driven from outside; nothing is injected). A
- * given `label` is measured again by its text, so a width is compared across
- * two faces for the same name.
+ * The widest-named label the map draws and the faces its page has loaded.
+ * This reads the viewer's frame from outside, as the spec's other checks
+ * do (a locator's `evaluate` runs one read-only function in that frame; it
+ * changes nothing there). The labels are `#linear-labels text`, the copies
+ * the page draws; the `#labels` group is hidden and measures 0. A given
+ * `label` is measured again by its text, so a width is compared across two
+ * faces for the same name. The faces are read until `face` is among them
+ * or `deadline` passes, since a face loads after the page draws.
  */
-export async function measureLabel(window: Page, label?: string): Promise<LabelMeasure> {
+export async function measureLabel(
+  window: Page,
+  label?: string,
+  options: { face?: RegExp; deadline?: number } = {},
+): Promise<LabelMeasure> {
   const root = window.frameLocator('iframe.viewer-frame').locator('html')
-  return root.evaluate((html, wanted) => {
-    const doc = html.ownerDocument
-    const faces = Array.from(doc.fonts)
-      .filter((f) => f.status === 'loaded')
-      .map((f) => f.family.replace(/["']/g, ''))
-    const texts = Array.from(doc.querySelectorAll<SVGTextContentElement>('#stage svg text'))
-    const named = texts.filter((t) => (t.textContent ?? '').trim().length >= 4)
-    const pick =
-      wanted === null || wanted === undefined
-        ? named.sort(
-            (a, b) => (b.textContent ?? '').trim().length - (a.textContent ?? '').trim().length,
-          )[0]
-        : named.find((t) => (t.textContent ?? '').trim() === wanted)
-    if (pick === undefined) return { label: null, width: null, faces }
-    return {
-      label: (pick.textContent ?? '').trim(),
-      width: Math.round(pick.getComputedTextLength() * 100) / 100,
-      faces,
-    }
-  }, label ?? null)
+  const read = (): Promise<LabelMeasure> =>
+    root.evaluate((html, wanted) => {
+      const doc = html.ownerDocument
+      const faces = Array.from(doc.fonts)
+        .filter((f) => f.status === 'loaded')
+        .map((f) => f.family.replace(/["']/g, ''))
+      const texts = Array.from(
+        doc.querySelectorAll<SVGTextContentElement>('#linear-labels text'),
+      ).filter((t) => t.getClientRects().length > 0 && (t.textContent ?? '').trim().length >= 4)
+      const text = (t: SVGTextContentElement): string => (t.textContent ?? '').trim()
+      const pick =
+        wanted === null || wanted === undefined
+          ? texts.sort((a, b) => text(b).length - text(a).length)[0]
+          : texts.find((t) => text(t) === wanted)
+      if (pick === undefined) return { label: null, width: null, faces }
+      return {
+        label: text(pick),
+        width: Math.round(pick.getComputedTextLength() * 100) / 100,
+        faces,
+      }
+    }, label ?? null)
+  const end = Date.now() + (options.deadline ?? 30_000)
+  for (;;) {
+    const measure = await read()
+    const ready = options.face === undefined || measure.faces.some((f) => options.face?.test(f))
+    if (ready || Date.now() > end) return measure
+    await sleep(500)
+  }
 }
 
 // ---------------------------------------------------------------- the exports

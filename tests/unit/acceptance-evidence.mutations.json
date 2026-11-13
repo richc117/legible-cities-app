@@ -4,8 +4,8 @@
     "find": "if (change.pixels <= noise.pixels)",
     "replace": "if (change.pixels < noise.pixels)",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "fails when the change is no more than the noise",
-    "why": "A changed setting that changed no more than two shots at the same settings would pass: the comparison would measure the noise and call it a difference."
+    "title": "notes, and does not fail, a change no more than the noise",
+    "why": "A change exactly as large as the noise would be read as a change: the comparison would call the noise a difference."
   },
   {
     "file": "tests/acceptance/evidence.ts",
@@ -65,8 +65,8 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "    if (pair.control) this.add({",
-    "replace": "    if (false) this.add({",
+    "find": "    if (pair.control) {",
+    "replace": "    if (false) {",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "asks the control as if the settings had changed",
     "why": "The manifest would hold no control pair, and the reviewer could not tell whether a reading is to be trusted."
@@ -97,10 +97,66 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "return { ...base, outcome: 'note', said: `${measured}; no threshold is set yet` }",
-    "replace": "return { ...base, outcome: 'fail', said: `${measured}; no threshold is set yet` }",
+    "find": "return { ...base, outcome: 'note', said: `${measured}; no threshold is set yet${unsteady}` }",
+    "replace": "return { ...base, outcome: 'fail', said: `${measured}; no threshold is set yet${unsteady}` }",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "only notes the number while no threshold is set",
     "why": "A number with no threshold behind it would fail a step on the first run, before any measuring run set one."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      outcome: steady ? 'fail' : 'note',\n      said: `no pixel changed:",
+    "replace": "      outcome: 'fail',\n      said: `no pixel changed:",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "only notes that nothing changed when the map was not steady",
+    "why": "A map that was still moving would fail a step for showing no change."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "e.check?.outcome === 'fail')",
+    "replace": "e.check?.outcome !== 'ok')",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "records only a failed check as a problem",
+    "why": "A note would fail a step on a first run, before any threshold has been measured."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (found.unautomated > 0) return 'pass, part not automated'\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "leaves a step that is part not automated so",
+    "why": "A step with a picture kept would read as a plain pass, and its not-automated part would be lost from the record."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "outcome: fraction === 0 ? 'fail' : blank ? 'note' : 'ok',",
+    "replace": "outcome: blank ? 'fail' : 'ok',",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails a picture with nothing in it, only notes one nearly empty",
+    "why": "A frame under the unmeasured 1% would fail a step."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": ".filter((f) => times[f.k] >= openingSeconds)",
+    "replace": ".filter((f) => times[f.k] >= 0)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "does not judge a frame inside the opening",
+    "why": "A GIF's title card, bare by design, would be judged for being empty."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      outcome: 'note',\n      said: `the label measured ${widthAfter}",
+    "replace": "      outcome: 'fail',\n      said: `the label measured ${widthAfter}",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants the face loaded, and only notes",
+    "why": "A label that measured the same, where the selector may have found nothing real, would fail a step."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "{ ...e, control: undefined }",
+    "replace": "{ ...e }",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "The manifest would say which entries are control pairs, and the reviewer's reading would not be blind."
   }
 ]

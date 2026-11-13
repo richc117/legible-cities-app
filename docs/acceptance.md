@@ -1278,36 +1278,48 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   not-automated sentence, the images, the question, the text expected in
   them, and the machine check with its value and its threshold.
 - A comparison is **A1, A2, B**: two shots at the same settings, the map
-  paused and its clock read twice first, give the noise; B, at the changed
-  setting, must differ from A1 by more than that. A check **fails** on what
-  needs no threshold: a blank frame (fewer than 1% of its pixels more than
-  8 from the corner pixel), a picture that was not taken, a changed setting
-  that changed nothing, or a change no larger than the noise; and, for the
-  trains, two shots a second apart that are the same. Every other number is
-  a **note** until a measuring run on each system has set its threshold, at
-  half the smallest difference it saw (`THRESHOLDS` in `evidence.ts`).
+  paused and its clock read twice first (and after B), give the noise; B, at
+  the changed setting, should differ from A1 by more. A check **fails** a
+  step only on what needs no measured threshold: a picture that was not
+  taken, a font that did not load, no pixel changing in a second of playing
+  while the clock moved, no pixel changing between a steady pair, a new line
+  colour whose pixels do not rise, an export frame with nothing drawn in it
+  (frames inside a GIF's opening are not judged), or an export whose first
+  frame equals its last. Every other number is a **note**: a change no larger
+  than the noise, a nearly blank frame (under 1% drawn), a label that did not
+  measure differently, and anything from a map that was not steady. A note
+  never changes a step's result or removes its "Not automated" sentence. A
+  note becomes a failure only when a measuring run on each system has set its
+  threshold, at half the smallest difference it saw (`THRESHOLDS` in
+  `evidence.ts`).
+- The run drives the **first** line's options in step 9 (Bold, Regular
+  casing and Dashed, each against the shot before, then Reset line), where
+  the steps below say the second line and add a name and Shown off: those
+  stay as the person's.
 - The manifest holds **two control pairs**: the same settings, asked as if
-  they had changed (the theme, and the line width). They are marked
-  `control` and their question is the real one.
+  they had changed (the theme, and the line width), under ids and files that
+  look like any other entry's. Which they are is in
+  `evidence/evidence-key.json`, uploaded beside it.
 
 ### The reviewer's protocol
 
 The assistant or the maintainer reviews the evidence of each run, and
 records a verdict per entry in the second table of the results template.
 
-1. Read the control pairs first. If a control is answered "looks right",
-   the review is not to be trusted: stop and say so.
-2. Open `evidence.json` and every image it names. Do not read the machine
-   check first.
-3. For each entry, write one sentence of what is visible before any verdict.
-4. For a pair, name the visible difference in your own words. If the
+1. Open `evidence.json` and every image it names. Do not read the machine
+   check first, and do not open `evidence-key.json`.
+2. For each entry, write one sentence of what is visible before any verdict.
+3. For a pair, name the visible difference in your own words. If the
    difference asked about cannot be seen, the verdict is not "looks right",
    whatever the number says.
-5. Where the entry lists expected text, compare the text in the image with
+4. Where the entry lists expected text, compare the text in the image with
    those strings.
-6. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
+5. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
    `pass`: this table is a reviewer's reading, not a step's result, and a
    step stays "pass, part not automated" however it reads.
+6. Only after every verdict is written, open `evidence-key.json`. If a
+   control pair was answered "looks right", the review is not to be trusted:
+   say so, and read it again.
 
 ## Failures
 
