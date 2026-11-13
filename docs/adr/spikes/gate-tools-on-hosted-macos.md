@@ -6,11 +6,14 @@
   691), a rules engine as a second accessibility net (issue 692), and the
   update over a real 0.1.0 project (issue 690).
 - **Timebox:** five rounds of push and read.
-- **Ended:** in four rounds; all three questions are answered.
-- **Branch:** `spike-gate-tools`, a throwaway: one workflow,
-  `.github/workflows/spike-gate-tools.yml`, triggered by a push to that
-  branch, and the probes under `spike/`. Deleted when this record lands;
-  the record is the deliverable.
+- **Started:** 2026-11-13 (round 1's run)
+- **Ended:** 2026-11-13 (round 4's run), in four rounds; all three
+  questions are answered.
+- **Branch:** `spike-gate-tools`, a throwaway, named for the workflow it
+  carried rather than `spike/<name>` as the other spikes' branches are:
+  one workflow, `.github/workflows/spike-gate-tools.yml`, triggered by a
+  push to that branch, and the probes under `spike/`. Deleted when this
+  record lands; the record is the deliverable.
 
 ## Method
 
@@ -38,8 +41,8 @@ The runs, all of the spike-gate-tools workflow:
 | Round | Commit | Run | What it changed |
 | --- | --- | --- | --- |
 | 1 | 1c9a56f | 43397139455 | the three probes |
-| 2 | efbdf7d | 43398383995 | cancelled before it started: hosted Mac runners were saturated |
-| 3 | 929448c | 43399898553 | round 2's changes, run: guidepup's VoiceOver assets installed, rc.3 opens the 0.1.0 profile; axe prints each card's name beside its text |
+| 2 | efbdf7d | 43398383995 | guidepup's VoiceOver assets installed; axe also prints the rules passed, each rule's tags, the first node and its summary, and the theme as launched; rc.3 opens the 0.1.0 profile. Cancelled before it started: hosted Mac runners were saturated |
+| 3 | 929448c | 43399898553 | round 2's changes, first run here; and axe prints each card's name beside its text |
 | 4 | c698d9c | 43408453875 | axe's own view of a card; Chromium's accessibility support with no screen reader; `project.json` before and after rc.3 |
 
 A green job in this table means only that its script exited 0. Every
@@ -59,11 +62,17 @@ with the right arrow).
 
 **Round 1 failed all ten cycles before VoiceOver started.** `setup --ci`
 reported success, but `voiceOver.start()` then refused with "Failed to
-mount Guidepup preferences". guidepup 0.40 also needs its VoiceOver
-preferences asset, which `npx @guidepup/setup install voiceover` downloads
-into `~/Library/Caches/guidepup`; it has to run in the folder that holds
-`@guidepup/guidepup`, because it reads that package's manifest. With that
-one step added, round 3:
+mount Guidepup preferences", and asked for `npx @guidepup/setup install`
+to have been run "at least once for this project to install screen
+reader assets". It named neither an argument nor a folder. The step
+added in round 2 and first run in round 3 was `npx @guidepup/setup install
+voiceover`, in the temporary folder that holds `@guidepup/guidepup`; it
+downloaded guidepup's VoiceOver preferences
+asset into `~/Library/Caches/guidepup`. The folder matters: `@guidepup/setup`
+0.29.3's `lib/commands/install/resolve-manifest.js` resolves
+`@guidepup/guidepup/package.json` from the working directory and reads the
+`manifest.json` beside it. Whether a bare `install` would have done the
+same was not tried. With that one step added, round 3:
 
 | Measure | Round 3 | Round 4 |
 | --- | --- | --- |
@@ -78,10 +87,11 @@ one step added, round 3:
 The one miss, in round 3, was the first Tab of the first cycle: the phrase
 came back empty though the cursor had moved to "New project button". In
 every later cycle, and in all ten of round 4, the same Tab was heard as
-"New project button list Projects 1 item". It is the first phrase after
-VoiceOver's first start on a fresh runner, and it did not recur in round
-4's first cycle. Across the two runs: 19 of 20 cycles clean, 99 of 100
-Tabs heard, 100 of 100 followed.
+"New project button list Projects 1 item". Round 3's miss came on
+VoiceOver's first start on a fresh runner; round 4's first cycle was also
+a first start on a fresh runner, and did not miss. So it is one miss in
+two cold starts, not something every cold start does. Across the two runs:
+19 of 20 cycles clean, 99 of 100 Tabs heard, 100 of 100 followed.
 
 What was heard, word for word the same in every clean cycle of both runs:
 
@@ -93,7 +103,7 @@ tab 4  TriMet MAX, Portland · MAX Light Rail, not downloaded yet button TriMet 
 tab 5  New York City Subway, New York · Subway, not downloaded yet button New York City Subway group (4 of 22)
 ```
 
-VoiceOver's own navigation, from the fifth card:
+VoiceOver's own navigation, from the fourth card, where the fifth Tab left it:
 
 ```
 next 1  end of New York City Subway group (4 of 22)
@@ -115,13 +125,14 @@ and stayed put while the cursor was on a group.
   every cycle, with nothing in the app or the probe asking for it. The
   control, the same app launched the same way with no screen reader (the
   axe job, round 4), had it off at launch and still off at the Library.
-  So it is VoiceOver that turns it on, and a probe needs nothing of its
-  own.
+  So it is VoiceOver, with guidepup's setup applied, that turns it on (the
+  control skipped the setup), and a probe needs nothing of its own.
 - *Is a phrase captured for focus moved by Playwright?* Yes: 99 of 100
-  over two runs, and the one miss is the first phrase after a cold start.
-  A warm-up Tab before the walkthrough's first row covers it.
+  over two runs. The one miss was the first Tab after a cold start, in one
+  of the two cold starts. A warm-up Tab before the walkthrough's first row
+  is the proposed fix; it was not tried.
 - *Does VoiceOver's cursor follow keyboard focus?* Yes, 100 of 100, with
-  VoiceOver's default of the cursor following keyboard focus.
+  the VoiceOver preferences guidepup installs.
 - *How long?* 4 to 13 s to start VoiceOver, 10 to 24 s for a cycle with
   five Tabs, four to five minutes for the whole job including the download
   and the setup.
@@ -134,7 +145,7 @@ on the Library of rc.3, as launched (the runner is light, so the
 interface came up in Parchment through "Follow the system"), then in Night
 and in Parchment, switched through Settings.
 
-**It runs against Electron in legacy mode**, in 0.5 to 1.1 s an analysis.
+**It runs against Electron in legacy mode**, in 0.3 to 1.1 s an analysis.
 The result was the same in every theme:
 
 - 23 rules passed, among them `color-contrast` on 78 nodes,
@@ -158,9 +169,10 @@ cards because of how it joins the text, not because a word is missing.**
 Round 4 asked the copy of axe the analysis left in the page what it
 compares (`axe.commons.text.subtreeText`, then the rule's own clean-up:
 punctuation removed, whitespace collapsed, lower case). A card is a button
-holding a picture with `alt=""` and three `<span>`s, which the stylesheet
-stacks as lines. axe concatenates the spans' text with nothing between
-them:
+holding a picture with `alt=""`, then `span.card-name`, then
+`span.card-facts`, which holds `span.card-fact` and `span.card-chip`; the
+stylesheet stacks the three texts as lines. axe concatenates the spans'
+text with nothing between them:
 
 | | What axe compares |
 | --- | --- |
@@ -180,10 +192,11 @@ first line, so a person who says "LA Metro Rail" to speech control should
 reach the button; what fails is the rule's string comparison, which sees
 the lines run together because the separation exists only in the layout.
 Either way a sweep would fail on it on every release. A likely fix is a
-space in the markup between the spans, which would make axe's string read
-`la metro rail los angeles · metro rail not downloaded yet`; it was not
-tried here. It is a change to `Card.tsx`, an issue of its own, not part of
-the sweep's.
+space in the markup at two levels, between `span.card-name` and
+`span.card-facts`, and between `span.card-fact` and `span.card-chip`
+inside it, which would make axe's string read `la metro rail los angeles ·
+metro rail not downloaded yet`; it was not tried here. It is a change to
+`Card.tsx`, filed as issue 707, not part of the sweep's.
 
 **Contrast is checked and clean.** `color-contrast` ran on 78 nodes in
 each theme and passed them all, with nothing left incomplete.
@@ -225,9 +238,10 @@ Desktop or in Documents.
 **rc.3 opens it.** Launched on the same profile, rc.3's Library had "Your
 projects" with one button, "Open LA Metro Rail"; the project opened to
 "The map is drawn from every cell.", and cell 02's strip read Layout
-c7d405e8, the layout 0.1.0 had made, with Engine now 0.21.1. Opening it rewrote
-`project.json`: version 1 before, version 2 after, with one new key,
-`revision`, and nothing else pressed (round 4).
+c7d405e8, the layout 0.1.0 had made, with Engine now 0.21.1. rc.3's
+session (launch, open, quit, nothing else pressed) rewrote `project.json`
+(round 4): version 1 before, version 2 after; its keys gained `revision`;
+the values were not compared.
 
 Two things the automated step 22 must allow for:
 
@@ -236,7 +250,7 @@ Two things the automated step 22 must allow for:
   same moment. "Made unchanged" has to be compared as a moment (from
   `project.json`, or parsed), never as the strip's text.
 - **The layout id is not the same in every run** (a4da3f11 once,
-  c7d405e8 twice, from the same feed and preset on the same image): topo
+  c7d405e8 twice, from the feed as each run downloaded it, not hashed): topo
   is not deterministic (loom#44). The seed phase has to write down its own
   id for the later phases to compare against; no id can be written into
   the spec.
@@ -249,17 +263,20 @@ data carries over, not that 0.1.0 and 1.0 resolve the same default folder.
 ## Recommendations
 
 **VoiceOver (issue 691): build it.** The three premises the issue named
-hold on a hosted runner, and the issue's own bar, the transcript matching
-on two runs in a row, was met by the probe's five Tabs (rounds 3 and 4,
-every clean cycle word for word). Build it as the issue describes, with
-what this spike found:
+hold on a hosted runner. For the probe's five Tabs, the issue's bar, the
+transcript matching on two runs in a row, was met outright by round 4 (10
+of 10 cycles) and in 9 of 10 cycles by round 3, whose miss was cycle 1's
+first Tab; every clean cycle of both was word for word the same. Build it
+as the issue describes, with what this spike found:
 
 - `npx @guidepup/setup setup --ci` **and** `npx @guidepup/setup install
-  voiceover`, the second run where `@guidepup/guidepup` is installed;
-  without it nothing starts and the error does not say so plainly.
+  voiceover`, the second run in the folder where `@guidepup/guidepup` is
+  installed; without it nothing starts, and the error names `install` but
+  neither its `voiceover` argument nor where to run it.
 - Node 24 for the setup step.
-- One warm-up Tab, not recorded, before the first row, for the cold-start
-  miss.
+- One warm-up Tab, not recorded, before the first row, as the proposed
+  fix for the cold-start miss (one in two cold starts here). It was not
+  tried; the lane's first run proves it or not.
 - Each row's action wrapped in `voiceOver.capture()`, which returns the
   phrase and the cursor's text together; nothing has to turn the app's
   accessibility tree on.
@@ -274,9 +291,9 @@ for the person's sitting.
 
 **axe (issue 692): build it**, as the issue describes: legacy mode,
 `options()` before `withTags()`, `iframes: false`, inside the sweep's theme
-loop. It costs under a second an analysis. Its first run will fail on the
+loop. It costs about a second at most an analysis. Its first run will fail on the
 sample cards' `label-content-name-mismatch`, so either the card change
-lands first (an issue of its own, against `Card.tsx`) or the known-findings
+lands first (issue 707, against `Card.tsx`) or the known-findings
 list starts with that one entry, keyed by rule and selector and naming that
 issue. The first is better: the fix looks small, and the finding will be
 the rule's to make on every release until it is made.
@@ -288,7 +305,8 @@ opens what it left, keeps its layout and moves `project.json` to version
 2. The two changes:
 
 - "Made unchanged" compares the moment, not the strip's text, since the
-  two versions format it differently.
+  two versions format it differently; and the lane checks that `made`
+  survives the rewrite to version 2, which this spike did not compare.
 - The seed writes down its own layout id; nothing assumes one.
 
 And one thing to settle in the lane rather than assume: the issue's
@@ -296,6 +314,19 @@ default profiles. This spike linked the versions by giving both the same
 `--user-data-dir`; whether 0.1.0's default folder is the one 1.0 reads is
 the question the default-profile design rests on, and the first `after`
 phase run on a runner will answer it.
+
+## Follow-up
+
+- Issue 707: separate the sample cards' lines in their visible text, so
+  the name contains the label (the axe finding above).
+- Issue 691: the scripted VoiceOver run of the walkthrough, built as
+  recommended.
+- Issue 692: axe in the sweeps, after issue 707 or with its one known
+  finding.
+- Issue 690: the automated update over 0.1.0, with the two changes to its
+  checks and the default profile settled in the lane.
+- No decision record follows from this record by itself: ADR-063, the 1.0
+  gate (issue 694), cites it.
 
 ## What would change this
 
