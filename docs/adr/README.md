@@ -124,6 +124,7 @@ you add a row, fill this column from your record's header.
 | 059 | [Rendered unit tests run in jsdom, and the kit-facing ones in a browser](059-rendered-unit-tests-run-in-jsdom-and-the-kit-facing-ones-in-a-browser.md) | Accepted | - |
 | 060 | Reserved: issue 556's record, written in its own pull request | - | - |
 | 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its "no undo stack" |
+| 064 | [The coordinating session merges and cuts release candidates](064-the-coordinating-session-merges-and-cuts-candidates.md) | Accepted | - |
 
 ## Amending rather than superseding
 

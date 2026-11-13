@@ -1,10 +1,29 @@
 # Releasing
 
-How a version of the app goes from `main` to the Releases page. Releasing
-is the maintainer's. The release job in `.github/workflows/build.yml` drafts
+How a version of the app goes from `main` to the Releases page. The
+maintainer cuts the final release. The coordinating assistant session may
+cut release candidates once the freeze below is green (ADR-064). The release job in `.github/workflows/build.yml` drafts
 a Release from a tag and never publishes one (ADR-041); how it does that,
 and what it refuses, is in `docs/ARCHITECTURE.md` under the release job.
 This page is what a person does around it.
+
+## The freeze
+
+A candidate is cut only when all of this is true, and a session that cannot
+make an item true does not cut it:
+
+- Every pull request the release carries is merged, and `main` is green.
+- No open issue labelled `flaky` names a spec the gate relies on (issue
+  553).
+- A rehearsal of the acceptance run is green on both systems from a
+  `build.yml` run, once `acceptance.yml` accepts a run id (issue 688).
+- `node scripts/release.mjs notes vX.Y.Z-rc.N <scratch file>` is clean.
+- The changelog section is current, Known issues included.
+- `gh workflow run vendor.yml --ref main` has run.
+
+After the freeze, only changes to the gate's own tests, workflows and
+documents land before the release. Anything that changes what the installers
+carry makes a new candidate.
 
 ## Cutting a candidate
 

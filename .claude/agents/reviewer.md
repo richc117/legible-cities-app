@@ -2,7 +2,7 @@
 name: reviewer
 description: Read-only reviewer for correctness, leaks and this repository's own rules. Use before opening a pull request, before a merge, or whenever a change touches the sidecar, the capture path or a child process.
 tools: Read, Grep, Glob, Bash
-model: inherit
+model: opus
 hooks:
   PreToolUse:
     - matcher: "Bash"

@@ -127,8 +127,11 @@ Run by the main session from the main checkout unless a step says "agent".
    line of `<scratch>/scan.txt`, append `grep -av '^Closes #[0-9]*$'
    <body>`, and run `bin/preflight --message-file <scratch>/scan.txt`.
    Then `gh pr create --head <branch> --title <title> --body-file <body>`
-   and the five checks green.
-9. **Merge, clean up and record, from this checkout.** `gh pr merge <N>
+   and the seven required checks green (`ci (ubuntu-22.04)`, `ci (macos-15)`,
+   `ci (windows-latest)`, `gitleaks`, `preflight`, `e2e (macos-15)`,
+   `e2e (windows-latest)`).
+9. **Merge, clean up and record, from this checkout.** `bin/land <N>` does
+   steps 7 to 9 once issue 685 lands; until then, by hand. `gh pr merge <N>
    --squash --subject <title> --body-file <scanned message>`, so the
    commit on `main` says what was scanned and GitHub composes no trailers
    of its own; without `--delete-branch`, because git will not delete a
