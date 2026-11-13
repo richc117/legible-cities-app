@@ -277,10 +277,17 @@ describe('the line colours panel builds on the picker’s release', () => {
   const count = (pattern: RegExp): number => (source.match(pattern) ?? []).length
 
   it('hands the picker an onChangeEnd, and its onChange only follows', () => {
+    // Since issue 671 the end is the last colour followed, sent once the
+    // picker's end has been rendered (`colour-picker.test.tsx`, "the end of
+    // a drag"), never the colour the picker's own end carries.
     expect(
-      has(/<HexColorPicker[^>]*onChange=\{onPick\}[^>]*onChangeEnd=\{onPickEnd\}/, chip),
-      'the picker is given onChange={onPick} to follow and onChangeEnd={onPickEnd} to release',
+      has(/<HexColorPicker[^>]*onChange=\{picked\}[^>]*onChangeEnd=\{ended\}/, chip),
+      'the picker is given onChange={picked} to follow and onChangeEnd={ended} to count an end',
     ).toBe(true)
+    expect(
+      has(/onChangeEnd=\{onPickEnd\}/, chip),
+      'the picker’s end is not passed straight through: it carries the colour one move short',
+    ).toBe(false)
     // Two rows of controls (the default's and each line's), each with both.
     expect(
       count(/onPick=\{\(hex\) => follow\(/g),

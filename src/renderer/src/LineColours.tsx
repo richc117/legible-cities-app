@@ -57,10 +57,13 @@ import { useLineOptions } from './useLineOptions'
 // 262). A drag, a press and a key are all gestures, and each ends in one
 // event of the picker: `onChangeEnd`, which react-colorful calls on the
 // pointer's release and on the release of an arrow key (its `keyup`), and
-// only when the gesture changed the colour. The swatch and the hex field
-// follow every colour on the way (`onChange`); the build goes on the end,
-// or on the hex field's own button. There is no quiet interval anywhere on
-// that path, so a drag of any speed, with any pause in it, is one build.
+// only when the gesture changed the colour; the colour picker sends it on
+// as the last colour followed, once React has rendered the release, never
+// as the colour that event carries (`ColourChip.tsx`, issue 671). The
+// swatch and the hex field follow every colour on the way (`onChange`);
+// the build goes on the end, or on the hex field's own button. There is no
+// quiet interval anywhere on that path, so a drag of any speed, with any
+// pause in it, is one build.
 // A held arrow key sends one `keydown` per repeat and a single `keyup`, so
 // it is one gesture and one build, and each separate tap is a gesture of
 // its own.

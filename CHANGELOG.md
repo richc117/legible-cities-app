@@ -97,6 +97,8 @@ links are inline, with no images and no reference-style links.
   put back before it is taken.
 - Moving the time of day in cell 03 just as a redraw ends is no longer
   undone when the redrawn map arrives.
+- A colour chosen by dragging is no longer kept one step short of where
+  the drag ended, so the map shows the colour the swatch does.
 
 ### Security
 

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent, type JSX } from 'react'
+import { useEffect, useEffectEvent, useId, useRef, useState, type FormEvent, type JSX } from 'react'
 import { HexColorPicker } from 'react-colorful'
 import { readHex } from './colours'
 import Button from './kit/Button'
@@ -236,8 +236,9 @@ export function useColourPanel({
  *
  * `onPick` is every colour the picker is given, including each step of a
  * drag, and it sends nothing: the swatch and the hex field follow it.
- * `onPickEnd` is the colour a gesture ended on - the picker's own
- * `onChangeEnd`, on the release of the pointer or of an arrow key - or the
+ * `onPickEnd` is the colour a gesture ended on - the last `onPick`, sent
+ * once the picker's own `onChangeEnd` (the release of the pointer or of an
+ * arrow key) has been rendered, never the colour that event carries - or the
  * one typed into the field and chosen with its button, and it is the only
  * thing here that builds the map (issue 262). `onDone` is a person saying
  * they have finished, which only the typed field's own button means. `onPick`
@@ -281,6 +282,34 @@ export function ColourPicker({
     setMessage(null)
   }
 
+  // The end of a gesture is taken once React has applied every step of it,
+  // with the last colour the picker reported (issue 671). react-colorful's
+  // `onChangeEnd` is its `commitChange`, run synchronously in the `mouseup`
+  // listener, and it reports the colour in the library's cache - which a
+  // step reaches only in an effect, once React has rendered that step. A
+  // native `mousemove` is a continuous-priority update in React 19, rendered
+  // in a later task, so a release dispatched before the last move is
+  // rendered ends on the move before it: the swatch shows one colour and the
+  // map is built with another. So the release only counts an end here, and
+  // the effect below reports it. React 19 renders a discrete update in one
+  // pass with any continuous or default one waiting, so the release is
+  // rendered with the last move, the library's effect hands that move's
+  // colour to `picked` first (a child's effects run before its parent's),
+  // and this one sends it. A press and a key are discrete, rendered before
+  // their release, and end the same way.
+  const lastPick = useRef<string | null>(null)
+  const [ends, setEnds] = useState(0)
+  const picked = (hex: string): void => {
+    lastPick.current = hex
+    onPick(hex)
+  }
+  const ended = (): void => setEnds((count) => count + 1)
+  const reportEnd = useEffectEvent((hex: string) => onPickEnd(hex))
+  useEffect(() => {
+    if (ends === 0 || lastPick.current === null) return
+    reportEnd(lastPick.current)
+  }, [ends])
+
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const hex = readHex(text)
@@ -295,7 +324,7 @@ export function ColourPicker({
 
   return (
     <div className="colour-picker">
-      <HexColorPicker color={colour} onChange={onPick} onChangeEnd={onPickEnd} />
+      <HexColorPicker color={colour} onChange={picked} onChangeEnd={ended} />
       <form className="inline-form" noValidate onSubmit={submit}>
         <div className="field">
           <label htmlFor={fieldId}>Hex value</label>
