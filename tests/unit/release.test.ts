@@ -1878,6 +1878,14 @@ describe('build.yml, signing mode', () => {
   })
 
   it('takes the signed image from the packaging job and gives the release job the installer', () => {
+    // What it takes is the artefact a signing run's packaging job makes, by
+    // the name that job gives it, and not the installer it is about to
+    // become.
+    const taking = /\n {8}with:\n {10}name: (\S.*)\n/.exec(step(notarize, DOWNLOAD))
+    expect(taking?.[1]).toBe('unnotarised-${{ matrix.target }}')
+    expect(pkg.steps[pkg.steps.length - 1].text).toContain(
+      "name: ${{ env.SIGN == 'true' && 'unnotarised' || 'installer' }}-${{ matrix.target }}",
+    )
     const upload = notarize.steps[notarize.steps.length - 1].text
     expect(upload).toContain('name: installer-${{ matrix.target }}')
     // From the folder the download was unpacked into, so the artefact's own
