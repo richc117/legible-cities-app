@@ -190,5 +190,21 @@
     "test": "tests/unit/reader-record.test.ts",
     "title": "types no word into what a row is to hear",
     "why": "A word typed into a walk into a group is heard against itself."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (LOCATOR_TEXT.test(text)) {\n",
+    "replace": "  if (LOCATOR_TEXT.test('')) {\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "refuses a locator’s text as something to hear",
+    "why": "A locator's text would be wanted, and its row written as not heard for words no page says."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "        r.outcome.kind === 'not heard',\n",
+    "replace": "        r.outcome.kind !== 'heard',\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "lists the rows not heard, and only those",
+    "why": "Stopped and unscripted rows would be listed as findings needing an issue."
   }
 ]

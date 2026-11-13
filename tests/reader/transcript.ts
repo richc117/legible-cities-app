@@ -135,6 +135,9 @@ export function normalise(text: string): string {
   return ` ${words} `
 }
 
+/** What Playwright's `Locator.toString()` gives, which no page says. */
+const LOCATOR_TEXT = /\bgetBy[A-Z]\w*\(|\blocator\(/
+
 /**
  * A sentence or a name, wanted as the page has it. Text with no letter or
  * digit in it would be heard in anything, so it is refused.
@@ -142,6 +145,11 @@ export function normalise(text: string): string {
 export function wantText(text: string): Want {
   if (normalise(text).trim() === '') {
     throw new Error(`nothing to hear in ${JSON.stringify(text)}`)
+  }
+  // A locator's own text is a script's words, never the page's: run
+  // 43446490051 wanted "getByRole('region', …).getByRole('button', …)".
+  if (LOCATOR_TEXT.test(text)) {
+    throw new Error(`a locator is not something to hear: ${JSON.stringify(text)}`)
   }
   return { said: text, any: [text], kind: 'text' }
 }
@@ -577,6 +585,31 @@ export function voiceOverCell(markdown: string, table: string): string {
 }
 
 // --------------------------------------------------------- the transcript
+
+/** The heading the job's summary opens with. */
+export const NOT_HEARD_HEADING = 'Not heard (each needs an issue before its clause is committed)'
+
+/**
+ * The rows not heard, for the top of the job's summary: each is a finding
+ * (ADR-063) whose clause carries `#<issue>` until a person files one, not
+ * a failure of the run. Says so when there are none.
+ */
+export function renderNotHeard(results: readonly PartResult[]): string {
+  const rows = results
+    .map((result) => ({ result, outcome: outcomeOf(result) }))
+    .filter(
+      (r): r is { result: PartResult; outcome: Extract<Outcome, { kind: 'not heard' }> } =>
+        r.outcome.kind === 'not heard',
+    )
+  const lines = [`## ${NOT_HEARD_HEADING}`, '']
+  if (rows.length === 0) lines.push('None.')
+  for (const { result, outcome } of rows) {
+    lines.push(
+      `- **${result.row}**: ${quoted(outcome.phrase)} expected after ${withoutPaths(outcome.action)}`,
+    )
+  }
+  return `${lines.join('\n')}\n`
+}
 
 const quoted = (text: string): string => `"${withoutPaths(text).replace(/\s+/g, ' ')}"`
 

@@ -10,6 +10,8 @@ import {
   changedWants,
   clauseText,
   clausesByTable,
+  NOT_HEARD_HEADING,
+  renderNotHeard,
   containerWants,
   freshPhrase,
   missing,
@@ -422,6 +424,35 @@ describe('what is not heard', () => {
     expect(freshPhrase('', before)).toBe('')
     // A joined snapshot's last phrase is stale on its own.
     expect(freshPhrase('Laid out.', ['Running: read. Laid out.'])).toBe('')
+  })
+})
+
+describe('the run’s verdict', () => {
+  it('refuses a locator’s text as something to hear', () => {
+    // What run 43446490051 wanted after a Cancel that had gone.
+    for (const text of [
+      "getByRole('region', { name: 'Layout run' }).getByRole('button', { name: 'Cancel' })",
+      "locator('section.cell').getByText('x')",
+      "page.getByLabel('Draw for another day')",
+    ]) {
+      expect(() => wantText(text), text).toThrow(/locator/)
+    }
+    // A sentence that only mentions a word like it is the page's own.
+    expect(wantText('Cancel').said).toBe('Cancel')
+    expect(wantText('The locator of the map is drawn.').said).toContain('locator')
+  })
+
+  it('lists the rows not heard, and only those, as findings for the summary', () => {
+    const notHeard = renderNotHeard([
+      result({ row: 'Heard row' }),
+      result({ row: 'Missed row', hearings: [hearing(['New project'])] }),
+      result({ row: 'Stopped row', error: 'no such button' }),
+      result({ row: 'Left row', scripted: 'none', notScripted: 'why', hearings: [] }),
+    ])
+    expect(notHeard.split('\n')[0]).toBe(`## ${NOT_HEARD_HEADING}`)
+    expect(notHeard).toContain('**Missed row**: "New project" expected after Tab to New project')
+    expect(notHeard).not.toMatch(/Heard row|Stopped row|Left row/)
+    expect(renderNotHeard([result({})])).toContain('None.')
   })
 })
 

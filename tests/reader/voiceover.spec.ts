@@ -23,8 +23,11 @@
 // and what VoiceOver said, word for word), `transcript.json`, and, where the
 // versions were all read, `clauses.md` and `accessibility.md`, the record
 // with each clause appended to its row's VoiceOver cell. Heard is not a
-// pass: no one listened. The test fails when any scripted row was not heard
-// or its script stopped.
+// pass: no one listened. A row not heard is a finding, recorded with
+// `#<issue>` for a person to file (ADR-063), and does not fail the test;
+// `not-heard.md` lists them for the top of the job's summary. The test
+// fails when a scripted row's script stopped, since then nothing honest
+// can be written for it.
 //
 // The method is the spike's (docs/adr/spikes/gate-tools-on-hosted-macos.md):
 // VoiceOver started before the app, one unrecorded warm-up Tab, and every
@@ -65,6 +68,7 @@ import {
   missing,
   outcomeOf,
   parseSnapshotLine,
+  renderNotHeard,
   renderTranscript,
   wantText,
   wantsOf,
@@ -514,18 +518,30 @@ class Session implements Ctx {
   }
 
   /** A hearing of focus that never came: what was to be heard there is what was not. */
-  private async notLanded(action: string, target: Locator, from: number): Promise<void> {
-    const name = await target
-      .ariaSnapshot({ timeout: 2 * SECOND })
-      .then((s) => parseSnapshotLine(s).name || parseSnapshotLine(s).role)
-      .catch(() => target.toString())
+  /**
+   * A hearing of focus that never came: what was to be heard there is what
+   * was not, by the control's accessible name as the page gives it. A
+   * control the page no longer has cannot be named, and stops the row
+   * rather than wanting a locator's text (`wantText` refuses one).
+   */
+  private async notLanded(
+    action: string,
+    target: Locator | null,
+    named: string | null,
+    from: number,
+  ): Promise<void> {
+    const name = named ?? (target === null ? null : await this.name(target).catch(() => null))
+    if (name === null || name === '') {
+      throw new Error(`${action}: focus was to land on a control the page does not have`)
+    }
+    const want = wantText(name)
     const where = await this.reading().catch(() => null)
     this.hearings.push({
       action: `${action} (focus went to ${where?.name || where?.role || 'nothing'})`,
-      wants: [name],
+      wants: [want.said],
       spoken: this.log.slice(from),
       item: this.item,
-      missing: [name],
+      missing: [want.said],
     })
   }
 
@@ -550,7 +566,7 @@ class Session implements Ctx {
     await this.settle()
     const from = this.log.length
     await this.capture(() => this.page.keyboard.press('Tab'))
-    if (!(await this.focusIn(target))) return this.notLanded('Tab', target, from)
+    if (!(await this.focusIn(target))) return this.notLanded('Tab', target, null, from)
     const { wants, on } = await this.wantsOfFocus(also)
     await this.hear(`Tab to ${on}`, wants, from)
   }
@@ -586,27 +602,47 @@ class Session implements Ctx {
     const saids: readonly Said[] =
       after.said === undefined ? [] : Array.isArray(after.said) ? after.said : [after.said as Said]
     const held = await this.held(saids)
-    await this.capture(() => this.page.keyboard.press(key))
-    const wants: Want[] = []
-    if (after.focus !== undefined) {
-      if (after.focus !== true) {
-        const target = after.focus
+    const target = after.focus === undefined || after.focus === true ? null : after.focus
+    // Where focus lands is read as it lands, inside the action, while the
+    // control is there: a run's Cancel is gone once the run ends, and run
+    // 43446490051 read it too late, when only its locator was left to name.
+    let landed: { reading: Reading | null; stayed: boolean } | null = null
+    let missedName: string | null = null
+    await this.capture(async () => {
+      await this.page.keyboard.press(key)
+      if (after.focus === undefined) return
+      if (target !== null) {
         const end = Date.now() + LAND_MS
-        while (!(await this.focusIn(target)) && Date.now() < end) await this.poll()
-        if (!(await this.focusIn(target))) return this.notLanded(action, target, from)
+        while (!(await this.focusIn(target)) && Date.now() < end) await sleep(50)
+        if (!(await this.focusIn(target))) {
+          missedName = await this.name(target).catch(() => null)
+          return
+        }
       }
+      const reading = await this.reading()
       const stayed = await this.page.evaluate(() => {
         let el: Element | null = document.activeElement
         while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
         return el === (window as unknown as { __readerBefore?: Element }).__readerBefore
       })
-      if (stayed && before !== null) {
+      landed = { reading, stayed }
+    })
+    const wants: Want[] = []
+    if (after.focus !== undefined) {
+      const at = landed as { reading: Reading | null; stayed: boolean } | null
+      if (at === null || at.reading === null) {
+        return this.notLanded(action, target, missedName, from)
+      }
+      if (at.stayed && before !== null) {
         // Focus did not move: only what changed is said again.
-        const now = await this.reading()
-        if (now !== null) wants.push(...changedWants(before, now, after.also))
+        wants.push(...changedWants(before, at.reading, after.also))
         for (const word of after.also?.words ?? []) wants.push(wantText(word))
       } else {
-        wants.push(...(await this.wantsOfFocus(after.also)).wants)
+        wants.push(...wantsOf(at.reading, after.also))
+        if (after.also?.within !== undefined) {
+          wants.push(...(await this.containerWants(after.also.within)))
+        }
+        for (const word of after.also?.words ?? []) wants.push(wantText(word))
       }
     }
     if (after.words !== undefined) wants.push(...(await after.words()).map(wantText))
@@ -723,7 +759,7 @@ class Session implements Ctx {
     const end = Date.now() + LAND_MS
     while (!(await this.focusIn(target)) && Date.now() < end) await this.poll()
     if (!(await this.focusIn(target)))
-      return this.notLanded(`the end of ${since}`, target, mark.log)
+      return this.notLanded(`the end of ${since}`, target, null, mark.log)
     const { wants, on } = await this.wantsOfFocus(also)
     await this.hear(`focus come to rest on ${on} since ${since}`, wants, mark.log)
   }
@@ -977,12 +1013,12 @@ test('the walkthrough, heard with VoiceOver', async () => {
     writeFileSync(join(OUT, 'accessibility.md'), appendClauses(recordText, clauses))
   }
 
-  const failed = ordered
+  // Not heard is a finding for a person, written down, not a failure of
+  // the run; a script that stopped is, since nothing honest can be written.
+  writeFileSync(join(OUT, 'not-heard.md'), renderNotHeard(ordered))
+  const stopped = ordered
     .map((r) => ({ row: r.row, outcome: outcomeOf(r) }))
-    .filter(({ outcome }) => outcome.kind === 'not heard' || outcome.kind === 'error')
+    .filter(({ outcome }) => outcome.kind === 'error')
     .map(({ row, outcome }) => `${row}: ${JSON.stringify(outcome)}`)
-  expect(
-    failed,
-    'rows not heard, or whose script stopped (transcript.md says what was said)',
-  ).toEqual([])
+  expect(stopped, 'rows whose script stopped (transcript.md says where)').toEqual([])
 })

@@ -779,6 +779,9 @@ jobs:
           echo "::error::guidepup's setup (@guidepup/setup install voiceover) failed three times: VoiceOver's assets for Guidepup are missing, so the walkthrough was not run; this is not a result of the walk"
           exit 1
 
+      # Fails only when a row's script stopped: a row not heard is a
+      # finding (ADR-063), listed at the top of the summary, whose clause
+      # carries #<issue> until a person files one.
       - name: The walkthrough, heard
         timeout-minutes: 130
         env:
@@ -792,7 +795,14 @@ jobs:
         timeout-minutes: 2
         run: |
           transcript="$RUNNER_TEMP/reader/transcript.md"
+          notheard="$RUNNER_TEMP/reader/not-heard.md"
           {
+            # First, the findings: a row not heard does not fail the job
+            # (ADR-063); a row whose script stopped does.
+            if [ -f "$notheard" ]; then
+              cat "$notheard"
+              echo
+            fi
             echo "Heard is not a pass: no one listened. Before any clause in this run's accessibility.md or clauses.md is committed, replace each \`#<issue>\` with the number of an issue filed for what was not heard; the record's test refuses the cell until then."
             echo
             if [ -f "$transcript" ]; then
