@@ -423,8 +423,9 @@ export interface Api {
      * a run away (issue 552, specs/039-quit-guard): the page shows it in its
      * own dialog and answers with `answerQuit`. Null takes back the question
      * on screen, which a second quit has answered. Subscribing tells main
-     * the page listens, and so can be asked; a page that has not said so is
-     * never asked, and the quit goes ahead.
+     * the page listens, and so can be asked, and the function handed back
+     * tells it the page has stopped; a page that has not said it listens,
+     * or has said it stopped, is never asked, and the quit goes ahead.
      */
     onQuitQuestion(listener: (question: AskedQuit | null) => void): () => void
     /**

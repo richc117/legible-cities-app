@@ -89,14 +89,26 @@ export interface QuitFacts {
    * confirmed, and any quit already under way.
    */
   own: boolean
-  /** A question is on the screen already. */
-  open: boolean
+  /** How long the question on the screen has been there, in milliseconds; null with none open. */
+  open: number | null
 }
 
-/** Go ahead without asking, or ask this. */
-export type QuitDecision = { ask: false } | { ask: true; question: QuitQuestion }
+/**
+ * How long a question must have been on the screen before a second quit, or
+ * a second close, counts as its answer. A shortcut held past the keyboard's
+ * repeat delay, or a double click on the window's close button, would
+ * otherwise be the question and its answer before anyone had read it.
+ */
+export const QUESTION_MIN_AGE_MS = 1_000
 
-const GO_AHEAD: QuitDecision = { ask: false }
+/**
+ * Ask this; or ask nothing, and either go ahead or hold: cancel the quit or
+ * the close and leave the question on the screen as it is.
+ */
+export type QuitDecision = { ask: false; hold: boolean } | { ask: true; question: QuitQuestion }
+
+const GO_AHEAD: QuitDecision = { ask: false, hold: false }
+const HOLD: QuitDecision = { ask: false, hold: true }
 
 /**
  * Whether a quit, or a close of the app's window, is asked about first
@@ -110,8 +122,11 @@ const GO_AHEAD: QuitDecision = { ask: false }
  * - for the app's own quits, which nobody chose and nobody can answer;
  * - while the page cannot show the question, because a person must always
  *   be able to quit;
- * - while a question is already open: a second quit is an answer, and it
- *   goes ahead;
+ * - while a question is already open. A second quit, or close, is an
+ *   answer, and it goes ahead - once the question has been on the screen for
+ *   `QUESTION_MIN_AGE_MS`. Before that it is held and nothing changes: the
+ *   repeat of a held shortcut, or the second click of a double click, is not
+ *   an answer to a question nobody has had time to read;
  * - with nothing running, which is every quit and close before this rule.
  *
  * The question names each project once, in the order its first run started.
@@ -119,7 +134,7 @@ const GO_AHEAD: QuitDecision = { ask: false }
 export function quitQuestion(facts: QuitFacts): QuitDecision {
   if (facts.own) return GO_AHEAD
   if (facts.renderer !== 'ready') return GO_AHEAD
-  if (facts.open) return GO_AHEAD
+  if (facts.open !== null) return facts.open < QUESTION_MIN_AGE_MS ? HOLD : GO_AHEAD
   // Sorted on a copy; ties keep the exports first, as they are handed in.
   const runs = [...facts.exports, ...facts.layouts].sort((a, b) => a.started - b.started)
   if (runs.length === 0) return GO_AHEAD

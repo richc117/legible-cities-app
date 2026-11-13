@@ -15,15 +15,22 @@
 //   reported unresponsive, is asked. Otherwise the quit goes ahead: a person
 //   must always be able to quit. Listening ends as it does for the menu
 //   (menu-ipc.ts): when a navigation of the main frame commits, when the
-//   renderer dies, when the window closes; the page's report goes with it.
+//   renderer dies, when the window closes - and when the page says it has
+//   stopped listening, which it does as its dialog is unmounted, an uncaught
+//   error taking the whole interface down included. The page's report goes
+//   with it.
 // - **The question open.** One at a time, numbered, so an answer is for the
 //   question it was given to. While one is open a second quit, or a second
-//   close, is an answer, and goes ahead.
+//   close, is an answer, and goes ahead - once the question has been on the
+//   screen for a second (`QUESTION_MIN_AGE_MS`). Before that it is held and
+//   the question left as it is: the repeat of a held shortcut, or the second
+//   click of a double click, answers nothing.
 // - **The app's own quits.** Every quit the app makes itself goes through
 //   `quit()` here and is never asked about, nor is anything after it: the
 //   crash box's Quit, a missing single-instance lock, an uncaught exception,
-//   the quit that follows the window on Windows and Linux, and the one the
-//   person has just confirmed.
+//   a termination signal on macOS and Linux (`quitOnSignals`), the quit that
+//   follows the window on Windows and Linux, and the one the person has just
+//   confirmed.
 //
 // The question comes before the quit gate and never replaces it
 // (`onBeforeQuit`): a quit that is asked about has not begun, so the gate
@@ -33,12 +40,13 @@
 // **Close anyway** stops the runs and then closes the window. The page stops
 // the ones it counts through each run's own Cancel before it answers; main
 // stops the exports it holds as well, so nothing main runs outlives the
-// window whatever the page did, and a second close, which no page answers,
-// stops them too. On Windows and Linux the app then quits with its window,
-// as it does today; on macOS it stays, with nothing of those runs going on.
-// A layout's request already with the engine at a second close is not
-// cancelled by it: the page that would take its next step is gone, so the
-// run goes no further, and on Windows and Linux the quit ends the engine.
+// window whatever the page did. A second close is answered by no page, so
+// main does the page's part too: it stops the exports and cancels every
+// request the page has with the engine, as the page's own Cancel cancels
+// one - a layout's among them, and whatever else that page was waiting for,
+// since no page is left to hear any of it. On Windows and Linux the app then
+// quits with its window, as it always has; on macOS it stays, with nothing
+// of those runs going on.
 //
 // No Electron import beyond types, so all of it is tested without a session.
 
@@ -80,10 +88,18 @@ export interface QuitGuardDeps {
   withdraw: () => void
   /** Stop every export main holds, as a quit does (`Exporter.abortAll`). */
   stopExports: () => void
+  /**
+   * Cancel every request the page has with the engine, as the page's own
+   * Cancel cancels one (the engine bridge's `cancelAll`): for a window closed
+   * with no page to stop its runs.
+   */
+  cancelRequests: () => void
   /** Close the app's window. */
   close: () => void
   /** Quit the app (`app.quit`). */
   quit: () => void
+  /** A clock that only goes forward, in milliseconds: how old the open question is. */
+  now: () => number
 }
 
 export class QuitGuard {
@@ -94,8 +110,8 @@ export class QuitGuard {
   #responsive = true
   /** The layouts the listening page last reported. */
   #layouts: readonly RunningLayout[] = []
-  /** The question on the screen, or null. */
-  #open: { id: number; kind: QuitKind } | null = null
+  /** The question on the screen and when it was asked, or null. */
+  #open: { id: number; kind: QuitKind; at: number } | null = null
   /** Questions asked, for their numbers. */
   #asked = 0
   /** The app has begun a quit of its own; nothing after it is asked about. */
@@ -132,27 +148,32 @@ export class QuitGuard {
       // A quit already under way is the app's by now, whoever began it: the
       // gate's later passes, and the windows a quit closes on its way out.
       own: this.#own || underWay,
-      open: this.#open !== null,
+      open: this.#open === null ? null : this.#deps.now() - this.#open.at,
     })
   }
 
   #ask(question: QuitQuestion): void {
     this.#asked += 1
-    this.#open = { id: this.#asked, kind: question.kind }
+    this.#open = { id: this.#asked, kind: question.kind, at: this.#deps.now() }
     this.#deps.ask({ id: this.#asked, ...question })
   }
 
   /**
-   * Every `before-quit`, before the gate. True when the quit was cancelled
-   * and the question sent: the caller does nothing more, and the gate never
-   * hears of it. False lets the quit go on to the gate. `underWay` is the
-   * gate's `quitting`.
+   * Every `before-quit`, before the gate. True when the quit was cancelled -
+   * the question sent, or a question only just asked left on the screen: the
+   * caller does nothing more, and the gate never hears of it. False lets the
+   * quit go on to the gate. `underWay` is the gate's `quitting`.
    */
   beforeQuit(event: Cancellable, underWay: boolean): boolean {
     const decision = this.#decide('quit', underWay)
     if (decision.ask) {
       event.preventDefault()
       this.#ask(decision.question)
+      return true
+    }
+    // Too soon after the question to be its answer: nothing changes.
+    if (decision.hold) {
+      event.preventDefault()
       return true
     }
     // A quit that goes ahead with a question open has answered it: a second
@@ -165,8 +186,8 @@ export class QuitGuard {
   }
 
   /**
-   * Every `close` of the app's own window. True when the close was cancelled
-   * and the question sent; false lets the window close.
+   * Every `close` of the app's own window. True when the close was
+   * cancelled, as for a quit; false lets the window close.
    */
   closing(event: Cancellable, underWay: boolean): boolean {
     // The close the guard itself makes, once the person has said so.
@@ -180,12 +201,18 @@ export class QuitGuard {
       this.#ask(decision.question)
       return true
     }
+    if (decision.hold) {
+      event.preventDefault()
+      return true
+    }
     // A second close is an answer, as a second quit is: "Close anyway", with
-    // no page to stop anything, so what main holds is stopped here. Not for
-    // a window a quit is closing: the quit's own shutdown has that.
+    // no page asked to stop anything, so main does the page's part: the
+    // exports it holds, and every request that page has with the engine. Not
+    // for a window a quit is closing: the quit's own shutdown has that.
     if (this.#open !== null && !this.#own && !underWay) {
       this.#open = null
       this.#deps.stopExports()
+      this.#deps.cancelRequests()
     }
     return false
   }
@@ -198,6 +225,17 @@ export class QuitGuard {
     }
     this.#listener = frame
     this.#responsive = true
+  }
+
+  /**
+   * The listening page says it has stopped: its dialog was unmounted, by an
+   * uncaught error that took the interface down among other ways. No dialog
+   * will be drawn, so it is as gone as a page that navigated. Another
+   * frame's word is not heard.
+   */
+  notListening(frame: unknown): void {
+    if (frame !== this.#listener) return
+    this.gone()
   }
 
   /** The listening page's layouts, as they now stand. Another frame's word is not heard. */
@@ -240,8 +278,8 @@ export class QuitGuard {
 
   /**
    * The page went: its main frame navigated to another document, its
-   * renderer died, or its window closed. Nothing it reported or was asked
-   * outlives it.
+   * renderer died, its window closed, or it said it no longer listens.
+   * Nothing it reported or was asked outlives it.
    */
   gone(): void {
     this.#listener = null
@@ -292,6 +330,29 @@ export function onAppWindowClose(deps: AppWindowCloseDeps): (event: Cancellable)
   }
 }
 
+/** The signals that ask a process to end: a terminal's interrupt, `kill`, a session going. */
+export const TERMINATION_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+
+/** What `quitOnSignals` needs: the platform, `process.on`, and the app's own quit. */
+export interface SignalDeps {
+  platform: string
+  on: (signal: (typeof TERMINATION_SIGNALS)[number], listener: () => void) => unknown
+  quit: () => void
+}
+
+/**
+ * A termination signal is the app's own quit, never a person's, on macOS and
+ * Linux: whoever sent it - `kill`, a terminal's Ctrl+C on a development run,
+ * a session ending - is not looking at the window, and cannot answer a
+ * question in it. So each goes through the guard's `quit()` and on to the
+ * gate, which stops the engine, as a signal did before there was a question.
+ * Windows has no such signals to speak of, and is left alone.
+ */
+export function quitOnSignals(deps: SignalDeps): void {
+  if (deps.platform === 'win32') return
+  for (const signal of TERMINATION_SIGNALS) deps.on(signal, () => deps.quit())
+}
+
 /** The most layouts one report may name; a page runs one per project it has open. */
 export const MAX_REPORTED_LAYOUTS = 64
 
@@ -300,6 +361,9 @@ export const BAD_REPORT = 'a report of running layouts must list projects and wh
 
 /** What an answer of the wrong shape is refused with. */
 export const BAD_ANSWER = 'an answer must name its question and say keep or anyway'
+
+/** What a word about listening is refused with when it does not say which. */
+export const BAD_LISTENING = 'a page says that it listens for the question, or that it has stopped'
 
 /**
  * The page's report as main keeps it, or null where it is not one: a list of
@@ -323,9 +387,9 @@ export function readLayoutReport(value: unknown): RunningLayout[] | null {
 }
 
 /**
- * The page's three words: that it listens, what it is laying out, and the
- * person's answer. From the interface's own top frame only, through the one
- * guard every handler has; a report or an answer of the wrong shape is
+ * The page's three words: that it listens or has stopped, what it is laying
+ * out, and the person's answer. From the interface's own top frame only,
+ * through the one guard every handler has; a word of the wrong shape is
  * refused and changes nothing.
  */
 export function registerQuitHandlers(
@@ -334,8 +398,10 @@ export function registerQuitHandlers(
   isTopFrame: (event: IpcMainInvokeEvent) => boolean,
 ): void {
   const handle = guardedHandle(ipcMain, isTopFrame)
-  handle(CHANNELS.quitListening, async (event) => {
-    guard.listening(event.senderFrame)
+  handle(CHANNELS.quitListening, async (event, listening) => {
+    if (typeof listening !== 'boolean') throw new Error(BAD_LISTENING)
+    if (listening) guard.listening(event.senderFrame)
+    else guard.notListening(event.senderFrame)
   })
   handle(CHANNELS.quitLayouts, async (event, layouts) => {
     const report = readLayoutReport(layouts)

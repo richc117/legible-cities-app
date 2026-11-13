@@ -9,7 +9,9 @@ import {
   isAskedQuit,
   isQuitAnswer,
   KEEP_WORKING,
+  quitQuestionListeners,
   quitWords,
+  type AskedQuit,
   type QuitQuestion,
 } from '../../src/shared/quit'
 
@@ -121,5 +123,82 @@ describe('the question’s shape on the bridge', () => {
     expect(isQuitAnswer('anyway')).toBe(true)
     expect(isQuitAnswer('cancel')).toBe(false)
     expect(isQuitAnswer(undefined)).toBe(false)
+  })
+})
+
+// `api.app.onQuitQuestion` as the preload makes it: what reaches the page's
+// listener, and what main is told about whether the page listens.
+describe('the page’s subscription to the question', () => {
+  /** The channel as the preload hears it, and what main was told. */
+  function channel() {
+    const handlers = new Set<(value: unknown) => void>()
+    const told: boolean[] = []
+    const subscribe = quitQuestionListeners({
+      hear: (handler) => {
+        handlers.add(handler)
+        return () => handlers.delete(handler)
+      },
+      tell: (listening) => told.push(listening),
+    })
+    const send = (value: unknown): void => {
+      for (const handler of [...handlers]) handler(value)
+    }
+    return { handlers, told, subscribe, send }
+  }
+  const asked: AskedQuit = { id: 1, ...question() }
+
+  it('tells main the page listens once its listener is on, and hands it each question', () => {
+    const { told, subscribe, send } = channel()
+    expect(told, 'nothing is said before anything listens').toEqual([])
+    const heard: (AskedQuit | null)[] = []
+    subscribe((value) => heard.push(value))
+    expect(told).toEqual([true])
+    send(asked)
+    // The null that takes a question back is heard too.
+    send(null)
+    expect(heard).toEqual([asked, null])
+  })
+
+  it('hands the listener nothing that is not a question', () => {
+    const { subscribe, send } = channel()
+    const heard: unknown[] = []
+    subscribe((value) => heard.push(value))
+    for (const value of [
+      undefined,
+      'quit',
+      7,
+      {},
+      { ...asked, names: [] },
+      { ...asked, id: 'one' },
+    ])
+      send(value)
+    expect(heard).toEqual([])
+  })
+
+  it('tells main the page has stopped when its listener goes, and stops hearing', () => {
+    const { handlers, told, subscribe, send } = channel()
+    const heard: unknown[] = []
+    const off = subscribe((value) => heard.push(value))
+    off()
+    expect(told).toEqual([true, false])
+    expect(handlers.size).toBe(0)
+    send(asked)
+    expect(heard).toEqual([])
+    // Once: stopping twice says nothing more.
+    off()
+    expect(told).toEqual([true, false])
+  })
+
+  it('says the page has stopped only when its last listener has gone', () => {
+    const { told, subscribe } = channel()
+    const first = subscribe(() => undefined)
+    const second = subscribe(() => undefined)
+    first()
+    expect(told, 'one still listens').toEqual([true, true])
+    second()
+    expect(told).toEqual([true, true, false])
+    // And listening again is said again.
+    subscribe(() => undefined)
+    expect(told).toEqual([true, true, false, true])
   })
 })

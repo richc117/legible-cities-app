@@ -41,14 +41,6 @@
   },
   {
     "file": "src/main/window-lifecycle.ts",
-    "find": "  if (facts.open) return GO_AHEAD\n",
-    "replace": "",
-    "test": "tests/unit/window-lifecycle.test.ts",
-    "title": "lets a second quit go ahead while the question is open: it is an answer",
-    "why": "The second-quit rule dropped: a quit made while the question is open is held and asked again, so the question can never be answered by quitting."
-  },
-  {
-    "file": "src/main/window-lifecycle.ts",
     "find": "  if (runs.length === 0) return GO_AHEAD\n",
     "replace": "",
     "test": "tests/unit/window-lifecycle.test.ts",
@@ -70,5 +62,45 @@
     "test": "tests/unit/window-lifecycle.test.ts",
     "title": "names a project once, however many of its runs are going",
     "why": "Every run named, not every project: a project with an export and a layout is said twice in one sentence."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  if (facts.open !== null) return facts.open < QUESTION_MIN_AGE_MS ? HOLD : GO_AHEAD\n",
+    "replace": "",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "lets a second quit go ahead once the question has been open a second: it is an answer",
+    "why": "The second-quit rule dropped: a quit made while the question is open is asked about again, so the question can never be answered by quitting."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  if (facts.open !== null) return facts.open < QUESTION_MIN_AGE_MS ? HOLD : GO_AHEAD\n",
+    "replace": "  if (facts.open !== null) return HOLD\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "lets a second quit go ahead once the question has been open a second: it is an answer",
+    "why": "A second quit held however old the question is: with a dialog that cannot be answered, the app can never be quit."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  if (facts.open !== null) return facts.open < QUESTION_MIN_AGE_MS ? HOLD : GO_AHEAD\n",
+    "replace": "  if (facts.open !== null) return GO_AHEAD\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "holds a second quit that comes before the question could have been read",
+    "why": "The question's age not looked at: the repeat of a held shortcut, or the second click of a double click, answers the question it has only just asked, and the run is thrown away unread."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  if (facts.open !== null) return facts.open < QUESTION_MIN_AGE_MS ? HOLD : GO_AHEAD\n",
+    "replace": "  if (facts.open !== null) return facts.open <= QUESTION_MIN_AGE_MS ? HOLD : GO_AHEAD\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "lets a second quit go ahead once the question has been open a second: it is an answer",
+    "why": "The boundary moved: a quit made exactly a second after the question is held, where the rule says it goes ahead."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  if (facts.renderer !== 'ready') return GO_AHEAD\n  if (facts.open !== null)",
+    "replace": "  if (facts.open !== null && facts.open < QUESTION_MIN_AGE_MS) return HOLD\n  if (facts.renderer !== 'ready') return GO_AHEAD\n  if (facts.open !== null)",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "does not hold a second quit for a page that can no longer show the question",
+    "why": "A second quit held for a page that has gone or stopped answering: for a second after a question it cannot show, the app cannot be quit."
   }
 ]

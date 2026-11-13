@@ -7,12 +7,15 @@
 // only to a page that listens and answers; the app's own quits and a quit
 // already under way are never asked about; "Keep working" leaves everything
 // as it was; "Quit anyway" quits as the app did before, through the gate's
-// first pass and the engine's stop; a second quit or close is an answer;
+// first pass and the engine's stop; a second quit or close is an answer once
+// the question has been on the screen a second, and held before that;
 // "Close anyway" stops the exports and then closes the window, and the close
-// it makes is not asked about; the page's report is heard from the listening
-// frame only and goes with the page; and the three handlers take the top
-// frame's word and refuse a wrong shape. Each was watched failing under its
-// mutation in `quit-guard.mutations.json`.
+// it makes is not asked about; a second close also cancels what the page had
+// with the engine; the page's report is heard from the listening frame only
+// and goes with the page, as it does when the page says it has stopped
+// listening; a termination signal is the app's own quit; and the three
+// handlers take the top frame's word and refuse a wrong shape. Each was
+// watched failing under its mutation in `quit-guard.mutations.json`.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -20,16 +23,19 @@ import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
 import {
   BAD_ANSWER,
+  BAD_LISTENING,
   BAD_REPORT,
   MAX_REPORTED_LAYOUTS,
   onAppWindowClose,
   onBeforeQuit,
   QuitGuard,
+  quitOnSignals,
   readLayoutReport,
   registerQuitHandlers,
+  TERMINATION_SIGNALS,
   type UnnamedRun,
 } from '../../src/main/quit-guard'
-import { quitGate, shutDown } from '../../src/main/window-lifecycle'
+import { QUESTION_MIN_AGE_MS, quitGate, shutDown } from '../../src/main/window-lifecycle'
 import { CHANNELS } from '../../src/shared/api'
 import { UNNAMED_PROJECT, type AskedQuit } from '../../src/shared/quit'
 
@@ -43,10 +49,12 @@ const LYON = 'lyon00000001'
 /** An event that records whether Electron was told to stop. */
 const event = () => ({ preventDefault: vi.fn() })
 
-/** The guard over a world a test can move: the exports, the names, the window's frame, and what was done. */
+/** The guard over a world a test can move: the exports, the names, the window's frame, the clock, and what was done. */
 function world() {
   const did: string[] = []
   const asked: AskedQuit[] = []
+  // Not at nought: a question's age is a difference, never the clock itself.
+  const clock = { now: 50_000 }
   const state = {
     exports: [] as UnnamedRun[],
     names: new Map<string, string>([
@@ -65,15 +73,21 @@ function world() {
     },
     withdraw: () => did.push('withdraw'),
     stopExports: () => did.push('stop exports'),
+    cancelRequests: () => did.push('cancel requests'),
     close: () => did.push('close'),
     quit: () => did.push('quit'),
+    now: () => clock.now,
   })
   /** A page that listens, with an export of Paris running. */
   const exporting = (): void => {
     guard.listening(PAGE)
     state.exports = [{ project: PARIS, started: 1_000 }]
   }
-  return { guard, state, did, asked, exporting }
+  /** Time passes: long enough, by default, for a question on the screen to have been read. */
+  const later = (ms = QUESTION_MIN_AGE_MS): void => {
+    clock.now += ms
+  }
+  return { guard, state, did, asked, exporting, later }
 }
 
 describe('the quit’s question', () => {
@@ -233,10 +247,30 @@ describe('the answers', () => {
     expect(did).toEqual(['ask quit', 'quit'])
   })
 
-  it('takes a second quit as the answer while the question is open, and takes the dialog back', () => {
-    const { guard, did, exporting } = world()
+  it('holds a second quit that comes before the question could have been read, and leaves the dialog', () => {
+    // The repeat of a held shortcut. Cancelled like the first, but nothing is
+    // asked again and nothing is taken back: the one question stays open,
+    // and its buttons still answer it.
+    const { guard, did, asked, exporting, later } = world()
     exporting()
     guard.beforeQuit(event(), false)
+    for (const wait of [0, 400, QUESTION_MIN_AGE_MS - 401]) {
+      later(wait)
+      const repeat = event()
+      expect(guard.beforeQuit(repeat, false), 'held').toBe(true)
+      expect(repeat.preventDefault).toHaveBeenCalledTimes(1)
+    }
+    expect(did).toEqual(['ask quit'])
+    expect(asked).toHaveLength(1)
+    guard.answer(PAGE, 1, 'anyway')
+    expect(did, 'the question was still the one open').toEqual(['ask quit', 'quit'])
+  })
+
+  it('takes a second quit as the answer once the question has been open a second, and takes the dialog back', () => {
+    const { guard, did, exporting, later } = world()
+    exporting()
+    guard.beforeQuit(event(), false)
+    later()
     const second = event()
     expect(guard.beforeQuit(second, false)).toBe(false)
     expect(second.preventDefault).not.toHaveBeenCalled()
@@ -288,6 +322,42 @@ describe('the answers', () => {
   })
 })
 
+describe('a page that says it has stopped listening', () => {
+  it('is not asked, and what it reported and was asked goes with its word', () => {
+    // The dialog was unmounted - an uncaught error took the interface down -
+    // in a window that is still there, with a renderer alive and answering.
+    const { guard, did, state, exporting } = world()
+    exporting()
+    guard.report(PAGE, [{ project: LYON, started: 2_000 }])
+    guard.beforeQuit(event(), false)
+    expect(did).toEqual(['ask quit'])
+
+    guard.notListening(PAGE)
+    // The question it was asked is no longer open: its answer does nothing.
+    guard.answer(PAGE, 1, 'anyway')
+    expect(did).toEqual(['ask quit'])
+    // And a quit is not held for a dialog nobody will draw.
+    const quit = event()
+    expect(guard.beforeQuit(quit, false)).toBe(false)
+    expect(quit.preventDefault).not.toHaveBeenCalled()
+    expect(guard.closing(event(), false)).toBe(false)
+    expect(did, 'nothing was taken back, and nothing stopped').toEqual(['ask quit'])
+
+    // Listening again, it is asked again, and only about what main holds:
+    // the layout it reported went with it.
+    guard.listening(PAGE)
+    state.exports = []
+    expect(guard.beforeQuit(event(), false), 'its old report is not kept').toBe(false)
+  })
+
+  it('is heard from the listening frame only', () => {
+    const { guard, exporting } = world()
+    exporting()
+    guard.notListening(NEXT)
+    expect(guard.beforeQuit(event(), false), 'the page that listens is still asked').toBe(true)
+  })
+})
+
 describe('closing the window', () => {
   it('holds a close during a run and asks the close’s question', () => {
     const { guard, asked, exporting } = world()
@@ -330,30 +400,81 @@ describe('closing the window', () => {
     expect(guard.closing(event(), false), 'a later close asks afresh').toBe(true)
   })
 
-  it('takes a second close as the answer, and stops the exports itself', () => {
-    const { guard, did, exporting } = world()
+  it('holds a second close that comes before the question could have been read', () => {
+    // The second click of a double click on the close button.
+    const { guard, did, asked, exporting, later } = world()
     exporting()
     guard.closing(event(), false)
+    later(QUESTION_MIN_AGE_MS - 1)
+    const again = event()
+    expect(guard.closing(again, false), 'held').toBe(true)
+    expect(again.preventDefault).toHaveBeenCalledTimes(1)
+    expect(did, 'nothing asked again, and nothing stopped').toEqual(['ask close'])
+    expect(asked).toHaveLength(1)
+  })
+
+  it('takes a second close as the answer once the question has been open a second, and does the page’s part itself', () => {
+    // No page is asked to stop anything, so main stops the exports it holds
+    // and cancels what that page had with the engine, a layout's request
+    // among it: on macOS no quit follows the window to end them.
+    const { guard, did, exporting, later } = world()
+    exporting()
+    guard.closing(event(), false)
+    later()
     const second = event()
     expect(guard.closing(second, false)).toBe(false)
     expect(second.preventDefault).not.toHaveBeenCalled()
-    expect(did).toEqual(['ask close', 'stop exports'])
+    expect(did).toEqual(['ask close', 'stop exports', 'cancel requests'])
     guard.answer(PAGE, 1, 'anyway')
-    expect(did, 'the page’s late answer does nothing').toEqual(['ask close', 'stop exports'])
+    expect(did, 'the page’s late answer does nothing').toEqual([
+      'ask close',
+      'stop exports',
+      'cancel requests',
+    ])
+  })
+
+  it('leaves the page’s requests to the page after Close anyway: it has cancelled its own runs', () => {
+    const { guard, did, exporting } = world()
+    exporting()
+    guard.closing(event(), false)
+    guard.answer(PAGE, 1, 'anyway')
+    expect(did).not.toContain('cancel requests')
   })
 
   it('lets a quit answer a close’s question, and a close answer a quit’s', () => {
     const one = world()
     one.exporting()
     one.guard.closing(event(), false)
+    one.later()
     expect(one.guard.beforeQuit(event(), false)).toBe(false)
     expect(one.did).toEqual(['ask close', 'withdraw'])
 
     const two = world()
     two.exporting()
     two.guard.beforeQuit(event(), false)
+    two.later()
     expect(two.guard.closing(event(), false)).toBe(false)
-    expect(two.did).toEqual(['ask quit', 'stop exports'])
+    expect(two.did).toEqual(['ask quit', 'stop exports', 'cancel requests'])
+  })
+
+  it('does not hold a second quit or close for a page that can no longer show the question', () => {
+    // A person can always quit: the page went unresponsive just after it
+    // was asked, and is not waited for.
+    const quitting = world()
+    quitting.exporting()
+    quitting.guard.beforeQuit(event(), false)
+    quitting.guard.unresponsive()
+    const quit = event()
+    expect(quitting.guard.beforeQuit(quit, false)).toBe(false)
+    expect(quit.preventDefault).not.toHaveBeenCalled()
+
+    const closing = world()
+    closing.exporting()
+    closing.guard.closing(event(), false)
+    closing.guard.unresponsive()
+    const close = event()
+    expect(closing.guard.closing(close, false)).toBe(false)
+    expect(close.preventDefault).not.toHaveBeenCalled()
   })
 
   it('is not asked a second time by the quit that follows the window on Windows and Linux', () => {
@@ -476,6 +597,18 @@ describe('before-quit: the question, then the gate, then the shutdown', () => {
     expect(did, 'and nothing more was asked').toEqual(['ask quit', 'quit'])
   })
 
+  it('keeps a second quit that comes too soon from the gate as well', () => {
+    const { handler, gate, order, did, exporting } = quitting()
+    exporting()
+    handler(event())
+    const repeat = event()
+    handler(repeat)
+    expect(repeat.preventDefault).toHaveBeenCalledTimes(1)
+    expect(gate.quitting, 'the gate has not seen a quit').toBe(false)
+    expect(order, 'nothing was stopped').toEqual([])
+    expect(did, 'and the question is the one question').toEqual(['ask quit'])
+  })
+
   it('goes straight to the gate with nothing running', () => {
     const { handler, guard, gate, order, did } = quitting()
     guard.listening(PAGE)
@@ -503,6 +636,18 @@ describe('the window’s close handler', () => {
     handler(confirmed)
     expect(confirmed.preventDefault).not.toHaveBeenCalled()
     expect(kept).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps no place for a second close that comes too soon', () => {
+    const { guard, exporting } = world()
+    const kept = vi.fn()
+    const handler = onAppWindowClose({ guard, gate: { quitting: false }, closing: kept })
+    exporting()
+    handler(event())
+    const again = event()
+    handler(again)
+    expect(again.preventDefault).toHaveBeenCalledTimes(1)
+    expect(kept).not.toHaveBeenCalled()
   })
 
   it('does not hold a window a quit under way is closing', () => {
@@ -583,21 +728,38 @@ describe('the page’s three words', () => {
     const { call, frames, guard, state, did } = bridge()
     state.exports = [{ project: PARIS, started: 1_000 }]
     frames.top = false
-    await expect(call(CHANNELS.quitListening, PAGE)).rejects.toThrow('forbidden')
+    await expect(call(CHANNELS.quitListening, PAGE, true)).rejects.toThrow('forbidden')
     await expect(call(CHANNELS.quitLayouts, PAGE, [])).rejects.toThrow('forbidden')
     await expect(call(CHANNELS.quitAnswer, PAGE, 1, 'anyway')).rejects.toThrow('forbidden')
     expect(guard.beforeQuit(event(), false), 'nobody listens yet').toBe(false)
 
     frames.top = true
-    await call(CHANNELS.quitListening, PAGE)
+    await call(CHANNELS.quitListening, PAGE, true)
     expect(guard.beforeQuit(event(), false)).toBe(true)
     await call(CHANNELS.quitAnswer, PAGE, 1, 'anyway')
     expect(did).toEqual(['ask quit', 'quit'])
   })
 
+  it('hears that the page listens and that it has stopped, and refuses a word that says neither', async () => {
+    const { call, guard, state } = bridge()
+    state.exports = [{ project: PARIS, started: 1_000 }]
+    await call(CHANNELS.quitListening, PAGE, true)
+    expect(guard.beforeQuit(event(), false), 'a page that listens is asked').toBe(true)
+    await call(CHANNELS.quitAnswer, PAGE, 1, 'keep')
+
+    await call(CHANNELS.quitListening, PAGE, false)
+    expect(guard.beforeQuit(event(), false), 'one that has stopped is not').toBe(false)
+
+    await call(CHANNELS.quitListening, PAGE, true)
+    for (const word of [undefined, null, 'true', 1, 0]) {
+      await expect(call(CHANNELS.quitListening, PAGE, word)).rejects.toThrow(BAD_LISTENING)
+    }
+    expect(guard.beforeQuit(event(), false), 'a refused word changed nothing').toBe(true)
+  })
+
   it('takes the report through its shape, and refuses one that is not a report', async () => {
     const { call, guard, asked } = bridge()
-    await call(CHANNELS.quitListening, PAGE)
+    await call(CHANNELS.quitListening, PAGE, true)
     await call(CHANNELS.quitLayouts, PAGE, [{ project: LYON, started: 2_000, name: '<b>' }])
     await expect(call(CHANNELS.quitLayouts, PAGE, [{ project: 'no such id' }])).rejects.toThrow(
       BAD_REPORT,
@@ -621,6 +783,49 @@ describe('the page’s three words', () => {
   })
 })
 
+describe('a termination signal', () => {
+  /** `process.on` as a test hears it. */
+  function signals(platform: string) {
+    const listeners = new Map<string, () => void>()
+    const quit = vi.fn()
+    quitOnSignals({ platform, on: (signal, listener) => listeners.set(signal, listener), quit })
+    return { listeners, quit }
+  }
+
+  it('is the app’s own quit on macOS and Linux: interrupt, terminate and hang up', () => {
+    expect([...TERMINATION_SIGNALS]).toEqual(['SIGINT', 'SIGTERM', 'SIGHUP'])
+    for (const platform of ['darwin', 'linux']) {
+      const { listeners, quit } = signals(platform)
+      expect([...listeners.keys()], platform).toEqual(['SIGINT', 'SIGTERM', 'SIGHUP'])
+      for (const listener of listeners.values()) listener()
+      expect(quit, platform).toHaveBeenCalledTimes(3)
+    }
+  })
+
+  it('is left to Windows on Windows', () => {
+    const { listeners, quit } = signals('win32')
+    expect([...listeners.keys()]).toEqual([])
+    expect(quit).not.toHaveBeenCalled()
+  })
+
+  it('goes on to the gate unasked, with an export running and a page that could be asked', () => {
+    // The whole point: whoever sent the signal cannot answer the question.
+    const { guard, did, exporting } = world()
+    exporting()
+    quitOnSignals({
+      platform: 'linux',
+      on: (signal, listener) => {
+        if (signal === 'SIGTERM') listener()
+      },
+      quit: () => guard.quit(),
+    })
+    expect(did).toEqual(['quit'])
+    const quit = event()
+    expect(guard.beforeQuit(quit, false)).toBe(false)
+    expect(quit.preventDefault).not.toHaveBeenCalled()
+  })
+})
+
 // `index.ts` imports Electron and cannot be run here, so what it does with
 // the guard is read from its text, as `ipc.test.ts` reads the handlers: the
 // two handlers are the composed ones tested above, and every quit the main
@@ -640,7 +845,7 @@ describe('the guard in index.ts', () => {
   it('quits through the guard everywhere but in the guard’s own quit', () => {
     const direct = [...code(index).matchAll(/\bapp\.(?:quit|exit)\(/g)]
     expect(direct, 'one direct quit: the one the guard is handed').toHaveLength(1)
-    expect(index).toContain('  quit: () => app.quit(),\n})')
+    expect(index).toContain('  quit: () => app.quit(),\n')
     // The quits that must never be asked about, each by the guard.
     for (const through of [
       // The crash box's Quit.
@@ -678,5 +883,24 @@ describe('the guard in index.ts', () => {
     expect(index).toContain("window.on('responsive', () => quitGuard.responsive())")
     // The page going, each way it can go.
     expect(index.match(/quitGuard\.gone\(\)/g), 'closed, navigated, died').toHaveLength(3)
+  })
+
+  it('installs the termination signals as the guard’s own quit, once the app is ready', () => {
+    // After `whenReady`, so they are installed over Electron's own handlers
+    // for the same signals and not under them.
+    const ready = index.indexOf('app.whenReady().then(')
+    const installed = index.indexOf('quitOnSignals({')
+    expect(ready).toBeGreaterThan(-1)
+    expect(installed, 'installed, and inside the ready handler').toBeGreaterThan(ready)
+    expect(index.indexOf('mainWindow = createWindow()', installed)).toBeGreaterThan(installed)
+    expect(index).toMatch(
+      /quitOnSignals\(\{\s*platform: process\.platform,\s*on: \(signal, listener\) => process\.on\(signal, listener\),\s*quit: \(\) => quitGuard\.quit\(\),\s*\}\)/,
+    )
+  })
+
+  it('hands the guard a clock that cannot go back, and the bridge that cancels a page’s requests', () => {
+    expect(index).toContain('  now: () => performance.now(),')
+    expect(index).toContain('  cancelRequests: () => engineBridge?.cancelAll(),')
+    expect(index).toMatch(/engineBridge = registerEngineHandlers\(/)
   })
 })

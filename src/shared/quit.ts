@@ -69,6 +69,48 @@ export function isAskedQuit(value: unknown): value is AskedQuit {
   )
 }
 
+/** What the page's subscription to the question needs, which the preload hands in. */
+export interface QuitListeningDeps {
+  /** Hear whatever main sends on the question's channel; answers the way to stop hearing. */
+  hear: (handler: (value: unknown) => void) => () => void
+  /** Tell main that the page listens for the question, or that it has stopped. */
+  tell: (listening: boolean) => void
+}
+
+/**
+ * `api.app.onQuitQuestion` as the preload makes it: the page's listener hears
+ * a question of the right shape, or the null that takes one back, and nothing
+ * else; main is told the page listens once the listener is on, so it is only
+ * asked what it can hear; and the function handed back stops hearing and,
+ * when it was the last listener, tells main the page has stopped.
+ *
+ * That last word is what keeps a quit from being held for a dialog nobody
+ * will draw. The dialog unsubscribes as it is unmounted, and an uncaught
+ * error while the interface renders unmounts all of it: the window is still
+ * there, its renderer alive and answering, and without the word main would
+ * go on asking a page that shows nothing.
+ */
+export function quitQuestionListeners(
+  deps: QuitListeningDeps,
+): (listener: (question: AskedQuit | null) => void) => () => void {
+  let listeners = 0
+  return (listener) => {
+    const stopHearing = deps.hear((value) => {
+      if (value === null || isAskedQuit(value)) listener(value)
+    })
+    listeners += 1
+    deps.tell(true)
+    let stopped = false
+    return () => {
+      if (stopped) return
+      stopped = true
+      stopHearing()
+      listeners -= 1
+      if (listeners === 0) deps.tell(false)
+    }
+  }
+}
+
 /**
  * What the sentence says for a project main cannot name. Every running
  * project's record has been read through the store, which is where the names

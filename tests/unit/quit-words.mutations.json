@@ -62,5 +62,45 @@
     "test": "tests/unit/quit-words.test.ts",
     "title": "the question’s shape on the bridge",
     "why": "A question whose names are not text reaches the page's dialog."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "    listeners += 1\n    deps.tell(true)\n",
+    "replace": "    listeners += 1\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "tells main the page listens once its listener is on, and hands it each question",
+    "why": "Main never told the page listens: no quit is ever asked about, since a page that has not said it listens is not asked."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "      if (listeners === 0) deps.tell(false)\n",
+    "replace": "",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "tells main the page has stopped when its listener goes, and stops hearing",
+    "why": "Main never told the page has stopped listening: after an error takes the interface down, a quit is held for a dialog nobody will draw."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "      if (listeners === 0) deps.tell(false)\n",
+    "replace": "      deps.tell(false)\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "says the page has stopped only when its last listener has gone",
+    "why": "Main told the page has stopped while a listener is still on: a quit during a run goes ahead unasked."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "      if (stopped) return\n      stopped = true\n",
+    "replace": "",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "tells main the page has stopped when its listener goes, and stops hearing",
+    "why": "A listener stopped twice counted twice: the count of listeners goes wrong, and main is told the page has stopped while one still listens."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "      if (value === null || isAskedQuit(value)) listener(value)\n",
+    "replace": "      listener(value as AskedQuit | null)\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "hands the listener nothing that is not a question",
+    "why": "Whatever arrives on the channel handed to the page's dialog, a shape it cannot say among it."
   }
 ]

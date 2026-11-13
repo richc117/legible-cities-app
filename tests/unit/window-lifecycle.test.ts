@@ -12,6 +12,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   onActivate,
   onAppWindowClosed,
+  QUESTION_MIN_AGE_MS,
   quitGate,
   quitQuestion,
   shutDown,
@@ -90,8 +91,9 @@ describe('onActivate', () => {
 // Asking before a quit or a close throws a run away (issue 552,
 // specs/039-quit-guard, SC-001). The table: nothing running; an export; a
 // layout; both; two of one; the renderer gone; the renderer unresponsive; the
-// app's own quit; a question already open; quit and close. Each row's rule
-// has a mutation in `window-lifecycle.mutations.json` that turns it red.
+// app's own quit; a question already open, too young to have been read and
+// old enough; quit and close. Each row's rule has a mutation in
+// `window-lifecycle.mutations.json` that turns it red.
 describe('quitQuestion', () => {
   const run = (project: string, name: string, started: number): Run => ({ project, name, started })
   const PARIS = run('paris0000001', 'Paris', 1_000)
@@ -105,13 +107,16 @@ describe('quitQuestion', () => {
     layouts: [],
     renderer: 'ready',
     own: false,
-    open: false,
+    open: null,
     ...over,
   })
+  /** Go ahead, asking nothing; and hold, asking nothing. */
+  const GO = { ask: false, hold: false }
+  const HELD = { ask: false, hold: true }
 
   it('goes ahead with nothing running, as every quit and close did before', () => {
-    expect(quitQuestion(facts())).toEqual({ ask: false })
-    expect(quitQuestion(facts({ kind: 'close' }))).toEqual({ ask: false })
+    expect(quitQuestion(facts())).toEqual(GO)
+    expect(quitQuestion(facts({ kind: 'close' }))).toEqual(GO)
   })
 
   it('asks before a quit during an export, naming its project', () => {
@@ -171,36 +176,55 @@ describe('quitQuestion', () => {
   })
 
   it('does not ask when the renderer is gone, so a person can always quit', () => {
-    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'gone' }))).toEqual({ ask: false })
-    expect(quitQuestion(facts({ kind: 'close', layouts: [PARIS], renderer: 'gone' }))).toEqual({
-      ask: false,
-    })
+    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'gone' }))).toEqual(GO)
+    expect(quitQuestion(facts({ kind: 'close', layouts: [PARIS], renderer: 'gone' }))).toEqual(GO)
   })
 
   it('does not ask when the renderer is unresponsive', () => {
-    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'unresponsive' }))).toEqual({
-      ask: false,
-    })
+    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'unresponsive' }))).toEqual(GO)
     expect(
       quitQuestion(facts({ kind: 'close', layouts: [PARIS], renderer: 'unresponsive' })),
-    ).toEqual({ ask: false })
+    ).toEqual(GO)
   })
 
   it('never asks about a quit of the app itself', () => {
-    expect(quitQuestion(facts({ exports: [PARIS], layouts: [LYON], own: true }))).toEqual({
-      ask: false,
-    })
+    expect(quitQuestion(facts({ exports: [PARIS], layouts: [LYON], own: true }))).toEqual(GO)
     // Nor about the windows such a quit closes on its way out.
-    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], own: true }))).toEqual({
-      ask: false,
-    })
+    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], own: true }))).toEqual(GO)
+    // Nor is it held by a question that has only just been asked.
+    expect(quitQuestion(facts({ exports: [PARIS], own: true, open: 0 }))).toEqual(GO)
   })
 
-  it('lets a second quit go ahead while the question is open: it is an answer', () => {
-    expect(quitQuestion(facts({ exports: [PARIS], open: true }))).toEqual({ ask: false })
-    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], open: true }))).toEqual({
-      ask: false,
-    })
+  it('lets a second quit go ahead once the question has been open a second: it is an answer', () => {
+    for (const open of [QUESTION_MIN_AGE_MS, QUESTION_MIN_AGE_MS + 1, 60_000]) {
+      expect(quitQuestion(facts({ exports: [PARIS], open })), `${open} ms`).toEqual(GO)
+      expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], open })), `${open} ms`).toEqual(
+        GO,
+      )
+    }
+    // An answer though the run has ended meanwhile, and nothing is left to ask about.
+    expect(quitQuestion(facts({ open: QUESTION_MIN_AGE_MS }))).toEqual(GO)
+  })
+
+  it('holds a second quit that comes before the question could have been read', () => {
+    // The repeat of a held shortcut, or the second click of a double click:
+    // cancelled, with nothing asked again and the question left as it is.
+    expect(QUESTION_MIN_AGE_MS).toBe(1_000)
+    for (const open of [0, 1, 400, QUESTION_MIN_AGE_MS - 1]) {
+      expect(quitQuestion(facts({ exports: [PARIS], open })), `${open} ms`).toEqual(HELD)
+      expect(quitQuestion(facts({ kind: 'close', layouts: [PARIS], open })), `${open} ms`).toEqual(
+        HELD,
+      )
+    }
+    // Held for the question's sake, whatever has become of the run.
+    expect(quitQuestion(facts({ open: 0 }))).toEqual(HELD)
+  })
+
+  it('does not hold a second quit for a page that can no longer show the question', () => {
+    // A person can always quit: a page gone or reported unresponsive with
+    // the question a moment old is not waited for.
+    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'gone', open: 0 }))).toEqual(GO)
+    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'unresponsive', open: 0 }))).toEqual(GO)
   })
 
   it('asks before a close during an export too, on macOS as everywhere', () => {

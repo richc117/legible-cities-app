@@ -30,7 +30,7 @@ import {
   type Config,
   type Source,
 } from './config'
-import { registerEngineHandlers } from './engine-ipc'
+import { registerEngineHandlers, type EngineBridge } from './engine-ipc'
 import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first-run'
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { openHelpPage, registerHelpHandlers, type HelpIpcDeps } from './help-ipc'
@@ -61,7 +61,13 @@ import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
-import { onAppWindowClose, onBeforeQuit, QuitGuard, registerQuitHandlers } from './quit-guard'
+import {
+  onAppWindowClose,
+  onBeforeQuit,
+  QuitGuard,
+  quitOnSignals,
+  registerQuitHandlers,
+} from './quit-guard'
 import { keepBounds, MINIMUM_WINDOW_SIZE, placeWindow } from './window-bounds'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
@@ -203,6 +209,9 @@ let exporter: Exporter | null = null
 // Held at this scope for the quit's question, which names the projects whose
 // runs it would throw away; assigned once, during startup.
 let projects: ProjectStore | null = null
+// And the engine bridge, whose requests a window closed over an unanswered
+// question takes with it; assigned once, during startup.
+let engineBridge: EngineBridge | null = null
 let firstRun: FirstRunCheck | null = null
 // Held at this scope because the handlers registered before it exists ask
 // it whether a reset is under way; it is assigned once, during startup.
@@ -237,10 +246,13 @@ const quitGuard = new QuitGuard({
       mainWindow.webContents.send(CHANNELS.quitQuestion, null)
   },
   stopExports: () => exporter?.abortAll(),
+  cancelRequests: () => engineBridge?.cancelAll(),
   close: () => {
     if (mainWindow !== null && !mainWindow.isDestroyed()) mainWindow.close()
   },
   quit: () => app.quit(),
+  // How old the open question is: a clock that never goes back.
+  now: () => performance.now(),
 })
 
 /** Why nothing may write under the engine's home right now, or null. */
@@ -865,7 +877,7 @@ if (!hasLock) {
     const registry = registryGuard(picked, async () =>
       (await store.list()).map((p) => ({ feed: p.feed, name: p.name })),
     )
-    registerEngineHandlers(
+    engineBridge = registerEngineHandlers(
       ipcMain,
       engine,
       isTopFrame,
@@ -997,6 +1009,15 @@ if (!hasLock) {
     // The page's word that it can be asked before a quit, its running
     // layouts, and the person's answer (issue 552).
     registerQuitHandlers(ipcMain, quitGuard, isTopFrame)
+    // A termination signal on macOS and Linux is the app's own quit: whoever
+    // sent it cannot answer a question in the window (src/main/quit-guard.ts).
+    // Installed here, once Electron has installed its own handlers for the
+    // same signals, so that these are the ones in force.
+    quitOnSignals({
+      platform: process.platform,
+      on: (signal, listener) => process.on(signal, listener),
+      quit: () => quitGuard.quit(),
+    })
     setAppMenu(helpDeps)
     mainWindow = createWindow()
 

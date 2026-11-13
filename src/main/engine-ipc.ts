@@ -102,6 +102,15 @@ export interface RecordLookup {
 /** A request the supervisor would not send; why is in the log. */
 export const NOT_SENT = 'The request could not be sent to the engine.'
 
+/**
+ * What registering the handlers answers: the way to stop hearing the engine,
+ * and `cancelAll`, which cancels every request the page has with the engine
+ * as its own Cancel cancels one. For a window closed over a question nobody
+ * answered in the page (issue 552, src/main/quit-guard.ts): the page was the
+ * only thing that could cancel its requests one by one, and it is going.
+ */
+export type EngineBridge = (() => void) & { cancelAll(): void }
+
 const LEVELS = new Set(['debug', 'info', 'warning', 'error'])
 
 /**
@@ -162,7 +171,7 @@ export function registerEngineHandlers(
   resetting: () => string | null,
   /** How long that lookup may take; a test shortens it. */
   lookupMs: number = FOLDERS_TIMEOUT_MS,
-): () => void {
+): EngineBridge {
   const idOf = new Map<string, number>()
   const tokenOf = new Map<number, string>()
   // Tokens a person cancelled while the guard was still thinking, when there
@@ -354,8 +363,17 @@ export function registerEngineHandlers(
       log(`dropped a ${method} notification of an unexpected shape`)
     }
   })
-  return () => {
+  const stopHearing = (): void => {
     offState()
     offNotifications()
   }
+  // Each request as `engineCancel` above cancels it: one the guard is still
+  // thinking about has no engine id yet, and its cancel is held for it.
+  const cancelAll = (): void => {
+    for (const [token, id] of idOf) {
+      if (id === 0) cancelledEarly.add(token)
+      else engine.cancel(id)
+    }
+  }
+  return Object.assign(stopHearing, { cancelAll })
 }
