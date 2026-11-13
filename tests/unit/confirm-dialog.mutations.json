@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/renderer/src/ConfirmDialog.tsx",
+    "find": "          {cancelLabel}\n",
+    "replace": "          Cancel\n",
+    "test": "tests/unit/confirm-dialog.test.tsx",
+    "title": "names its safe button in the caller’s words where Cancel would mean something else",
+    "why": "The caller's words for the safe button not drawn: the quit's question offers Cancel beside a run whose own Cancel stops it."
+  },
+  {
+    "file": "src/renderer/src/ConfirmDialog.tsx",
+    "find": "  cancelLabel = CANCEL_LABEL,\n",
+    "replace": "  cancelLabel,\n",
+    "test": "tests/unit/confirm-dialog.test.tsx",
+    "title": "offers Cancel and the action, with a status line that says nothing until it runs",
+    "why": "The safe button's default words taken away: every confirmation that gives none draws a button with no name."
+  }
+]

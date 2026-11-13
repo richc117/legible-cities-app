@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 import ConfirmDialog, {
   BUSY_SENTENCE,
   busySentence,
+  CANCEL_LABEL,
   cancelPress,
   stopState,
 } from '../../src/renderer/src/ConfirmDialog'
@@ -38,6 +39,30 @@ describe('ConfirmDialog', () => {
   it('cancels before the action, and refuses the press while it runs', () => {
     expect(cancelPress(false)).toBe('cancel')
     expect(cancelPress(true)).toBe('refuse')
+  })
+
+  it('names its safe button in the caller’s words where Cancel would mean something else', () => {
+    // The quit's question (issue 552): beside a running export, Cancel
+    // already means stopping it. Mutations (`confirm-dialog.mutations.json`):
+    // the label not drawn - the button reads Cancel whatever was given; the
+    // default taken away - every other confirmation's safe button is blank.
+    const asked = renderToStaticMarkup(
+      <ConfirmDialog
+        open={false}
+        title="Quit while an export is running?"
+        description="The export of Paris has not finished."
+        confirmLabel="Quit anyway"
+        cancelLabel="Keep working"
+        busyLabel="Quitting…"
+        onConfirm={() => Promise.resolve()}
+        onCancel={() => undefined}
+      />,
+    )
+    expect(asked).toContain('Keep working')
+    expect(asked).not.toContain('Cancel')
+    // The safe button is still the first of the two.
+    expect(asked.indexOf('Keep working')).toBeLessThan(asked.indexOf('Quit anyway'))
+    expect(CANCEL_LABEL).toBe('Cancel')
   })
 })
 

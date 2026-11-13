@@ -1,0 +1,66 @@
+[
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "    if (job.kind !== 'layout' || job.state !== 'running' || job.projectId === null) continue\n",
+    "replace": "    if (job.state !== 'running' || job.projectId === null) continue\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "lists layout runs only: not a redraw, an export or a feed being added",
+    "why": "Every running job reported as a layout: a quit during a redraw is asked about as a layout, and an export is counted twice."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "    if (job.kind !== 'layout' || job.state !== 'running' || job.projectId === null) continue\n",
+    "replace": "    if (job.kind !== 'layout' || job.projectId === null) continue\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "lists none that has ended, however it ended",
+    "why": "A layout that has ended still reported: every later quit is asked about a layout that is not running."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "    if (key === sent) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "does not report again while the list stays the same, whatever else a job says",
+    "why": "The report sent at every change of any job: a run's progress sends main the same list many times a second."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "  push()\n  return deps.subscribe(push)\n",
+    "replace": "  return deps.subscribe(push)\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "says at once that it runs none, so a page just loaded is heard",
+    "why": "Nothing reported until a job changes: a page loaded again after a crash leaves main with no report from it."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "    deps.report(layouts).catch(() => {\n      if (sent === key) sent = null\n    })\n",
+    "replace": "    deps.report(layouts).catch(() => undefined)\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "sends a report main did not take again at the next change",
+    "why": "A report main refused counted as sent: main is left without it until the list changes."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "  push()\n  return deps.subscribe(push)\n",
+    "replace": "  push()\n  deps.subscribe(push)\n  return () => undefined\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "stops hearing the jobs when it is stopped",
+    "why": "The subscription never released: a dialog mounted again reports twice at every change."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "    .filter((job) => job.state === 'running' && (job.kind === 'layout' || job.kind === 'export'))\n",
+    "replace": "    .filter((job) => job.state === 'running' && job.kind === 'export')\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "stops every export and layout still running, and nothing else",
+    "why": "Close anyway leaves the layouts running: on macOS the engine goes on with a layout whose window is closed."
+  },
+  {
+    "file": "src/renderer/src/quitRuns.ts",
+    "find": "    .filter((job) => job.state === 'running' && (job.kind === 'layout' || job.kind === 'export'))\n",
+    "replace": "    .filter((job) => job.state === 'running')\n",
+    "test": "tests/unit/quit-runs.test.ts",
+    "title": "stops every export and layout still running, and nothing else",
+    "why": "Close anyway stops every job, a feed being added among them, which the question never said it would."
+  }
+]

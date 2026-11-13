@@ -22,6 +22,7 @@ import Library from './Library'
 import { modalOpen, NEW_PROJECT_CARD, whenPresent } from './menuCommands'
 import MismatchDialog from './MismatchDialog'
 import ProjectView from './ProjectView'
+import QuitDialog from './QuitDialog'
 import Settings, { copyDiagnostics, type SettingsSection } from './Settings'
 import { applyTheme } from './theme'
 import { useEngineState } from './useEngineState'
@@ -44,6 +45,10 @@ import { useEngineState } from './useEngineState'
 // Library with its New project card pressed (`create`, the ask's number,
 // gone once the card is pressed), and About and Copy diagnostics are
 // Settings at a section of it.
+//
+// And over all of it, the question a quit or a close of the window asks
+// first while an export or a layout is running (issue 552, `QuitDialog`),
+// mounted once here so it is there on every screen.
 type Screen =
   | { screen: 'library'; notice: string | null; create?: number }
   // `layOut`: the project was just made from a sample city, and its screen
@@ -259,6 +264,7 @@ export default function App(): JSX.Element {
           onClose={() => setFirstRunSeen(true)}
         />
       )}
+      <QuitDialog />
       {/* One polite line for the ends of jobs, on every screen, never shown.
           `data-announces` names it for a test: other polite lines are
           visually hidden too, such as a combobox's match count (issue 272). */}
