@@ -244,7 +244,12 @@ describe('the manifest', () => {
   }
 
   /** A pair whose A shots were taken, as `begin` takes them, without an app. */
-  async function pairOf(evidence: Evidence, a1: Rgb, a2: Rgb, control = false): Promise<Pair> {
+  async function pairOf(
+    evidence: Evidence,
+    a1: Rgb,
+    a2: Rgb,
+    control: string | null = null,
+  ): Promise<Pair> {
     const target = camera(a1)
     const first = await evidence.settled('8-theme-a1', camera(a1), async () => undefined)
     const second = await evidence.settled('8-theme-a2', camera(a2), async () => undefined)
@@ -262,7 +267,7 @@ describe('the manifest', () => {
   it('keeps a shot as <id>.png, and throws for one that was not written', async () => {
     const evidence = new Evidence(dir)
     const path = await evidence.shot('4-map', camera(picture(BG, 10)))
-    expect(path).toBe(join(dir, '4-map.png'))
+    expect(path).toBe(join(dir, '.work', '4-map.png'))
     expect(evidence.open(path).width).toBe(W)
     const none: Shootable = { screenshot: async () => undefined }
     await expect(evidence.shot('4-missing', none)).rejects.toThrow(/was not written/)
@@ -294,7 +299,11 @@ describe('the manifest', () => {
       id: '8-theme',
       step: 8,
       row: init.row,
-      images: ['8-theme-a1.png', '8-theme-a2.png', '8-theme-b.png'],
+      images: [
+        expect.stringMatching(/^8-[0-9a-f]{10}\.png$/),
+        expect.any(String),
+        expect.any(String),
+      ],
       question: init.question,
       expected: ['Sepia'],
       check: { name: 'theme', threshold: null, outcome: 'note' },
@@ -312,23 +321,46 @@ describe('the manifest', () => {
     expect(evidence.failures(9)).toEqual([])
   })
 
-  it('asks the control as if the settings had changed: the same two shots, a second entry', async () => {
+  it('asks the control as if the settings had changed: the same two shots, shaped as a real entry', async () => {
     const evidence = new Evidence(dir)
-    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), true)
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-ground')
     pair.target = camera(picture(BG, 4000))
     await evidence.finish(pair, { wait: async () => undefined })
-    expect(evidence.entries.map((e) => [e.id, e.control, e.images.length])).toEqual([
-      ['8-theme', false, 3],
-      ['8-theme-recheck', true, 2],
+    const [real, control] = evidence.entries
+    expect([real.id, real.control, control.id, control.control]).toEqual([
+      '8-theme',
+      false,
+      '8-ground',
+      true,
     ])
-    expect(evidence.entries[1].question).toBe(init.question)
-    expect(evidence.entries[1].check).toBeNull()
-    // The manifest does not say which is the control; the key file does.
+    expect(control.question).toBe(init.question)
+    // Nothing the reviewer reads tells them apart: the same keys, the same
+    // number of pictures, names of the same pattern, none of them shared.
     const manifest = readFileSync(join(dir, 'evidence.json'), 'utf8')
-    expect(manifest).not.toContain('control')
+    const listed = (JSON.parse(manifest) as { entries: Array<Record<string, unknown>> }).entries
+    expect(listed).toHaveLength(2)
+    const [a, b] = listed
+    expect(Object.keys(a).sort()).toEqual(Object.keys(b).sort())
+    expect((a.images as string[]).length).toBe((b.images as string[]).length)
+    for (const name of [...(a.images as string[]), ...(b.images as string[])])
+      expect(name).toMatch(/^8-[0-9a-f]{10}\.png$/)
+    expect(Object.keys(a.check as object).sort()).toEqual(Object.keys(b.check as object).sort())
+    expect(manifest).not.toMatch(/control|recheck/i)
+    // Only the key file says which is which.
     expect(JSON.parse(readFileSync(join(dir, 'evidence-key.json'), 'utf8'))).toEqual({
-      controls: ['8-theme-recheck'],
+      controls: ['8-ground'],
     })
+  })
+
+  it('orders the manifest by step and id, so position does not give a control away', async () => {
+    const evidence = new Evidence(dir)
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-aaa')
+    pair.target = camera(picture(BG, 4000))
+    await evidence.finish(pair, { wait: async () => undefined })
+    const ids = (
+      JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf8')) as { entries: { id: string }[] }
+    ).entries.map((e) => e.id)
+    expect(ids).toEqual(['8-aaa', '8-theme'])
   })
 
   it('notes, never fails, what was measured of a map that was not steady', async () => {
@@ -352,11 +384,8 @@ describe('the manifest', () => {
       'reel',
     )
     expect(good.outcome).toBe('note')
-    expect(evidence.entries[0].images).toEqual([
-      '11-reel-sheet.png',
-      '11-reel-first.png',
-      '11-reel-last.png',
-    ])
+    expect(evidence.entries[0].images).toHaveLength(3)
+    for (const name of evidence.entries[0].images) expect(name).toMatch(/^11-[0-9a-f]{10}\.png$/)
     expect(
       evidence.keepFrames(
         { ...init, id: '12-gif', step: 12 },
@@ -373,7 +402,9 @@ describe('the manifest', () => {
     pair.target = camera(picture(BG, 4000))
     await evidence.finish(pair, { wait: async () => undefined })
     const said = evidence.summary(8)
-    expect(said).toMatch(/^Evidence kept: 8-theme-a1\.png, 8-theme-a2\.png, 8-theme-b\.png\./)
+    expect(said).toMatch(
+      /^Evidence kept: 8-[0-9a-f]{10}\.png, 8-[0-9a-f]{10}\.png, 8-[0-9a-f]{10}\.png\./,
+    )
     expect(said).toContain('Measured: theme:')
     expect(evidence.summary(9)).toBe('')
   })

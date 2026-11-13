@@ -65,7 +65,7 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "    if (pair.control) {",
+    "find": "    if (pair.control !== null) {",
     "replace": "    if (false) {",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "asks the control as if the settings had changed",
@@ -158,5 +158,29 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "asks the control as if the settings had changed",
     "why": "The manifest would say which entries are control pairs, and the reviewer's reading would not be blind."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const name = `${step}-${createHash('sha1').update(base).digest('hex').slice(0, 10)}.png`",
+    "replace": "const name = base",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "Image names would say what each shot is (-a1, -b), and a control's copies would give it away."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "[pair.a1, pair.a2, pair.a2].map(",
+    "replace": "[pair.a1, pair.a2].map(",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "A control with two pictures where a real entry has three would be recognised by its shape."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      .sort((a, b) => a.step - b.step || a.id.localeCompare(b.id))\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "orders the manifest by step and id",
+    "why": "A control written straight after the entry it shadows would be recognised by its position."
   }
 ]

@@ -22,6 +22,7 @@
 // the difference at the tolerance of 8, in RGB. No dependency is added.
 
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -414,8 +415,8 @@ export interface Pair {
   a2: string
   /** Whether the map was paused and its clock read the same twice. */
   steady: boolean
-  /** Also write a control entry. */
-  control: boolean
+  /** The id of a control entry to write beside this one: ordinary-looking, and not a real entry's. */
+  control: string | null
 }
 
 export interface Settle {
@@ -426,14 +427,28 @@ export interface Settle {
 export class Evidence {
   readonly entries: Entry[] = []
   readonly #dir: string
+  readonly #work: string
 
   constructor(dir: string) {
     this.#dir = dir
-    mkdirSync(dir, { recursive: true })
+    // The shots are taken under names that say what each is (`-a1`, `-b`);
+    // what the manifest lists is a copy under a name that says nothing. The
+    // working folder is hidden, which the artefact upload leaves out.
+    this.#work = join(dir, '.work')
+    mkdirSync(this.#work, { recursive: true })
   }
 
+  /** Where a working file lives; what is kept for the reviewer is copied out of it by `add`. */
   pathOf(file: string): string {
-    return join(this.#dir, file)
+    return join(this.#work, file)
+  }
+
+  /** A kept picture's name in the folder the reviewer reads: the step and a hash, the same for every entry. */
+  #opaque(step: number, working: string): string {
+    const base = working.split(/[\\/]/).pop() ?? working
+    const name = `${step}-${createHash('sha1').update(base).digest('hex').slice(0, 10)}.png`
+    copyFileSync(working, join(this.#dir, name))
+    return name
   }
 
   /** The picture of `locator`, kept as `<id>.png`. A shot that is missing or is not a picture throws. */
@@ -474,7 +489,7 @@ export class Evidence {
     window: Page,
     target: Shootable,
     init: EntryInit,
-    options: { name: string; control?: boolean } = { name: init.id },
+    options: { name: string; control?: string } = { name: init.id },
   ): Promise<Pair> {
     const steady = (await pauseAndRead(window)).steady
     const a1 = await this.settled(`${init.id}-a1`, target)
@@ -486,7 +501,7 @@ export class Evidence {
       a1: a1.path,
       a2: a2.path,
       steady: steady && a1.settled && a2.settled,
-      control: options.control === true,
+      control: options.control ?? null,
     }
   }
 
@@ -524,13 +539,31 @@ export class Evidence {
     if (!steady && options.colour !== undefined)
       check = { ...check, said: `${check.said} (the map was not steady)` }
     this.add({ ...pair.init, images: [pair.a1, pair.a2, b.path], check })
-    if (pair.control) {
-      // The same two shots, copied under names of their own and asked as if the
-      // setting had changed. Nothing in the manifest says so: the key file does.
-      const [x, y] = ['a', 'b'].map((n) => this.pathOf(`${pair.init.id}-recheck-${n}.png`))
-      copyFileSync(pair.a1, x)
-      copyFileSync(pair.a2, y)
-      this.add({ ...pair.init, id: `${pair.init.id}-recheck`, images: [x, y], check: null }, true)
+    if (pair.control !== null) {
+      // The same two shots, shaped as a real entry is: three pictures under
+      // names of their own, a check of the same fields. Nothing in the
+      // manifest says which it is: the key file does.
+      const copies = [pair.a1, pair.a2, pair.a2].map((from, k) => {
+        const to = this.pathOf(`${pair.control}-v${k}.png`)
+        copyFileSync(from, to)
+        return to
+      })
+      this.add(
+        {
+          ...pair.init,
+          id: pair.control,
+          images: copies,
+          check: {
+            name: pair.name,
+            value: null,
+            unit: 'fraction of pixels changed',
+            threshold: null,
+            outcome: 'note',
+            said: 'no threshold is set yet',
+          },
+        },
+        true,
+      )
     }
     return check
   }
@@ -588,7 +621,7 @@ export class Evidence {
   ): void {
     this.entries.push({
       ...entry,
-      images: entry.images.map((p) => p.split(/[\\/]/).pop() ?? p),
+      images: entry.images.map((p) => this.#opaque(entry.step, p)),
       expected: [...(entry.expected ?? [])],
       control,
     })
@@ -596,22 +629,25 @@ export class Evidence {
   }
 
   write(): void {
-    const listed = this.entries.map((e) => ({ ...e, control: undefined }))
+    // In step and id order, so that position says nothing of what an entry is.
+    const listed = [...this.entries]
+      .sort((a, b) => a.step - b.step || a.id.localeCompare(b.id))
+      .map((e) => ({ ...e, control: undefined }))
     writeFileSync(
-      this.pathOf('evidence.json'),
+      join(this.#dir, 'evidence.json'),
       `${JSON.stringify({ tolerance: TOLERANCE, entries: listed }, null, 2)}\n`,
     )
     // Which entries are control pairs, kept apart so the reviewer reads the
     // manifest without knowing: opened only after every verdict is written.
     writeFileSync(
-      this.pathOf('evidence-key.json'),
+      join(this.#dir, 'evidence-key.json'),
       `${JSON.stringify({ controls: this.entries.filter((e) => e.control).map((e) => e.id) }, null, 2)}\n`,
     )
   }
 
   /** The step's row: "Evidence kept: <names>. Measured: <numbers>." Empty when nothing was kept. */
   summary(step: number): string {
-    const mine = this.entries.filter((e) => e.step === step)
+    const mine = this.entries.filter((e) => e.step === step && !e.control)
     if (mine.length === 0) return ''
     const names = mine.flatMap((e) => e.images)
     const measured = mine

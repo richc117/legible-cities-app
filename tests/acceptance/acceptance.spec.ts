@@ -668,7 +668,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     on: Page,
     key: string,
     init: EntryInit,
-    options: { name?: string; control?: boolean; target?: Shootable } = {},
+    options: { name?: string; control?: string; target?: Shootable } = {},
   ): Promise<void> =>
     log.soft(`evidence: the pictures before ${key}`, async () => {
       pairs.set(
@@ -2007,7 +2007,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           question:
             'The first two pictures are the map in Warm dark, twice; the third is the same map in Sepia. Does the map look sepia in the third, and the same in the first two?',
         },
-        { name: 'theme', control: true },
+        { name: 'theme', control: '8-ground' },
       )
       await sepiaCard.click()
       await log.soft('sepia at once, with no run', async () => {
@@ -2053,7 +2053,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           question:
             'The first two pictures are the map at the engine’s line width, twice; the third has a line width of 12. Are the lines visibly thicker in the third, and the stations where they were?',
         },
-        { name: 'line-width', control: true },
+        { name: 'line-width', control: '8-weight' },
       )
       await width.fill('30')
       await width.press('Enter')
