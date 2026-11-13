@@ -157,7 +157,7 @@
     "replace": "        type: boolean\n        default: true\n",
     "test": "tests/unit/release.test.ts",
     "title": "is asked for on a dispatch by a boolean input that is off unless ticked",
-    "why": "Signing on by default: every plain dispatch from a branch asks for the environment's secrets and waits on a reviewer."
+    "why": "Signing asked for by default: every plain dispatch from a branch is a request to sign."
   },
   {
     "file": ".github/workflows/build.yml",
@@ -169,27 +169,99 @@
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": " && inputs.sign == true)) }}\n",
-    "replace": " && inputs.sign)) }}\n",
+    "find": "inputs.sign == true)) }}\n    steps:",
+    "replace": "inputs.sign)) }}\n    steps:",
     "test": "tests/unit/release.test.ts",
-    "title": "joins the environment by one condition, written the same for the environment and for SIGN",
-    "why": "The two conditions drifting apart: a job signs outside the environment and finds no secret, or sits in it, approved, without signing."
+    "title": "writes one condition wherever a job decides whether it signs",
+    "why": "The copies of the condition drifting apart: a job signs outside the environment and finds no secret, or sits in it, approved, without signing."
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": " && 'release-signing' || '' }}",
-    "replace": " && 'release-signing' || 'release-signing' }}",
+    "find": "    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ",
+    "replace": "    environment: ${{ startsWith(matrix.target, 'darwin-') && ",
     "test": "tests/unit/release.test.ts",
-    "title": "makes that condition true for a Mac target on a v tag or a dispatch that asked, and for nothing else",
-    "why": "Every run in the environment: each branch build becomes a deployment that waits for a reviewer, and the Windows job is handed the secrets."
+    "title": "signs a Mac target only with the variable on, on a v tag or a dispatch that asked",
+    "why": "The variable left out: every v tag asks for the environment and waits on Apple, and a candidate cannot be cut before there is a certificate."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}",
+    "replace": "    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || 'release-signing' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "signs a Mac target only with the variable on, on a v tag or a dispatch that asked",
+    "why": "Every packaging job in the environment: each branch build becomes a deployment that waits for a reviewer, and the Windows job is in reach of the certificate."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}",
+    "replace": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || 'release-signing' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises only in a signing run whose every packaging job succeeded",
+    "why": "The notarising job naming the environment on every run: a branch build has GitHub make it, with no rule and no reviewer, before the maintainer does."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && needs.package.result == 'success' && vars.MAC_SIGNING == 'on'",
+    "replace": " && vars.MAC_SIGNING == 'on'",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises only in a signing run whose every packaging job succeeded",
+    "why": "Notarising without waiting on the packaging jobs' result: a reviewer is asked, and Apple sent an image, for a run that cannot be released whole."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && inputs.sign == true && vars.MAC_SIGNING != 'on' }}",
+    "replace": " && inputs.sign == true }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses a dispatch that asks to sign while the variable is off, and only that",
+    "why": "The refusal no longer reading the variable: every dispatch that asks to sign is refused, the ones that could be signed among them."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "or dispatch without sign\"\n          exit 1\n",
+    "replace": "or dispatch without sign\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the refused dispatch says what to do, and fails",
+    "why": "A dispatch that asks to sign with signing off goes on and builds ad hoc: the person asked for a signed build and is handed one that is not, in silence."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "(needs.notarize.result == 'skipped' && vars.MAC_SIGNING != 'on')",
+    "replace": "needs.notarize.result == 'skipped'",
+    "test": "tests/unit/release.test.ts",
+    "title": "drafts a Release only when notarising succeeded, or was skipped with signing off",
+    "why": "A skipped notarising job let through whatever the reason: a signing run drafts a Release with no Mac installer notarised."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    needs: [vendor, package, notarize]\n",
+    "replace": "    needs: [vendor, package]\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "drafts a Release only when notarising succeeded, or was skipped with signing off",
+    "why": "The release job not waiting for the notarising jobs: it downloads installers they have not uploaded yet, or drafts before the staple."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      TARGET: ${{ matrix.target }}\n      # 'true' in signing mode",
+    "replace": "      TARGET: ${{ matrix.target }}\n      NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n      # 'true' in signing mode",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, in four steps of two jobs, and in no job-level key",
+    "why": "The notary's key in the packaging job's own env: every step of the job that runs npm's code is handed it, which is what the separate job exists to prevent."
   },
   {
     "file": ".github/workflows/build.yml",
     "find": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n",
     "replace": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n",
     "test": "tests/unit/release.test.ts",
-    "title": "hands secrets to three steps only: none to the first, the certificate to packaging, the key to notarising",
-    "why": "The notary's key in the packaging step: it sits in the environment of the one step that runs npm's code and the packager's hooks."
+    "title": "names ten secrets in all, in four steps of two jobs, and in no job-level key",
+    "why": "The notary's key in the packaging step: it sits in the environment of the one step that runs the packager and its hooks."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}\n",
+    "replace": "          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}\n          HAS_NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 != '' }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, in four steps of two jobs, and in no job-level key",
+    "why": "The packaging job asking whether the notary's key exists: a secret a job names at all is a secret its runner is sent."
   },
   {
     "file": ".github/workflows/build.yml",
@@ -201,34 +273,82 @@
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "        timeout-minutes: 75\n",
-    "replace": "        timeout-minutes: 45\n",
+    "find": "          name: ${{ env.SIGN == 'true' && 'unnotarised' || 'installer' }}-${{ matrix.target }}\n",
+    "replace": "          name: installer-${{ matrix.target }}\n",
     "test": "tests/unit/release.test.ts",
-    "title": "refuses before anything is installed, and notarises after everything npm runs and before the upload",
-    "why": "A step limit shorter than the script's own wait: the runner kills the step before notarytool gives up, and the submission's id is never printed."
+    "title": "refuses in the packaging job before anything is installed, and hands a signed image on under another name",
+    "why": "A signed, unnotarised image uploaded as the installer: anything that takes installer-<target> can take it for the finished one."
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "        if: ${{ always() && env.SIGN == 'true' }}\n",
-    "replace": "        if: env.SIGN == 'true'\n",
+    "find": "      - name: Download the signed disk image\n",
+    "replace": "      - name: Install\n        run: npm ci\n\n      - name: Download the signed disk image\n",
     "test": "tests/unit/release.test.ts",
-    "title": "uploads the notary's log whatever happened, once signing was attempted",
+    "title": "notarises on a runner that checks out three files and runs no npm code",
+    "why": "npm ci in the notarising job: every package the app depends on runs on the runner that holds the notary's key."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            electron-builder.release.yml\n          sparse-checkout-cone-mode: false\n",
+    "replace": "            electron-builder.release.yml\n            package.json\n          sparse-checkout-cone-mode: false\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises on a runner that checks out three files and runs no npm code",
+    "why": "The notarising job's checkout widened: with a package.json there, an install is one line away, and the job's promise is that there is nothing to install from."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          name: unnotarised-${{ matrix.target }}\n",
+    "replace": "          name: installer-${{ matrix.target }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "takes the signed image from the packaging job and gives the release job the installer",
+    "why": "The notarising job looking for an artefact a signing run does not make: it fails after the reviewer has approved it."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        if: ${{ always() }}\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "uploads the notary's log whatever happened",
     "why": "The log uploaded only on success: when the notary refuses the image, the one record of why is lost with the runner."
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "            if [ \"${!has:-}\" != true ]; then missing=\"$missing $name\"; fi\n",
-    "replace": "",
+    "find": "        timeout-minutes: 90\n",
+    "replace": "        timeout-minutes: 75\n",
     "test": "tests/unit/release.test.ts",
-    "title": "the first step names every secret that is empty, and only those",
-    "why": "Empty secrets not refused up front: the run builds for twenty minutes and fails inside electron-builder or notarytool on an error that names no secret."
+    "title": "gives each step longer than its script's own worst case, and the job longer than both",
+    "why": "A step limit inside the script's worst case: the runner stops the script before notarytool gives up, and the submission's id is never printed."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD; do\n            has=\"HAS_$name\"\n            if [ \"${!has:-}\" != true ]; then missing=\"$missing $name\"; fi\n",
+    "replace": "          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD; do\n            has=\"HAS_$name\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "each refusal names every secret that is empty, and only those",
+    "why": "An empty certificate not refused up front: the run builds everything and fails inside electron-builder, on an error that names no secret."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          for name in NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID; do\n            has=\"HAS_$name\"\n            if [ \"${!has:-}\" != true ]; then missing=\"$missing $name\"; fi\n",
+    "replace": "          for name in NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID; do\n            has=\"HAS_$name\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "each refusal names every secret that is empty, and only those",
+    "why": "An empty notary secret not refused up front: the image is downloaded and the script fails on notarytool's authentication error, which names nothing."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          echo \"signing mode: every secret this job is given has a value, and the identity is team $team\"\n",
+    "replace": "          echo \"ok\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "each refusal passes with every secret its job is given",
+    "why": "The passing refusal no longer saying which team it found: a run's log does not show what identity the build was about to ask for."
   },
   {
     "file": ".github/workflows/build.yml",
     "find": "          if [ \"$team\" = TEAMID_TBD ]; then",
     "replace": "          if false; then",
     "test": "tests/unit/release.test.ts",
-    "title": "the first step refuses the placeholder, and an identity that is not a Team ID",
+    "title": "the packaging job refuses the placeholder, and an identity that is not a Team ID",
     "why": "The placeholder with no sentence of its own: it is refused as a malformed Team ID, which does not say what to do."
   },
   {
@@ -236,7 +356,7 @@
     "find": "          if ! LC_ALL=C grep -Eq '^[A-Z0-9]{10}$' <<< \"$team\"; then",
     "replace": "          if false; then",
     "test": "tests/unit/release.test.ts",
-    "title": "the first step refuses the placeholder, and an identity that is not a Team ID",
+    "title": "the packaging job refuses the placeholder, and an identity that is not a Team ID",
     "why": "Any identity let through: a mistyped team matches no certificate, and the build fails late, in electron-builder, after everything was built."
   },
   {
@@ -261,23 +381,47 @@
     "replace": "            node scripts/verify-mac-signing.mjs adhoc \"$app\"\n",
     "test": "tests/unit/release.test.ts",
     "title": "the verify step checks the seal, then ad hoc or the Developer ID by the mode",
-    "why": "A signed build checked as an ad-hoc one: the wrong check fails a good build, or with the modes swapped passes an unsigned one into notarisation."
+    "why": "A signed build checked as an ad-hoc one: the wrong check fails a good build, or with the modes swapped passes an unsigned one on to be notarised."
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "          trap 'rm -f \"$key\"' EXIT\n",
+    "find": "          echo \"Gatekeeper on this runner: $(spctl --status 2>&1 || true)\"\n",
     "replace": "",
     "test": "tests/unit/release.test.ts",
-    "title": "notarising removes the key when the script fails too, and fails the step",
-    "why": "The trap taken out: the notary's key outlives the step that needs it, readable by every step after."
+    "title": "the verify step says whether Gatekeeper is on, and fails on neither answer",
+    "why": "The runner's Gatekeeper setting no longer said in every Mac build: whether the hosted runners come with assessments on is first learnt in a signing run."
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "          unset NOTARY_KEY_P8\n",
+    "find": "            sudo spctl --global-enable || sudo spctl --master-enable || true\n",
     "replace": "",
     "test": "tests/unit/release.test.ts",
-    "title": "notarising hands the key over as a file nobody else can read, and removes it",
-    "why": "The key's text left in the script's environment as well as on disk: a second copy, which the script's own children inherit."
+    "title": "notarising turns a Gatekeeper that is off on, by whichever spelling the runner takes",
+    "why": "A runner that comes with assessments off fails the signing run for its own setting, which says nothing about the image."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " || sudo spctl --master-enable",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising turns a Gatekeeper that is off on, by whichever spelling the runner takes",
+    "why": "One spelling of the option only: a runner whose macOS takes the other is left with assessments off, and fails."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's",
+    "replace": "          if false; then\n            echo \"::error::Gatekeeper's",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising fails, with a sentence, only where Gatekeeper will not come on",
+    "why": "Gatekeeper's status after not read: the checks run on a runner that accepts everything, and their verdicts are the machine's setting, not the image's."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in release, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "replace": "          umask 077\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising refuses no image, or two, before the key is written",
+    "why": "The count of images not checked: with none the key is written and the script run on nothing, and with two one is notarised and the other uploaded beside it."
   },
   {
     "file": ".github/workflows/build.yml",
@@ -289,10 +433,26 @@
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "          echo \"Gatekeeper on this runner: $(spctl --status 2>&1 || true)\"\n",
+    "find": "          unset NOTARY_KEY_P8\n",
     "replace": "",
     "test": "tests/unit/release.test.ts",
-    "title": "the verify step says whether Gatekeeper is on, and fails on neither answer",
-    "why": "The runner's Gatekeeper setting no longer said: whether spctl's verdicts mean anything on the hosted runners is first learnt in a signing run, from its failure."
+    "title": "notarising hands the key over as a file nobody else can read, and removes it",
+    "why": "The key's text left in the script's environment as well as on disk: a second copy, which the script's own children inherit."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          trap 'rm -f \"$key\"' EXIT\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising removes the key when the script fails too, and fails the step",
+    "why": "The trap taken out: the notary's key outlives the step that needs it, readable by every step after."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          node scripts/verify-mac-signing.mjs dmg \"${images[0]}\" --team-from electron-builder.release.yml",
+    "replace": "          node scripts/verify-mac-signing.mjs developer-id \"${images[0]}\" --team-from electron-builder.release.yml",
+    "test": "tests/unit/release.test.ts",
+    "title": "the last check is the dmg mode over the one image, by the config's team",
+    "why": "The image checked as if it were an app: its staple and Gatekeeper's verdict on the file a person downloads are never asked for."
   }
 ]

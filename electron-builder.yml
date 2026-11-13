@@ -25,10 +25,11 @@
 # no certificate: the packager changes the bundle after Electron's own
 # signature was made, and an Apple-silicon Mac refuses a bundle whose
 # signature is broken where it runs one signed ad hoc once a person allows
-# it. Every branch and pull-request build is this one, and so is `npm run
-# dist`. The Developer ID build is electron-builder.release.yml, which
-# extends this file, replaces the identity and signs the disk image, and
-# changes nothing about the layout (ADR-062). The Windows installer is not
+# it. Every branch and pull-request build is this one, and so are `npm run
+# dist` and a release tag pushed while signing is switched off. The
+# Developer ID build is electron-builder.release.yml, which extends this
+# file, replaces the identity and signs the disk image, and changes nothing
+# about the layout (ADR-062). The Windows installer is not
 # signed (ADR-054). `forceCodeSigning` does nothing while the identity is
 # `-`: electron-builder 26 builds the ad-hoc identity before the only branch
 # that reads the flag. Under the release config's identity it is what fails
