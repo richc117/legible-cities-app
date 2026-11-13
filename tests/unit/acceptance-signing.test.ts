@@ -111,10 +111,20 @@ describe("acceptance.yml's step 2 on macOS", () => {
       ].join('\n'),
       ditto: `${RECORD}\nmkdir -p "$2"`,
       // `-dv <image>` is whether the image carries a signature of its own;
-      // anything else is the ad-hoc check of the copied app.
+      // `-dvv <app>` shows, on standard error as codesign does, what the
+      // copied app is signed with; anything else is the check of its seal.
       codesign: [
         RECORD,
         'if [ "$1" = -dv ]; then exit "${STUB_IMAGE_UNSIGNED:-0}"; fi',
+        'if [ "$1" = -dvv ]; then',
+        '  case "${STUB_APP_SIGNATURE:-adhoc}" in',
+        '    adhoc) printf "Executable=x\\nSignature=adhoc\\nTeamIdentifier=not set\\n" >&2 ;;',
+        `    developer) printf "Executable=x\\nAuthority=Developer ID Application: Example Person (${TEAM})\\nTeamIdentifier=${TEAM}\\n" >&2 ;;`,
+        '    almost) printf "Executable=x\\nNot Signature=adhoc really\\n" >&2 ;;',
+        '    none) echo "code object is not signed at all" >&2; exit 1 ;;',
+        '  esac',
+        '  exit 0',
+        'fi',
         'exit "${STUB_CODESIGN:-0}"',
       ].join('\n'),
       // No quarantine attribute, as on a runner.
@@ -330,6 +340,7 @@ describe("acceptance.yml's step 2 on macOS", () => {
       expect(sudo).toEqual([])
       expect(codesign).toEqual([
         ['codesign', '-dv', image],
+        ['codesign', '-dvv', copy],
         ['codesign', '--verify', '--deep', '--strict', copy],
       ])
       expect(records).toHaveLength(1)
@@ -363,7 +374,10 @@ describe("acceptance.yml's step 2 on macOS", () => {
       expect(result.status).toBe(0)
       expect(checks).toEqual([])
       // The image is not even asked: there was no signing to do.
-      expect(codesign).toEqual([['codesign', '--verify', '--deep', '--strict', copy]])
+      expect(codesign).toEqual([
+        ['codesign', '-dvv', copy],
+        ['codesign', '--verify', '--deep', '--strict', copy],
+      ])
       expect(records).toHaveLength(1)
       expect(records[0].slice(4)).toEqual([
         'step',
@@ -373,6 +387,39 @@ describe("acceptance.yml's step 2 on macOS", () => {
       ])
       const broken = run({ config: false, env: { STUB_CODESIGN: '1' } })
       expect(broken.records[0][7]).toContain('its signature does not verify')
+    })
+
+    it('fails an unsigned image whose app is not signed ad hoc, whatever the tag', () => {
+      // Mutation: the app in an unsigned image taken for ad hoc unread, so
+      // one signed with a certificate, or not signed at all, is held to no
+      // Developer ID check and recorded as an ad-hoc build.
+      const cases: { config: boolean; signature: string }[] = [
+        { config: true, signature: 'developer' },
+        { config: true, signature: 'none' },
+        // The words alone, inside another line, are not the mark.
+        { config: true, signature: 'almost' },
+        { config: false, signature: 'developer' },
+      ]
+      for (const { config, signature } of cases) {
+        const { result, records, checks, handed, codesign, copy } = run({
+          config,
+          env: { STUB_IMAGE_UNSIGNED: '1', STUB_APP_SIGNATURE: signature },
+        })
+        const label = `${config} ${signature}`
+        expect(result.status, label).toBe(1)
+        expect(result.stdout, label).toContain(
+          '::error::the disk image is unsigned and the app inside is not signed ad hoc',
+        )
+        expect(
+          records.map((call) => call.slice(4, 7)),
+          label,
+        ).toEqual([['step', '2', 'fail']])
+        expect(records[0][7], label).toContain('neither build this repository makes')
+        expect(checks, label).toEqual([])
+        // Refused before the seal is even checked, and no app for the spec.
+        expect(codesign[codesign.length - 1], label).toEqual(['codesign', '-dvv', copy])
+        expect(handed, label).toBe('')
+      }
     })
 
     it('fails an image with no app in it, whatever the tag', () => {

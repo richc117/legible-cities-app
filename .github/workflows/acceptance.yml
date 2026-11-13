@@ -259,6 +259,17 @@ jobs:
             fi
             node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and what it shows at the first open was not seen. Checked instead: the disk image is signed with the Developer ID, notarised and stapled, and Gatekeeper's assessment accepts the image, the app inside it and the copy as Notarized Developer ID. The app is opened by the spec in step 3."
           else
+            # An image with no signature of its own is an ad-hoc build's, and
+            # an ad-hoc build's app is signed ad hoc. An app that is not, in
+            # an unsigned image, is neither build this repository makes, and
+            # would otherwise go on from here held to no Developer ID check
+            # and recorded as ad hoc.
+            display=$(codesign -dvv "$apps/Legible Cities.app" 2>&1 || true)
+            if ! grep -qx 'Signature=adhoc' <<< "$display"; then
+              node "$cli" prior "$PRIOR" step 2 fail "The disk image has no signature of its own, which is an ad-hoc build's, and the app copied from it is not signed ad hoc: it is neither build this repository makes."
+              echo "::error::the disk image is unsigned and the app inside is not signed ad hoc (codesign shows no Signature=adhoc): it is neither build this repository makes"
+              exit 1
+            fi
             if codesign --verify --deep --strict "$apps/Legible Cities.app" > /dev/null 2>&1; then
               signature='its ad-hoc signature verifies'
             else

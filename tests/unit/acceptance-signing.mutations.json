@@ -54,5 +54,13 @@
     "test": "tests/unit/acceptance-signing.test.ts",
     "title": "records each build in the words docs/releasing.md quotes",
     "why": "The record reworded in the workflow alone: the release procedure tells the maintainer to look for a sentence no run writes."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "            if ! grep -qx 'Signature=adhoc' <<< \"$display\"; then",
+    "replace": "            if false; then",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "fails an unsigned image whose app is not signed ad hoc, whatever the tag",
+    "why": "The app in an unsigned image taken for ad hoc unread: one signed with a certificate, or not signed at all, is held to no Developer ID check and recorded as an ad-hoc build."
   }
 ]
