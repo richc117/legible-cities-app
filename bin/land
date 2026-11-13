@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+# Land one pull request: the steps of /lanes 7 to 9, as a tool that cannot
+# forget one. Run it from the main checkout, on main.
+#
+#   bin/land <pr> [--dry-run] [--allow-dependabot]
+#
+# It refuses a draft, an author who is neither the signed-in account nor
+# Dependabot (and Dependabot unless --allow-dependabot), a head branch with
+# no worktree beside this checkout (lc-*), a worktree whose HEAD is not the
+# pull request's head, and a dirty worktree. Then it rebases onto the
+# fetched origin/main if the branch is behind, rebuilds, pushes with a
+# lease, waits for the required checks, merges with a message it has
+# scanned (no closing keyword), confirms the merge and the head, and cleans
+# up. Never `gh pr update-branch`, never --admin, --auto or --delete-branch.
+# --dry-run reads what it needs and prints each step it would take.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: bin/land <pr> [--dry-run] [--allow-dependabot]
+  Merge pull request <pr> the way /lanes step 9 says, from the main checkout.
+  --dry-run           print each step with the values read; change nothing
+  --allow-dependabot  accept a Dependabot pull request (no worktree needed)
+USAGE
+}
+die() { echo "land: $*" >&2; exit 1; }
+
+pr='' dry=0 dependabot_ok=0
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage; exit 0 ;;
+    --dry-run) dry=1 ;;
+    --allow-dependabot) dependabot_ok=1 ;;
+    -*) echo "land: unknown option: $arg" >&2; usage; exit 2 ;;
+    *) [ -z "$pr" ] || { usage; exit 2; }; pr=$arg ;;
+  esac
+done
+case "$pr" in ''|*[!0-9]*) usage; exit 2 ;; esac
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+
+# Print a command; unless this is a dry run, run it.
+quote() { printf '%q ' "$@"; }
+act() {
+  if [ "$dry" = 1 ]; then printf 'would run: %s\n' "$(quote "$@")"
+  else printf 'running: %s\n' "$(quote "$@")"; "$@"; fi
+}
+# The same, from inside a directory (a push is made from the worktree).
+act_in() {
+  local dir=$1; shift
+  if [ "$dry" = 1 ]; then printf 'would run in %s: %s\n' "$dir" "$(quote "$@")"
+  else printf 'running in %s: %s\n' "$dir" "$(quote "$@")"; ( cd "$dir" && "$@" ); fi
+}
+
+[ "$(git branch --show-current)" = main ] || die "run this from the main checkout, on main."
+[ "$(git rev-parse --absolute-git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ] \
+  || die "this is a linked worktree; run it from the main checkout."
+
+me=$(gh api user --jq .login)
+[ -n "$me" ] || die "could not read the signed-in account."
+info=$(gh pr view "$pr" --json isDraft,author,headRefName,headRefOid,title,body,state,mergeStateStatus)
+field() { printf '%s' "$info" | jq -r "$1"; }
+state=$(field .state); draft=$(field .isDraft); author=$(field .author.login)
+branch=$(field .headRefName); head=$(field .headRefOid); title=$(field .title)
+[ "$state" = OPEN ] || die "pull request $pr is $state, not open."
+[ "$draft" = false ] || die "pull request $pr is a draft."
+is_dependabot=0
+if [ "$author" = app/dependabot ]; then
+  [ "$dependabot_ok" = 1 ] || die "pull request $pr is Dependabot's; pass --allow-dependabot to land it."
+  is_dependabot=1
+elif [ "$author" != "$me" ]; then
+  die "pull request $pr is by $author, neither $me nor app/dependabot."
+fi
+[ -n "$title" ] || die "pull request $pr has no title."
+echo "land: #$pr \"$title\" by $author, branch $branch, head $head"
+
+# The worktree of the head branch, beside this checkout.
+wt=''
+while IFS= read -r line; do
+  case "$line" in
+    "worktree "*) cur=${line#worktree } ;;
+    "branch refs/heads/$branch")
+      case "$(basename "$cur")" in lc-*) [ "$(dirname "$cur")" = "$(dirname "$root")" ] && wt=$cur ;; esac ;;
+  esac
+done < <(git worktree list --porcelain)
+if [ -z "$wt" ] && [ "$is_dependabot" = 0 ]; then
+  die "branch $branch has no worktree at ../lc-*."
+fi
+
+if [ -n "$wt" ]; then
+  wt_head=$(git -C "$wt" rev-parse HEAD)
+  [ "$wt_head" = "$head" ] || die "worktree $wt is at $wt_head, not the pull request's head $head."
+  [ -z "$(git -C "$wt" status --porcelain)" ] || die "worktree $wt is dirty."
+  echo "land: worktree $wt at $wt_head"
+  act git fetch origin main
+  if ! git -C "$wt" merge-base --is-ancestor origin/main HEAD; then
+    base=$(git -C "$wt" merge-base HEAD origin/main)
+    both=$(comm -12 <(git -C "$wt" diff --name-only "$base" HEAD | sort) \
+                    <(git -C "$wt" diff --name-only "$base" origin/main | sort))
+    echo "land: behind origin/main; files both sides touched:"
+    if [ -n "$both" ]; then printf '%s\n' "$both" | sed 's/^/  /'; else echo "  none"; fi
+    act git -C "$wt" rebase origin/main || die "the rebase stopped; resolve it in $wt."
+    act git -C "$wt" diff --check origin/main HEAD || die "git diff --check found conflict markers or whitespace errors."
+    act_in "$wt" npm run build || die "the build failed after the rebase."
+    act_in "$wt" git push --force-with-lease origin "$branch" || die "the push with a lease was refused."
+    if [ "$dry" = 0 ]; then
+      wt_head=$(git -C "$wt" rev-parse HEAD)
+      sleep "${LAND_SETTLE:-15}"
+    fi
+  else
+    echo "land: up to date with origin/main"
+  fi
+elif [ "$(field .mergeStateStatus)" = BEHIND ]; then
+  die "Dependabot's pull request $pr is behind main; ask it to rebase."
+fi
+
+if [ "$dry" = 1 ]; then
+  printf 'would run: %s\n' "$(quote gh pr checks "$pr" --required --watch --fail-fast)"
+else
+  printf 'running: %s\n' "$(quote gh pr checks "$pr" --required --watch --fail-fast)"
+  gh pr checks "$pr" --required --watch --fail-fast || die "a required check did not pass."
+  checks=$(gh pr checks "$pr" --required --json name,state)
+  total=$(printf '%s' "$checks" | jq 'length')
+  passed=$(printf '%s' "$checks" | jq '[.[] | select(.state == "SUCCESS")] | length')
+  # Seven required checks (ADR-030's board); a different count is a change
+  # of the protection that this tool should be told about, not guessed at.
+  [ "$total" = 7 ] && [ "$passed" = 7 ] || die "$passed of $total required checks passed; want all 7."
+fi
+
+# The squash message: the title, and the body without a closing keyword.
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+body="$tmp/body.txt"; scan="$tmp/scan.txt"
+field .body | tr -d '\r' > "$tmp/raw.txt"
+keyword='^(close[sd]?|fix(e[sd])?|resolve[sd]?):? +#[0-9]+'
+grep -viE "$keyword" "$tmp/raw.txt" > "$body" || true
+removed=$(grep -ciE "$keyword" "$tmp/raw.txt" || true)
+if ! test -s "$body" || ! grep -q '[^[:space:]]' "$body"; then die "the pull request body is empty, so is the merge message."; fi
+{ printf '%s\n' "$title"; cat "$body"; } > "$scan"
+"$root/bin/preflight" --message-file "$scan" || die "preflight refused the merge message."
+echo "land: merge message: $(wc -l < "$body" | tr -d ' ') lines, $removed closing-keyword line(s) removed, scanned"
+
+act gh pr merge "$pr" --squash --subject "$title" --body-file "$body"
+
+if [ "$dry" = 1 ]; then
+  echo "would check: gh pr view $pr --json state,headRefOid says MERGED and ${wt_head:-the head}"
+else
+  after=$(gh pr view "$pr" --json state,headRefOid)
+  [ "$(printf '%s' "$after" | jq -r .state)" = MERGED ] || die "pull request $pr is not MERGED; stopping before any cleanup."
+  if [ -n "$wt" ]; then
+    [ "$(printf '%s' "$after" | jq -r .headRefOid)" = "$wt_head" ] \
+      || die "the merged head is not the worktree's HEAD $wt_head; stopping before any cleanup."
+  fi
+fi
+
+act git pull --ff-only
+if [ -n "$wt" ]; then
+  if [ "$dry" = 1 ]; then
+    printf 'would run: %s\n' "$(quote git worktree remove "$wt")"
+  elif ! git worktree remove "$wt"; then
+    echo "land: what is left in $wt:" >&2
+    git -C "$wt" status --short >&2 || true
+    die "git refused to remove $wt (never --force); look before anything else."
+  fi
+  act git worktree prune
+  act git branch -D "$branch"
+fi
+if [ "$is_dependabot" = 0 ]; then
+  act git push origin --delete "$branch"
+fi
+echo "land: done"

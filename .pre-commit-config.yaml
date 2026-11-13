@@ -82,3 +82,10 @@ repos:
         pass_filenames: false
         files: '^(\.claude/hooks/|bin/test-hooks$)'
         stages: [pre-commit]
+      - id: landing-tools
+        name: the landing tools' refusal tables
+        entry: bin/test-landing
+        language: script
+        pass_filenames: false
+        files: '^bin/(land|candidate|e2e-serial|test-landing)$'
+        stages: [pre-commit]

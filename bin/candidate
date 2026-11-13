@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Cut and publish a release candidate (docs/releasing.md), and only a
+# candidate: every tag this makes is v<version>-rc.<N>, and there is no way
+# to ask for a final.
+#
+#   bin/candidate tag <N> [--dry-run]
+#   bin/candidate publish <N> [--dry-run]
+#
+# tag      checks main is green, the notes would draft, dispatches the vendor
+#          workflow and waits, then tags origin/main (lightweight) and pushes
+#          that tag alone.
+# publish  acts only when every job of the tag's build run succeeded and the
+#          Release is a draft; publishes it as a pre-release, never Latest,
+#          then dispatches the acceptance run.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: bin/candidate tag <N> [--dry-run]
+       bin/candidate publish <N> [--dry-run]
+  tag      tag v<version>-rc.<N> on origin/main, after the checks a machine can make
+  publish  publish that tag's draft Release as a pre-release and dispatch acceptance
+  --dry-run  print each step; change nothing
+USAGE
+}
+die() { echo "candidate: $*" >&2; exit 1; }
+
+cmd='' n='' dry=0
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage; exit 0 ;;
+    --dry-run) dry=1 ;;
+    -*) echo "candidate: unknown option: $arg" >&2; usage; exit 2 ;;
+    *) if [ -z "$cmd" ]; then cmd=$arg; elif [ -z "$n" ]; then n=$arg; else usage; exit 2; fi ;;
+  esac
+done
+case "$cmd" in tag|publish) ;; *) usage; exit 2 ;; esac
+case "$n" in ''|*[!0-9]*|0*) usage; exit 2 ;; esac
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+quote() { printf '%q ' "$@"; }
+act() {
+  if [ "$dry" = 1 ]; then printf 'would run: %s\n' "$(quote "$@")"
+  else printf 'running: %s\n' "$(quote "$@")"; "$@"; fi
+}
+
+version=$(jq -r .version package.json)
+tag="v$version-rc.$n"
+# The one gate on what this can make: a release candidate, nothing else.
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] \
+  || die "refusing $tag: only v<X.Y.Z>-rc.<N> can be cut here, never a final."
+echo "candidate: $tag"
+
+if [ "$cmd" = tag ]; then
+  git fetch origin main
+  git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists locally."
+  [ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ] || die "tag $tag already exists on origin."
+  sha=$(git rev-parse origin/main)
+  [ "$(git rev-parse HEAD)" = "$sha" ] || die "this checkout is not at origin/main ($sha); pull first, the notes are checked on this tree."
+  ci=$(gh run list --workflow ci.yml --branch main --limit 1 --json conclusion,headSha --jq '.[0] | "\(.conclusion) \(.headSha)"')
+  [ "$ci" = "success $sha" ] || die "main is not green on $sha (latest ci run: $ci)."
+  notes=$(mktemp); trap 'rm -f "$notes"' EXIT
+  node scripts/release.mjs notes "$tag" "$notes" || die "the release notes for $tag would be refused; fix the changelog first."
+  echo "candidate: main is green on $sha and the notes for $tag draft"
+  before=$(gh run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+  act gh workflow run vendor.yml --ref main
+  if [ "$dry" = 0 ]; then
+    run=$before
+    for _ in $(seq 1 40); do
+      run=$(gh run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+      [ "$run" != "$before" ] && break
+      sleep "${CANDIDATE_POLL:-3}"
+    done
+    [ "$run" != "$before" ] || die "the vendor run did not appear."
+    gh run watch "$run" --exit-status || die "the vendor run $run failed."
+  fi
+  act git tag "$tag" "$sha"
+  act git push origin "$tag"
+else
+  run=$(gh run list --workflow build.yml --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+  [ -n "$run" ] || die "no build run for $tag."
+  built=$(gh run view "$run" --json status,jobs)
+  [ "$(printf '%s' "$built" | jq -r .status)" = completed ] || die "the build run $run for $tag has not completed."
+  bad=$(printf '%s' "$built" | jq -r '.jobs[] | select(.conclusion != "success") | "  \(.name): \(.conclusion)"')
+  if [ -n "$bad" ]; then echo "$bad" >&2; die "jobs of build run $run did not succeed."; fi
+  [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ] || die "the Release for $tag is not a draft."
+  echo "candidate: every job of build run $run succeeded; the Release is a draft"
+  act gh release edit "$tag" --draft=false --prerelease --latest=false
+  act gh workflow run acceptance.yml --ref main -f "tag=$tag"
+fi
+echo "candidate: done"

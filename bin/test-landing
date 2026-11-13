@@ -1,0 +1,310 @@
+#!/usr/bin/env bash
+# Exercise bin/land, bin/candidate and bin/e2e-serial against stand-ins.
+#
+# Each tool is copied into a sandbox beside stub gh, git, npm, node, uname,
+# launchctl and lockf executables that come first on PATH, log their
+# argument lists and answer from fixtures. Every refusal has a row that
+# makes its condition true and expects the sentence and a non-zero exit, and
+# the happy path rows pin each command line exactly: that the merge never
+# carries --admin, --auto or --delete-branch, that its message has no
+# closing keyword, that a final cannot be cut. Run it directly; no
+# arguments; nothing is touched outside a temporary directory.
+set -u
+src=$(cd "$(dirname "$0")/.." && pwd)
+command -v jq >/dev/null || { echo "test-landing: jq is required" >&2; exit 1; }
+T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+pass=0 fail=0
+
+# --- the sandbox ------------------------------------------------------------
+main=$T/main wt=$T/lc-685 stubs=$T/stubs fix=$T/fix log=$T/log
+mkdir -p "$main/bin" "$wt" "$stubs" "$fix"
+for tool in land candidate e2e-serial; do cp "$src/bin/$tool" "$main/bin/$tool"; done
+cat > "$main/bin/preflight" <<'STUB'
+#!/usr/bin/env bash
+echo "preflight $*" >> "$FIX/../log"
+cp "$2" "$FIX/scanned"
+[ ! -e "$FIX/preflight-refuses" ]
+STUB
+chmod +x "$main/bin/preflight"
+echo '{"version": "1.0.0"}' > "$main/package.json"
+
+cat > "$stubs/stub" <<'STUB'
+#!/usr/bin/env bash
+name=$(basename "$0")
+{ printf '%s' "$name"; printf ' %s' "$@"; echo; } >> "$FIX/../log"
+f=$FIX
+case "$name" in
+uname) echo "${UNAME:-Darwin}" ;;
+launchctl) echo "${SESSION:-Aqua}" ;;
+npm) echo "$PWD" > "$f/npm-cwd"; echo "$*" >> "$f/npm-calls" ;;
+node) exit "${NOTES_RC:-0}" ;;
+lockf)
+  while [ $# -gt 0 ]; do case "$1" in -k|-s) shift ;; -t) shift 2 ;; *) break ;; esac; done
+  probe=0; case "$*" in *" true") probe=1 ;; esac
+  shift
+  if [ "$probe" = 1 ]; then [ -z "${LOCK_BUSY:-}" ]; exit; fi
+  exec "$@" ;;
+git)
+  cpath=''
+  if [ "${1:-}" = -C ]; then cpath=$2; shift 2; fi
+  case "$*" in
+  "branch --show-current") echo "${MAIN_BRANCH:-main}" ;;
+  "rev-parse --absolute-git-dir") echo "$f/gitdir" ;;
+  "rev-parse --path-format=absolute --git-common-dir") echo "${COMMON:-$f/gitdir}" ;;
+  "worktree list --porcelain") cat "$f/worktrees" ;;
+  "rev-parse HEAD") if [ -n "$cpath" ]; then cat "$f/wthead"; else cat "$f/roothead"; fi ;;
+  "rev-parse origin/main") cat "$f/originmain" ;;
+  "status --porcelain") cat "$f/dirty" ;;
+  "merge-base --is-ancestor origin/main HEAD") [ ! -e "$f/behind" ] ;;
+  "merge-base HEAD origin/main") echo basecommit ;;
+  "diff --name-only basecommit HEAD") cat "$f/ours" ;;
+  "diff --name-only basecommit origin/main") cat "$f/theirs" ;;
+  "rebase origin/main") echo newhead0000 > "$f/wthead"; rm -f "$f/behind" ;;
+  "diff --check origin/main HEAD") exit "${DIFFCHECK_RC:-0}" ;;
+  push\ --force-with-lease*) echo "$PWD" > "$f/push-cwd"
+    jq --arg h "$(cat "$f/wthead")" '.headRefOid = $h' "$f/pr.json" > "$f/pr.tmp" && mv "$f/pr.tmp" "$f/pr.json" ;;
+  "worktree remove "*) exit "${WT_REMOVE_RC:-0}" ;;
+  "status --short") echo " M leftover.txt" ;;
+  "rev-parse -q --verify refs/tags/"*) all="$*"; grep -qx "${all##*/}" "$f/localtags" ;;
+  "ls-remote --tags origin refs/tags/"*) all="$*"; grep -x "${all##*/}" "$f/remotetags" ;;
+  *) : ;;
+  esac ;;
+gh)
+  case "$*" in
+  "api user --jq .login") echo "${GH_USER:-me}" ;;
+  "pr view "*) jq -c . "$f/pr.json" ;;
+  "pr checks 42 --required --watch --fail-fast") exit "${CHECKS_RC:-0}" ;;
+  "pr checks 42 --required --json name,state") cat "$f/checks.json" ;;
+  "pr merge "*)
+    prev=''; for a in "$@"; do
+      [ "$prev" = --subject ] && printf '%s' "$a" > "$f/merged-subject"
+      [ "$prev" = --body-file ] && cp "$a" "$f/merged-body"
+      prev=$a; done
+    [ -n "${MERGE_NOOP:-}" ] || { jq --arg h "${MERGE_HEAD:-$(jq -r .headRefOid "$f/pr.json")}" '.state = "MERGED" | .headRefOid = $h' "$f/pr.json" > "$f/pr.tmp" && mv "$f/pr.tmp" "$f/pr.json"; } ;;
+  "run list --workflow ci.yml --branch main --limit 1 --json conclusion,headSha --jq "*) cat "$f/ci" ;;
+  "run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq "*)
+    if [ -e "$f/dispatched" ]; then echo 2; else echo 1; fi ;;
+  "workflow run vendor.yml --ref main") touch "$f/dispatched" ;;
+  "run watch 2 --exit-status") exit "${VENDOR_RC:-0}" ;;
+  "run list --workflow build.yml --branch "*) echo 7 ;;
+  "run view 7 --json status,jobs") cat "$f/build.json" ;;
+  "release view "*" --json isDraft --jq .isDraft") cat "$f/draft" ;;
+  *) : ;;
+  esac ;;
+esac
+STUB
+chmod +x "$stubs/stub"
+for n in gh git npm node uname launchctl lockf; do ln -s stub "$stubs/$n"; done
+
+# Put every fixture back to the happy state.
+reset() {
+  rm -rf "$fix"; mkdir -p "$fix"; : > "$log"
+  echo 'aaaa1111' > "$fix/wthead"; echo 'mainsha1' > "$fix/roothead"
+  echo 'mainsha1' > "$fix/originmain"; : > "$fix/dirty"; : > "$fix/localtags"; : > "$fix/remotetags"
+  printf 'src/a.ts\nsrc/b.ts\n' > "$fix/ours"; printf 'src/b.ts\nsrc/c.ts\n' > "$fix/theirs"
+  printf 'worktree %s\nHEAD rootrootroot\nbranch refs/heads/main\n\nworktree %s\nHEAD aaaa1111\nbranch refs/heads/685-landing-tools\n' \
+    "$main" "$wt" > "$fix/worktrees"
+  jq -n '{state:"OPEN",isDraft:false,author:{login:"me"},headRefName:"685-landing-tools",headRefOid:"aaaa1111",
+    title:"Add landing tools",body:"Builds the tools.\n\nCloses #685\nfixes #12\nResolves #3 too\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n",
+    mergeStateStatus:"CLEAN"}' > "$fix/pr.json"
+  jq -n '[range(7) | {name:"c\(.)",state:"SUCCESS"}]' > "$fix/checks.json"
+  echo 'success mainsha1' > "$fix/ci"; echo true > "$fix/draft"
+  jq -n '{status:"completed",jobs:[{name:"package",conclusion:"success"},{name:"release (draft)",conclusion:"success"}]}' > "$fix/build.json"
+  unset MERGE_HEAD DIFFCHECK_RC WT_REMOVE_RC CHECKS_RC MERGE_NOOP GH_USER UNAME SESSION LOCK_BUSY NOTES_RC VENDOR_RC MAIN_BRANCH COMMON
+}
+
+# Run a tool in the sandbox; its output in $out, its status in $rc.
+run() {
+  out=$(cd "$main" && PATH="$stubs:$PATH" FIX=$fix LAND_SETTLE=0 CANDIDATE_POLL=0 "$@" 2>&1); rc=$?
+}
+ok()  { pass=$((pass + 1)); }
+bad() { fail=$((fail + 1)); printf 'FAIL %-58s %s\n' "$1" "${2:-}" >&2; }
+# refuses <what> <sentence fragment>: non-zero exit, the fragment said.
+refuses() {
+  if [ "$rc" -ne 0 ] && [[ "$out" == *"$2"* ]]; then ok; else bad "$1" "rc=$rc, wanted \"$2\" in: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi
+}
+succeeds() { if [ "$rc" -eq 0 ]; then ok; else bad "$1" "rc=$rc: $(echo "$out" | tail -2 | tr '\n' ' ')"; fi; }
+logged() { if grep -qE -- "$2" "$log"; then ok; else bad "$1" "no log line matches $2"; fi; }
+notlogged() { if grep -qE -- "$2" "$log"; then bad "$1" "a log line matches $2"; else ok; fi; }
+said() { if [[ "$out" == *"$2"* ]]; then ok; else bad "$1" "output lacks \"$2\""; fi; }
+usage_error() { if [ "$rc" -eq 2 ]; then ok; else bad "$1" "rc=$rc"; fi; }
+equal() { if [ "$2" = "$3" ]; then ok; else bad "$1" "want \"$3\", got \"$2\""; fi; }
+
+# --- bin/land ---------------------------------------------------------------
+reset; run bin/land --help;                 succeeds "land --help";   said "land --help usage" "usage: bin/land"
+reset; run bin/land;                        usage_error "land with no number is a usage error"
+reset; run bin/land abc;                    usage_error "land with a non-number is a usage error"
+
+reset; MAIN_BRANCH=other; export MAIN_BRANCH; run bin/land 42
+refuses "land off main" "from the main checkout"
+reset; COMMON=/elsewhere; export COMMON; run bin/land 42
+refuses "land in a linked worktree" "linked worktree"
+reset; jq '.isDraft = true' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
+refuses "land a draft" "is a draft"
+reset; jq '.state = "MERGED"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
+refuses "land a closed pull request" "is MERGED"
+reset; jq '.author.login = "stranger"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
+refuses "land a stranger's pull request" "by stranger"
+reset; jq '.author.login = "app/dependabot"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
+refuses "land Dependabot's without the flag" "--allow-dependabot"
+reset; jq '.headRefName = "feature-no-tree"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
+refuses "land a branch with no worktree" "no worktree at ../lc-*"
+reset; printf 'worktree %s/other-name\nHEAD aaaa1111\nbranch refs/heads/685-landing-tools\n' "$T" > "$fix/worktrees"; run bin/land 42
+refuses "land a worktree not named lc-*" "no worktree at ../lc-*"
+reset; echo 'bbbb2222' > "$fix/wthead"; run bin/land 42
+refuses "land a worktree whose HEAD differs" "not the pull request's head"
+reset; echo ' M x' > "$fix/dirty"; run bin/land 42
+refuses "land a dirty worktree" "is dirty"
+reset; touch "$fix/behind"; DIFFCHECK_RC=1; export DIFFCHECK_RC; run bin/land 42
+refuses "land after a rebase that leaves conflict markers" "diff --check found"
+notlogged "diff --check failure stops before the push" '^git push'
+reset; CHECKS_RC=1; export CHECKS_RC; run bin/land 42
+refuses "land with a failed check" "required check did not pass"
+notlogged "failed check stops before the merge" '^gh pr merge'
+reset; jq '.[0].state = "PENDING"' "$fix/checks.json" > "$fix/p" && mv "$fix/p" "$fix/checks.json"; run bin/land 42
+refuses "land with fewer than seven passed" "6 of 7"
+reset; jq '.[:6]' "$fix/checks.json" > "$fix/p" && mv "$fix/p" "$fix/checks.json"; run bin/land 42
+refuses "land with only six required checks" "want all 7"
+reset; jq '.body = "Closes #685\n"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
+refuses "land with a body that is only a closing keyword" "body is empty"
+notlogged "empty message stops before preflight" '^preflight'
+reset; touch "$fix/preflight-refuses"; run bin/land 42
+refuses "land when preflight refuses the message" "preflight refused"
+notlogged "preflight refusal stops before the merge" '^gh pr merge'
+reset; MERGE_NOOP=1; export MERGE_NOOP; run bin/land 42
+refuses "land when the pull request is not MERGED after" "not MERGED"
+notlogged "no cleanup before MERGED" '^git (pull|worktree remove|branch -D)'
+reset; MERGE_HEAD=ffff9999; export MERGE_HEAD; run bin/land 42
+refuses "land when the merged head is not the worktree's" "merged head is not"
+notlogged "a foreign merged head stops before cleanup" '^git (pull|worktree remove|branch -D)'
+reset; WT_REMOVE_RC=1; export WT_REMOVE_RC; run bin/land 42
+refuses "land when worktree remove refuses" "never --force"
+said "land shows what is left" "leftover.txt"
+notlogged "no branch deletion after a refused remove" '^git branch -D'
+
+# The happy path, current with main: no rebase, no build, no push of the branch.
+reset; run bin/land 42; succeeds "land, up to date"
+notlogged "up to date: no rebase" 'rebase'
+notlogged "up to date: no build" '^npm'
+notlogged "up to date: no force push" 'force-with-lease'
+logged "land waits for the required checks" '^gh pr checks 42 --required --watch --fail-fast$'
+logged "land merges with the exact flags" '^gh pr merge 42 --squash --subject Add landing tools --body-file /'
+notlogged "merge never --admin" 'pr merge.*--admin'
+notlogged "merge never --delete-branch" 'pr merge.*--delete-branch'
+notlogged "merge never --auto" 'pr merge.*--auto'
+notlogged "never gh pr update-branch" 'update-branch'
+equal "merge subject is the title" "$(cat "$fix/merged-subject")" "Add landing tools"
+if grep -qiE '^(closes|fixes|resolves) #[0-9]+' "$fix/merged-body"; then bad "merge body has no closing keyword" "found one"; else ok; fi
+if grep -q 'Generated with' "$fix/merged-body"; then ok; else bad "merge body keeps the Generated with line"; fi
+if grep -q 'Builds the tools' "$fix/merged-body"; then ok; else bad "merge body keeps the text"; fi
+equal "preflight scanned the title first" "$(head -1 "$fix/scanned")" "Add landing tools"
+logged "preflight --message-file ran" '^preflight --message-file /'
+for step in '^git pull --ff-only$' "^git worktree remove $wt\$" '^git worktree prune$' \
+            '^git branch -D 685-landing-tools$' '^git push origin --delete 685-landing-tools$'; do
+  logged "cleanup runs $step" "$step"
+done
+notlogged "worktree remove never --force" 'worktree remove.*(--force| -f)'
+
+# Behind main: rebase in the worktree, check, report overlap, build, push from there.
+reset; touch "$fix/behind"; run bin/land 42; succeeds "land, behind main"
+logged "land fetches" '^git fetch origin main$'
+logged "land rebases onto origin/main" "^git -C $wt rebase origin/main$"
+logged "land checks for conflict markers" '^git -C .* diff --check origin/main HEAD$'
+said "land names the files both sides touched" "src/b.ts"
+logged "land builds after a rebase" '^npm run build$'
+equal "the build ran in the worktree" "$(cat "$fix/npm-cwd")" "$wt"
+logged "land pushes with a lease" '^git push --force-with-lease origin 685-landing-tools$'
+equal "the push was made from the worktree" "$(cat "$fix/push-cwd")" "$wt"
+logged "land merges after the rebase" '^gh pr merge 42 '
+
+# Dependabot: allowed with the flag, no worktree, no remote deletion.
+reset; jq '.author.login = "app/dependabot" | .headRefName = "dependabot/npm_and_yarn/x"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"
+run bin/land 42 --allow-dependabot; succeeds "land Dependabot's with the flag"
+logged "Dependabot's is merged" '^gh pr merge 42 --squash'
+notlogged "Dependabot's remote branch is left to GitHub" 'push origin --delete'
+notlogged "Dependabot's has no worktree to remove" 'worktree remove'
+reset; jq '.author.login = "app/dependabot" | .headRefName = "dependabot/x" | .mergeStateStatus = "BEHIND"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"
+run bin/land 42 --allow-dependabot; refuses "land Dependabot's when behind" "ask it to rebase"
+
+# Dry run: every step printed, none taken.
+reset; touch "$fix/behind"; run bin/land 42 --dry-run; succeeds "land --dry-run"
+said "dry run prints the rebase" "would run: git -C $wt rebase origin/main"
+said "dry run prints the push" "force-with-lease origin 685-landing-tools"
+said "dry run prints the merge" "would run: gh pr merge 42 --squash --subject"
+said "dry run prints the branch deletion" "git push origin --delete 685-landing-tools"
+notlogged "dry run fetches nothing" '^git fetch'
+notlogged "dry run rebases nothing" 'rebase'
+notlogged "dry run builds nothing" '^npm'
+notlogged "dry run merges nothing" '^gh pr merge'
+notlogged "dry run removes nothing" '^git (worktree (remove|prune)|branch -D|pull)|--delete'
+
+# --- bin/candidate ----------------------------------------------------------
+reset; run bin/candidate --help; succeeds "candidate --help"; said "candidate --help usage" "usage: bin/candidate"
+reset; run bin/candidate tag;       usage_error "candidate tag with no number is a usage error"
+reset; run bin/candidate tag 0;     usage_error "candidate tag 0 is a usage error"
+reset; run bin/candidate ship 1;    usage_error "candidate with an unknown verb is a usage error"
+reset; echo '{"version": "1.0.0-rc.2"}' > "$main/package.json"; run bin/candidate tag 3
+refuses "candidate refuses a version that already has a suffix" "never a final"
+reset; echo '{"version": "1.0"}' > "$main/package.json"; run bin/candidate publish 3
+refuses "candidate refuses a malformed version" "never a final"
+echo '{"version": "1.0.0"}' > "$main/package.json"
+reset; echo 'v1.0.0-rc.4' > "$fix/localtags"; run bin/candidate tag 4
+refuses "candidate tag refuses an existing local tag" "exists locally"
+reset; echo 'v1.0.0-rc.4' > "$fix/remotetags"; run bin/candidate tag 4
+refuses "candidate tag refuses a tag on origin" "exists on origin"
+reset; echo 'otherroot' > "$fix/roothead"; run bin/candidate tag 4
+refuses "candidate tag refuses a checkout behind origin/main" "pull first"
+reset; echo 'failure mainsha1' > "$fix/ci"; run bin/candidate tag 4
+refuses "candidate tag refuses a main that is not green" "not green"
+reset; echo 'success oldsha' > "$fix/ci"; run bin/candidate tag 4
+refuses "candidate tag refuses green on another commit" "not green"
+reset; NOTES_RC=1; export NOTES_RC; run bin/candidate tag 4
+refuses "candidate tag refuses notes that would be refused" "notes for v1.0.0-rc.4"
+notlogged "refused notes stop before dispatch" 'workflow run'
+reset; VENDOR_RC=1; export VENDOR_RC; run bin/candidate tag 4
+refuses "candidate tag refuses a failed vendor run" "vendor run 2 failed"
+notlogged "failed vendor run stops before the tag" '^git tag'
+
+reset; run bin/candidate tag 4; succeeds "candidate tag"
+logged "candidate runs the notes check" '^node scripts/release.mjs notes v1.0.0-rc.4 /'
+logged "candidate dispatches vendor on main" '^gh workflow run vendor.yml --ref main$'
+logged "candidate waits for the vendor run" '^gh run watch 2 --exit-status$'
+logged "candidate tags origin/main lightweight" '^git tag v1.0.0-rc.4 mainsha1$'
+logged "candidate pushes the tag alone" '^git push origin v1.0.0-rc.4$'
+notlogged "candidate never tags a final" '^git tag v1\.0\.0( |$)'
+notlogged "candidate never pushes anything else" '^git push (--|origin (main|HEAD))'
+reset; run bin/candidate tag 4 --dry-run; succeeds "candidate tag --dry-run"
+said "candidate dry run prints the tag" "would run: git tag v1.0.0-rc.4 mainsha1"
+notlogged "candidate dry run tags nothing" '^git (tag|push)'
+notlogged "candidate dry run dispatches nothing" 'workflow run'
+
+reset; echo '{"status":"in_progress","jobs":[]}' > "$fix/build.json"; run bin/candidate publish 4
+refuses "candidate publish refuses an unfinished build" "not completed"
+reset; jq '.jobs[1].conclusion = "failure"' "$fix/build.json" > "$fix/p" && mv "$fix/p" "$fix/build.json"; run bin/candidate publish 4
+refuses "candidate publish refuses a red job" "did not succeed"
+said "candidate publish names the job that failed" "release (draft): failure"
+notlogged "red build stops before the release edit" 'release edit'
+reset; echo false > "$fix/draft"; run bin/candidate publish 4
+refuses "candidate publish refuses a Release that is not a draft" "not a draft"
+reset; run bin/candidate publish 4; succeeds "candidate publish"
+logged "candidate publishes as a pre-release, never Latest" '^gh release edit v1.0.0-rc.4 --draft=false --prerelease --latest=false$'
+logged "candidate dispatches acceptance with the tag" '^gh workflow run acceptance.yml --ref main -f tag=v1.0.0-rc.4$'
+reset; run bin/candidate publish 4 --dry-run; succeeds "candidate publish --dry-run"
+notlogged "candidate publish dry run edits nothing" 'release edit|workflow run'
+
+# --- bin/e2e-serial ---------------------------------------------------------
+reset; run bin/e2e-serial --help; succeeds "e2e-serial --help"; said "e2e-serial --help usage" "usage: bin/e2e-serial"
+reset; UNAME=Linux; export UNAME; run bin/e2e-serial
+refuses "e2e-serial off macOS" "macOS desktop tool"
+notlogged "e2e-serial off macOS runs nothing" '^(npm|lockf)'
+reset; SESSION=Background; export SESSION; run bin/e2e-serial
+refuses "e2e-serial in a Background session" "Background session"
+notlogged "e2e-serial in Background runs nothing" '^(npm|lockf)'
+reset; run bin/e2e-serial --grep-invert @quarantine; succeeds "e2e-serial in a desktop session"
+logged "e2e-serial takes the machine-wide lock around the suite" '^lockf -k /tmp/legible-cities-e2e.lock npm run test:e2e -- --grep-invert @quarantine$'
+reset; LOCK_BUSY=1; export LOCK_BUSY; run bin/e2e-serial; succeeds "e2e-serial waits for a holder"
+said "e2e-serial says it is waiting" "waiting for it"
+logged "e2e-serial still runs the suite after waiting" '^npm run test:e2e --$'
+
+printf 'test-landing: %d passed, %d failed\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]
