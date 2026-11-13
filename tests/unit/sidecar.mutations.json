@@ -69,7 +69,7 @@
     "replace": "    // stop() may have run while the child was being ended.\n",
     "test": "tests/unit/sidecar.test.ts",
     "title": "kills it within terminateMs of the terminate when it ignores SIGTERM, before the next engine starts",
-    "why": "A restart that does not wait for the old engine's group (issue 640): the new engine starts on the same home while a tool the old one left is still writing into it."
+    "why": "A restart that does not wait for the old engine's group (issue 640): the group is still being ended as the restart asks whether anything is (issue 673), so an engine that exited by itself and left a tool running is never started again, and the screen says it was still stopping. Before that question was asked, the new engine started on the same home while the tool was still writing into it."
   },
   {
     "file": "src/main/sidecar.ts",
