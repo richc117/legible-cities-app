@@ -2860,8 +2860,11 @@ which is how a cold first launch is told from a warm one, and the helpers'
 wait for "ready" is `READY_DEADLINE_MS` (`tests/support/ready.ts`), a
 handshake, the failed engine's ending (`shutdownMs`), the first restart
 delay and a second handshake from the supervisor's own bounds. With
-`LEGIBLE_KEEP_LOGS` set, which only the loop workflow does, the teardown
-copies the run's logs into `test-results/logs/` so the artefact has them.
+`LEGIBLE_KEEP_LOGS` set, which the loop workflow does, or on CI (issue 671),
+the teardown copies the run's logs, and every `fake-engine.received` the
+specs' temporary folders still hold, into `test-results/logs/`, which
+`ci.yml` uploads when the run failed; a spec that removes its own folders
+(`smoke`, `rail`, `preview`, `notebook`, `typeface`) leaves nothing there.
 
 The unit suite is two Vitest projects, and `npm test` runs both (ADR-059).
 `unit` runs in Node; a test that renders a component starts with

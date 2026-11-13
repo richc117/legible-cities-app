@@ -22,13 +22,20 @@ const TEST_PREFIX = 'legible-cities-'
  */
 function runLogFolders(shared: string | undefined): string[] {
   const folders = shared !== undefined && shared !== '' ? [shared] : []
+  for (const path of runTestFolders()) folders.push(...logFolders(path))
+  return folders
+}
+
+/** The temporary folders the specs made since the run began (not the run's own profile). */
+function runTestFolders(): string[] {
+  const found: string[] = []
   const started = Number(process.env.LEGIBLE_E2E_STARTED)
-  if (!Number.isFinite(started)) return folders
+  if (!Number.isFinite(started)) return found
   let names: string[]
   try {
     names = readdirSync(tmpdir())
   } catch {
-    return folders
+    return found
   }
   for (const name of names) {
     if (!name.startsWith(TEST_PREFIX) || name.startsWith(RUN_PROFILE_PREFIX)) continue
@@ -40,16 +47,44 @@ function runLogFolders(shared: string | undefined): string[] {
     } catch {
       continue
     }
-    folders.push(...logFolders(path))
+    found.push(path)
   }
-  return folders
+  return found
+}
+
+/**
+ * Every `fake-engine.received` under `root`, within `depth` levels: the
+ * stand-in engine's record of the requests it was sent, in its engine home.
+ */
+function receivedFiles(root: string, depth = 3): string[] {
+  const found: string[] = []
+  const walk = (dir: string, left: number): void => {
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of names) {
+      const path = join(dir, name)
+      try {
+        const info = lstatSync(path)
+        if (info.isFile() && name === 'fake-engine.received') found.push(path)
+        else if (info.isDirectory() && left > 1) walk(path, left - 1)
+      } catch {
+        continue
+      }
+    }
+  }
+  walk(root, depth)
+  return found
 }
 
 /** Where `LEGIBLE_KEEP_LOGS` puts what it keeps: under `test-results/`, which a loop run uploads. */
 const KEPT = resolve(__dirname, '../../test-results/logs')
 
 /**
- * With `LEGIBLE_KEEP_LOGS` set, copy the run's own log files into
+ * With `LEGIBLE_KEEP_LOGS` set, or on CI (issue 671), copy the run's own log files into
  * `test-results/logs/` before the suite's folder is removed (issue 529: the
  * handshake's time per launch is in `engine.log`, and without this a CI run
  * loses it with the runner). Only this run's folders are read (the suite's
@@ -62,7 +97,7 @@ const KEPT = resolve(__dirname, '../../test-results/logs')
  * A local run sets nothing and keeps nothing.
  */
 function keepLogs(shared: string | undefined, ours: boolean): void {
-  if ((process.env.LEGIBLE_KEEP_LOGS ?? '') === '') return
+  if ((process.env.LEGIBLE_KEEP_LOGS ?? '') === '' && (process.env.CI ?? '') === '') return
   try {
     const folders = runLogFolders(undefined)
     if (ours && shared !== undefined) folders.unshift(shared)
@@ -72,7 +107,21 @@ function keepLogs(shared: string | undefined, ours: boolean): void {
       mkdirSync(to, { recursive: true })
       for (const file of logFiles(folder)) copyFileSync(file, join(to, basename(file)))
     }
-    console.log(`[issue 529] ${n} log folders kept in test-results/logs/.`)
+    // The stand-in engine's request record, beside the logs: the specs make
+    // their folders in many ways and mostly leave them to the runner, so the
+    // run's end is the one place that reaches them all (issue 671). The
+    // upload step keeps test-results/ only when the run failed.
+    let r = 0
+    for (const folder of runTestFolders()) {
+      for (const file of receivedFiles(folder)) {
+        const to = join(KEPT, `received-${++r}`)
+        mkdirSync(to, { recursive: true })
+        copyFileSync(file, join(to, `${basename(folder)}.fake-engine.received`))
+      }
+    }
+    console.log(
+      `[issue 529] ${n} log folders and ${r} engine request records kept in test-results/logs/.`,
+    )
   } catch (error) {
     console.log(`[issue 529] the logs could not be kept: ${String(error)}`)
   }
