@@ -80,9 +80,13 @@ A version is released only after a candidate of it has passed the release
 gate. ADR-063 decided what the gate is and why: machines where they can
 measure, the assistant's review of what they keep, and one person's
 sitting for what neither can judge. Each part is recorded on the gate
-issue, one per version. **The gate is not passed without each part named
-here having landed and run on the final candidate. Until a part's issue
-has landed, the record says that part is not automated.**
+issue, one per version.
+
+**The gate is not passed without each part named here having landed and
+run on the final candidate. The one stand-in it accepts is the sitting's
+walk by ear of the VoiceOver rows that changed since 0.1.0, where the
+scripted VoiceOver run was not recorded.** Until a part's issue has
+landed, the record says that part is not automated.
 
 - **The automated run**, `.github/workflows/acceptance.yml`, dispatched with
   the candidate's tag. Its token cannot see a draft, so the candidate is
@@ -97,14 +101,16 @@ has landed, the record says that part is not automated.**
   for the final candidate, the sitting walks by ear instead the VoiceOver
   rows the record marks as changed or new since 0.1.0: those reading "not
   yet run: a person's" and those walked only "as it stood at 0.1.0".
-- **The assistant's visual review**: every image the automated run kept,
-  read under the reviewer's protocol, which issue 689 adds to
-  [`docs/acceptance.md`](acceptance.md#the-reviewers-protocol). Its
-  verdicts, `looks right`, `looks wrong` or `cannot tell` and never `pass`,
-  go into the run's record, in the results template's table for them, and
-  the gate issue links that record. Two control pairs sit among the rows
-  unmarked; which they were is in a separate key, opened only after every
-  verdict is written.
+- **The assistant's visual review**: once issue 689 lands, every image
+  the automated run kept, read under the reviewer's protocol, which that
+  issue adds to [`docs/acceptance.md`](acceptance.md#the-reviewers-protocol).
+  The evidence the reviewer reads carries no machine check's result; those
+  are in the run's record, read only after the verdicts. Its verdicts,
+  `looks right`, `looks wrong` or `cannot tell` and never `pass`, go into
+  the run's record, in the results template's table for them, and the gate
+  issue links that record. Two control pairs sit among the rows unmarked;
+  which they were is in a key, a separate artefact the reviewer is not
+  given until every verdict is written. With no review there is no stand-in.
 - **The sitting**, [`docs/acceptance-sitting.md`](acceptance-sitting.md):
   one person, about 45 minutes, on the final candidate, on a Mac, recorded
   in an issue of its own and ending in the go or no-go on the gate issue.

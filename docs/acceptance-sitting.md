@@ -7,7 +7,7 @@ done before it, by machines and by the assistant
 a Windows runner; the scripted VoiceOver run, once issue 691 lands; and,
 once issue 689 lands, the assistant's visual review of the images the run
 kept, written into the run's record. Where one of those is missing for
-the candidate, the item that relies on it says what to do instead. The
+the candidate, the item that relies on it says what that means. The
 sitting goes straight to what none of those can judge. Windows, a beta, is
 not part of it.
 
@@ -113,12 +113,12 @@ VoiceOver's own navigation and with Tab:
   listed on the gate issue: listen for what the row expects and write
   down what you heard.
 
-If the gate issue has no scripted VoiceOver run for this candidate (issue
-691 has not landed, or the run was not recorded), walk instead every row
-of the [results by screen](accessibility.md#results-by-screen) whose
-VoiceOver cell reads "not yet run: a person's" or "pass as it stood at
-0.1.0", each by its part of the walkthrough. That takes about 20 minutes
-more, and the form's row 5 says it was the walk.
+If the gate issue has no scripted VoiceOver run for this candidate, walk
+instead every row of the
+[results by screen](accessibility.md#results-by-screen) whose VoiceOver
+cell reads "not yet run: a person's" or "pass as it stood at 0.1.0", each
+by its part of the walkthrough. That takes about 20 minutes more, and
+the form's row 5 says it was the walk.
 
 ### 6. The assistant's visual review
 
@@ -127,8 +127,10 @@ into the automated run's record, linked from the gate issue, under the
 reviewer's protocol that issue 689 adds to
 [`acceptance.md`](acceptance.md#the-reviewers-protocol), with the images
 it names. Two control pairs sit among its rows unmarked; which they were
-is in the evidence's separate key, which the reviewer opens only after
-writing every verdict. With VoiceOver off:
+is in a key, a separate artefact the reviewer is not given until every
+verdict is written. The evidence the reviewer reads carries no machine
+check's result; those are in the run's record, read after the verdicts.
+With VoiceOver off:
 
 1. **The two control pairs first.** Open the key and find them: each is
    two images made with the same settings and asked about as if something
@@ -144,11 +146,10 @@ writing every verdict. With VoiceOver off:
    you export in cell **06 Export**: play each once at full speed and
    write down anything that stutters, jumps or is cut off.
 
-With no review for this candidate (issue 689 has not landed, or the
-review was not written), look at the run's kept images yourself in the
-same ten minutes, the map, preview and export rows first, and write your
-own verdicts; with no kept images either, write in row 6 that the item
-was not done, and why. Either way, step 4 is still made.
+With no review for this candidate, there is no stand-in: the gate cannot
+pass without it ([`releasing.md`](releasing.md#the-gate)). Write in row 6
+that the item was not done and why, make step 4 all the same, and the
+verdict is no-go.
 
 ### 7. The feel of the controls you drag
 

@@ -6,9 +6,9 @@ it. For a release it is run by a machine, on a macOS and a Windows runner
 ([The automated run](#the-automated-run)); a person can follow it the same
 way, on a clean Mac or a Windows PC that has never had Legible Cities on
 it, and record it with the [results template](#results-template).
-[Step 22](#22-update-over-010), the update over 0.1.0, is made by the
-automated run once issue 690 lands; until then a person makes it on one
-machine, a Mac on one release and Windows on the next. What else the
+[Step 22](#22-update-over-010), the update over 0.1.0, satisfies the gate
+only as the automated run makes it, once issue 690 lands; a person's step
+22 does not. What else the
 gate asks is in [`releasing.md`](releasing.md#the-gate) (ADR-063): the
 person's part is one sitting, [`acceptance-sitting.md`](acceptance-sitting.md);
 the stranger's timed run, [`acceptance-stranger.md`](acceptance-stranger.md),
@@ -1208,9 +1208,10 @@ Result: ____
 
 ### 22. Update over 0.1.0
 
-Made on one of the two runs; the other writes "not run" in this step's row
-and names the run that made it. Step 21 has left the machine without the
-app, as it was before the run.
+For the gate, only the automated run's step 22 counts, once issue 690
+lands (ADR-063); a person's step 22, as below, does not satisfy it. A run
+that does not make it writes "not run" in this step's row. Step 21 has
+left the machine without the app, as it was before the run.
 
 **Do.**
 1. Move the export folder's `LA Metro Rail` folder, which step 21 left
@@ -1242,6 +1243,10 @@ app, as it was before the run.
   cell 02's run line reads "Drawn for `<day>` from the stored layout. The
   stations have not moved."
 - **Layout** and **Made** in cell 02's footer are the ones you wrote down.
+  Compare **Made** by the moment it names, not by its text: 0.1.0 and later
+  versions write the same moment differently, as "11/13/2026, 9:57:17 AM"
+  and "13 November 2026 at 9:57 AM" (the spike record,
+  `docs/adr/spikes/gate-tools-on-hosted-macos.md`).
 - **Outputs** lists one row, the post made in 0.1.0, and its **Reveal**
   opens the Finder or File Explorer with `la-metro-rail-instagram-post.png`
   selected.

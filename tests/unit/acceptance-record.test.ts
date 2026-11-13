@@ -391,13 +391,14 @@ describe('the gate documents', () => {
     }
   }
 
+  /** A Markdown link to a heading: an optional relative path to a `.md`, then `#` and the anchor. */
+  const LINK = /\]\(((?:[\w.-]+\/)*[\w.-]+\.md)?#([^)\s]+)\)/g
+
   /** Every link to a heading in a document under docs/, as `<path from docs/>#<anchor>`. */
   const linksIn = (name: string): string[] =>
-    [
-      ...readFileSync(join(docs, name), 'utf8').matchAll(
-        /\]\(((?:[\w.-]+\/)*[\w.-]+\.md)?#([^)\s]+)\)/g,
-      ),
-    ].map(([, linked, anchor]) => `${posix.normalize(linked ?? name)}#${anchor}`)
+    [...readFileSync(join(docs, name), 'utf8').matchAll(LINK)].map(
+      ([, linked, anchor]) => `${posix.normalize(linked ?? name)}#${anchor}`,
+    )
 
   it('makes anchors as GitHub does', () => {
     expect([...anchorsOf('# 22. Update over 0.1.0\n## The reviewer’s protocol\n')]).toEqual([
@@ -410,11 +411,9 @@ describe('the gate documents', () => {
   })
 
   it('reads links by any relative path', () => {
-    // linksIn reads the docs; the pattern is checked here on a sample.
+    // linksIn reads the docs with LINK; the same pattern is checked here on a sample.
     const sample = '[a](../README.md#x) [b](adr/README.md#y) [c](#z) [d](acceptance.md#w)'
-    const found = [...sample.matchAll(/\]\(((?:[\w.-]+\/)*[\w.-]+\.md)?#([^)\s]+)\)/g)].map(
-      (m) => `${m[1] ?? 'here.md'}#${m[2]}`,
-    )
+    const found = [...sample.matchAll(LINK)].map((m) => `${m[1] ?? 'here.md'}#${m[2]}`)
     expect(found).toEqual(['../README.md#x', 'adr/README.md#y', 'here.md#z', 'acceptance.md#w'])
   })
 

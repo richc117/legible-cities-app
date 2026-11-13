@@ -37,7 +37,8 @@ mostly the automated run again, with eyes. Four things change that:
   runner has never had 0.1.0. The published 0.1.0 can be installed on a
   runner and driven by the role-and-name locators of its own acceptance
   spec, and the candidate then opens the project it made (issue 690; the
-  spike record, `docs/adr/spikes/gate-tools-on-hosted-macos.md`).
+  spike record (`docs/adr/spikes/gate-tools-on-hosted-macos.md`), landing
+  in its own pull request before this one).
 - **The visual rows**, the checklist's questions of whether a map, a
   colour, a theme or a GIF looks right, can be kept as images with the
   machine checks a picture allows: two shots that should differ do, an
@@ -54,9 +55,9 @@ mostly the automated run again, with eyes. Four things change that:
   what was spoken, not whether a listener understood it.
 - **axe runs against the app in legacy mode**, and on the spike's run
   over the Library it reported one violation, Label in Name, on 21 of the
-  22 sample-city cards (the spike record; issue 692). It is a second net
-  inside the end-to-end accessibility sweeps, which CI runs, and not a
-  part of the gate of its own.
+  22 sample-city cards (the spike record; issue 692). Once issue 692
+  lands, it is a second net inside the end-to-end accessibility sweeps,
+  which CI runs, and not a part of the gate of its own.
 
 **What no machine here can do.** Hear whether an announcement was audible
 or made sense, or whether progress sentences flood speech; use the rotor's
@@ -119,8 +120,10 @@ accepted on its automated results alone: no person run, no SmartScreen
 check, no Narrator walk. The stranger's timed run, `docs/acceptance-stranger.md`,
 is made after the release, and what it finds feeds the next one. The gate
 is not passed without each part named here having landed and run on the
-final candidate. Until a part's issue has landed, the record says that
-part is not automated.
+final candidate. The one stand-in it accepts is the sitting's walk by ear
+of the VoiceOver rows that changed since 0.1.0, where the scripted
+VoiceOver run was not recorded. Until a part's issue has landed, the
+record says that part is not automated.
 
 ## Consequences
 
@@ -145,9 +148,11 @@ full is the sitting's. A unit test holds the cells to that wording
 to be.** Its verdicts are `looks right`, `looks wrong` and `cannot tell`,
 never `pass`; it describes what it sees before judging; and two control
 pairs, the same settings asked about as if changed, sit among the rows
-without being marked. Which pairs they were is kept in a separate key
-that the reviewer opens only after every verdict is written, and the
-person reads the review's verdicts on them first: a review that finds a
+without being marked. Which pairs they were is in a key, a separate
+artefact the reviewer is not given until every verdict is written, and
+the evidence the reviewer reads carries no machine check's result: those
+are in the run's record, read after the verdicts. The person reads the
+review's verdicts on the control pairs first: a review that finds a
 difference in a control has found one that is not there. The automated record keeps saying "not automated" for
 those rows whatever the review concludes.
 
