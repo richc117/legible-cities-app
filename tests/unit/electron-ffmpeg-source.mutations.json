@@ -1,7 +1,7 @@
 [
   {
     "file": "scripts/electron-ffmpeg-source.sh",
-    "find": "    grep -qxF \"$line\" <<< \"$pinned\" || fail",
+    "find": "    grep -qxF -e \"$line\" <<< \"$pinned\" || fail",
     "replace": "    true || fail",
     "test": "tests/unit/electron-ffmpeg-source.test.ts",
     "title": "refuses a patches/ffmpeg/.patches that lists a patch the pins do not hold",
@@ -9,10 +9,42 @@
   },
   {
     "file": "scripts/electron-ffmpeg-source.sh",
-    "find": "    grep -qxF \"$line\" <<< \"$listed\" || fail",
+    "find": "    grep -qxF -e \"$line\" <<< \"$listed\" || fail",
     "replace": "    true || fail",
     "test": "tests/unit/electron-ffmpeg-source.test.ts",
     "title": "refuses a pinned patches/ffmpeg patch that the list does not name",
     "why": "A pinned FFmpeg patch Electron no longer applies: the archive would offer a change the library does not carry."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "    grep -qxF -e \"$line\" <<< \"$pinned\" || fail",
+    "replace": "    grep -qxF \"$line\" <<< \"$pinned\" || fail",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "reads a listed name that begins with a dash as a name, not a grep option",
+    "why": "A listed name read as a grep option: a name made to match another's pattern passes as pinned, so the archive lacks a patch the list names."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": " | sed 's/[[:space:]]*$//' || true)",
+    "replace": " || true)",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "matches a patches/ffmpeg/.patches with CRLF line ends in both directions",
+    "why": "A list with CRLF line ends no name of which matches a pinned one: every cached archive built from it is refused, or its names are never compared."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "  [ -f \"$1/patches/ffmpeg/.patches\" ] || fail",
+    "replace": "  [ -f \"$1/patches/ffmpeg/.patches\" ] || true",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses an archive with no patches/ffmpeg/.patches, naming it",
+    "why": "A missing list read as an empty one: the pinned patches would then be refused for not being listed, or none checked at all."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "  check_patch_list \"$root/electron\"\n  echo \"electron/patches/ffmpeg/",
+    "replace": "  echo \"electron/patches/ffmpeg/",
+    "test": "tests/unit/release.test.ts",
+    "title": "checks the list of FFmpeg patches in the fetch and in --verify",
+    "why": "--verify without the list check: a cached archive missing a patch the library carries verifies and is attached to a release."
   }
 ]

@@ -1432,6 +1432,11 @@ describe("the source of Electron's FFmpeg library", () => {
     expect(build).toContain("'scripts/electron-ffmpeg-source.sh'")
   })
 
+  it('checks the list of FFmpeg patches in the fetch and in --verify', () => {
+    const script = readFileSync(join(repo, 'scripts', 'electron-ffmpeg-source.sh'), 'utf8')
+    expect(script.match(/^\s*check_patch_list "\$root\/electron"$/gm)).toHaveLength(2)
+  })
+
   it('is pinned for the Electron package.json and package-lock.json install, by object id', () => {
     const pins = PINS.electron_ffmpeg
     expect(pins.electron.version).toBe(ELECTRON)

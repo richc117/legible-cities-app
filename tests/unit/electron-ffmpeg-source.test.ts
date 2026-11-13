@@ -402,38 +402,65 @@ describe.skipIf(lacking)(
       }
     })
 
-    it('refuses a patches/ffmpeg/.patches that lists a patch the pins do not hold', () => {
+    /** A copy of the fixture whose patches/ffmpeg/.patches is `change` of the original, pinned as it is. */
+    const withList = (change: (list: string) => string) => {
       const { pinsFile, pack, copy } = fixture()
       const other = copy()
       const list = join(other, NAME, 'electron', 'patches', 'ffmpeg', '.patches')
-      writeFileSync(list, `${readFileSync(list, 'utf8')}cherry-pick-0123456789ab.patch\n`)
+      writeFileSync(list, change(readFileSync(list, 'utf8')))
       const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
       const blob = tool('git', ['hash-object', '--no-filters', list])
       pins.electron_ffmpeg.electron_files['patches/ffmpeg/.patches'] = blob.stdout.trim()
       writeFileSync(pinsFile, JSON.stringify(pins, null, 2))
+      return { pinsFile, archive: pack(other) }
+    }
+
+    it('refuses a patches/ffmpeg/.patches that lists a patch the pins do not hold', () => {
+      const { pinsFile, archive } = withList((list) => `${list}cherry-pick-0123456789ab.patch\n`)
       refused(
-        pack(other),
+        archive,
         pinsFile,
         "Electron's patches/ffmpeg/.patches lists cherry-pick-0123456789ab.patch, which the pins do not hold",
       )
     })
 
     it('refuses a pinned patches/ffmpeg patch that the list does not name', () => {
-      const { pinsFile, pack, copy } = fixture()
-      const other = copy()
-      const list = join(other, NAME, 'electron', 'patches', 'ffmpeg', '.patches')
-      const kept = readFileSync(list, 'utf8').split('\n').slice(1).join('\n')
-      writeFileSync(list, kept)
-      const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
-      const blob = tool('git', ['hash-object', '--no-filters', list])
-      pins.electron_ffmpeg.electron_files['patches/ffmpeg/.patches'] = blob.stdout.trim()
-      writeFileSync(pinsFile, JSON.stringify(pins, null, 2))
+      const { pinsFile, archive } = withList((list) => list.split('\n').slice(1).join('\n'))
       const dropped = ffmpegPatchList(PINS).split('\n')[0]
       refused(
-        pack(other),
+        archive,
         pinsFile,
         `the pins hold patches/ffmpeg/${dropped}, which Electron's patches/ffmpeg/.patches does not list`,
       )
+    })
+
+    it('reads a listed name that begins with a dash as a name, not a grep option', () => {
+      const first = ffmpegPatchList(PINS).split('\n')[0]
+      const { pinsFile, archive } = withList((list) => `${list}-e${first}\n`)
+      refused(
+        archive,
+        pinsFile,
+        `Electron's patches/ffmpeg/.patches lists -e${first}, which the pins do not hold`,
+      )
+    })
+
+    it('matches a patches/ffmpeg/.patches with CRLF line ends in both directions', () => {
+      const { pinsFile, archive } = withList((list) => list.replace(/\n/g, '\r\n'))
+      const result = script(['--verify', archive], pinsFile)
+      expect(result.stdout).toContain(
+        'every patch its list names is pinned, and every pinned one is listed',
+      )
+      expect(result.stderr).not.toContain('patches/ffmpeg/.patches')
+    })
+
+    it('refuses an archive with no patches/ffmpeg/.patches, naming it', () => {
+      const { pinsFile, pack, copy } = fixture()
+      const other = copy()
+      rmSync(join(other, NAME, 'electron', 'patches', 'ffmpeg', '.patches'))
+      const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
+      delete pins.electron_ffmpeg.electron_files['patches/ffmpeg/.patches']
+      writeFileSync(pinsFile, JSON.stringify(pins, null, 2))
+      refused(pack(other), pinsFile, 'the archive lacks patches/ffmpeg/.patches')
     })
 
     it('refuses a BUILD.txt whose commit is not 40 lowercase hex digits', () => {

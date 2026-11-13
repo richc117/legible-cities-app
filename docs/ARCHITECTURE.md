@@ -2739,7 +2739,8 @@ moves that block. It caches the archive, keyed on the repository (which its
 the three files the archive carries copies of (the pins, the script and
 `vendor.yml`) and the versions of the tar and xz that pack it, and checks
 a hit before using it: `--verify`, with no network, refuses any entry but
-a file or a folder, unpacks it, holds every tree and blob id, the copies
+a file or a folder, unpacks it, holds every tree and blob id, every patch in
+`patches/ffmpeg/.patches` to a pinned file and every pinned one to the list, the copies
 and `BUILD.txt` to the pins and the checkout, and packs what it checked
 again, which must be the cached file's own bytes; a hit that fails is
 fetched again, and a fetched archive passes `--verify` too before it is

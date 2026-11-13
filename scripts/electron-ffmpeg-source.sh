@@ -315,18 +315,18 @@ check_ffmpeg_version() {
 # Offline, so it covers a cached archive too.
 check_patch_list() {
   local listed line pinned key
-  listed=$(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$1/patches/ffmpeg/.patches" || true)
+  [ -f "$1/patches/ffmpeg/.patches" ] || fail "the archive lacks patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg"
+  listed=$(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$1/patches/ffmpeg/.patches" | sed 's/[[:space:]]*$//' || true)
   pinned=$(while IFS= read -r key; do
     case $key in patches/ffmpeg/*.patch) printf '%s\n' "${key#patches/ffmpeg/}" ;; esac
   done <<< "$file_keys")
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    line=${line%"${line##*[![:space:]]}"}
-    grep -qxF "$line" <<< "$pinned" || fail "Electron's patches/ffmpeg/.patches lists $line, which the pins do not hold: add patches/ffmpeg/$line to electron_files, or the archive lacks a change to the library"
+    grep -qxF -e "$line" <<< "$pinned" || fail "Electron's patches/ffmpeg/.patches lists $line, which the pins do not hold: add patches/ffmpeg/$line to electron_files, or the archive lacks a change to the library"
   done <<< "$listed"
   while IFS= read -r line; do
     [ -n "$line" ] || continue
-    grep -qxF "$line" <<< "$listed" || fail "the pins hold patches/ffmpeg/$line, which Electron's patches/ffmpeg/.patches does not list: drop it from electron_files"
+    grep -qxF -e "$line" <<< "$listed" || fail "the pins hold patches/ffmpeg/$line, which Electron's patches/ffmpeg/.patches does not list: drop it from electron_files"
   done <<< "$pinned"
 }
 
@@ -493,8 +493,9 @@ write_build_txt() {
     printf '%s' "$files"
     echo "  patches/ffmpeg/ holds the changes Electron makes to FFmpeg, the files listed above,"
     echo "  applied to src/third_party/ffmpeg in the order its .patches lists. build/args/ holds"
-    echo "  the gn args Electron's release builds use. patches/chromium/ holds, with the list that orders them, the"
-    echo "  patches Electron applies to Chromium that change files under src/build/; apply them"
+    echo "  the gn args Electron's release builds use. patches/chromium/ holds, with the list"
+    echo "  that orders them, the patches Electron applies to Chromium that change files under"
+    echo "  src/build/; apply them"
     echo "  to src/ with the others that list names. Electron's DEPS at that commit names"
     echo "  Chromium $chromium_version, and Chromium's tag $chromium_tag is commit $chromium_commit."
     echo
