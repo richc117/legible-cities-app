@@ -161,22 +161,6 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "const name = `${step}-${createHash('sha1').update(base).digest('hex').slice(0, 10)}.png`",
-    "replace": "const name = base",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "asks the control as if the settings had changed",
-    "why": "Image names would say what each shot is (-a1, -b), and a control's copies would give it away."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
-    "find": "[pair.a1, pair.a2, pair.a2].map(",
-    "replace": "[pair.a1, pair.a2].map(",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "asks the control as if the settings had changed",
-    "why": "A control with two pictures where a real entry has three would be recognised by its shape."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
     "find": "      .sort((a, b) => a.step - b.step || a.id.localeCompare(b.id))\n",
     "replace": "",
     "test": "tests/unit/acceptance-evidence.test.ts",
@@ -190,5 +174,29 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "only notes that nothing changed for a setting the picture need not show",
     "why": "A line order that moves no pixel of the map would fail the step, as it did on one system."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "randomBytes(5).toString('hex')",
+    "replace": "String(this.#kept.size).padStart(10, '0')",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "names the kept pictures at random",
+    "why": "Kept names would be the same in every run, and the reviewer could work out which picture is which."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "images: pair.controlShots ?? [],",
+    "replace": "images: [pair.a1, pair.a2, pair.a2],",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps no picture twice",
+    "why": "A control built of copies of the pair's own shots would be picked out by comparing file hashes."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (kept !== undefined) return kept",
+    "replace": "if (false) return kept",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps a picture named by two entries once",
+    "why": "A picture listed by two entries would be copied twice, and the copies would be byte for byte the same."
   }
 ]

@@ -22,7 +22,7 @@
 // the difference at the tolerance of 8, in RGB. No dependency is added.
 
 import { spawnSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Page } from '@playwright/test'
@@ -417,6 +417,8 @@ export interface Pair {
   steady: boolean
   /** The id of a control entry to write beside this one: ordinary-looking, and not a real entry's. */
   control: string | null
+  /** A control's three shots at the same settings, of its own: never copies of the pair's. */
+  controlShots?: string[]
   /** A change that need not show in the picture: nothing changing is a note, never a failure. */
   noteOnly?: boolean
 }
@@ -430,6 +432,8 @@ export class Evidence {
   readonly entries: Entry[] = []
   readonly #dir: string
   readonly #work: string
+  /** Working file to kept name. */
+  readonly #kept = new Map<string, string>()
 
   constructor(dir: string) {
     this.#dir = dir
@@ -445,11 +449,20 @@ export class Evidence {
     return join(this.#work, file)
   }
 
-  /** A kept picture's name in the folder the reviewer reads: the step and a hash, the same for every entry. */
+  /**
+   * A kept picture's name in the folder the reviewer reads: the step and
+   * five random bytes, chosen anew for each picture in each run and carrying
+   * nothing of the working name. The mapping back is written only to the key
+   * file. A file already kept keeps its name: no picture is copied twice.
+   */
   #opaque(step: number, working: string): string {
-    const base = working.split(/[\\/]/).pop() ?? working
-    const name = `${step}-${createHash('sha1').update(base).digest('hex').slice(0, 10)}.png`
+    const kept = this.#kept.get(working)
+    if (kept !== undefined) return kept
+    let name = ''
+    do name = `${step}-${randomBytes(5).toString('hex')}.png`
+    while ([...this.#kept.values()].includes(name))
     copyFileSync(working, join(this.#dir, name))
+    this.#kept.set(working, name)
     return name
   }
 
@@ -496,6 +509,12 @@ export class Evidence {
     const steady = (await pauseAndRead(window)).steady
     const a1 = await this.settled(`${init.id}-a1`, target)
     const a2 = await this.settled(`${init.id}-a2`, target)
+    // A control is a pair's twin: three fresh shots at the same settings,
+    // taken as B is for a real entry, so that it carries ordinary noise.
+    const controlShots: string[] = []
+    if (options.control !== undefined)
+      for (const k of [1, 2, 3])
+        controlShots.push((await this.settled(`${options.control}-c${k}`, target)).path)
     return {
       init,
       name: options.name,
@@ -504,6 +523,7 @@ export class Evidence {
       a2: a2.path,
       steady: steady && a1.settled && a2.settled,
       control: options.control ?? null,
+      controlShots,
       noteOnly: options.noteOnly === true,
     }
   }
@@ -549,19 +569,13 @@ export class Evidence {
       check = { ...check, said: `${check.said} (the map was not steady)` }
     this.add({ ...pair.init, images: [pair.a1, pair.a2, b.path], check })
     if (pair.control !== null) {
-      // The same two shots, shaped as a real entry is: three pictures under
-      // names of their own, a check of the same fields. Nothing in the
-      // manifest says which it is: the key file does.
-      const copies = [pair.a1, pair.a2, pair.a2].map((from, k) => {
-        const to = this.pathOf(`${pair.control}-v${k}.png`)
-        copyFileSync(from, to)
-        return to
-      })
+      // Shaped as a real entry is: three pictures, a check of the same fields.
+      // Nothing in the manifest says which it is: the key file does.
       this.add(
         {
           ...pair.init,
           id: pair.control,
-          images: copies,
+          images: pair.controlShots ?? [],
           check: {
             name: pair.name,
             value: null,
@@ -650,7 +664,16 @@ export class Evidence {
     // manifest without knowing: opened only after every verdict is written.
     writeFileSync(
       join(this.#dir, 'evidence-key.json'),
-      `${JSON.stringify({ controls: this.entries.filter((e) => e.control).map((e) => e.id) }, null, 2)}\n`,
+      `${JSON.stringify(
+        {
+          controls: this.entries.filter((e) => e.control).map((e) => e.id),
+          pictures: Object.fromEntries(
+            [...this.#kept].map(([working, name]) => [name, working.split(/[\\/]/).pop()]),
+          ),
+        },
+        null,
+        2,
+      )}\n`,
     )
   }
 

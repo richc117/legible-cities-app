@@ -3,7 +3,8 @@
 // are made here, pixel by pixel; nothing launches Electron. Each test that
 // guards one line names its mutation in tests/unit/acceptance-evidence.mutations.json.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -253,6 +254,19 @@ describe('the manifest', () => {
     const target = camera(a1)
     const first = await evidence.settled('8-theme-a1', camera(a1), async () => undefined)
     const second = await evidence.settled('8-theme-a2', camera(a2), async () => undefined)
+    // A control's own shots: each of its own, as `begin` takes them.
+    const controlShots: string[] = []
+    if (control !== null)
+      for (const k of [1, 2, 3])
+        controlShots.push(
+          (
+            await evidence.settled(
+              `${control}-c${k}`,
+              camera(picture(BG, 10 * k + 1)),
+              async () => undefined,
+            )
+          ).path,
+        )
     return {
       init,
       name: 'theme',
@@ -261,6 +275,7 @@ describe('the manifest', () => {
       a2: second.path,
       steady: true,
       control,
+      controlShots,
     }
   }
 
@@ -347,9 +362,74 @@ describe('the manifest', () => {
     expect(Object.keys(a.check as object).sort()).toEqual(Object.keys(b.check as object).sort())
     expect(manifest).not.toMatch(/control|recheck/i)
     // Only the key file says which is which.
-    expect(JSON.parse(readFileSync(join(dir, 'evidence-key.json'), 'utf8'))).toEqual({
-      controls: ['8-ground'],
-    })
+    const key = JSON.parse(readFileSync(join(dir, 'evidence-key.json'), 'utf8')) as {
+      controls: string[]
+    }
+    expect(key.controls).toEqual(['8-ground'])
+  })
+
+  /** The kept pictures: the folder's PNGs, not the working folder's. */
+  const keptFiles = (): string[] => readdirSync(dir).filter((n) => n.endsWith('.png'))
+
+  it('keeps no picture twice: no two kept pictures are byte for byte the same', async () => {
+    const evidence = new Evidence(dir)
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 20), '8-ground')
+    pair.target = camera(picture(BG, 4000))
+    await evidence.finish(pair, { wait: async () => undefined })
+    const files = keptFiles()
+    expect(files).toHaveLength(6)
+    const hashes = files.map((n) =>
+      createHash('sha256')
+        .update(readFileSync(join(dir, n)))
+        .digest('hex'),
+    )
+    expect(new Set(hashes).size).toBe(6)
+  })
+
+  it('keeps a picture named by two entries once, under one name', () => {
+    const evidence = new Evidence(dir)
+    evidence.keepFrames(
+      { ...init, id: '12-gif', step: 12 },
+      { frames: [picture(BG, 3000), picture(BG, 3000, [255, 0, 0])], times: [0, 1] },
+      'gif',
+    )
+    const names = ['sheet', 'first', 'last'].map((n) => evidence.pathOf(`12-gif-${n}.png`))
+    evidence.keep({ ...init, id: '12-gif-caption', step: 12 }, names)
+    expect(evidence.entries[1].images).toEqual(evidence.entries[0].images)
+    expect(keptFiles()).toHaveLength(3)
+  })
+
+  it('names the kept pictures at random, so no name is derived from a working one', async () => {
+    const run = async (where: string): Promise<{ kept: string[]; key: Record<string, string> }> => {
+      mkdirSync(where)
+      const evidence = new Evidence(where)
+      const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 20))
+      pair.target = camera(picture(BG, 4000))
+      await evidence.finish(pair, { wait: async () => undefined })
+      const key = JSON.parse(readFileSync(join(where, 'evidence-key.json'), 'utf8')) as {
+        pictures: Record<string, string>
+      }
+      return { kept: evidence.entries[0].images, key: key.pictures }
+    }
+    const first = await run(join(dir, 'one'))
+    const second = await run(join(dir, 'two'))
+    // The same working names, other kept names.
+    expect(first.kept.some((n) => second.kept.includes(n))).toBe(false)
+    for (const name of first.kept) {
+      expect(name).toMatch(/^8-[0-9a-f]{10}\.png$/)
+      // Not a hash of the working name, however it is hashed.
+      for (const working of Object.values(first.key))
+        for (const algorithm of ['sha1', 'sha256', 'md5'])
+          expect(name).not.toContain(
+            createHash(algorithm).update(working).digest('hex').slice(0, 10),
+          )
+    }
+    // And the key gives each kept name back to its working name.
+    expect(first.kept.map((n) => first.key[n])).toEqual([
+      '8-theme-a1.png',
+      '8-theme-a2.png',
+      '8-theme-b.png',
+    ])
   })
 
   it('orders the manifest by step and id, so position does not give a control away', async () => {
