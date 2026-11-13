@@ -46,6 +46,8 @@ export interface KnownFinding {
    * the list are not judged for staleness, since the cards are not on them.
    */
   expectedOn: readonly string[]
+  /** The interface themes it holds in; all of them when left out. Excuses and staleness are judged in these alone. */
+  themes?: readonly string[]
 }
 
 /**
@@ -62,6 +64,96 @@ export const KNOWN_FINDINGS: readonly KnownFinding[] = [
     selector: 'ul[aria-label="Presets"] > li > button.card',
     issue: 707,
     expectedOn: ['Library, empty', 'Library, with a project'],
+  },
+  {
+    // The same rule on a project's card: named "Open <project>", while the
+    // card shows the name and its facts.
+    rule: 'label-content-name-mismatch',
+    selector: 'ul[aria-label="Projects"] > li > button.card:not(.card-new)',
+    issue: 707,
+    expectedOn: ['Library, with a project'],
+  },
+  {
+    // The notebook's cell headers, named "01 Data, ready" and so on over a
+    // row that shows its number, name, state and summary.
+    rule: 'label-content-name-mismatch',
+    selector: 'button.cell-head',
+    issue: 707,
+    expectedOn: [
+      'a sample, its download in cell 01',
+      'cell 01, the network in words closed',
+      'cell 01, the network in words open',
+      'cell 01, the network in words open with a line’s stations',
+      'the delete confirmation',
+      'the inspector',
+      'the project, a colour picker open',
+      'the project, an export finished',
+      'the project, cell 06 open',
+      'the project, every cell closed',
+      'the project, its notebook',
+      'the project, renaming',
+      'the project, the engine log open',
+      "the project, the layout tuning and a line's options open",
+      'the project, the transport drawn',
+      'the project, the trip’s pickers used',
+      'the re-layout warning',
+    ],
+  },
+  {
+    // Settings' two folder buttons, named "Choose the export folder" over
+    // their own words. Only drawn when the folder is not locked.
+    rule: 'label-content-name-mismatch',
+    selector:
+      'fig-button[aria-label="Choose the export folder"] button, fig-button[aria-label="Choose the engine data folder"] button',
+    issue: 707,
+    expectedOn: ['Settings', 'Settings, with the Bundled tools rows'],
+  },
+  {
+    // The Jobs toggle while a job runs, named "Jobs, 1 running".
+    rule: 'label-content-name-mismatch',
+    selector: '.fig-button-control[aria-label^="Jobs, "]',
+    issue: 707,
+    expectedOn: ['a sample, its download in cell 01'],
+  },
+  // Colour contrast, in Night only (issue 710): the words of three
+  // disclosures and the engine log's toggle.
+  {
+    rule: 'color-contrast',
+    selector: 'button.layout-tuning-toggle, button.line-options-toggle',
+    issue: 710,
+    expectedOn: ["the project, the layout tuning and a line's options open"],
+    themes: ['Night'],
+  },
+  {
+    rule: 'color-contrast',
+    selector: 'button.line-options-toggle > .line-options-word',
+    issue: 710,
+    expectedOn: ["the project, the layout tuning and a line's options open"],
+    themes: ['Night'],
+  },
+  {
+    rule: 'color-contrast',
+    selector: 'button.network-words-toggle',
+    issue: 710,
+    expectedOn: [
+      'cell 01, the network in words open',
+      'cell 01, the network in words open with a line’s stations',
+    ],
+    themes: ['Night'],
+  },
+  {
+    rule: 'color-contrast',
+    selector: 'button.engine-log-toggle',
+    issue: 710,
+    expectedOn: ['the project, the engine log open'],
+    themes: ['Night'],
+  },
+  {
+    rule: 'color-contrast',
+    selector: 'button.engine-log-toggle > .engine-log-count',
+    issue: 710,
+    expectedOn: ['the project, the engine log open'],
+    themes: ['Night'],
   },
 ]
 
@@ -80,20 +172,22 @@ const describeNode = (rule: string, node: AxeNode): string => `${rule}: ${node.t
 
 /**
  * Judge one sweep's axe results. `where` is the sweep's label without its
- * theme, which `expectedOn` is compared with, exactly.
+ * theme, which `expectedOn` is compared with, exactly; `theme` is compared
+ * with an entry's `themes`.
  */
 export function judgeAxe(
   violations: readonly AxeResult[],
   incomplete: readonly AxeResult[],
-  where: string,
+  { where, theme }: { where: string; theme: string },
   known: readonly KnownFinding[] = KNOWN_FINDINGS,
 ): AxeJudgement {
+  const due = known.filter((k) => k.themes === undefined || k.themes.includes(theme))
   const used = new Set<KnownFinding>()
   const failures: string[] = []
   const excused: string[] = []
   for (const result of violations) {
     for (const node of result.nodes) {
-      const entry = known.find((k) => k.rule === result.id && node.matches.includes(k.selector))
+      const entry = due.find((k) => k.rule === result.id && node.matches.includes(k.selector))
       if (entry === undefined) {
         failures.push(describeNode(result.id, node))
       } else {
@@ -102,7 +196,7 @@ export function judgeAxe(
       }
     }
   }
-  const stale = known
+  const stale = due
     .filter((k) => k.expectedOn.includes(where) && !used.has(k))
     .map((k) => `${k.rule} on ${k.selector} (issue ${k.issue}) matched nothing on ${where}`)
   const open = incomplete.flatMap((r) => r.nodes.map((n) => describeNode(r.id, n)))

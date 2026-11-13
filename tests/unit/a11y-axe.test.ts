@@ -26,13 +26,18 @@ const violation = (id: string, target: string, matches: string[] = []): AxeResul
 
 describe('judgeAxe', () => {
   it('fails a violation nothing excuses', () => {
-    const j = judgeAxe([violation('button-name', '#a')], [], 'Settings', known)
+    const j = judgeAxe(
+      [violation('button-name', '#a')],
+      [],
+      { where: 'Settings', theme: 'Night' },
+      known,
+    )
     expect(j.failures).toEqual(['button-name: #a'])
   })
 
   it('excuses the known rule on the known cards, and says so', () => {
     const v = violation('label-content-name-mismatch', 'li:nth-child(2) > .card', [CARD])
-    const j = judgeAxe([v], [], 'Library', known)
+    const j = judgeAxe([v], [], { where: 'Library', theme: 'Night' }, known)
     expect(j.failures).toEqual([])
     expect(j.stale).toEqual([])
     expect(j.excused).toEqual(['label-content-name-mismatch: li:nth-child(2) > .card (issue 707)'])
@@ -40,34 +45,69 @@ describe('judgeAxe', () => {
 
   it('still fails the same rule on an element that is not a sample card', () => {
     const v = violation('label-content-name-mismatch', '#elsewhere', [])
-    expect(judgeAxe([v], [], 'Library', known).failures).toEqual([
+    expect(judgeAxe([v], [], { where: 'Library', theme: 'Night' }, known).failures).toEqual([
       'label-content-name-mismatch: #elsewhere',
     ])
   })
 
   it('still fails another rule on a sample card', () => {
     const v = violation('color-contrast', '.card', [CARD])
-    expect(judgeAxe([v], [], 'Library', known).failures).toEqual(['color-contrast: .card'])
+    expect(judgeAxe([v], [], { where: 'Library', theme: 'Night' }, known).failures).toEqual([
+      'color-contrast: .card',
+    ])
   })
 
   it('fails an entry that matched nothing on a sweep it is expected on', () => {
-    const j = judgeAxe([], [], 'Library', known)
+    const j = judgeAxe([], [], { where: 'Library', theme: 'Night' }, known)
     expect(j.stale).toHaveLength(1)
     expect(j.stale[0]).toContain('issue 707')
   })
 
   it('does not ask for an entry on a sweep it is not expected on', () => {
-    expect(judgeAxe([], [], 'Settings', known).stale).toEqual([])
+    expect(judgeAxe([], [], { where: 'Settings', theme: 'Night' }, known).stale).toEqual([])
   })
 
   it('lists incomplete results and never drops them', () => {
-    const j = judgeAxe([], [violation('color-contrast', '#maybe')], 'Settings', known)
+    const j = judgeAxe(
+      [],
+      [violation('color-contrast', '#maybe')],
+      { where: 'Settings', theme: 'Night' },
+      known,
+    )
     expect(j.incomplete).toEqual(['color-contrast: #maybe'])
   })
 
-  it('has the one entry the issue starts with', () => {
-    expect(KNOWN_FINDINGS).toHaveLength(1)
-    expect(KNOWN_FINDINGS[0]).toMatchObject({ rule: 'label-content-name-mismatch', issue: 707 })
+  it('judges an entry in its themes alone, for excuses and for staleness', () => {
+    const night: KnownFinding[] = [
+      {
+        rule: 'color-contrast',
+        selector: '.w',
+        issue: 710,
+        expectedOn: ['Screen'],
+        themes: ['Night'],
+      },
+    ]
+    const v = [violation('color-contrast', '#w', ['.w'])]
+    expect(judgeAxe(v, [], { where: 'Screen', theme: 'Night' }, night).failures).toEqual([])
+    expect(judgeAxe(v, [], { where: 'Screen', theme: 'Parchment' }, night).failures).toEqual([
+      'color-contrast: #w',
+    ])
+    expect(judgeAxe([], [], { where: 'Screen', theme: 'Night' }, night).stale).toHaveLength(1)
+    expect(judgeAxe([], [], { where: 'Screen', theme: 'Parchment' }, night).stale).toEqual([])
+  })
+
+  it('holds the list as it stands: label in name under 707, contrast under 710', () => {
+    expect(KNOWN_FINDINGS.length).toBeGreaterThan(0)
+    for (const k of KNOWN_FINDINGS) {
+      if (k.rule === 'label-content-name-mismatch') expect(k.issue).toBe(707)
+      else if (k.rule === 'color-contrast') expect(k.issue).toBe(710)
+      else throw new Error(`${k.rule} is on the list with no decided issue`)
+      expect(k.expectedOn.length).toBeGreaterThan(0)
+    }
+    // Contrast is Night's alone, and the project cards have an entry of their own.
+    const contrast = KNOWN_FINDINGS.filter((k) => k.rule === 'color-contrast')
+    expect(contrast.every((k) => k.themes?.join() === 'Night')).toBe(true)
+    expect(KNOWN_FINDINGS.some((k) => k.selector.includes('Projects'))).toBe(true)
   })
 })
 

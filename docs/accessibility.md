@@ -125,12 +125,21 @@ person's, recorded in [Reader runs](#reader-runs).
    read in the run's log or is lost. A known-findings list
    (`tests/support/a11y-axe.ts`) holds what is decided, by rule and a
    selector the element itself matches (and only when exactly one element
-   matches it), with its issue: today one entry,
-   `label-content-name-mismatch` on the sample cities' cards (issue 707),
-   which axe reads with their lines run together. An entry excuses nothing
-   else, so the same rule on another element still fails, and one that
-   matches nothing on the sweeps it is expected on, which a unit test holds
-   to be sweeps that exist, fails them, so the list cannot go stale. The
+   matches it), with its issue, and with the sweeps it is expected on and,
+   where it holds in one theme only, that theme. **The first run found
+   these**, on macOS and on Windows alike, and they are the list:
+   `label-content-name-mismatch` (WCAG 2.5.3, issue 707) on the sample
+   cities' cards, the project cards, the notebook's cell headers,
+   Settings' two folder buttons and the Jobs toggle while a job runs, each
+   named by an `aria-label` that does not hold the words the control shows
+   in the order axe reads them; and `color-contrast` (issue 710), in Night
+   only, on the layout tuning's, a line's options' and the network in
+   words' disclosures and the engine log's toggle. **The list must shrink
+   to empty** as those issues are fixed: an entry excuses nothing else, so
+   the same rule on another element still fails, and one that matches
+   nothing on the sweeps (and in the themes) it is expected on, which a
+   unit test holds to be sweeps that exist, fails them, so a fixed defect
+   cannot leave its entry behind. The
    rule is a function of the findings and is tested without the app
    (`tests/unit/a11y-axe.test.ts`, with mutations). Only CI's `e2e` job
    runs axe on the real screens.

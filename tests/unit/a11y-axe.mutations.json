@@ -54,5 +54,13 @@
     "test": "tests/unit/a11y-axe.test.ts",
     "title": "gives nothing for an element that is not a sample card",
     "why": "Not asking the element lets every node match every excuse."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "k.themes === undefined || k.themes.includes(theme)",
+    "replace": "true",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "judges an entry in its themes alone, for excuses and for staleness",
+    "why": "An entry that ignores its themes excuses Night's contrast in Parchment too, and is called stale where it was never due."
   }
 ]

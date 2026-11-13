@@ -1498,7 +1498,10 @@ export async function expectAxeClean(page: Page, where: string, theme: string): 
         ),
       })),
     )
-  const judged = judgeAxe(await resolve(raw.violations), await resolve(raw.incomplete), where)
+  const judged = judgeAxe(await resolve(raw.violations), await resolve(raw.incomplete), {
+    where,
+    theme,
+  })
   const listing = [
     `excused by the known list: ${judged.excused.length}`,
     ...judged.excused.map((line) => `  ${line}`),
