@@ -140,3 +140,32 @@ export async function withWhatTheScreenSaid(
     throw error
   }
 }
+
+/**
+ * Every `fake-engine.received` under `root`, within `depth` levels: the
+ * stand-in engine's record of the requests it was sent, in its engine home.
+ * Never through a symbolic link, as `logFolders`.
+ */
+export function receivedFiles(root: string, depth = 3): string[] {
+  const found: string[] = []
+  const walk = (dir: string, left: number): void => {
+    let names: string[]
+    try {
+      names = readdirSync(dir)
+    } catch {
+      return
+    }
+    for (const name of names) {
+      const path = join(dir, name)
+      try {
+        const info = lstatSync(path)
+        if (info.isFile() && name === 'fake-engine.received') found.push(path)
+        else if (info.isDirectory() && left > 1) walk(path, left - 1)
+      } catch {
+        continue
+      }
+    }
+  }
+  walk(root, depth)
+  return found
+}

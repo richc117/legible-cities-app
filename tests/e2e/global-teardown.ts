@@ -8,7 +8,7 @@
 import { copyFileSync, lstatSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { logFiles, logFolders, logLines, RETRY_LINES } from '../support/store-lines'
+import { logFiles, logFolders, logLines, receivedFiles, RETRY_LINES } from '../support/store-lines'
 import { RUN_PROFILE_PREFIX } from './global-setup'
 
 /** The prefix every test's temporary folder is made with. */
@@ -22,13 +22,20 @@ const TEST_PREFIX = 'legible-cities-'
  */
 function runLogFolders(shared: string | undefined): string[] {
   const folders = shared !== undefined && shared !== '' ? [shared] : []
+  for (const path of runTestFolders()) folders.push(...logFolders(path))
+  return folders
+}
+
+/** The temporary folders the specs made since the run began (not the run's own profile). */
+function runTestFolders(): string[] {
+  const found: string[] = []
   const started = Number(process.env.LEGIBLE_E2E_STARTED)
-  if (!Number.isFinite(started)) return folders
+  if (!Number.isFinite(started)) return found
   let names: string[]
   try {
     names = readdirSync(tmpdir())
   } catch {
-    return folders
+    return found
   }
   for (const name of names) {
     if (!name.startsWith(TEST_PREFIX) || name.startsWith(RUN_PROFILE_PREFIX)) continue
@@ -40,39 +47,63 @@ function runLogFolders(shared: string | undefined): string[] {
     } catch {
       continue
     }
-    folders.push(...logFolders(path))
+    found.push(path)
   }
-  return folders
+  return found
 }
 
-/** Where `LEGIBLE_KEEP_LOGS` puts what it keeps: under `test-results/`, which a loop run uploads. */
+/** Where `LEGIBLE_KEEP_LOGS` puts what it keeps: under `test-results/`, which `ci.yml` and the loop and determinism workflows upload when a run fails. */
 const KEPT = resolve(__dirname, '../../test-results/logs')
 
 /**
- * With `LEGIBLE_KEEP_LOGS` set, copy the run's own log files into
+ * With `LEGIBLE_KEEP_LOGS` set, or on CI (issue 671), copy the run's own log files into
  * `test-results/logs/` before the suite's folder is removed (issue 529: the
  * handshake's time per launch is in `engine.log`, and without this a CI run
  * loses it with the runner). Only this run's folders are read (the suite's
  * own, and the temporary profiles made since it began), and only plain
- * `.log` files. They are what the app wrote through its redacting sink, URLs'
- * user information, query values and fragments removed (`src/main/redact.ts`);
- * the one workflow that sets this runs a hosted runner with the stand-in
- * engine and no secret in the step, so a public artefact holds the runner's
- * temporary paths and the stand-in's own words, nothing of a person's.
+ * `.log` files, and each stand-in engine `fake-engine.received`. The logs are
+ * what the app wrote through its redacting sink, URLs' user information,
+ * query values and fragments removed (`src/main/redact.ts`); the request
+ * records are raw JSON-RPC and never pass through it. Any non-empty `CI` keeps
+ * them: `ci.yml`'s `e2e` and `e2e-quarantine` and `determinism.yml` (the real
+ * pinned engine), and `e2e-loop.yml` sets `LEGIBLE_KEEP_LOGS`. None has a
+ * secret in the step, so a public artefact holds committed fixtures, the
+ * runner's temporary paths and the engines' own words, nothing of a person's.
  * A local run sets nothing and keeps nothing.
  */
 function keepLogs(shared: string | undefined, ours: boolean): void {
-  if ((process.env.LEGIBLE_KEEP_LOGS ?? '') === '') return
+  if ((process.env.LEGIBLE_KEEP_LOGS ?? '') === '' && (process.env.CI ?? '') === '') return
   try {
     const folders = runLogFolders(undefined)
     if (ours && shared !== undefined) folders.unshift(shared)
     let n = 0
+    let failed = 0
+    // Each copy alone: one file held open or rotated away must not lose the rest.
+    const copy = (from: string, to: string): void => {
+      try {
+        mkdirSync(dirname(to), { recursive: true })
+        copyFileSync(from, to)
+      } catch {
+        failed++
+      }
+    }
     for (const folder of folders) {
       const to = join(KEPT, `${folder === shared ? 'suite' : 'profile'}-${++n}`)
-      mkdirSync(to, { recursive: true })
-      for (const file of logFiles(folder)) copyFileSync(file, join(to, basename(file)))
+      for (const file of logFiles(folder)) copy(file, join(to, basename(file)))
     }
-    console.log(`[issue 529] ${n} log folders kept in test-results/logs/.`)
+    // The stand-in engine's request record, beside the logs: the specs make
+    // their folders in many ways and mostly leave them to the runner, so the
+    // run's end is the one place that reaches them all (issue 671). The
+    // upload step keeps test-results/ only when the run failed.
+    let r = 0
+    for (const folder of runTestFolders()) {
+      for (const file of receivedFiles(folder)) {
+        copy(file, join(KEPT, `received-${++r}`, `${basename(folder)}.fake-engine.received`))
+      }
+    }
+    console.log(
+      `[issue 529] ${n} log folders and ${r} engine request records kept in test-results/logs/, ${failed} could not be copied.`,
+    )
   } catch (error) {
     console.log(`[issue 529] the logs could not be kept: ${String(error)}`)
   }
