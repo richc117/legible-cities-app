@@ -72,6 +72,7 @@ import {
   renderTranscript,
   wantText,
   wantsOf,
+  withoutPaths,
   type Hearing,
   type PartResult,
   type Reading,
@@ -445,6 +446,9 @@ class Session implements Ctx {
         description: description === null || description === '' ? null : description,
         level,
         fallbackName: attr('aria-label') ?? el.getAttribute('title') ?? '',
+        // A date field has a role of its own in the synonyms table: its
+        // focused part is a "stepper", which no other text field is.
+        isDate: input?.type === 'date',
       }
     })
     if (facts === null) return null
@@ -452,7 +456,7 @@ class Session implements Ctx {
       await this.page.locator('[data-reader-focus]').ariaSnapshot({ timeout: 5 * SECOND }),
     )
     return {
-      role,
+      role: facts.isDate ? 'date' : role,
       name: name === '' ? facts.fallbackName : name,
       states: facts.states as State[],
       level: role === 'heading' ? facts.level : null,
@@ -556,10 +560,18 @@ class Session implements Ctx {
     await target.waitFor({ state: 'visible', timeout: 30 * SECOND })
     // From the control before it: focus put on it and taken back a step,
     // all heard out before the Tab that is listened to.
+    let took = false
     await this.capture(async () => {
       await target.focus()
-      await this.page.keyboard.press('Shift+Tab')
+      took = await this.focusIn(target)
+      if (took) await this.page.keyboard.press('Shift+Tab')
     })
+    // Focus that could not be put on the target is the script's failure,
+    // not a phrase VoiceOver missed: the row stops.
+    if (!took) {
+      const name = await this.name(target).catch(() => '')
+      throw new Error(`could not put focus on ${name || target.toString()}`)
+    }
     // And heard out to its end, hint and all: run 43431978278 caught only
     // the target's hint ("You are currently on a text field…") after eight
     // Tabs, its name and role spoken where no poll was looking.
@@ -685,9 +697,14 @@ class Session implements Ctx {
     await to.waitFor({ state: 'attached', timeout: 30 * SECOND })
     // VoiceOver's cursor follows focus: focus the last control before
     // `to`, and walk on from there.
-    let before = ''
+    let started = false
     await this.capture(async () => {
-      before = await to.evaluate((target) => {
+      started = await to.evaluate((target) => {
+        document.querySelector('[data-reader-start]')?.removeAttribute('data-reader-start')
+        // Behind an open modal dialog nothing takes focus: start inside the
+        // dialog that holds the target, never in the page behind it.
+        const modal = target.closest('dialog[open]')
+        const within: Element = modal !== null && modal.matches(':modal') ? modal : document.body
         // A control Tab could stop on: a native one, a kit control's host
         // (its shadow root delegates focus), or anything given a tabindex.
         const focusable = (el: Element): boolean => {
@@ -701,29 +718,33 @@ class Session implements Ctx {
           return html.hasAttribute('tabindex') && html.tabIndex >= 0
         }
         let last: HTMLElement | null = null
-        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT)
+        const walker = document.createTreeWalker(within, NodeFilter.SHOW_ELEMENT)
         for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
           const el = node as HTMLElement
           if (el === target || target.contains(el)) break
           if (el.contains(target)) continue
+          if (el.closest('[inert]') !== null) continue
           if (focusable(el)) last = el
         }
-        if (last === null) return ''
+        if (last === null) return false
         last.focus()
-        // Something to name it by, never empty: an input has no text
-        // (run 43431978278 stopped cell 03's footer on exactly that).
-        return (
-          last.getAttribute('aria-label') ||
-          last.textContent?.trim().slice(0, 40) ||
-          last.getAttribute('name') ||
-          last.id ||
-          last.tagName.toLowerCase()
-        )
+        // Taken only where focus is really there: a focus() that did not
+        // take (run 43446490051 started a walk inside the New project sheet
+        // "from" a card behind it) starts nothing.
+        let active: Element | null = document.activeElement
+        while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement
+        const host = active === null ? null : ((active.getRootNode() as ShadowRoot).host ?? null)
+        if (active !== last && host !== last) return false
+        last.setAttribute('data-reader-start', '')
+        return true
       })
     })
-    if (before === '') throw new Error(`nothing focusable before ${to.toString()} to walk from`)
+    if (!started) throw new Error(`nothing focusable before ${to.toString()} to walk from`)
+    const from = await this.name(this.page.locator('[data-reader-start]')).catch(() => '')
+    if (from === '')
+      throw new Error(`the control a walk to ${to.toString()} starts from has no name`)
     await this.settle()
-    await this.walkFrom(`VoiceOver next, from ${before}`, wants, steps, () => voiceOver.next())
+    await this.walkFrom(`VoiceOver next, from ${from}`, wants, steps, () => voiceOver.next())
   }
 
   async walkBack(from: Locator, texts: readonly string[], steps: number): Promise<void> {
@@ -791,7 +812,9 @@ class Session implements Ctx {
   }
 
   async texts(target: Locator): Promise<string[]> {
-    // Empty ones kept: a definition with no value is a finding, not nothing.
+    // Empty ones kept, not filtered: a walk given one stops its row, since
+    // `wantText` refuses an empty text, so a definition with no value is
+    // seen rather than skipped.
     return (await target.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim())
   }
 
@@ -999,7 +1022,13 @@ test('the walkthrough, heard with VoiceOver', async () => {
   writeFileSync(join(OUT, 'transcript.md'), renderTranscript(ordered, facts))
   writeFileSync(
     join(OUT, 'transcript.json'),
-    `${JSON.stringify({ facts, rows: ordered }, null, 2)}\n`,
+    // Every string through `withoutPaths`, as the transcript's are: the
+    // artefact is public, and a runner's folders are a machine's.
+    `${JSON.stringify(
+      { facts, rows: ordered },
+      (_key, value: unknown) => (typeof value === 'string' ? withoutPaths(value) : value),
+      2,
+    )}\n`,
   )
   if (facts !== null) {
     const clauses = clausesByTable(ordered, facts)

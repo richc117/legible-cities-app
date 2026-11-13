@@ -24,6 +24,8 @@ import {
   screenRows,
   voiceOverCell,
   walkthroughRows,
+  withoutHints,
+  withoutPaths,
   wantsOf,
   type Hearing,
   type PartResult,
@@ -89,6 +91,21 @@ const LEGEND = [
   /^not scripted: a person's$/,
 ]
 const legendForm = (clause: string): number => LEGEND.findIndex((form) => form.test(clause))
+
+/** A reading of a control, as the spec takes one from the page. */
+const reading = (
+  role: string,
+  name: string,
+  over: Partial<Parameters<typeof wantsOf>[0]> = {},
+): Parameters<typeof wantsOf>[0] => ({
+  role,
+  name,
+  states: [],
+  level: null,
+  value: null,
+  description: null,
+  ...over,
+})
 
 describe('the parts and the walkthrough', () => {
   const rows = walkthroughRows(record)
@@ -285,20 +302,6 @@ describe('what counts as heard', () => {
 // synonyms table gained from it, held to the phrase VoiceOver said. A word
 // is added only for what a run heard; nothing here loosens a match.
 describe('what VoiceOver said in run 43431978278', () => {
-  const reading = (
-    role: string,
-    name: string,
-    over: Partial<Parameters<typeof wantsOf>[0]> = {},
-  ): Parameters<typeof wantsOf>[0] => ({
-    role,
-    name,
-    states: [],
-    level: null,
-    value: null,
-    description: null,
-    ...over,
-  })
-
   it('hears a native select as a menu pop up', () => {
     const select = wantsOf(reading('combobox', 'Mode', { value: 'all (every type)' }), {
       value: true,
@@ -313,8 +316,12 @@ describe('what VoiceOver said in run 43431978278', () => {
   })
 
   it('hears a date field by its stepper', () => {
-    const date = wantsOf(reading('textbox', 'Draw for another day'))
-    expect(missing(['11 Month Draw for another day stepper'], date)).toEqual([])
+    // Run 43446490051, transcript.md line 676, as spoken.
+    const date = wantsOf(reading('date', 'Draw for another day'))
+    expect(missing(['11 Month Draw for another day stepper Service day region'], date)).toEqual([])
+    // and no other text field is heard as a stepper
+    const field = wantsOf(reading('textbox', 'Dot size'))
+    expect(missing(['Dot size stepper'], field).map((w) => w.said)).toEqual(['textbox'])
   })
 
   it('wants only what changed where focus stayed', () => {
@@ -348,6 +355,72 @@ describe('what VoiceOver said in run 43431978278', () => {
         ['Name Give the project a name. required invalid data edit text'],
         wantsOf(reading('textbox', 'Name', { states: ['invalid', 'required'] })),
       ),
+    ).toEqual([])
+  })
+})
+
+describe('what is never a word heard', () => {
+  it('takes no word from a hint', () => {
+    // Run 43431978278, transcript.md lines 641-645: "textbox" was taken
+    // from the hint's "edit text", and the hint is all that was caught.
+    const date = wantsOf(reading('textbox', 'Draw for another day'))
+    expect(
+      missing(
+        [
+          'You are currently on a stepper, inside of a edit text. To begin interacting with this stepper, press Control-Option-Shift-Down Arrow. To exit this date field, press Control-Option-Shift-Up Arrow.',
+        ],
+        date,
+      ).map((w) => w.said),
+    ).toEqual(['Draw for another day', 'textbox'])
+    // "You are currently on…" is not a switch on.
+    const shown = wantsOf(reading('switch', 'Shown', { states: ['on'] }))
+    expect(
+      missing(['Shown switch. You are currently on a switch.'], shown).map((w) => w.said),
+    ).toEqual(['on'])
+    // "To select or deselect this checkbox" and "To exit this group" are hints.
+    const box = wantsOf(reading('checkbox', 'Station names', { states: ['checked'] }))
+    expect(
+      missing(
+        ['Station names. To select or deselect this checkbox, press Control-Option-Space.'],
+        box,
+      ).map((w) => w.said),
+    ).toEqual(['checkbox', 'checked'])
+    expect(
+      missing(
+        ['Cancel. To exit this group, press Control-Option-Shift-Up Arrow.'],
+        [containerWants('group', '')[0] as ReturnType<typeof wantText>],
+      ),
+    ).toHaveLength(1)
+    // "contents selected" and "completion selected" are not a control selected
+    // (run 43446490051, transcript.md lines 151 and 742).
+    expect(
+      missing(['LA Metro Rail contents selected Name required edit text'], [stateWant('checked')]),
+    ).toHaveLength(1)
+    expect(
+      missing(['a. expanded list box Start 90 items completion selected'], [stateWant('pressed')]),
+    ).toHaveLength(1)
+    // A previous control's hint in the next window (lines 855 and 1002) gives
+    // the next control nothing.
+    expect(
+      missing(
+        ['You are currently on a button. Filename tag Added to the file’s name. edit text'],
+        wantsOf(reading('button', 'Filename tag')),
+      ).map((w) => w.said),
+    ).toEqual(['button'])
+    expect(withoutHints('You are currently on a button. 5 contents selected Dot size')).not.toMatch(
+      /currently|contents selected/,
+    )
+  })
+
+  it('hears a container by its name and role together', () => {
+    const map = containerWants('region', 'Map')
+    expect(missing(['Map region'], map)).toEqual([])
+    // "The map is drawn." is not the region Map.
+    expect(missing(['The map is drawn. button region'], map)).toHaveLength(1)
+    expect(missing(['end of Steps navigation'], containerWants('navigation', 'Steps'))).toEqual([])
+    expect(missing(['end of Start from group'], containerWants('group', 'Start from'))).toEqual([])
+    expect(
+      missing(['New project button list Projects 1 item'], containerWants('list', 'Projects')),
     ).toEqual([])
   })
 })
@@ -407,7 +480,7 @@ describe('what is not heard', () => {
     ).toThrow(/no name to hear/)
     // A container may be nameless: it is heard by its role.
     expect(containerWants('group', '').map((w) => w.said)).toEqual(['group'])
-    expect(containerWants('list', 'Presets').map((w) => w.said)).toEqual(['Presets', 'list'])
+    expect(containerWants('list', 'Presets').map((w) => w.said)).toEqual(['Presets (list)'])
   })
 
   it('does not credit an action with the phrase said before it', () => {
@@ -424,6 +497,10 @@ describe('what is not heard', () => {
     expect(freshPhrase('', before)).toBe('')
     // A joined snapshot's last phrase is stale on its own.
     expect(freshPhrase('Laid out.', ['Running: read. Laid out.'])).toBe('')
+    // and so is any phrase of it, wherever it sits.
+    expect(
+      freshPhrase('Running: read. Settings button', ['Lay out. Running: read. Laid out.']),
+    ).toBe('Settings button')
   })
 })
 
@@ -539,8 +616,15 @@ describe('what is written in the VoiceOver cell', () => {
     ]) {
       const said = clauseText(`the folder ${path} is chosen`)
       expect(said, path).toContain('<path>')
-      expect(said, path).not.toMatch(/someone|private|Desktop\/|folders/)
+      // Nothing of the path is left, not even what follows a space in it.
+      expect(said, path).not.toMatch(/someone|private|Desktop|folders|Support|Cities/)
     }
+    // A path with a space, to the end of its phrase (run 43431978278's ffmpeg row).
+    expect(
+      withoutPaths(
+        `ffmpeg ${['', 'Users', 'runner', 'apps', 'Legible Cities.app', 'ffmpeg'].join('/')}. Next`,
+      ),
+    ).toBe('ffmpeg <path>. Next')
     expect(clauseText('Station marker / Tick, 1/2 of it')).toBe('Station marker / Tick, 1/2 of it')
     const clause = clauseOf(
       [result({ hearings: [{ ...hearing([`${home}/x`]), action: `Tab to ${home}` }] })],

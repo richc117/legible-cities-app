@@ -121,8 +121,8 @@
   },
   {
     "file": "tests/reader/transcript.ts",
-    "find": "b === phrase || b.endsWith(phrase)",
-    "replace": "b === phrase",
+    "find": "earlier.some((b) => b.includes(phrase))",
+    "replace": "earlier.some((b) => b === phrase)",
     "test": "tests/unit/reader-record.test.ts",
     "title": "does not credit an action",
     "why": "The tail of the phrase before an action, reported again by Guidepup, would be credited to the action."
@@ -161,8 +161,8 @@
   },
   {
     "file": "tests/reader/transcript.ts",
-    "find": "'search text field', 'stepper'],",
-    "replace": "'search text field'],",
+    "find": "    date: ['stepper'],",
+    "replace": "    date: [],",
     "test": "tests/unit/reader-record.test.ts",
     "title": "hears a date field by its stepper",
     "why": "The date field would be not heard for the word VoiceOver uses for its focused part."
@@ -206,5 +206,53 @@
     "test": "tests/unit/reader-record.test.ts",
     "title": "lists the rows not heard, and only those",
     "why": "Stopped and unscripted rows would be listed as findings needing an issue."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "normalise(spoken.map(withoutHints).join(' '))",
+    "replace": "normalise(spoken.join(' '))",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "takes no word from a hint",
+    "why": "A hint's \"edit text\" or \"You are currently on\" would supply a role or a state VoiceOver did not say of the control."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "    .map((sentence) => sentence.replace(/\\b(?:contents|completion) selected\\b/g, ' '))\n",
+    "replace": "    .map((sentence) => sentence)\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "takes no word from a hint",
+    "why": "\"contents selected\" would be heard as a control selected."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "      any: words.flatMap((word) => [`${name} ${word}`, `${word} ${name}`]),\n",
+    "replace": "      any: [name],\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "hears a container by its name and role together",
+    "why": "\"The map is drawn.\" would be heard as the region Map."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "earlier.some((b) => b.includes(phrase))",
+    "replace": "earlier.some((b) => b.endsWith(phrase))",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "does not credit an action",
+    "why": "A stale phrase from the middle of what was heard before would be credited to the action."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  const rest = String.raw`(?:[^;|\"”’]*?)",
+    "replace": "  const rest = String.raw`(?:[^\\s;|\"”’]*?)",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "writes no path into a clause",
+    "why": "A path with a space in it would leave its tail in the public record."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "    textbox: ['edit text', 'text field', 'text entry area', 'search text field'],\n",
+    "replace": "    textbox: ['edit text', 'text field', 'text entry area', 'search text field', 'stepper'],\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "hears a date field by its stepper",
+    "why": "Any text field would be heard by a word VoiceOver says only of a date field."
   }
 ]

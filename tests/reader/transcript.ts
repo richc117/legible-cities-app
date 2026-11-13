@@ -43,10 +43,12 @@ export type State =
  *
  * A word is added only where a run heard VoiceOver say it for that role or
  * state, and tests/unit/reader-record.test.ts cites the phrase. From run
- * 43431978278 (VoiceOver 10, macOS 15.8.2): a native select is "menu pop
- * up" ("all (every type) Mode menu pop up collapsed button"), and a date
- * field's focused part is a "stepper" ("11 Month Draw for another day
- * stepper").
+ * 43431978278 (VoiceOver 10, macOS 15.8.2), a native select is "menu pop
+ * up" ("all (every type) Mode menu pop up collapsed button"). From run
+ * 43446490051 (transcript.md line 676), a date field's focused part is a
+ * "stepper" ("11 Month Draw for another day stepper Service day region"):
+ * so a date field has a role of its own here, `date`, which the spec gives
+ * an `<input type="date">`, and no other text field is heard as a stepper.
  */
 export const SYNONYMS: {
   readonly roles: Readonly<Record<string, readonly string[]>>
@@ -57,7 +59,8 @@ export const SYNONYMS: {
     link: ['link'],
     heading: ['heading'],
     combobox: ['pop-up button', 'popup button', 'combo box', 'menu button', 'menu pop up'],
-    textbox: ['edit text', 'text field', 'text entry area', 'search text field', 'stepper'],
+    textbox: ['edit text', 'text field', 'text entry area', 'search text field'],
+    date: ['stepper'],
     checkbox: ['checkbox', 'check box'],
     switch: ['switch', 'toggle button', 'checkbox'],
     radio: ['radio button'],
@@ -269,11 +272,53 @@ export function changedWants(before: Reading, after: Reading, also: Also = {}): 
 }
 
 /**
- * The words a container is heard by, its name where it has one and its
- * role: a group or a landmark may be nameless, which a control may not be.
+ * The words a container is heard by: its name and its role together, as
+ * VoiceOver says them ("Map region", "Steps navigation", "end of Start
+ * from group", "list Projects 1 item"), so a name heard elsewhere ("The
+ * map is drawn.") is not the container's. A group or a landmark may be
+ * nameless, which a control may not be: then its role alone.
  */
 export function containerWants(role: string, name: string): Want[] {
-  return name.trim() === '' ? [roleWant(role)] : [wantText(name), roleWant(role)]
+  const words = roleWant(role).any
+  if (name.trim() === '') return [roleWant(role)]
+  wantText(name)
+  return [
+    {
+      said: `${name} (${role})`,
+      any: words.flatMap((word) => [`${name} ${word}`, `${word} ${name}`]),
+      kind: 'text',
+    },
+  ]
+}
+
+/**
+ * VoiceOver's hints, which describe how to work a control rather than
+ * what it is, and so may never supply a word a row wants: "You are
+ * currently on a text field…" is not the field heard, and its "on" is not
+ * a switch on. A phrase is taken a sentence at a time and these are left
+ * out: a sentence that opens "You are currently" or "Press Control-Option",
+ * one that tells how to do something with Control-Option ("To exit this
+ * group, press Control-Option-Shift-Up Arrow", "Type text or, to display a
+ * list of choices, press Control-Option-Space"), and "To enter text in this
+ * field, type". The words "contents selected" and "completion selected",
+ * which say text is selected in a field ("LA Metro Rail contents selected
+ * Name required edit text", "expanded list box Start 90 items completion
+ * selected"), are taken out too: they are not a control selected.
+ */
+export function withoutHints(phrase: string): string {
+  return phrase
+    .split(/\.\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(
+      (sentence) =>
+        sentence !== '' &&
+        !/^You are currently\b/.test(sentence) &&
+        !/^Press Control-Option\b/.test(sentence) &&
+        !/\bpress Control-Option\b/i.test(sentence) &&
+        !/^To [^,]+, type\.?$/.test(sentence),
+    )
+    .map((sentence) => sentence.replace(/\b(?:contents|completion) selected\b/g, ' '))
+    .join('. ')
 }
 
 /** `text` with its first `part` taken out; both normalised. */
@@ -289,7 +334,7 @@ const without = (text: string, part: string): string => {
  * positive state is looked for.
  */
 export function missing(spoken: readonly string[], wants: readonly Want[]): Want[] {
-  let heard = normalise(spoken.join(' '))
+  let heard = normalise(spoken.map(withoutHints).join(' '))
   const left: Want[] = []
   for (const want of wants.filter((w) => w.kind === 'text')) {
     const found = want.any.map(normalise).find((word) => heard.includes(word))
@@ -310,12 +355,12 @@ export function missing(spoken: readonly string[], wants: readonly Want[]): Want
  * same one or after an empty capture, reports that phrase as new: so a
  * quiet action can come back with the phrase before it. `before` is what
  * was last heard just before the action; a phrase (Guidepup joins several
- * with ". ") that is one of them, or that one of them ends with, is not
- * this action's and is dropped.
+ * with ". ") that is in one of them, wherever it sits, is not this
+ * action's and is dropped.
  */
 export function freshPhrase(captured: string, before: readonly string[]): string {
   const earlier = before.map((b) => b.trim()).filter((b) => b !== '')
-  const stale = (phrase: string): boolean => earlier.some((b) => b === phrase || b.endsWith(phrase))
+  const stale = (phrase: string): boolean => earlier.some((b) => b.includes(phrase))
   const whole = captured.trim()
   if (whole === '' || stale(whole)) return ''
   return whole
@@ -417,9 +462,13 @@ export function runBracket(facts: RunFacts): string {
  * words. POSIX (`/Users/…`, `/private/…`, `~/…`) and Windows (`C:\…`).
  */
 export function withoutPaths(text: string): string {
+  // From where the path starts to the end of its phrase segment (a ". ",
+  // a ";", a "|", a quote, or the end): a path can hold spaces ("Legible
+  // Cities.app"), so a path cut at the first space would leave its tail.
+  const rest = String.raw`(?:[^;|"”’]*?)(?=\.\s|\.$|[;|"”’]|$)`
   return text
-    .replace(/(^|[\s("'“‘])(?:~|\/)\/?[^\s"'”’;|,)]*[^\s"'”’;|,).]/g, '$1<path>')
-    .replace(/\b[A-Za-z]:\\[^\s"'”’;|,)]*[^\s"'”’;|,).]?/g, '<path>')
+    .replace(new RegExp(String.raw`(^|[\s("'“‘])(?:~/|/(?=[^\s/]))${rest}`, 'g'), '$1<path>')
+    .replace(new RegExp(String.raw`\b[A-Za-z]:\\${rest}`, 'g'), '<path>')
 }
 
 /**
