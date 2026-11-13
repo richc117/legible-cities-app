@@ -37,6 +37,15 @@ these up to date:
   spec the gate relies on, unless the maintainer has accepted it in writing
   on that issue (issue 553).
 
+`bin/candidate tag <N>` does what follows, and refuses on the first thing
+that is not so: it reads `package.json`'s version, checks the tag is free,
+that `main` is green on the commit it tags, that no open `flaky` issue
+names a file under `tests/acceptance/` (unless each is named in
+`--flaky-accepted <N,...>`, the written acceptance on the issue being the
+person's part), and the notes; it dispatches the vendor workflow, waits,
+then tags and pushes the tag alone. It can only make a `-rc.` tag; a final
+is cut by hand as below. `--dry-run` prints the steps.
+
 Once that has merged, check the notes on the commit to be tagged, for a
 candidate and for a final alike. The release job writes them only after
 packaging, an hour into its run, and a refusal then means moving a tag
@@ -106,6 +115,12 @@ change is fixed on `main`, and the fix goes out as the next candidate.
    request.
 3. Publish it by hand on GitHub: a candidate as a pre-release, a final as
    the latest release.
+
+`bin/candidate publish <N>` does steps 1 and 3 for a candidate: it checks
+the tag's `build` run concluded in success on the tag's commit with every
+job green and the Release is still a draft, publishes it as a pre-release
+(never the latest) and dispatches the acceptance run. It does not read the
+draft's notes for you (step 2): whoever runs it reads them first.
 
 ## A release that has to be pulled
 
