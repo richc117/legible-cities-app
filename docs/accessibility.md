@@ -256,6 +256,7 @@ this legend.
 | Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Engine status line | pass (not a control) | pass (`role="status"`, named "Engine") | n/a | pass (the icon never moves) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
 | Job-end announcement | n/a | pass (polite, visually hidden) | n/a | n/a | n/a | n/a | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |
+| The quit question (issue 552): the modal dialog a quit, or a close of the window, opens while an export or a layout runs, named by its title, "Quit while an export is running?", and described by its sentence; **Keep working** focused first, then **Quit anyway** (**Close anyway** for the window's close) | swept (Tab reaches both buttons and stays in the dialog); Escape answering Keep working, and focus going back where it was, into another dialog too, are asserted in `quit-guard.spec.ts` | swept (the dialog by its title, described by its sentence; each button by its words) | swept | swept (nothing here moves) | pass (no new pair: the confirmation's own, the dialog's text and the kit's default and destructive buttons) | pass (the same pairs) | not yet run: a person's (new since 0.1.0) | not yet run: a person's (new since 0.1.0) |
 
 ### The front door (Library)
 
@@ -976,6 +977,22 @@ a table).
   570). Start a second identical job and listen for the same sentence said again.
   Leave the project screen while a run is going and listen for it on the
   Library.
+- **The quit question.** In a project, start an export of a reel (cell
+  **06 Export**, **Export**) and, while "Captured `<n>` of `<n>` frames."
+  is counting, quit the app: on a Mac, Legible Cities › Quit; on Windows,
+  close the window. Listen for a dialog read by its title and then its
+  sentence - on a Mac "Quit while an export is running?" and "The export of
+  `<project>` has not finished. Quitting stops it, and nothing of it is
+  kept."; on Windows "Close while an export is running?" and "The export of
+  `<project>` has not finished. Closing stops it, and nothing of it is
+  kept." - with focus on **Keep working**. Tab once: **Quit anyway**
+  (**Close anyway** on Windows); Tab again is **Keep working**, so focus
+  does not leave the dialog. Press Escape: the dialog closes, focus is back
+  on the control it was on, and the export is still counting
+  (`QuitDialog.tsx`, `ConfirmDialog.tsx`). Do not press **Quit anyway**
+  unless you mean to lose the export. With a layout running in place of an
+  export the title is "Quit while a layout is running?", and with two runs
+  "Quit while 2 runs are going?".
 
 ### The front door (Library)
 

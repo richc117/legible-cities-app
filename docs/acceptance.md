@@ -1053,9 +1053,16 @@ Press **Rename** at the foot of the notebook, type `Los Angeles` and press
 **Save**. Press **Library**.
 
 **See.**
-- The app quits without a dialog, and **check:** no `Legible Cities`,
-  `python` or LOOM tool process is left running (Activity Monitor, or Task
-  Manager's Details tab).
+- The app quits without a dialog: nothing is running, so it has nothing to
+  ask. (While an export or a layout is running it asks first, in a dialog
+  of its own: "Quit while an export is running?" or "Quit while a layout is
+  running?", with "Close" in place of "Quit" for the window's close, a
+  sentence such as "The export of LA Metro Rail has not finished. Quitting
+  stops it, and nothing of it is kept.", and **Keep working**, which has
+  focus, beside **Quit anyway** or **Close anyway**. That is not part of
+  this step; the screen-reader walkthrough has it.) **check:** no
+  `Legible Cities`, `python` or LOOM tool process is left running (Activity
+  Monitor, or Task Manager's Details tab).
 - On reopening: no first-run dialog; **Your projects** holds the **New
   project** card, then Caltrain and then LA Metro Rail (newest opened
   first), each with the engine's picture of its map, where it runs and

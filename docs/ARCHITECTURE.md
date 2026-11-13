@@ -90,8 +90,8 @@ the viewer's frames under `api.viewer`, the engine under `api.engine`, the
 one file chooser under `api.feeds`, the export under `api.export`, one
 clipboard write under `api.clipboard`, a job's copied log under `api.jobs`,
 the app's own settings under `api.settings`, the first-run check under
-`api.firstRun`, the licences under `api.licences`, and the app's menu under
-`api.app` and `api.help`.
+`api.firstRun`, the licences under `api.licences`, and the app's menu and
+the question a quit asks under `api.app` and `api.help`.
 
 | `api.projects` | Does |
 |---|---|
@@ -174,6 +174,9 @@ record write is.
 | `api.app`, `api.help` | Does |
 |---|---|
 | `app.onMenuCommand(listener)` | each menu item the interface answers - `new-project`, `settings`, `copy-diagnostics`, and `about` on Windows and Linux - one of a closed set, which the preload checks again; subscribing tells main the page listens, and a command main held until then arrives first, on the same channel (issue 554, "The menu") |
+| `app.onQuitQuestion(listener)` | the question main asks before a quit, or a close of the window, throws a run away, numbered, with what was asked for, how many exports and layouts are running and each project's name; the preload checks its shape again; null takes back the one on screen; subscribing tells main the page listens, and a page that has not said so is never asked (issue 552, "Quitting during a run") |
+| `app.answerQuit(id, answer)` | the person's answer to the question of that number, `keep` or `anyway`; main ignores an answer to any question but the one it has open |
+| `app.reportLayouts(layouts)` | the layouts the page is running, each a project's identifier and when it started, sent when the list changes; main checks both and names the projects from its own store |
 | `help.open(page)` | opens a Help page in the platform's browser by name, from a closed set; main holds every address and refuses any other name, and opens nothing |
 
 The engine bridge is deliberately untyped beyond a method name and an
@@ -245,6 +248,62 @@ the held command too, since a choice made over a crash is not the next
 page's. The page
 drops a command while a modal `<dialog>` is open, since a native shortcut
 fires behind one (`src/renderer/src/menuCommands.ts`).
+
+## Quitting during a run
+
+A quit, or a close of the app's own window, while an export or a layout is
+running is held and asked about first (issue 552,
+`specs/039-quit-guard/spec.md`), on every platform, the close on macOS
+included: the app stays running there with no window, and a window
+reopened from the Dock cannot see or stop an export that went on without
+one (issue 556).
+
+Whether to ask is one pure rule, `quitQuestion` in
+`src/main/window-lifecycle.ts`. What it is asked with is held by
+`QuitGuard` (`src/main/quit-guard.ts`), which has no Electron import:
+
+- **The exports** are the exporter's own (`Exporter.running`), asked for at
+  the moment of the quit; one already asked to stop is not among them.
+- **The layouts** are what the page last reported. A layout is steps the
+  page drives - the graph, the service day, the map, the record's write -
+  with nothing in flight between them, so main cannot see one; the page
+  sends its list of running layouts whenever the list changes
+  (`src/renderer/src/quitRuns.ts`), and is never asked at the moment of a
+  quit, when it may be the thing that is broken.
+- **The names** are the store's (`ProjectStore.nameOf`), kept as records
+  are read and written, so nothing is awaited in `before-quit` and a
+  report carries identifiers only.
+- **Whether the page can be asked.** Only a page that has said it listens,
+  whose frame is still the window's main frame and which Electron has not
+  reported unresponsive. Listening ends as it does for the menu: when a
+  navigation of the main frame commits, when the renderer dies, when the
+  window closes; the page's report and any open question go with it.
+- **The app's own quits** go through `quitGuard.quit()` and are never
+  asked about, nor is anything after one: the crash box's Quit, a missing
+  single-instance lock, an uncaught exception, the quit that follows the
+  window on Windows and Linux, and the one the person has just confirmed.
+  A quit that reaches `before-quit` any other way is a person's.
+
+The question is sent to the page, the window brought up first, and shown
+in the page's own modal `<dialog>` (`QuitDialog.tsx`, a `ConfirmDialog`
+whose safe button reads "Keep working"); a native message box would hold
+the quit itself (`.claude/rules/main.md`, "Native dialogs"). One question
+is open at a time, numbered, so an answer is for the question it was given
+to; while one is open a second quit, or a second close, is an answer and
+goes ahead.
+
+**The question comes before the quit gate and never replaces it**
+(`onBeforeQuit`): a quit that is asked about is cancelled before the gate
+sees it, so the quit the person confirms is the gate's first pass, and the
+engine is stopped as it always was ("The engine process"). **Close
+anyway** stops the runs and then closes the window: the page stops every
+export and layout still running through each run's own cancel before it
+answers, and main stops the exports it holds as well, so nothing main runs
+outlives the window whatever the page did - on macOS no quit follows the
+window to do it. On Windows and Linux the app then quits with its window,
+as it does when nothing is running. A layout's request already with the
+engine at a second close is not cancelled by it: the page that would take
+the run's next step is gone, so the run goes no further.
 
 ## The engine process
 

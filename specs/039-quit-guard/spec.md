@@ -4,7 +4,12 @@
 
 **Created**: 2026-11-12
 
-**Status**: Draft
+**Status**: Implemented (pending merge). The end-to-end tests of SC-002 are written and have not been run. Where this specification is silent the build chose, and each choice waits for the maintainer's word:
+
+- *The sentence for several runs*, which User Story 2 describes and does not quote: "The runs of Paris and Lyon have not finished. Quitting stops them, and nothing of them is kept." (three or more: "Paris, Lyon and Lille"; two runs of one project: "The runs of Paris have not finished.").
+- *A second close while the question is open* is an answer, as a second quit is (FR-001 says only that an open question is not asked again): the window closes, and main stops the exports it holds first. A layout's request already with the engine is not cancelled by that second close, since only the page can cancel it and the page is not asked; the run goes no further.
+- *A project the store cannot name* is said as "a project". Every running project's record has been read through the store, so this is not expected to be seen.
+- *A redraw is not a layout*: a rebuild for a day, colours, order, sizes or line options is not asked about and is not stopped by **Close anyway**, and neither is a feed being added.
 
 **Input**: Issue 552, "Quitting or closing during an export throws it away without asking", and its decided approach (option (a), with "Keep working" as the safe button). One change from that approach, decided by the maintainer when issue 556 moved out of 1.0: the window's close asks on **every** platform, macOS included. The decided approach let macOS close the window silently during an export because issue 556 would let a reopened window see it; without 556, a window reopened from the Dock cannot see or stop an export that went on without one, so closing asks there too, and "Close anyway" stops the runs as quitting does. Each such decision is recorded below as an "*As of 12 Nov 2026:*" line under the requirement it settles.
 

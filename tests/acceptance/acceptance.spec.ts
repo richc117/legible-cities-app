@@ -3768,8 +3768,20 @@ test('a release, installed, through docs/acceptance.md', async () => {
     await runStep(17, [4], async (log) => {
       const window = page()
       const la = await recordOf(window, LA)
+      // Nothing is running, so the quit asks nothing (issue 552): while an
+      // export or a layout runs the app holds a quit for its own question,
+      // and the one quit made below would then leave the app running and
+      // fail this step on the app not quitting.
+      await log.soft('nothing is running and no dialog is open before the quit', async () => {
+        await expect(window.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+          'Jobs, none running',
+        )
+        await expect(window.locator('dialog[open]')).toHaveCount(0)
+      })
       await quit()
-      log.note('Quit through Playwright, which asks the app to quit as its menu does.')
+      log.note(
+        'Quit through Playwright, which asks the app to quit as its menu does, once, and answers no question.',
+      )
       await log.soft('no process of the app is left', async () => {
         const left = await until(
           async () => {
@@ -3904,7 +3916,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         ).toHaveAccessibleName(`Open ${RENAMED}`),
       )
       log.notAutomated(
-        'that the quit showed no dialog (the app has none of its own; a native one would have held the quit past its deadline).',
+        'that the quit showed no dialog (with nothing running the app asks nothing; its own question, which it asks only while an export or a layout runs, or a native one, would have held the quit past its deadline).',
       )
     })
 
