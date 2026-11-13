@@ -13,8 +13,7 @@
 # the tag itself.
 #
 # What it cannot do is the rest of the gate (ADR-063, docs/releasing.md):
-# the assistant's review of the images it keeps, once issue 689 lands, and
-# a person's sitting on the final candidate (docs/acceptance-sitting.md),
+# the assistant's review of the images it keeps, and a person's sitting on the final candidate (docs/acceptance-sitting.md),
 # which meets the Mac's first-open warning and walks by ear what no script
 # heard. A runner downloads through the GitHub CLI, which sets no
 # quarantine attribute and no mark of the web, so Gatekeeper and

@@ -4,9 +4,9 @@ The person's part of the release gate (ADR-063): one person, about 45
 minutes, on the final candidate, on a Mac. Everything else in the gate is
 done before it, by machines and by the assistant
 ([`releasing.md`](releasing.md#the-gate)): the automated run on a macOS and
-a Windows runner; the scripted VoiceOver run, once issue 691 lands; and,
-once issue 689 lands, the assistant's visual review of the images the run
-kept, written into the run's record. Where one of those is missing for
+a Windows runner; the scripted VoiceOver run, once issue 691 lands; and
+the assistant's visual review of the images the run kept, written into the
+run's record. Where one of those is missing for
 the candidate, the item that relies on it says what that means. The
 sitting goes straight to what none of those can judge. Windows, a beta, is
 not part of it.

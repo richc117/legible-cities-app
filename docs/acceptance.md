@@ -127,13 +127,11 @@ person:
   checks it stays open, and a line of the order by its grip and checks
   where it lands), and whether the Finder or File Explorer came to
   the front with the file selected (the spec records what the app asked
-  the system to show or open, and checks those files). Once issue 689
-  lands, the run keeps images of the map, preview and export rows with the
-  checks a machine can make of them, and whether each looks right is the
-  assistant's visual review under
-  [The reviewer's protocol](#the-reviewers-protocol), which that issue
-  adds; its verdicts go into the run's record. Until then the record says
-  only that these rows are not automated. The review's doubtful rows and
+  the system to show or open, and checks those files). The run keeps
+  images of the map, preview and export rows with the checks a machine can
+  make of them, and whether each looks right is the assistant's visual
+  review under [The reviewer's protocol](#the-reviewers-protocol); its
+  verdicts go into the run's record. The review's doubtful rows and
   its control pairs are the sitting's
   [item 6](acceptance-sitting.md#6-the-assistants-visual-review), the drags
   its item 7, and the Finder its item 8.
