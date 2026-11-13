@@ -73,6 +73,20 @@ describe("acceptance.yml's step 2 on macOS", () => {
     expect(step).not.toMatch(/verify-mac-signing\.mjs[^\n]*\|\| true/)
   })
 
+  it('records each build in the words docs/releasing.md quotes', () => {
+    // Mutation: the record reworded in the workflow alone, so the release
+    // procedure tells the maintainer to look for a sentence no run writes.
+    const releasing = readFileSync(join(repo, 'docs', 'releasing.md'), 'utf8').replace(/\s+/g, ' ')
+    for (const quoted of [
+      "the disk image is signed with the Developer ID, notarised and stapled, and Gatekeeper's assessment accepts the image, the app inside it and the copy as Notarized Developer ID",
+      'its ad-hoc signature verifies',
+      'The disk image has no signature of its own, so this tag was built ad hoc, with signing off (the MAC_SIGNING variable).',
+    ]) {
+      expect(step, quoted).toContain(quoted)
+      expect(releasing, quoted).toContain(quoted)
+    }
+  })
+
   it('holds no secret, joins no environment, and reads one variable, for one sentence', () => {
     // The header's own "No secrets." is a sentence, not a reference.
     expect(workflow).not.toMatch(/\bsecrets\.\w/)

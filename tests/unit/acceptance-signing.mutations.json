@@ -46,5 +46,13 @@
     "test": "tests/unit/acceptance-signing.test.ts",
     "title": "warns when signing is on now and the tag was built without it",
     "why": "An unsigned tag accepted in silence while signing is on: a release meant to be signed and built with the variable off is recorded as ad hoc, and nobody is told to look."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "and the copy as Notarized Developer ID. The app is opened",
+    "replace": "and the copy as notarised. The app is opened",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "records each build in the words docs/releasing.md quotes",
+    "why": "The record reworded in the workflow alone: the release procedure tells the maintainer to look for a sentence no run writes."
   }
 ]
