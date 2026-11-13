@@ -207,12 +207,14 @@ says how a release is cut, gated, published and, if it must be, pulled.
 
 ### The gate documents
 
-The people who test a release follow documents that quote the app's own
-sentences and control names: `docs/acceptance.md` (the acceptance
-checklist), `docs/acceptance-stranger.md` (the stranger's timed run) and
-`docs/accessibility.md` (the screen-reader walkthrough and the
-per-screen record). Changing a sentence or a control name in the app means
-changing these in the same pull request.
+The machines and people who test a release follow documents that quote the
+app's own sentences and control names: `docs/acceptance.md` (the acceptance
+checklist, which the automated run drives), `docs/acceptance-sitting.md`
+(the gate's one sitting by a person), `docs/acceptance-stranger.md` (the
+stranger's timed run, after a release) and `docs/accessibility.md` (the
+screen-reader walkthrough and the per-screen record). ADR-063 says which
+of them the gate asks for. Changing a sentence or a control name in the app
+means changing these in the same pull request.
 
 ### Mutations
 

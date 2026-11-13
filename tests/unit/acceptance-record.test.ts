@@ -6,7 +6,7 @@
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cell,
@@ -298,5 +298,146 @@ describe('FIELDS', () => {
       .split('\n')
       .map((row) => row.split('|')[1].trim())
     expect(names).toEqual([...FIELDS])
+  })
+})
+
+describe('the sitting', () => {
+  // docs/acceptance-sitting.md is the person's part of the gate (ADR-063):
+  // ten items in order, each opening on the minutes it takes, adding up to
+  // the time the page says the sitting takes, and a results form whose rows
+  // are the items, so a row in the issue can be matched to its item.
+  const sitting = readFileSync(resolve(__dirname, '../../docs/acceptance-sitting.md'), 'utf8')
+  const headings = [...sitting.matchAll(/^### (\d+)\. (.+)$/gm)].map(([, n, title]) => ({
+    n: Number(n),
+    title: title!,
+  }))
+  const minutes = [...sitting.matchAll(/^### (\d+)\. .+\n\n\*\*(\d+) minutes?\.\*\*/gm)].map(
+    ([, n, m]) => [Number(n), Number(m)] as const,
+  )
+
+  it('has ten items, numbered in order, each opening on its minutes', () => {
+    expect(headings.map((h) => h.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(
+      minutes.map(([n]) => n),
+      'every item opens on a line "**<n> minutes.**"',
+    ).toEqual(headings.map((h) => h.n))
+  })
+
+  it('adds up to the time it says the sitting takes', () => {
+    const said = /about (\d+)\s+minutes/i.exec(sitting)
+    expect(said, 'the page says how long the sitting takes').not.toBeNull()
+    const total = minutes.reduce((sum, [, m]) => sum + m, 0)
+    expect(total).toBe(Number(said![1]))
+  })
+
+  it('has a results form with a row for each item, by its title', () => {
+    const rows = [...sitting.matchAll(/^\| (\d+) \| (.+?) \| fine \/ finding \| \|$/gm)].map(
+      ([, n, title]) => [Number(n), title],
+    )
+    expect(rows).toEqual(headings.map((h) => [h.n, h.title]))
+  })
+})
+
+describe('the gate documents', () => {
+  // The gate's documents send a reader to each other by heading (ADR-063
+  // made them one gate), and a renamed heading breaks a link silently on
+  // GitHub. Each link to a heading in a Markdown file must land on one.
+  const docs = resolve(__dirname, '../../docs')
+  const GATE = [
+    'acceptance.md',
+    'acceptance-sitting.md',
+    'acceptance-stranger.md',
+    'accessibility.md',
+    'releasing.md',
+  ]
+  // A heading another pull request adds, allowed to be missing until it
+  // lands; once it is there, the test below fails until its entry goes.
+  const PENDING = new Set([
+    'acceptance.md#the-reviewers-protocol', // issue 689, the visual evidence
+  ])
+
+  /** GitHub's anchor for a heading's text. */
+  const slug = (text: string): string =>
+    text
+      .replace(/[`*_]/g, '')
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s-]/gu, '')
+      .replace(/\s/g, '-')
+
+  /** Every anchor a document's headings make, outside fenced blocks, a repeat numbered as GitHub does. */
+  const anchorsOf = (text: string): Set<string> => {
+    const seen = new Map<string, number>()
+    const anchors = new Set<string>()
+    let fenced = false
+    for (const line of text.split('\n')) {
+      if (/^\s*```/.test(line)) fenced = !fenced
+      const heading = fenced ? null : /^#{1,6} (.+)$/.exec(line)
+      if (!heading) continue
+      const base = slug(heading[1]!)
+      const count = seen.get(base) ?? 0
+      seen.set(base, count + 1)
+      anchors.add(count === 0 ? base : `${base}-${count}`)
+    }
+    return anchors
+  }
+
+  /** The anchors of a document named from docs/, or null where there is none. */
+  const anchorsIn = (file: string): Set<string> | null => {
+    try {
+      return anchorsOf(readFileSync(join(docs, file), 'utf8'))
+    } catch {
+      return null
+    }
+  }
+
+  /** A Markdown link to a heading: an optional relative path to a `.md`, then `#` and the anchor. */
+  const LINK = /\]\(((?:[\w.-]+\/)*[\w.-]+\.md)?#([^)\s]+)\)/g
+
+  /** Every link to a heading in a document under docs/, as `<path from docs/>#<anchor>`. */
+  const linksIn = (name: string): string[] =>
+    [...readFileSync(join(docs, name), 'utf8').matchAll(LINK)].map(
+      ([, linked, anchor]) => `${posix.normalize(linked ?? name)}#${anchor}`,
+    )
+
+  it('makes anchors as GitHub does', () => {
+    expect([...anchorsOf('# 22. Update over 0.1.0\n## The reviewer’s protocol\n')]).toEqual([
+      '22-update-over-010',
+      'the-reviewers-protocol',
+    ])
+    expect([
+      ...anchorsOf('## A, b\n```\n## Not one\n```\n## A, b\n### `code` (optional)\n'),
+    ]).toEqual(['a-b', 'a-b-1', 'code-optional'])
+  })
+
+  it('reads links by any relative path', () => {
+    // linksIn reads the docs with LINK; the same pattern is checked here on a sample.
+    const sample = '[a](../README.md#x) [b](adr/README.md#y) [c](#z) [d](acceptance.md#w)'
+    const found = [...sample.matchAll(LINK)].map((m) => `${m[1] ?? 'here.md'}#${m[2]}`)
+    expect(found).toEqual(['../README.md#x', 'adr/README.md#y', 'here.md#z', 'acceptance.md#w'])
+  })
+
+  it('links only to headings that are there', () => {
+    const broken: string[] = []
+    let links = 0
+    for (const name of GATE)
+      for (const target of linksIn(name)) {
+        links += 1
+        if (PENDING.has(target)) continue
+        const [file, anchor] = target.split('#') as [string, string]
+        const anchors = anchorsIn(file)
+        if (anchors === null) broken.push(`${name}: ${target} (no such document)`)
+        else if (!anchors.has(anchor)) broken.push(`${name}: ${target}`)
+      }
+    expect(links, 'the documents link to headings').toBeGreaterThan(40)
+    expect(broken, 'links to a heading that is not there').toEqual([])
+  })
+
+  it('has no pending heading that has landed', () => {
+    const landed = [...PENDING].filter((target) => {
+      const [file, anchor] = target.split('#') as [string, string]
+      return anchorsIn(file)?.has(anchor) === true
+    })
+    expect(landed, 'these headings are there now: take them out of PENDING').toEqual([])
   })
 })

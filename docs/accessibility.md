@@ -167,7 +167,38 @@ its Tab walk and focus ring, and its motion, in both of the interface's
 themes. Contrast is `tests/unit/contrast.test.ts`, by token pair.
 
 The two reader columns are a person's, recorded per run in
-[Reader runs](#reader-runs).
+[Reader runs](#reader-runs). Once issue 691 lands, the VoiceOver column
+can also hold what a scripted run heard (ADR-063); until then it holds
+only a person's words. Either way the gate's sitting
+([`acceptance-sitting.md`](acceptance-sitting.md)) walks by ear what no
+script heard.
+
+**Reader legend.** *pass*, *finding* and *not reachable* are a person's
+words, written by someone who listened (the walkthrough's "Before you
+start" says how). A scripted VoiceOver run never writes them, and never
+overwrites what a cell holds: it appends, after a `; `, one of these four,
+with the versions read where they are kept (VoiceOver's from its own
+`Info.plist`, not from the library that drives it):
+
+- `heard (scripted VoiceOver <version>, macOS <version>, Guidepup <version>, app <version>, run <id>)`:
+  every phrase the row expects was spoken when it should have been;
+- `heard in part (scripted VoiceOver <version>, macOS <version>, Guidepup <version>, app <version>, run <id>): not scripted: <what>`:
+  what was scripted was spoken, and `<what>` was not scripted;
+- `not heard (scripted VoiceOver <version>, macOS <version>, Guidepup <version>, app <version>, run <id>): "<phrase>" expected after <action>; #<issue>`:
+  a phrase the row expects was not spoken, filed as an issue;
+- `not scripted: a person's`: no script reaches the row.
+
+**Heard is not a pass: no one listened.** It says the words were spoken,
+not that they were audible, made sense, or came once and at the right
+moment. A row marked `not heard` or `heard in part`, and what a script
+cannot establish at all (the rotor's lists, speech flooded by progress
+sentences, native choosers and the Finder, the engine's page inside the
+frames, a person's own VoiceOver settings), are the sitting's. **The
+Narrator column is not scripted**, since no tool here drives Narrator, and
+for 1.0 and every release while the Windows build is a beta it is not
+walked either (ADR-063): its cells keep what they say. A unit test,
+`tests/unit/accessibility-record.test.ts`, holds both reader columns to
+this legend.
 
 ### Header, on every screen
 
@@ -828,7 +859,9 @@ state are said at all, and are the right ones.
   (Windows) cell of the row named in bold in each step below, replacing
   "not yet run: a person's" with one of: `pass`; `finding: #<issue>` (file
   one issue per defect, `type:bug`, with the screen, the steps and what was
-  heard); or `not reachable: <why>`. Fill in the run's row in
+  heard); or `not reachable: <why>`. What a scripted run appended after a
+  `; ` stays where it is, after your word (the [Reader legend](#results-by-screen)).
+  Fill in the run's row in
   [Reader runs](#reader-runs): the app version, the reader and OS
   versions, the date, and who walked it. The results go in as a pull
   request that changes only those cells
@@ -1647,6 +1680,11 @@ Accessibility, Visual effects, **Animation effects** off): every control
 reached, its focus seen, nothing moving that is not the map's own
 animation (the engine's, F1).
 
+From 1.0 (ADR-063) a release's VoiceOver row is the gate's sitting
+([`acceptance-sitting.md`](acceptance-sitting.md), items 2 to 5 and 10),
+with the macOS and VoiceOver versions it ran on; a scripted run, when it
+has its own row, says "scripted" in **Walked by** and is not a walk.
+
 | Run | App version | OS and version | Reader and version | Date | Walked by | Findings |
 |---|---|---|---|---|---|---|
 | Keyboard only, Night and Parchment, reduced motion on | 0.1.0 | macOS and Windows, versions not recorded | none | on or before 8 Oct 2026 | the maintainer | none noted; the walk was reported done in the coordinating session, its measurements not carried by the report |
@@ -1687,4 +1725,9 @@ filled in here.
   on 8 Oct 2026 with no issue noted; the versions the rows ask for were not
   recorded, so the next release's gate records them at the time of the run,
   and every part changed since 0.1.0 is walked then.
+- For 1.0 (ADR-063): the VoiceOver rows the scripted run marks `not heard`
+  or `heard in part`, and what no script can establish, in the gate's
+  sitting ([`acceptance-sitting.md`](acceptance-sitting.md), item 5). The
+  Narrator walk is not made for 1.0, nor for any release while the
+  Windows build is a beta.
 - A look at the Parchment primary button (C1).

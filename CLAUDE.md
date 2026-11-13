@@ -188,8 +188,9 @@ gitignored.
   goes into the contrast test; a component the document does not cover yet
   adds its rule to section 8.2 in the same change.
 - **The gate documents quote the app.** `docs/acceptance.md`,
-  `docs/acceptance-stranger.md` and the walkthrough in
-  `docs/accessibility.md` quote its sentences and control names: change one
+  `docs/acceptance-sitting.md`, `docs/acceptance-stranger.md` and the
+  walkthrough in `docs/accessibility.md` quote its sentences and control
+  names (ADR-063 says which of them the gate runs): change one
   and change them in the same pull request. What a machine cannot judge is
   recorded as not automated, never as passed.
 - **Public repository.** No machine paths, e-mail addresses, private

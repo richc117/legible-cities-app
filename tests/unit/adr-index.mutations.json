@@ -1,0 +1,10 @@
+[
+  {
+    "file": "docs/adr/README.md",
+    "find": "| 062 | Reserved: issue 686's record, written in its own pull request | - | - |\n",
+    "replace": "| 062 | Reserved: issue 686's record, written in its own pull request | - | - |\n| 062 | Reserved: issue 686's record, written in its own pull request | - | - |\n",
+    "test": "tests/unit/adr-index.test.ts",
+    "title": "has one row for each number",
+    "why": "Two rows for one number, as two pull requests that each reserve it would leave: the index says two things and the test read only the last."
+  }
+]

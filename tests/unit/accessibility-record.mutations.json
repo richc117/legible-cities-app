@@ -6,5 +6,37 @@
     "test": "tests/unit/accessibility-record.test.ts",
     "title": "names files and tests that exist",
     "why": "The record cites as evidence a test that the required end-to-end job no longer runs, so a pass in it rests on a test that can fail unseen."
+  },
+  {
+    "file": "docs/accessibility.md",
+    "find": "| Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |",
+    "replace": "| Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded); pass (scripted VoiceOver 10, macOS 15.8.2, Guidepup 0.40.0, app 1.0.0, run 1) |",
+    "test": "tests/unit/accessibility-record.test.ts",
+    "title": "has, in the VoiceOver column, no scripted clause but the four, each after a `; `",
+    "why": "A scripted run that wrote a person's word: the record would call a row passed that no one listened to."
+  },
+  {
+    "file": "docs/accessibility.md",
+    "find": "| pass (the icon never moves) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |",
+    "replace": "| pass (the icon never moves) | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded); heard (scripted VoiceOver 10, macOS 15.8.2, Guidepup 0.40.0, app 1.0.0, run 1) |",
+    "test": "tests/unit/accessibility-record.test.ts",
+    "title": "has, in the Narrator column, no scripted clause at all",
+    "why": "A Narrator cell that says it was heard by a script, when nothing here scripts Narrator and 1.0 does not walk it."
+  },
+  {
+    "file": "docs/accessibility.md",
+    "find": "**Heard is not a pass: no one listened.** ",
+    "replace": "",
+    "test": "tests/unit/accessibility-record.test.ts",
+    "title": "sets out the four clauses, and says heard is not a pass",
+    "why": "The legend no longer says that a scripted heard is not a pass, so a reader of the record could take one for a walk."
+  },
+  {
+    "file": "docs/accessibility.md",
+    "find": "| Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | pass (the maintainer's walk on 0.1.0, reported 8 Oct 2026; no issue noted, the reader's version not recorded) |",
+    "replace": "| Jobs toggle, Settings | pass | pass | pass | pass | pass | pass | heard (scripted VoiceOver 10, macOS 15.8.2, Guidepup 0.40.0, app 1.0.0, run 1) |",
+    "test": "tests/unit/accessibility-record.test.ts",
+    "title": "has, in the VoiceOver column, no scripted clause but the four, each after a `; `",
+    "why": "A scripted run that overwrote a person's walk instead of appending to it: the record loses what someone heard."
   }
 ]
