@@ -101,9 +101,8 @@ landed, the record says that part is not automated.
   for the final candidate, the sitting walks by ear instead the VoiceOver
   rows the record marks as changed or new since 0.1.0: those reading "not
   yet run: a person's" and those walked only "as it stood at 0.1.0".
-- **The assistant's visual review**: once issue 689 lands, every image
-  the automated run kept, read under the reviewer's protocol, which that
-  issue adds to [`docs/acceptance.md`](acceptance.md#the-reviewers-protocol).
+- **The assistant's visual review**: every image the automated run kept,
+  read under [the reviewer's protocol](acceptance.md#the-reviewers-protocol).
   The evidence the reviewer reads carries no machine check's result; those
   are in the run's record, read only after the verdicts. Its verdicts,
   `looks right`, `looks wrong` or `cannot tell` and never `pass`, go into

@@ -352,9 +352,7 @@ describe('the gate documents', () => {
   ]
   // A heading another pull request adds, allowed to be missing until it
   // lands; once it is there, the test below fails until its entry goes.
-  const PENDING = new Set([
-    'acceptance.md#the-reviewers-protocol', // issue 689, the visual evidence
-  ])
+  const PENDING = new Set<string>([])
 
   /** GitHub's anchor for a heading's text. */
   const slug = (text: string): string =>

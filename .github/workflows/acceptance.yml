@@ -13,8 +13,7 @@
 # the tag itself.
 #
 # What it cannot do is the rest of the gate (ADR-063, docs/releasing.md):
-# the assistant's review of the images it keeps, once issue 689 lands, and
-# a person's sitting on the final candidate (docs/acceptance-sitting.md),
+# the assistant's review of the images it keeps, and a person's sitting on the final candidate (docs/acceptance-sitting.md),
 # which meets the Mac's first-open warning and walks by ear what no script
 # heard. A runner downloads through the GitHub CLI, which sets no
 # quarantine attribute and no mark of the web, so Gatekeeper and
@@ -321,5 +320,26 @@ jobs:
           path: |
             ${{ runner.temp }}/acceptance/*.md
             ${{ runner.temp }}/acceptance/*.png
+          if-no-files-found: warn
+          retention-days: 30
+
+      # The pictures a reviewer reads, and the manifest that names them
+      # (docs/acceptance.md, "The visual evidence"): one artefact a system, so
+      # a run keeps both. A run that fails still has what it took.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: acceptance-evidence-${{ matrix.target }}
+          path: ${{ runner.temp }}/acceptance/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # The key to the control pairs, apart from the evidence: the reviewer
+      # opens it only after every verdict is written.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: acceptance-evidence-key-${{ matrix.target }}
+          path: ${{ runner.temp }}/acceptance/evidence-key/
           if-no-files-found: warn
           retention-days: 30

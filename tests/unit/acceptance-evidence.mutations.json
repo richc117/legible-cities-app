@@ -1,0 +1,234 @@
+[
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (change.pixels <= noise.pixels)",
+    "replace": "if (change.pixels < noise.pixels)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "notes, and does not fail, a change no more than the noise",
+    "why": "A change exactly as large as the noise would be read as a change: the comparison would call the noise a difference."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "blank: fraction < 0.01",
+    "replace": "blank: fraction <= 0.01",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "is fewer than 1% of the pixels more than 8 from the corner pixel",
+    "why": "The blank frame's boundary moved: a frame holding exactly 1% of drawn pixels would be called blank."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "pixelDifference(a.data, b.data, a.width, 0, TOLERANCE)",
+    "replace": "pixelDifference(a.data, b.data, a.width, 0, 0)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "counts a difference at the tolerance of 8, never below it",
+    "why": "Differences judged at no tolerance: rasteriser noise of a few levels would read as a changed picture."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (a.width !== b.width || a.height !== b.height) {",
+    "replace": "if (false) {",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says two sizes differ in every pixel",
+    "why": "Two shots of different sizes would reach the pixel comparison and throw, instead of being reported as a difference."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (ends.pixels === 0)\n",
+    "replace": "  if (ends.pixels < 0)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants an export with nothing-drawn frames failed",
+    "why": "An export whose first and last frames are the same, a motionless reel, would pass."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (after <= before)",
+    "replace": "if (after < before)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants a new colour to rise from none",
+    "why": "A line colour that is no more on the map than before it was chosen would pass."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (change.fraction < threshold)",
+    "replace": "if (change.fraction > threshold)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails under a threshold once one is set",
+    "why": "A threshold set by a measuring run would fail the large changes and pass the small ones."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (widthBefore === widthAfter)",
+    "replace": "if (false)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants the face loaded, and only notes",
+    "why": "A typeface that was chosen but did not change a label's measured width would pass."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (pair.control !== null) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "The manifest would hold no control pair, and the reviewer could not tell whether a reading is to be trusted."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    await locator.screenshot({ path })\n    this.#read(path)\n",
+    "replace": "    await locator.screenshot({ path })\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps a shot as <id>.png, and throws for one that was not written",
+    "why": "A shot that was never written would be kept as evidence without a word."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (difference(before, this.#read(path)).pixels === 0) return",
+    "replace": "if (difference(before, this.#read(path)).pixels === -1) return",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "settles on the first two shots that agree",
+    "why": "A picture that has stopped changing would never be known to have, and every shot would be reported as unsettled."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "outcome: 'fail', said: 'no pixel changed in a second of playing'",
+    "replace": "outcome: 'note', said: 'no pixel changed in a second of playing'",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails when the trains did not move in a second",
+    "why": "A map whose trains do not move would be noted, not failed."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "return { ...base, outcome: 'note', said: `${measured}; no threshold is set yet${unsteady}` }",
+    "replace": "return { ...base, outcome: 'fail', said: `${measured}; no threshold is set yet${unsteady}` }",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "only notes the number while no threshold is set",
+    "why": "A number with no threshold behind it would fail a step on the first run, before any measuring run set one."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      outcome: steady ? 'fail' : 'note',\n      said: `no pixel changed:",
+    "replace": "      outcome: 'fail',\n      said: `no pixel changed:",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "only notes that nothing changed when the map was not steady",
+    "why": "A map that was still moving would fail a step for showing no change."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "e.check?.outcome === 'fail')",
+    "replace": "e.check?.outcome !== 'ok')",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "records only a failed check as a problem",
+    "why": "A note would fail a step on a first run, before any threshold has been measured."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (found.unautomated > 0) return 'pass, part not automated'\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "leaves a step that is part not automated so",
+    "why": "A step with a picture kept would read as a plain pass, and its not-automated part would be lost from the record."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "outcome: fraction === 0 ? 'fail' : blank ? 'note' : 'ok',",
+    "replace": "outcome: blank ? 'fail' : 'ok',",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "fails a picture with nothing in it, only notes one nearly empty",
+    "why": "A frame under the unmeasured 1% would fail a step."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": ".filter((f) => times[f.k] >= openingSeconds)",
+    "replace": ".filter((f) => times[f.k] >= 0)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "does not judge a frame inside the opening",
+    "why": "A GIF's title card, bare by design, would be judged for being empty."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      outcome: 'note',\n      said: `the label measured ${widthAfter}",
+    "replace": "      outcome: 'fail',\n      said: `the label measured ${widthAfter}",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "wants the face loaded, and only notes",
+    "why": "A label that measured the same, where the selector may have found nothing real, would fail a step."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": ".map((e) => ({ ...e, control: undefined, check: undefined }))",
+    "replace": ".map((e) => ({ ...e, check: undefined }))",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "The manifest would say which entries are control pairs, and the reviewer's reading would not be blind."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      .sort((a, b) => a.step - b.step || a.id.localeCompare(b.id))\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "orders the manifest by step and id",
+    "why": "A control written straight after the entry it shadows would be recognised by its position."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (pair.noteOnly === true && check.outcome === 'fail')",
+    "replace": "if (false && check.outcome === 'fail')",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "only notes that nothing changed for a setting the picture need not show",
+    "why": "A line order that moves no pixel of the map would fail the step, as it did on one system."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "randomBytes(5).toString('hex')",
+    "replace": "String(this.#kept.size).padStart(10, '0')",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "names the kept pictures at random",
+    "why": "Kept names would be the same in every run, and the reviewer could work out which picture is which."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "images: pair.controlShots ?? [],",
+    "replace": "images: [pair.a1, pair.a2, pair.a2],",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "copies no file twice",
+    "why": "A control built of the pair's own shots would list the same files again, and copy none of them under a name of its own."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (kept !== undefined) return kept",
+    "replace": "if (false) return kept",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps a picture named by two entries once",
+    "why": "A picture listed by two entries would be copied twice, and the copies would be byte for byte the same."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": ".map((e) => ({ ...e, control: undefined, check: undefined }))",
+    "replace": ".map((e) => ({ ...e, control: undefined }))",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks the control as if the settings had changed",
+    "why": "The manifest would carry the machine checks, and a control's empty check would give it away."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const swapped = pair.control !== null && this.#swap()",
+    "replace": "const swapped = pair.control !== null && false",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "draws which of the two ids the real entry takes",
+    "why": "The real entry would always take the pair's own id, and the control the other: the ids would give it away."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "for (let again = 0; again < (pair.noteOnly === true ? 0 : 5); again++) {",
+    "replace": "for (let again = 0; again < 0; again++) {",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "looks again before it judges a B that equals A1",
+    "why": "A redraw slower than the shot would give B the same as A1, and fail a correct build."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const names = all.flatMap((e) => e.images).sort()",
+    "replace": "const names = all.filter((e) => !e.control).flatMap((e) => e.images).sort()",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "names the step’s pictures, controls included, as one sorted list",
+    "why": "The record's row would list the real pictures only, and so name the controls by leaving them out."
+  }
+]

@@ -51,22 +51,14 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmdirSync,
   rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs'
 import { arch, cpus, homedir, release, tmpdir, totalmem, version as osVersion } from 'node:os'
-import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Locator,
-  type Page,
-} from '@playwright/test'
+import { basename, dirname, join, resolve } from 'node:path'
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import { HELP_PAGES } from '../../src/main/help-ipc'
 import { dayWords } from '../../src/renderer/src/dates'
 import {
@@ -75,6 +67,7 @@ import {
   PUT_BACK_SIZES,
   SIZES_RESET_SAID,
 } from '../../src/renderer/src/putBackWords'
+import { CARD_SECONDS, DRAW_IN_SECONDS } from '../../src/shared/opening'
 import { OFFERED_PRESETS } from '../../src/shared/export'
 import { FIND_A_FEED, SOURCE_HINT } from '../../src/shared/feedHelp'
 import type { ProjectRecord } from '../../src/shared/project/types'
@@ -87,6 +80,21 @@ import {
   openCell,
   type CellId,
 } from '../support/project'
+import { MINUTE, SECOND, bringToFront, inside, launchApp, real, sleep, until } from './harness'
+import {
+  Evidence,
+  stepResult,
+  frameAt,
+  judgeBlank,
+  judgeTypeface,
+  measureLabel,
+  sampleTimes,
+  type Check,
+  type EntryInit,
+  type Pair,
+  type Sampled,
+  type Shootable,
+} from './evidence'
 import { tagContains as gitTagContains, tagSourceContains, writtenSince } from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
@@ -129,6 +137,32 @@ const OPENINGS = [
   'The network drawing in',
   'Title card, then the network drawing in',
 ]
+/**
+ * The not-automated sentences of the rows whose picture the run keeps, said
+ * once: the record carries each, and so does the evidence manifest beside the
+ * pictures (tests/acceptance/evidence.ts).
+ */
+const LOOKS = {
+  map: "whether the map, its trains and the page's controls look right (a screenshot of the map is kept beside the record), and that it sits after cell 02 and scrolls with the cells.",
+  scrub:
+    'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and says the margin is one of the sizes in cell 04, and that the map moves to the hour the slider is left at.',
+  theme:
+    'whether the page looks sepia and then warm dark, and whether a line width of 12 draws the lines visibly thicker with no station moved.',
+  markers:
+    'whether Beck draws ticks on the side of the names and rings at interchanges, Square draws square interchanges, Inter sets the names in Inter, a dot size of 8 draws larger trains, and a trail of 1.5 draws a fading trail behind a moving train and none behind a standing one.',
+  colour: "the drag's feel, and whether the map, its chips and the time chart show the new colour.",
+  options:
+    'the line options (issue 394): a name, a refusal past 40 characters, a bold, cased and dashed line, Shown off and Reset line, and whether the map, its chips, rows and trains show them.',
+  order:
+    "whether the page's line rows, and an export's, follow the order; whether the dragged line followed the pointer and the lines it passed stepped aside; whether an arrow's tooltip shows on hover and on focus.",
+  safe: 'whether the parts Instagram covers look shaded (the address asks for the safe zones).',
+  post: 'whether the post is a still of the map and the GIF plays as one (structure checked with the bundled ffprobe).',
+  caption:
+    'whether the caption is drawn under the title, in the preview and in the post and the GIF (the preview’s address and the record carry it, and the alt text is read from the sidecar in step 13).',
+  opening:
+    'whether the GIF opens on its title card over bare ground, naming the city, the network, the day and the caption, and the network then draws itself in line by line (the record and the plan carry the opening; the look is a person’s).',
+} as const
+
 const OPENING_SENTENCE =
   'What plays before the storyboard: a title card naming the city, the network and the service day, with the caption under them, or the network drawing itself in, line by line.'
 /** What step 17 renames it to. */
@@ -136,10 +170,7 @@ const RENAMED = 'Los Angeles'
 /** The notebook's six cells, in the order they are read (ADR-045). */
 const CELL_IDS: readonly CellId[] = ['data', 'process', 'frame', 'style', 'lines', 'export']
 
-const SECOND = 1_000
-const MINUTE = 60 * SECOND
 /** Every wait has a deadline; these are generous, because nothing here has been measured on Windows. */
-const LAUNCH_MS = 2 * MINUTE
 const READY_MS = 3 * MINUTE
 const FIRST_RUN_MS = 2 * MINUTE
 const FEED_READ_MS = 15 * MINUTE
@@ -275,37 +306,7 @@ function installOf(executable: string): string {
     : dirname(executable)
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((done) => setTimeout(done, ms))
-
-const real = (path: string): string => {
-  try {
-    return realpathSync.native(path)
-  } catch {
-    return resolve(path)
-  }
-}
-
-/** Whether `path` is `root` or inside it, after links, without regard to case on Windows. */
-function inside(path: string, root: string): boolean {
-  const fold = (p: string): string =>
-    process.platform === 'win32' ? real(p).toLowerCase() : real(p)
-  const rel = relative(fold(root), fold(path))
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-}
-
 const samePath = (a: string, b: string): boolean => inside(a, b) && inside(b, a)
-
-/** The environment a person's launch would have: no development switch, no engine pointer. */
-function launchEnvironment(exportFolder: string): Record<string, string> {
-  const env: Record<string, string> = {}
-  for (const [key, value] of Object.entries(process.env)) {
-    if (value === undefined) continue
-    if (/^(SCHEMATIC_|LEGIBLE_|PYTHON)/i.test(key) || key === 'ELECTRON_RUN_AS_NODE') continue
-    env[key] = value
-  }
-  env.LEGIBLE_EXPORT_FOLDER = exportFolder
-  return env
-}
 
 /** Every process whose executable or command line is inside `dir`. */
 function processesUnder(dir: string): string[] {
@@ -381,6 +382,27 @@ interface FfprobeAnswer {
   }[]
 }
 
+/**
+ * Five frames of an export, from its start to just short of its end, decoded
+ * by the bundled ffmpeg: what the contact sheet and the blank check are made
+ * from (tests/acceptance/evidence.ts).
+ */
+function sampledFrames(resources: string, file: string): Sampled {
+  const probe = ffprobe(resources, file)
+  const video = probe.streams?.find((s) => s.codec_type === 'video')
+  const seconds = Number(probe.format?.duration)
+  if (video?.width === undefined || video.height === undefined)
+    throw new Error(`the bundled ffprobe gave no size for ${basename(file)}`)
+  const exe = join(resources, 'ffmpeg', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg')
+  const times = sampleTimes(Number.isFinite(seconds) && seconds > 0 ? seconds : 1)
+  return {
+    times,
+    frames: times.map((t) =>
+      frameAt(exe, file, t, [video.width as number, video.height as number]),
+    ),
+  }
+}
+
 /** The macOS version by its marketing number, or the kernel's elsewhere. */
 function operatingSystem(): string {
   if (process.platform === 'darwin') {
@@ -418,91 +440,12 @@ const messageOf = (error: unknown): string =>
 
 // ------------------------------------------------------------------ the page
 
-/**
- * Every sentence a status or alert line has held, in order, from a
- * MutationObserver installed at launch: a transient sentence - "downloaded
- * 170 of 170 bytes" - is read here after it has gone from the screen.
- */
-async function installRecorder(page: Page): Promise<void> {
-  await page.waitForLoadState('domcontentloaded')
-  await page.evaluate(() => {
-    const holder = window as unknown as { __said?: string[]; __line?: string[] }
-    if (holder.__said !== undefined) return
-    const said: string[] = []
-    holder.__said = said
-    // The export's line for the eye, which is not a live region since issue
-    // 542 (it changes with every frame): what it shows is kept apart from
-    // what is spoken, so the count going up is still seen.
-    // The selector finds the same element `exportLine` finds in
-    // tests/support/project.ts, written out because this runs in the page,
-    // where no locator reaches.
-    const line: string[] = []
-    holder.__line = line
-    const last = new WeakMap<Element, string>()
-    const scan = (): void => {
-      for (const element of document.querySelectorAll(
-        '[role="status"], [role="alert"], .export-run .progress-message',
-      )) {
-        const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
-        if (text !== '' && last.get(element) !== text) {
-          const spoken = element.matches('[role="status"], [role="alert"]')
-          ;(spoken ? said : line).push(text)
-        }
-        last.set(element, text)
-      }
-    }
-    new MutationObserver(scan).observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
-    scan()
-  })
-}
-
-/**
- * The app's window shown, raised and focused, as a person using it has it.
- * Chromium stops a page's animation frames in a window macOS reports as
- * occluded, and throttles its tasks, so a window left behind others shows a
- * map that does not move and progress sentences that are never drawn. The
- * window is the app's; nothing is run inside the viewer's frame.
- */
-async function bringToFront(app: ElectronApplication, page: Page): Promise<string> {
-  await app.evaluate(({ BrowserWindow, app: electronApp }) => {
-    const window = BrowserWindow.getAllWindows()[0]
-    if (window === undefined) return
-    if (window.isMinimized()) window.restore()
-    window.show()
-    window.moveTop()
-    window.focus()
-    if (process.platform === 'darwin') electronApp.focus({ steal: true })
-  })
-  return page.evaluate(() => document.visibilityState)
-}
-
 const saidSoFar = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { __said?: string[] }).__said ?? [])
 
 /** What the export's line for the eye has shown, in order (not spoken: see `installRecorder`). */
 const lineSoFar = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { __line?: string[] }).__line ?? [])
-
-/** Poll until `probe` answers something other than undefined, or throw `what` at the deadline. */
-async function until<T>(
-  probe: () => Promise<T | undefined>,
-  deadline: number,
-  what: () => string | Promise<string>,
-  every = SECOND,
-): Promise<T> {
-  const end = Date.now() + deadline
-  for (;;) {
-    const answer = await probe().catch(() => undefined)
-    if (answer !== undefined) return answer
-    if (Date.now() > end)
-      throw new Error(`${await what()} (after ${Math.round(deadline / SECOND)} s)`)
-    await sleep(every)
-  }
-}
 
 /** The <dd> after a <dt> of exactly this text, inside `scope`. */
 const definition = (scope: Locator, term: string): Locator =>
@@ -710,6 +653,49 @@ test('a release, installed, through docs/acceptance.md', async () => {
   const recordPath = join(OUT, `acceptance-${PLATFORM}.md`)
   const record = new RunRecord(recordPath)
   record.applyPrior(process.env.LEGIBLE_ACCEPTANCE_PRIOR)
+  // The pictures a reviewer needs, and the machine checks beside them: kept
+  // under the record's folder, which the workflow uploads.
+  const evidence = new Evidence(join(OUT, 'evidence'))
+  const pairs = new Map<string, Pair>()
+  /** The map's frame, as the spec's own screenshot of it takes it. */
+  const mapOf = (on: Page): Shootable => on.locator('iframe.viewer-frame')
+  /**
+   * The two shots at the settings as they are, before a change; the changed
+   * shot comes from `after`. Each is a check of its own, so one picture that
+   * cannot be taken is a problem of that picture and the step goes on.
+   */
+  const evBefore = (
+    log: StepLog,
+    on: Page,
+    key: string,
+    init: EntryInit,
+    options: { name?: string; control?: string; noteOnly?: boolean; target?: Shootable } = {},
+  ): Promise<void> =>
+    log.soft(`evidence: the pictures before ${key}`, async () => {
+      pairs.set(
+        key,
+        await evidence.begin(on, options.target ?? mapOf(on), init, {
+          name: options.name ?? key,
+          control: options.control,
+          noteOnly: options.noteOnly,
+        }),
+      )
+    })
+  const evAfter = (
+    log: StepLog,
+    key: string,
+    options: { colour?: () => Promise<string> } = {},
+  ): Promise<void> =>
+    log.soft(`evidence: the picture after ${key}`, async () => {
+      const pair = pairs.get(key)
+      if (pair === undefined) throw new Error('the pictures before it were not taken')
+      await evidence.finish(pair, {
+        colour: options.colour === undefined ? undefined : await options.colour(),
+        window: page(),
+      })
+    })
+  /** An entry for a check the run made on a measurement that is not a picture difference. */
+  const measured = (init: EntryInit, check: Check): void => evidence.keep(init, [], check)
   // What only the workflow knows, said as such in a local run.
   for (const name of [
     'Clean machine?',
@@ -843,34 +829,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     return session.page
   }
 
-  const launch = async (): Promise<Page> => {
-    const app = await electron.launch({
-      executablePath: session.exe,
-      args: [`--user-data-dir=${session.profile}`],
-      cwd: session.install,
-      env: launchEnvironment(session.exportFolder),
-      timeout: LAUNCH_MS,
-    })
-    session.app = app
-    const window = await app.firstWindow({ timeout: LAUNCH_MS })
-    session.page = window
-    noteLogFiles()
-    await installRecorder(window)
-    await bringToFront(app, window)
-    const where = await app.evaluate(({ app: electronApp }) => ({
-      userData: electronApp.getPath('userData'),
-      resources: process.resourcesPath,
-      packaged: electronApp.isPackaged,
-      version: electronApp.getVersion(),
-    }))
-    session.resources = where.resources
-    session.userData = where.userData
-    if (!where.packaged) throw new Error('the app launched does not know itself as packaged')
-    if (!inside(where.userData, session.profile)) {
-      throw new Error(`--user-data-dir was not honoured: the profile is ${where.userData}`)
-    }
-    return window
-  }
+  const launch = (): Promise<Page> => launchApp(session, noteLogFiles)
 
   const quit = async (): Promise<void> => {
     const app = session.app
@@ -931,24 +890,24 @@ test('a release, installed, through docs/acceptance.md', async () => {
       } catch (error) {
         thrown = messageOf(error)
       }
+      for (const f of evidence.failures(n)) log.problems.push(f)
       const failed = thrown !== null || log.problems.length > 0
       if (failed && session.page !== null) {
         const shot = join(OUT, `acceptance-${PLATFORM}-step-${String(n).padStart(2, '0')}.png`)
         await session.page.screenshot({ path: shot, fullPage: true }).catch(() => undefined)
       }
-      const result: Result = failed
-        ? 'fail'
-        : log.unchecked.length > 0
-          ? 'pass, part not checked'
-          : log.unautomated.length > 0
-            ? 'pass, part not automated'
-            : 'pass'
+      const result: Result = stepResult({
+        failed,
+        unchecked: log.unchecked.length,
+        unautomated: log.unautomated.length,
+      })
       const notes = [
         ...(thrown === null ? [] : [`Stopped: ${thrown}`]),
         ...log.problems.map((p) => `Failed: ${p}`),
         ...log.notes,
         ...log.unchecked.map((u) => `Not checked, not in this build: ${u}`),
         ...log.unautomated.map((u) => `Not automated: ${u}`),
+        ...(evidence.summary(n) === '' ? [] : [evidence.summary(n)]),
         `(${Math.round((Date.now() - begun) / SECOND)} s)`,
       ]
       record.step(n, result, notes.join(' '), log.title)
@@ -1387,6 +1346,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const count = await text(map.locator('#count'))
         if (moved) {
           log.note(`The page's clock moved from ${first}; ${count}.`)
+          await log.soft('evidence: two shots of the map a second apart', async () => {
+            await evidence.moving(
+              {
+                id: '4-map',
+                step: 4,
+                row: LOOKS.map,
+                question:
+                  'The two pictures are the map a second apart while it plays. What has moved between them: the trains, the clock?',
+                expected: [LA],
+              },
+              frameElement,
+            )
+          })
         } else if (visibility !== 'visible') {
           log.notAutomated(
             `whether the trains move: the window was ${visibility} to Chromium even after it was brought to the front, which stops the page's animation frames, and the clock stayed at ${first} (${count}).`,
@@ -1409,9 +1381,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           .screenshot({ path: join(OUT, `acceptance-${PLATFORM}-viewer.png`) })
           .catch(() => undefined)
       })
-      log.notAutomated(
-        "whether the map, its trains and the page's controls look right (a screenshot of the map is kept beside the record), and that it sits after cell 02 and scrolls with the cells.",
-      )
+      log.notAutomated(LOOKS.map)
     })
 
     // ---------------------------------------------------------------- 5
@@ -1920,12 +1890,26 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(play).toHaveAccessibleName('Play day')
         const min = Number(await scrub.getAttribute('min'))
         const max = Number(await scrub.getAttribute('max'))
-        const before = await text(clock)
+        const clockBefore = await text(clock)
+        await evBefore(
+          log,
+          window,
+          '7-scrub',
+          {
+            id: '7-scrub',
+            step: 7,
+            row: LOOKS.scrub,
+            question:
+              'The third picture is the map after the slider was moved to a later hour. Do the trains stand elsewhere than in the first?',
+          },
+          { name: 'scrub-moves' },
+        )
         // A value on the slider's own step, which the range input refuses otherwise.
         const step = Number((await scrub.getAttribute('step')) ?? '1')
         await scrub.fill(String(min + Math.round(((max - min) * 0.6) / step) * step))
-        await expect.poll(() => text(clock), { timeout: SHORT_MS }).not.toBe(before)
-        log.note(`The clock read ${before}, then ${await text(clock)} after the slider moved.`)
+        await expect.poll(() => text(clock), { timeout: SHORT_MS }).not.toBe(clockBefore)
+        await evAfter(log, '7-scrub')
+        log.note(`The clock read ${clockBefore}, then ${await text(clock)} after the slider moved.`)
         await play.click()
         await expect(play).toHaveAccessibleName('Pause')
         await play.click()
@@ -1939,9 +1923,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.notAutomated(
         "the calendar's own days: min and max were checked, not the platform's date picker.",
       )
-      log.notAutomated(
-        'that cell 03 offers no crop, rotation, margin or clip mask, not even greyed out, and says the margin is one of the sizes in cell 04, and that the map moves to the hour the slider is left at.',
-      )
+      log.notAutomated(LOOKS.scrub)
       // The Trip section (issue 272) is checked against the stand-in engine and
       // page by tests/e2e/trip.spec.ts; against the real engine's page its
       // fade and its steps are for the person running the checklist.
@@ -2016,6 +1998,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
       // The map takes its theme in place since engine v0.11.0 (issue 349), so
       // its frame is not sent anywhere: the address is the one it had.
       const addressBefore = await viewer.getAttribute('src')
+      await evBefore(
+        log,
+        window,
+        '8-theme',
+        {
+          id: '8-theme',
+          step: 8,
+          row: LOOKS.theme,
+          question:
+            'The first two pictures are the map in Warm dark, twice; the third is the same map in Sepia. Does the map look sepia in the third, and the same in the first two?',
+        },
+        { name: 'theme', control: '8-ground' },
+      )
       await sepiaCard.click()
       await log.soft('sepia at once, with no run', async () => {
         expect(addressBefore, 'the map’s frame had an address before the press').not.toBeNull()
@@ -2037,6 +2032,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect(said.filter((s) => /^(Laid out|Drawn )/.test(s))).toEqual([])
         expect(await window.locator('html').getAttribute('data-theme')).toBe(interfaceTheme)
       })
+      await evAfter(log, '8-theme')
       await warmCard.click()
       await log.soft('Warm dark brings it back', async () => {
         await expect(
@@ -2048,6 +2044,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       const mark2 = (await saidSoFar(window)).length
       const width = sizes.getByLabel('Line width', { exact: true })
+      await evBefore(
+        log,
+        window,
+        '8-width',
+        {
+          id: '8-width',
+          step: 8,
+          row: LOOKS.theme,
+          question:
+            'The first two pictures are the map at the engine’s line width, twice; the third has a line width of 12. Are the lines visibly thicker in the third, and the stations where they were?',
+        },
+        { name: 'line-width', control: '8-weight' },
+      )
       await width.fill('30')
       await width.press('Enter')
       await log.soft(
@@ -2072,6 +2081,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
         await expect(width).toHaveValue('12')
       })
+      await evAfter(log, '8-width')
       // The row carries its sentence only while the cell is collapsed.
       await closeCell(window, 'style')
       await log.soft('collapsed, the row says the sizes are the person’s', () =>
@@ -2159,6 +2169,19 @@ test('a release, installed, through docs/acceptance.md', async () => {
           /^0 to 3 seconds\. The engine’s own is 0\. There is no trail while a train stands at a station/,
         )
       })
+      await evBefore(
+        log,
+        window,
+        '8-beck',
+        {
+          id: '8-beck',
+          step: 8,
+          row: LOOKS.markers,
+          question:
+            'The third picture is the map after the Beck look was chosen. Are there ticks on the side of the station names?',
+        },
+        { name: 'look-beck' },
+      )
       await look.selectOption('beck')
       await until(
         async () => ((await recordOf(window, LA)).style.stationShape === 'tick' ? true : undefined),
@@ -2179,20 +2202,93 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await expect(stationMarker).toHaveValue('tick')
         await expect(width).toHaveValue('6')
       })
+      await evAfter(log, '8-beck')
       await width.fill('7')
       await width.press('Enter')
       await log.soft('a size typed over a look turns it to Custom', () =>
         expect(look).toHaveValue('custom'),
       )
+      await evBefore(
+        log,
+        window,
+        '8-interchange',
+        {
+          id: '8-interchange',
+          step: 8,
+          row: LOOKS.markers,
+          question:
+            'The third picture is the map after the interchange marker was set to Square. Are the interchanges square, where the first two have rings?',
+        },
+        { name: 'interchange-marker' },
+      )
       await interchangeMarker.selectOption('square')
+      await until(
+        async () =>
+          (await recordOf(window, LA)).style.interchangeShape === 'square' ? true : undefined,
+        REBUILD_MS,
+        () => 'the square interchange was never written to the project',
+      )
+      await evAfter(log, '8-interchange')
+      const labelBefore = await measureLabel(window).catch(() => null)
+      await evBefore(
+        log,
+        window,
+        '8-typeface',
+        {
+          id: '8-typeface',
+          step: 8,
+          row: LOOKS.markers,
+          question:
+            'The third picture is the map after the label typeface was set to Inter. Are the names set in Inter, where the first two are in the system face?',
+          expected: labelBefore?.label ? [labelBefore.label] : [],
+        },
+        { name: 'typeface-pixels' },
+      )
       await typeface.selectOption('inter')
       await until(
-        async () => {
-          const { interchangeShape, labelFont } = (await recordOf(window, LA)).style
-          return interchangeShape === 'square' && labelFont === 'inter' ? true : undefined
-        },
+        async () => ((await recordOf(window, LA)).style.labelFont === 'inter' ? true : undefined),
         REBUILD_MS,
-        () => 'the square interchange and Inter were never written to the project',
+        () => 'Inter was never written to the project',
+      )
+      await evAfter(log, '8-typeface')
+      await log.soft(
+        'evidence: the typeface is loaded and a label measures differently',
+        async () => {
+          const now = await measureLabel(window, labelBefore?.label ?? undefined, {
+            face: /inter/i,
+          })
+          measured(
+            {
+              id: '8-typeface-label',
+              step: 8,
+              row: LOOKS.markers,
+              question: 'Is the name in the typeface pictures set in Inter?',
+              expected: now.label === null ? [] : [now.label],
+            },
+            judgeTypeface(
+              'typeface-width',
+              'Inter',
+              now.faces.some((f) => /inter/i.test(f)),
+              labelBefore?.width ?? null,
+              now.width,
+            ),
+          )
+        },
+      )
+      await evBefore(
+        log,
+        window,
+        '8-dot',
+        {
+          id: '8-dot',
+          step: 8,
+          row: LOOKS.markers,
+          question:
+            'The third picture is the map after the dot size was set to 8. Are the trains larger than in the first two?',
+        },
+        // No train need be in view at the hour the map is at, so the picture
+        // need not change with the dot size.
+        { name: 'dot-size', noteOnly: true },
       )
       await dot.fill('13')
       await dot.press('Enter')
@@ -2207,6 +2303,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
       await dot.fill('8')
       await dot.press('Enter')
+      await until(
+        async () => ((await recordOf(window, LA)).style.dotRadius === 8 ? true : undefined),
+        REBUILD_MS,
+        () => 'the dot size of 8 was never written to the project',
+      )
+      await evAfter(log, '8-dot')
       await trail.fill('1.5')
       await trail.press('Enter')
       await until(
@@ -2267,12 +2369,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
         REBUILD_MS,
         () => 'the second Reset never put the sizes back to the engine’s own',
       )
-      log.notAutomated(
-        'whether the page looks sepia and then warm dark, and whether a line width of 12 draws the lines visibly thicker with no station moved.',
-      )
-      log.notAutomated(
-        'whether Beck draws ticks on the side of the names and rings at interchanges, Square draws square interchanges, Inter sets the names in Inter, a dot size of 8 draws larger trains, and a trail of 1.5 draws a fading trail behind a moving train and none behind a standing one.',
-      )
+      log.notAutomated(LOOKS.theme)
+      log.notAutomated(LOOKS.markers)
     })
 
     // ---------------------------------------------------------------- 9
@@ -2287,6 +2385,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const source = rows.first().locator('.line-source')
       const feedWords = await text(source)
       log.note(`Line ${line}, "${feedWords}" to begin with.`)
+      await evBefore(
+        log,
+        window,
+        '9-colour',
+        {
+          id: '9-colour',
+          step: 9,
+          row: LOOKS.colour,
+          question: `The third picture is the map after line ${line} was given a colour of its own by dragging. Is line ${line} drawn in a colour it was not drawn in before, in the map and in its chip?`,
+        },
+        { name: 'line-colour' },
+      )
 
       await panel
         .getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
@@ -2369,6 +2479,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Drawn in the colours you chose, from the stored layout. The stations have not moved.',
         )
       })
+      await evAfter(log, '9-colour', {
+        colour: async () => (await recordOf(window, LA)).colors[line] as string,
+      })
 
       // Reset is in the chip's panel (issue 284), so the chip opens it again.
       await panel
@@ -2446,12 +2559,79 @@ test('a release, installed, through docs/acceptance.md', async () => {
       log.note(
         'Dragged with the mouse through the colour square and the hue slider, each released outside the picker.',
       )
-      log.notAutomated(
-        "the drag's feel, and whether the map, its chips and the time chart show the new colour.",
-      )
-      log.notAutomated(
-        'the line options (issue 394): a name, a refusal past 40 characters, a bold, cased and dashed line, Shown off and Reset line, and whether the map, its chips, rows and trains show them.',
-      )
+      // The line options (issue 394), one at a time on the first line, each
+      // against the shot before it, then put back so the steps after see the
+      // engine's own. What is driven is the cell's own: the record says when
+      // the map carries a choice (`projects.completeLines`).
+      await log.soft('the line options: bold, cased and dashed, then reset', async () => {
+        await panel
+          .getByRole('button', {
+            name: new RegExp(
+              `^Line options for line ${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},`,
+            ),
+          })
+          .click()
+        const group = panel.getByRole('group', {
+          name: `Line options for line ${line}`,
+          exact: true,
+        })
+        await expect(group).toBeVisible()
+        const choose = async (
+          key: string,
+          label: string,
+          value: string,
+          written: (now: ProjectRecord) => boolean,
+          question: string,
+        ): Promise<void> => {
+          await evBefore(
+            log,
+            window,
+            key,
+            { id: key, step: 9, row: LOOKS.options, question },
+            { name: key.replace(/^9-/, 'option-') },
+          )
+          await group.getByRole('combobox', { name: label, exact: true }).selectOption(value)
+          await until(
+            async () => (written(await recordOf(window, LA)) ? true : undefined),
+            REBUILD_MS,
+            () => `the ${label.toLowerCase()} option was never written to the project`,
+          )
+          await evAfter(log, key)
+        }
+        const of = (now: ProjectRecord): NonNullable<ProjectRecord['lines']>[string] | undefined =>
+          now.lines?.[line]
+        await choose(
+          '9-width',
+          'Width',
+          '1.25',
+          (now) => of(now)?.width === 1.25,
+          `The third picture is the map after line ${line} was made bold. Is line ${line} drawn thicker than in the first two, with its neighbours moved out to make room?`,
+        )
+        await choose(
+          '9-casing',
+          'Casing',
+          '0.5',
+          (now) => of(now)?.casing?.width === 0.5,
+          `The third picture is the map after line ${line} was given a casing. Does line ${line} have a white edge on each side that it did not have before?`,
+        )
+        await choose(
+          '9-dash',
+          'Dash',
+          'dashed',
+          (now) => of(now)?.dash === 'dashed',
+          `The third picture is the map after line ${line} was made dashed. Is line ${line} drawn in dashes?`,
+        )
+        await group
+          .getByRole('button', { name: `Reset line ${line}’s options`, exact: true })
+          .click()
+        await until(
+          async () => (of(await recordOf(window, LA)) === undefined ? true : undefined),
+          REBUILD_MS,
+          () => `Reset line ${line} never put the line's options back`,
+        )
+      })
+      log.notAutomated(LOOKS.colour)
+      log.notAutomated(LOOKS.options)
     })
 
     // ---------------------------------------------------------------- 10
@@ -2563,6 +2743,18 @@ test('a release, installed, through docs/acceptance.md', async () => {
 
       // Then the arrows, from the order the drag left.
       const first = carried[0]
+      await evBefore(
+        log,
+        window,
+        '10-order',
+        {
+          id: '10-order',
+          step: 10,
+          row: LOOKS.order,
+          question: `The third picture is the map after the order of the lines was changed with the arrows. Do the page's line rows stand in a different order from the first two? (The map itself need not change with the order, so a picture that looks the same is not a failure: say what you see.)`,
+        },
+        { name: 'order-changes', noteOnly: true },
+      )
       await button(first, 'down').click()
       await log.soft('the first move is said', () =>
         expect(status).toHaveText(`${first} is now 2 of ${total}.`),
@@ -2588,6 +2780,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Drawn with the lines in the order you chose, from the stored layout. The stations have not moved.',
         )
       })
+      await evAfter(log, '10-order')
       log.note(`Moved ${first} down and ${other} up: ${shown.join(', ')}.`)
       const back = panel.getByRole('button', { name: 'Back to alphabetical' })
       await back.click()
@@ -2600,9 +2793,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         REBUILD_MS,
         () => 'the alphabetical order was never written',
       )
-      log.notAutomated(
-        "whether the page's line rows, and an export's, follow the order; whether the dragged line followed the pointer and the lines it passed stepped aside; whether an arrow's tooltip shows on hover and on focus.",
-      )
+      log.notAutomated(LOOKS.order)
     })
 
     // ---------------------------------------------------------------- 11
@@ -2711,6 +2902,20 @@ test('a release, installed, through docs/acceptance.md', async () => {
           expect((await frameParams(window)).get('safe')).toBe('1')
         },
       )
+      await log.soft('evidence: cell 06’s preview, with the safe zones', async () => {
+        const path = await evidence.shot('11-preview', window.locator('iframe.export-frame'))
+        evidence.keep(
+          {
+            id: '11-preview',
+            step: 11,
+            row: LOOKS.safe,
+            question:
+              'Is the map drawn in the tall reel frame, with the parts the platform’s own bars and buttons cover (the top, the bottom and the bottom right) drawn shaded?',
+          },
+          [path],
+          judgeBlank('preview-blank', evidence.open(path)),
+        )
+      })
       // The opening issue 392 added, after the storyboard, on None: the reel
       // is timed as it comes.
       await log.soft('an Opening select after Storyboard, on None, with its four', async () => {
@@ -2852,9 +3057,21 @@ test('a release, installed, through docs/acceptance.md', async () => {
           `${statSync(done.path).size} bytes; the bundled ffprobe reads ${probe.format?.format_name}, ${video?.codec_name} ${video?.width}x${video?.height}, ${probe.format?.duration} s.`,
         )
       })
-      log.notAutomated(
-        'whether the parts Instagram covers look shaded (the address asks for the safe zones).',
-      )
+      await log.soft('evidence: frames of the reel', async () => {
+        evidence.keepFrames(
+          {
+            id: '11-reel',
+            step: 11,
+            row: LOOKS.safe,
+            question:
+              'Five frames of the reel, from the start to just before the end, then its first and its last. Is each a drawn map, and do they differ as the day goes on?',
+            expected: [LA],
+          },
+          sampledFrames(session.resources, done.path),
+          'reel-frames',
+        )
+      })
+      log.notAutomated(LOOKS.safe)
     })
 
     // ---------------------------------------------------------------- 12
@@ -2944,6 +3161,20 @@ test('a release, installed, through docs/acceptance.md', async () => {
         expect([video?.codec_name, video?.width, video?.height]).toEqual(['png', 1080, 1350])
         log.note(`Post: ${post.seconds} s, ${statSync(post.path).size} bytes, 1080x1350 PNG.`)
       })
+      await log.soft('evidence: the post', async () => {
+        evidence.keepStill(
+          {
+            id: '12-post',
+            step: 12,
+            row: LOOKS.post,
+            question:
+              'Is the post a still of the map, with the caption drawn under the title? Read the text in it against the expected strings.',
+            expected: [CAPTION],
+          },
+          post.path,
+          'post-blank',
+        )
+      })
 
       await preset.selectOption('instagram-reel-gif')
       await log.soft('Storyboard returns', () =>
@@ -3013,15 +3244,54 @@ test('a release, installed, through docs/acceptance.md', async () => {
           `GIF: ${gif.seconds} s, ${statSync(gif.path).size} bytes, ${video?.nb_read_packets} frames.`,
         )
       })
-      log.notAutomated(
-        'whether the post is a still of the map and the GIF plays as one (structure checked with the bundled ffprobe).',
-      )
-      log.notAutomated(
-        'whether the caption is drawn under the title, in the preview and in the post and the GIF (the preview’s address and the record carry it, and the alt text is read from the sidecar in step 13).',
-      )
-      log.notAutomated(
-        'whether the GIF opens on its title card over bare ground, naming the city, the network, the day and the caption, and the network then draws itself in line by line (the record and the plan carry the opening; the look is a person’s).',
-      )
+      await log.soft('evidence: frames of the GIF', async () => {
+        const choice = (await recordOf(window, LA)).export
+        const openingSeconds =
+          (choice.cardSecs ?? CARD_SECONDS.fallback) +
+          (choice.drawInSecs ?? DRAW_IN_SECONDS.fallback)
+        evidence.keepFrames(
+          {
+            id: '12-gif',
+            step: 12,
+            row: LOOKS.post,
+            question:
+              'Five frames of the GIF, from the start to just before the end, then its first and its last. Does it play as the map, with the day going on? Is the caption drawn under the title?',
+            expected: [CAPTION],
+          },
+          sampledFrames(session.resources, gif.path),
+          'gif-frames',
+          // The opening is the card and then the draw-in, as long as the export's
+          // record says (the defaults where it says nothing): a frame in it may be
+          // nearly empty and is not judged.
+          { openingSeconds },
+        )
+        // The same pictures answer the other two sentences of the row.
+        const names = ['sheet', 'first', 'last'].map((n) => evidence.pathOf(`12-gif-${n}.png`))
+        evidence.keep(
+          {
+            id: '12-gif-caption',
+            step: 12,
+            row: LOOKS.caption,
+            question: 'Is the caption drawn under the title in the GIF?',
+            expected: [CAPTION],
+          },
+          names,
+        )
+        evidence.keep(
+          {
+            id: '12-gif-opening',
+            step: 12,
+            row: LOOKS.opening,
+            question:
+              'Does the GIF open on a title card over bare ground, naming the city, the network, the day and the caption, and does the network then draw itself in?',
+            expected: [LA, CAPTION],
+          },
+          names,
+        )
+      })
+      log.notAutomated(LOOKS.post)
+      log.notAutomated(LOOKS.caption)
+      log.notAutomated(LOOKS.opening)
     })
 
     // ---------------------------------------------------------------- 13

@@ -119,19 +119,19 @@ person:
   does not contain the commit that brought the attest job has none, so the
   record says "not attested (before 1.0)" and the step "pass, part not
   automated" rather than a failure.
-- **Judgement**: whether a map, a colour, a theme or a GIF looks right,
+- **Judgement**: whether a map, a colour, a theme or a GIF looks right (the
+  run keeps the pictures and measures what it can: see [the visual
+  evidence](#the-visual-evidence)),
   whether the page's rows follow a line order (step 10's two checks),
   whether a drag feels right (the spec drags the picker with the mouse and
   checks it stays open, and a line of the order by its grip and checks
   where it lands), and whether the Finder or File Explorer came to
   the front with the file selected (the spec records what the app asked
-  the system to show or open, and checks those files). Once issue 689
-  lands, the run keeps images of the map, preview and export rows with the
-  checks a machine can make of them, and whether each looks right is the
-  assistant's visual review under
-  [The reviewer's protocol](#the-reviewers-protocol), which that issue
-  adds; its verdicts go into the run's record. Until then the record says
-  only that these rows are not automated. The review's doubtful rows and
+  the system to show or open, and checks those files). The run keeps
+  images of the map, preview and export rows with the checks a machine can
+  make of them, and whether each looks right is the assistant's visual
+  review under [The reviewer's protocol](#the-reviewers-protocol); its
+  verdicts go into the run's record. The review's doubtful rows and
   its control pairs are the sitting's
   [item 6](acceptance-sitting.md#6-the-assistants-visual-review), the drags
   its item 7, and the Finder its item 8.
@@ -1259,6 +1259,78 @@ Then uninstall the app again, as step 21 says.
 
 Result: ____
 
+## The visual evidence
+
+About twenty-five rows ask whether something looks right. A machine cannot
+judge that, so those rows stay "Not automated: whether ... looks right" in
+the run's record, whatever the machine measured. What the run adds is the
+pictures a reviewer needs, kept beside the record in `evidence/`
+(`tests/acceptance/evidence.ts`), and a measurement of the difference that
+must exist. The record's row gains "Evidence kept: <names>. Measured:
+<numbers>." after its not-automated sentence.
+
+- `evidence/<step>-<name>.png` are the pictures: the map's frame, cell 06's
+  preview, or an export's frames (a contact sheet of five, and its first
+  and last frame in full).
+- `evidence/evidence.json` has an entry per question: the row's own
+  not-automated sentence, the images, the question and the text expected in
+  them. The machine checks, with their values and thresholds, are the
+  record's ("Measured: ...") and are not in it.
+- A comparison is **A1, A2, B**: two shots at the same settings, the map
+  paused and its clock read twice first (and after B), give the noise; B, at
+  the changed setting, should differ from A1 by more. A check **fails** a
+  step only on what needs no measured threshold: a picture that was not
+  taken, a font that did not load, no pixel changing in a second of playing
+  while the clock moved, no pixel changing between a steady pair, a new line
+  colour whose pixels do not rise, an export frame with nothing drawn in it
+  (frames inside a GIF's opening are not judged), or an export whose first
+  frame equals its last. Every other number is a **note**: a change no larger
+  than the noise, a nearly blank frame (under 1% drawn), a label that did not
+  measure differently, and anything from a map that was not steady. A note
+  never changes a step's result or removes its "Not automated" sentence. A
+  note becomes a failure only when a measuring run on each system has set its
+  threshold, at half the smallest difference it saw (`THRESHOLDS` in
+  `evidence.ts`).
+- The line order (step 10) is only ever a **note**: the map need not change
+  with the order, so a picture that looks the same is not a failure.
+- The run drives the **first** line's options in step 9 (Bold, Regular
+  casing and Dashed, each against the shot before, then Reset line), where
+  the steps below say the second line and add a name and Shown off: those
+  stay as the person's.
+- The manifest holds **two control pairs**: the same settings, asked as if
+  they had changed (the theme, and the line width). They are **unmarked**,
+  not undetectable: nothing in `evidence.json` says which entries they are
+  (the real entry of a pair takes one of two ids, drawn at random), but a
+  reviewer who can read the spec or compare files can tell. The key,
+  `evidence-key.json`, is an artefact of its own
+  (`acceptance-evidence-key-<system>`), apart from the evidence.
+
+### The reviewer's protocol
+
+The assistant or the maintainer reviews the evidence of each run, and
+records a verdict per entry in the second table of the results template.
+
+1. Fetch the evidence alone: `gh run download <run> -n
+   acceptance-evidence-<target>`. Do not open the run's page, its summary or
+   the gate issue before every verdict is written: they carry the record.
+2. Open `evidence.json` and every image it names, and nothing else:
+   `evidence.json` holds, for each entry, the pictures, the question, the
+   expected text and the row's not-automated sentence, and no machine check.
+3. For each entry, write one sentence of what is visible before any verdict.
+4. For a pair, name the visible difference in your own words. If the
+   difference asked about cannot be seen, the verdict is not "looks right",
+   whatever the number says.
+5. Where the entry lists expected text, compare the text in the image with
+   those strings.
+6. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
+   `pass`: this table is a reviewer's reading, not a step's result, and a
+   step stays "pass, part not automated" however it reads.
+7. Only after every verdict is written, read the run's record, whose rows say
+   what was kept and what was measured ("Evidence kept: ... Measured: ...").
+8. Last, open `evidence-key.json` from its own artefact. If a control pair
+   was answered "looks right", the review is not to be trusted: say so, and
+   read it again.
+
 ## Failures
 
 Every failure becomes an issue of its own, one per defect, even when two
@@ -1322,6 +1394,12 @@ Copy everything in the block below into a new issue titled
 | 20 | Reset engine data | pass / fail | |
 | 21 | Uninstall, and what is left | pass / fail | |
 | 22 | Update over 0.1.0 | pass / fail | |
+
+## Visual evidence
+
+| Entry (id in evidence.json) | What is visible | Verdict |
+|---|---|---|
+| (one row per entry, the control pairs first) | (one sentence, before the verdict) | looks right / looks wrong / cannot tell |
 
 ## Versions from Settings
 
