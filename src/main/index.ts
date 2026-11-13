@@ -1012,10 +1012,15 @@ if (!hasLock) {
     // A termination signal on macOS and Linux is the app's own quit: whoever
     // sent it cannot answer a question in the window (src/main/quit-guard.ts).
     // Installed here, once Electron has installed its own handlers for the
-    // same signals, so that these are the ones in force.
+    // same signals, so that these are the ones in force. A second signal
+    // while the quit is under way takes its listener off and is raised
+    // again, so its default action ends a quit that is stuck.
     quitOnSignals({
       platform: process.platform,
       on: (signal, listener) => process.on(signal, listener),
+      off: (signal, listener) => process.removeListener(signal, listener),
+      raise: (signal) => process.kill(process.pid, signal),
+      quitting: () => quit.quitting,
       quit: () => quitGuard.quit(),
     })
     setAppMenu(helpDeps)

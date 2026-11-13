@@ -291,8 +291,11 @@ Whether to ask is one pure rule, `quitQuestion` in
   on macOS and Linux a termination signal - `kill`, Ctrl+C on a development
   run, a session ending - whose sender cannot answer a question in the
   window: main takes SIGINT, SIGTERM and SIGHUP itself once the app is
-  ready (`quitOnSignals`). A quit that reaches `before-quit` any other way
-  is a person's.
+  ready (`quitOnSignals`). The first begins the quit; one that arrives
+  while a quit is under way forces the exit, as a second signal always
+  did, by taking its listener off and raising the signal again, so the
+  default action ends an app whose quit is stuck. A quit that reaches
+  `before-quit` any other way is a person's.
 
 The question is sent to the page, the window brought up first, and shown
 in the page's own modal `<dialog>` (`QuitDialog.tsx`, a `ConfirmDialog`

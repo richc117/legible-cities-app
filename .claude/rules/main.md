@@ -54,8 +54,10 @@ person's, and held for a question while a run is going
 (`tests/unit/quit-guard.test.ts` reads `index.ts` for one). A termination
 signal on macOS and Linux is one of the app's own (`quitOnSignals`,
 installed once the app is ready, over Electron's handlers for the same
-signals). A second quit or close is an answer only once the question has
-been on the screen for a second: a held shortcut repeats.
+signals), and a second one while the quit is under way must still force
+the exit: its listener comes off and the signal is raised again. A second
+quit or close is an answer only once the question has been on the screen
+for a second: a held shortcut repeats.
 
 ## Uncaught failures
 

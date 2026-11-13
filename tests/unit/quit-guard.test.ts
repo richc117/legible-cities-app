@@ -784,28 +784,75 @@ describe('the page’s three words', () => {
 })
 
 describe('a termination signal', () => {
-  /** `process.on` as a test hears it. */
-  function signals(platform: string) {
+  /** The slice of `process` the signals use, as a test hears and moves it. */
+  function signals(platform: string, quitting = false) {
     const listeners = new Map<string, () => void>()
-    const quit = vi.fn()
-    quitOnSignals({ platform, on: (signal, listener) => listeners.set(signal, listener), quit })
-    return { listeners, quit }
+    const did: string[] = []
+    const state = { quitting }
+    quitOnSignals({
+      platform,
+      on: (signal, listener) => listeners.set(signal, listener),
+      off: (signal, listener) => {
+        // Only the listener that was put on is taken off.
+        if (listeners.get(signal) === listener) listeners.delete(signal)
+        did.push(`off ${signal}`)
+      },
+      raise: (signal) => did.push(`raise ${signal}`),
+      quitting: () => state.quitting,
+      // The quit reaches the gate, as the app's does, unless a test says not.
+      quit: () => did.push('quit'),
+    })
+    return { listeners, did, state }
   }
 
   it('is the app’s own quit on macOS and Linux: interrupt, terminate and hang up', () => {
     expect([...TERMINATION_SIGNALS]).toEqual(['SIGINT', 'SIGTERM', 'SIGHUP'])
     for (const platform of ['darwin', 'linux']) {
-      const { listeners, quit } = signals(platform)
-      expect([...listeners.keys()], platform).toEqual(['SIGINT', 'SIGTERM', 'SIGHUP'])
-      for (const listener of listeners.values()) listener()
-      expect(quit, platform).toHaveBeenCalledTimes(3)
+      expect([...signals(platform).listeners.keys()], platform).toEqual([
+        'SIGINT',
+        'SIGTERM',
+        'SIGHUP',
+      ])
+      // The first signal, whichever it is: the quit, and nothing forced.
+      for (const signal of TERMINATION_SIGNALS) {
+        const { listeners, did } = signals(platform)
+        listeners.get(signal)?.()
+        expect(did, `${platform}, ${signal}`).toEqual(['quit'])
+        expect([...listeners.keys()], 'every listener is still on').toHaveLength(3)
+      }
     }
   })
 
   it('is left to Windows on Windows', () => {
-    const { listeners, quit } = signals('win32')
+    const { listeners, did } = signals('win32')
     expect([...listeners.keys()]).toEqual([])
-    expect(quit).not.toHaveBeenCalled()
+    expect(did).toEqual([])
+  })
+
+  it('forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again', () => {
+    // The quit the first signal began may be stuck, or the loop wedged. Off
+    // first, which gives the signal back its default action; raised again
+    // with the listener still on, it would only be heard here once more.
+    const { listeners, did, state } = signals('linux')
+    listeners.get('SIGTERM')?.()
+    state.quitting = true
+    listeners.get('SIGTERM')?.()
+    expect(did).toEqual(['quit', 'off SIGTERM', 'raise SIGTERM'])
+    expect([...listeners.keys()], 'the other signals are still heard').toEqual(['SIGINT', 'SIGHUP'])
+  })
+
+  it('forces the exit at a second signal though the gate has not seen the first', () => {
+    // A quit that never reached `before-quit` is the stuck quit this is for.
+    const { listeners, did } = signals('darwin')
+    listeners.get('SIGINT')?.()
+    listeners.get('SIGTERM')?.()
+    expect(did, 'whichever signal the second is').toEqual(['quit', 'off SIGTERM', 'raise SIGTERM'])
+  })
+
+  it('forces the exit at a signal that arrives during a quit begun some other way', () => {
+    const { listeners, did } = signals('linux', true)
+    listeners.get('SIGHUP')?.()
+    expect(did, 'no second quit is asked for').toEqual(['off SIGHUP', 'raise SIGHUP'])
   })
 
   it('goes on to the gate unasked, with an export running and a page that could be asked', () => {
@@ -817,6 +864,9 @@ describe('a termination signal', () => {
       on: (signal, listener) => {
         if (signal === 'SIGTERM') listener()
       },
+      off: () => undefined,
+      raise: () => did.push('raise'),
+      quitting: () => false,
       quit: () => guard.quit(),
     })
     expect(did).toEqual(['quit'])
@@ -893,8 +943,11 @@ describe('the guard in index.ts', () => {
     expect(ready).toBeGreaterThan(-1)
     expect(installed, 'installed, and inside the ready handler').toBeGreaterThan(ready)
     expect(index.indexOf('mainWindow = createWindow()', installed)).toBeGreaterThan(installed)
+    // The process's own calls, each as itself: the listener put on and taken
+    // off, the signal raised again at this process, the gate's word that a
+    // quit is under way, and the guard's own quit.
     expect(index).toMatch(
-      /quitOnSignals\(\{\s*platform: process\.platform,\s*on: \(signal, listener\) => process\.on\(signal, listener\),\s*quit: \(\) => quitGuard\.quit\(\),\s*\}\)/,
+      /quitOnSignals\(\{\s*platform: process\.platform,\s*on: \(signal, listener\) => process\.on\(signal, listener\),\s*off: \(signal, listener\) => process\.removeListener\(signal, listener\),\s*raise: \(signal\) => process\.kill\(process\.pid, signal\),\s*quitting: \(\) => quit\.quitting,\s*quit: \(\) => quitGuard\.quit\(\),\s*\}\)/,
     )
   })
 

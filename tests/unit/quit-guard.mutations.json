@@ -280,16 +280,80 @@
     "why": "SIGTERM left to Electron: `kill` during a run is asked about like a person's quit, and a second one ends the process with the engine not stopped."
   },
   {
+    "file": "src/main/index.ts",
+    "find": "  cancelRequests: () => engineBridge?.cancelAll(),\n",
+    "replace": "  cancelRequests: () => undefined,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hands the guard a clock that cannot go back, and the bridge that cancels a page’s requests",
+    "why": "The guard handed nothing to cancel the page's requests with: a second close leaves a layout's request running in the engine."
+  },
+  {
     "file": "src/main/quit-guard.ts",
-    "find": "  for (const signal of TERMINATION_SIGNALS) deps.on(signal, () => deps.quit())\n",
-    "replace": "  for (const signal of TERMINATION_SIGNALS) deps.on(signal, () => undefined)\n",
+    "find": "      asked = true\n      deps.quit()\n",
+    "replace": "      asked = true\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "is the app’s own quit on macOS and Linux: interrupt, terminate and hang up",
+    "why": "A first signal heard and nothing done: with Node's handler in place of Electron's, `kill` no longer begins a quit at all."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      asked = true\n      deps.quit()\n",
+    "replace": "      asked = true\n",
     "test": "tests/unit/quit-guard.test.ts",
     "title": "goes on to the gate unasked, with an export running and a page that could be asked",
-    "why": "A signal heard and nothing done: with Node's handler in place of Electron's, `kill` no longer ends the app at all."
+    "why": "A first signal heard and nothing done: the signal's quit never reaches the gate, and the engine is never stopped for it."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      if (asked || deps.quitting()) {\n        deps.off(signal, listener)\n        deps.raise(signal)\n        return\n      }\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "A second signal asks for the quit again and forces nothing: a quit that is stuck can no longer be ended by `kill`, only by SIGKILL."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        deps.off(signal, listener)\n        deps.raise(signal)\n",
+    "replace": "        deps.off(signal, listener)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "The listener taken off and the signal not raised again: the second signal is swallowed, and the stuck quit goes on until a third."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        deps.off(signal, listener)\n        deps.raise(signal)\n",
+    "replace": "        deps.raise(signal)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "The signal raised again with its listener still on: it has no default action to take, comes straight back here, and is raised again without end."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        deps.off(signal, listener)\n        deps.raise(signal)\n",
+    "replace": "        deps.raise(signal)\n        deps.off(signal, listener)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "The signal raised before its listener is off: it is delivered to the listener it was meant to get past."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      if (asked || deps.quitting()) {\n",
+    "replace": "      if (deps.quitting()) {\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal though the gate has not seen the first",
+    "why": "Only the gate's word counted: where the first signal's quit never reached `before-quit`, every later signal asks for the same stuck quit again."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      if (asked || deps.quitting()) {\n",
+    "replace": "      if (asked) {\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a signal that arrives during a quit begun some other way",
+    "why": "Only this module's own first signal counted: a signal sent to end a quit that is stuck asks for that quit again."
   },
   {
     "file": "src/main/index.ts",
-    "find": "    quitOnSignals({\n      platform: process.platform,\n      on: (signal, listener) => process.on(signal, listener),\n      quit: () => quitGuard.quit(),\n    })\n",
+    "find": "    quitOnSignals({\n      platform: process.platform,\n      on: (signal, listener) => process.on(signal, listener),\n      off: (signal, listener) => process.removeListener(signal, listener),\n      raise: (signal) => process.kill(process.pid, signal),\n      quitting: () => quit.quitting,\n      quit: () => quitGuard.quit(),\n    })\n",
     "replace": "",
     "test": "tests/unit/quit-guard.test.ts",
     "title": "installs the termination signals as the guard’s own quit, once the app is ready",
@@ -297,10 +361,18 @@
   },
   {
     "file": "src/main/index.ts",
-    "find": "  cancelRequests: () => engineBridge?.cancelAll(),\n",
-    "replace": "  cancelRequests: () => undefined,\n",
+    "find": "      raise: (signal) => process.kill(process.pid, signal),\n",
+    "replace": "      raise: () => undefined,\n",
     "test": "tests/unit/quit-guard.test.ts",
-    "title": "hands the guard a clock that cannot go back, and the bridge that cancels a page’s requests",
-    "why": "The guard handed nothing to cancel the page's requests with: a second close leaves a layout's request running in the engine."
+    "title": "installs the termination signals as the guard’s own quit, once the app is ready",
+    "why": "Nothing raised at a second signal: its listener is taken off and the stuck quit is left as it was."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "      quitting: () => quit.quitting,\n",
+    "replace": "      quitting: () => false,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "installs the termination signals as the guard’s own quit, once the app is ready",
+    "why": "The gate's word never passed on: a signal sent during a quit begun from the window asks for the quit again and forces nothing."
   }
 ]

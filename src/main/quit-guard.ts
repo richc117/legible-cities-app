@@ -28,9 +28,9 @@
 // - **The app's own quits.** Every quit the app makes itself goes through
 //   `quit()` here and is never asked about, nor is anything after it: the
 //   crash box's Quit, a missing single-instance lock, an uncaught exception,
-//   a termination signal on macOS and Linux (`quitOnSignals`), the quit that
-//   follows the window on Windows and Linux, and the one the person has just
-//   confirmed.
+//   a termination signal on macOS and Linux (`quitOnSignals`; a second one
+//   while the quit is under way forces the exit), the quit that follows the
+//   window on Windows and Linux, and the one the person has just confirmed.
 //
 // The question comes before the quit gate and never replaces it
 // (`onBeforeQuit`): a quit that is asked about has not begun, so the gate
@@ -332,11 +332,20 @@ export function onAppWindowClose(deps: AppWindowCloseDeps): (event: Cancellable)
 
 /** The signals that ask a process to end: a terminal's interrupt, `kill`, a session going. */
 export const TERMINATION_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const
+export type TerminationSignal = (typeof TERMINATION_SIGNALS)[number]
 
-/** What `quitOnSignals` needs: the platform, `process.on`, and the app's own quit. */
+/** What `quitOnSignals` needs: the platform, the slice of `process` it uses, and the app's quit. */
 export interface SignalDeps {
   platform: string
-  on: (signal: (typeof TERMINATION_SIGNALS)[number], listener: () => void) => unknown
+  /** `process.on`. */
+  on: (signal: TerminationSignal, listener: () => void) => unknown
+  /** `process.removeListener`. */
+  off: (signal: TerminationSignal, listener: () => void) => unknown
+  /** Send this process the signal again: `process.kill(process.pid, signal)`. */
+  raise: (signal: TerminationSignal) => void
+  /** Whether a quit is already under way: the gate's `quitting`. */
+  quitting: () => boolean
+  /** The app's own quit: the guard's `quit()`. */
   quit: () => void
 }
 
@@ -344,13 +353,36 @@ export interface SignalDeps {
  * A termination signal is the app's own quit, never a person's, on macOS and
  * Linux: whoever sent it - `kill`, a terminal's Ctrl+C on a development run,
  * a session ending - is not looking at the window, and cannot answer a
- * question in it. So each goes through the guard's `quit()` and on to the
- * gate, which stops the engine, as a signal did before there was a question.
+ * question in it. So the first goes through the guard's `quit()` and on to
+ * the gate, which stops the engine, as a signal did before there was a
+ * question.
+ *
+ * A signal that arrives while a quit is already under way forces the exit,
+ * as a second signal always has: this module's listener for it is taken off,
+ * which gives the signal back its default action, and the signal is raised
+ * again, so the process ends though the quit may be stuck, or the main
+ * process's loop wedged. The first signal, or whatever else began the quit,
+ * has already started the engine's stop.
+ *
  * Windows has no such signals to speak of, and is left alone.
  */
 export function quitOnSignals(deps: SignalDeps): void {
   if (deps.platform === 'win32') return
-  for (const signal of TERMINATION_SIGNALS) deps.on(signal, () => deps.quit())
+  // Whether one of these has already asked for the quit: the gate says so
+  // too, once it has seen the quit, and this does not wait for it.
+  let asked = false
+  for (const signal of TERMINATION_SIGNALS) {
+    const listener = (): void => {
+      if (asked || deps.quitting()) {
+        deps.off(signal, listener)
+        deps.raise(signal)
+        return
+      }
+      asked = true
+      deps.quit()
+    }
+    deps.on(signal, listener)
+  }
 }
 
 /** The most layouts one report may name; a page runs one per project it has open. */
