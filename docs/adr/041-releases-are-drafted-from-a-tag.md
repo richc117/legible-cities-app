@@ -4,6 +4,7 @@
 - **Date:** 2026-09-13
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-064](064-the-coordinating-session-merges-and-cuts-candidates.md): a release candidate's acts may be the coordinating session's; a final's stay the maintainer's.
 - **Amended by:** [ADR-057](057-the-shipped-python-runtime-is-locked-and-attested.md):
   the engine's commit is pinned, and the assets are attested by a job of
   its own, the only one the OIDC token reaches
@@ -159,7 +160,9 @@ person follows, at the address the first-run dialog opens.
 ## Consequences
 
 **A release is four acts by the maintainer**: move the version in a pull
-request, merge, push the tag, publish the draft. The rehearsal is the same
+request, merge, push the tag, publish the draft.
+As of 2026-11-13 the coordinating session does the four acts for a release
+candidate, and the maintainer does them for a final (ADR-064). The rehearsal is the same
 with `-rc.1`, and the draft and tag are deleted after.
 
 **The whole build runs again on the tag**, about an hour of runners,

@@ -5,7 +5,7 @@ maintainer cuts the final release. The coordinating assistant session may
 cut release candidates once the freeze below is green (ADR-064). The release job in `.github/workflows/build.yml` drafts
 a Release from a tag and never publishes one (ADR-041); how it does that,
 and what it refuses, is in `docs/ARCHITECTURE.md` under the release job.
-This page is what a person does around it.
+This page is what a person or the coordinating session does around it.
 
 ## The freeze
 
@@ -13,10 +13,11 @@ A candidate is cut only when all of this is true, and a session that cannot
 make an item true does not cut it:
 
 - Every pull request the release carries is merged, and `main` is green.
-- No open issue labelled `flaky` names a spec the gate relies on (issue
-  553).
+- No open issue labelled `flaky` names a spec the gate relies on, unless the maintainer has accepted it in
+  writing on that issue (issue 553).
 - A rehearsal of the acceptance run is green on both systems from a
-  `build.yml` run, once `acceptance.yml` accepts a run id (issue 688).
+  `build.yml` run (no requirement until `acceptance.yml` accepts a run id,
+  issue 688).
 - `node scripts/release.mjs notes vX.Y.Z-rc.N <scratch file>` is clean.
 - The changelog section is current, Known issues included.
 - `gh workflow run vendor.yml --ref main` has run.
@@ -123,7 +124,8 @@ change is fixed on `main`, and the fix goes out as the next candidate.
    notes may be edited before it is published, and a rerun of the job keeps
    them; a mistake in the changelog itself is fixed there too, in a pull
    request.
-3. Publish it by hand on GitHub: a candidate as a pre-release, a final as
+3. Publish it by hand on GitHub (a candidate may be published by the
+   coordinating session, ADR-064; a final only by the maintainer): a candidate as a pre-release, a final as
    the latest release.
 
 ## A release that has to be pulled

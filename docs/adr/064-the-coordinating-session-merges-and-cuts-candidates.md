@@ -4,6 +4,8 @@
 - **Date:** 2026-11-12
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amends:** [ADR-041](041-releases-are-drafted-from-a-tag.md) (a release's four acts), [ADR-058](058-contributions-carry-a-dco-sign-off.md) (its reasoning that the maintainer reads and merges every pull request)
+- **Note:** the maintainer took this decision on 12 Nov 2026. This record's own pull request is merged by the maintainer.
 
 ## Context
 
@@ -60,25 +62,39 @@ by pulling a release.
 
 The coordinating assistant session merges a pull request when the seven
 required checks are green and the `reviewer` subagent has passed it, and
-again after any fix in a destructive path (the paths `/lanes` step 5
-names: the reset, a sweep, feed removal, the export, the capture, a child
+again after any fix in a destructive path (the paths step 5 of the
+nine steps in `/lanes` names: the reset, a sweep, feed removal, the export, the capture, a child
 process, the bridge). It never merges with `--admin`, and it squashes with
-the scanned message, as `/lanes` step 9 says.
+the scanned message, as step 9 of the nine steps says.
 
-It merges only pull requests opened by its own lanes, and Dependabot pull
-requests the maintainer has named. Any other pull request, including every
-one from a contributor outside the maintainer's own sessions, waits for the
-maintainer.
+**Its own lanes, mechanically.** It merges only a pull request whose head
+branch is in this repository (never a fork), which the session opened at
+step 8 of the nine steps, and whose body carries a **Reviewed** paragraph:
+how many `reviewer` passes ran, what each found, and how each finding was
+settled. A Dependabot pull request counts only when the maintainer has named
+it in a comment on that pull request. Any other pull request, a
+contributor's included, waits for the maintainer.
+
+**Its own guards are not its to merge.** A pull request that touches any of
+`.claude/hooks/`, `.claude/settings.json`, `.claude/agents/`, `bin/preflight`,
+`bin/land`, `bin/candidate`, `.gitleaks.toml`, `.pre-commit-config.yaml`,
+`scripts/dco-check.mjs`, the workflows that define the required checks
+(`ci.yml`, `gitleaks.yml`, `preflight.yml`), `build.yml` (which will hold the
+signing secrets) or this record waits for the maintainer, whoever opened it.
+The checks run the tree's own guards, so a weakened guard would be tested
+against its own edited tables.
 
 It may also do the following without asking: apply rules text
-(`.claude/rules/*.md`) that a reviewed pull request's body proposes; file
+(`.claude/rules/*.md`) that a reviewed pull request's body proposes, through
+a pull request like any other, which the `reviewer` passes; file
 issues; dispatch workflows and rehearsal builds; and tag and publish release
 candidates, tags of the form `vX.Y.Z-rc.N` published as pre-releases and
-never as Latest, once the freeze checklist in `docs/releasing.md` is green.
+never as Latest, once the freeze checklist in `docs/releasing.md` is green
+and following its "Cutting a candidate" and "Publishing" steps.
 
 These stay the maintainer's: the final release's tag and its publish;
 pushing or releasing the engine; secrets; repository settings and rulesets;
-`.env.local`; and approving the deployment of a signed build.
+`.env.local`; and approving each run of a signed build, once one exists (issue 686).
 
 ## Consequences
 
@@ -91,12 +107,14 @@ pushing or releasing the engine; secrets; repository settings and rulesets;
 - Auto-merge stays off. The session merges after the reviewer, so the
   reviewer is never skipped by a setting.
 - A pull request from a contributor, and a Dependabot pull request nobody has
-  named, are unchanged: they wait. This record widens who merges, not what
-  may be merged.
-- The ADR-058 clause that the maintainer reads every pull request and merges
-  by hand describes the contributor's pull request, which still holds. The
-  squash message still keeps each contributor's `Signed-off-by:` lines; the
-  session that writes it keeps them as they were.
+  named, are unchanged: they wait. A pull request that touches the guards
+  waits whoever opened it, so the session can merge what the guards check
+  but never the guards themselves.
+- The session never merges a contributor's pull request, so ADR-058's
+  reasoning that the maintainer reads and merges every pull request holds
+  for contributors and is amended only for the lanes' own. Its sign-off
+  sentence applies to Dependabot's pull requests alone: the squash message
+  keeps any `Signed-off-by:` lines as written.
 - A bad candidate costs another candidate, not a recall: it is a
   pre-release. The final release is not delegated, so nothing the installers
   carry reaches a user as the release without the maintainer's tag.
@@ -104,5 +122,6 @@ pushing or releasing the engine; secrets; repository settings and rulesets;
   against. A session that cannot make an item true does not cut the
   candidate and says which item stopped it.
 - Withdrawing this is a change to the sentence in `CONTRIBUTING.md` and to
-  the lanes skill, with this record superseded; nothing in the repository's
+  the lanes skill, `CLAUDE.md`, `docs/releasing.md` and
+  `docs/ARCHITECTURE.md`, with this record superseded; nothing in the repository's
   settings has to move.

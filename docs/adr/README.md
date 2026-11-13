@@ -103,7 +103,7 @@ you add a row, fill this column from your record's header.
 | 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted | Amends 020; amended by 042 |
 | 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted, in part superseded | Superseded in part by 055 (the GIFs) |
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted | Amends 012, 035 |
-| 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted | Amended by 057 |
+| 041 | [Releases are drafted from a tag](041-releases-are-drafted-from-a-tag.md) | Accepted | Amended by 057, 064 |
 | 042 | [The installers carry the licence texts they owe, and the app opens them](042-the-installers-carry-the-licence-texts-they-owe.md) | Accepted | Amends 020, 035, 038 |
 | 043 | [The source of Electron's FFmpeg library is attached to every release](043-electrons-ffmpeg-source-is-attached-to-every-release.md) | Accepted | - |
 | 044 | [The interface's palette is the app's own](044-the-interface-palette-is-the-apps-own.md) | Accepted | Supersedes 026 in part (the mark) |
@@ -120,13 +120,13 @@ you add a row, fill this column from your record's header.
 | 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted | Supersedes 039 in part (the GIFs) |
 | 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted | - |
 | 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted | Amends 020, 041 |
-| 058 | [Contributions carry a DCO sign-off](058-contributions-carry-a-dco-sign-off.md) | Accepted | - |
+| 058 | [Contributions carry a DCO sign-off](058-contributions-carry-a-dco-sign-off.md) | Accepted | Amended by 064 |
 | 059 | [Rendered unit tests run in jsdom, and the kit-facing ones in a browser](059-rendered-unit-tests-run-in-jsdom-and-the-kit-facing-ones-in-a-browser.md) | Accepted | - |
 | 060 | Reserved: issue 556's record, written in its own pull request | - | - |
 | 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its "no undo stack" |
 | 062 | Reserved: issue 686's record, written in its own pull request | - | - |
 | 063 | Reserved: issue 694's record, written in its own pull request | - | - |
-| 064 | [The coordinating session merges and cuts release candidates](064-the-coordinating-session-merges-and-cuts-candidates.md) | Accepted | - |
+| 064 | [The coordinating session merges and cuts release candidates](064-the-coordinating-session-merges-and-cuts-candidates.md) | Accepted | Amends 041, 058 |
 
 ## Amending rather than superseding
 
