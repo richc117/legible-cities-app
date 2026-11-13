@@ -10,12 +10,6 @@ links are inline, with no images and no reference-style links.
 
 ## [Unreleased]
 
-### Security
-
-- The bundled Python is 3.12.16, which refuses certificates from the
-  compromised eMudhra intermediates when a feed is downloaded, even through
-  a certificate bundle that still trusts their roots (CVE-2026-115557).
-
 ## [1.0.0]
 
 ### Added
@@ -110,6 +104,9 @@ links are inline, with no images and no reference-style links.
   its local network, through a redirect or through a host name that
   resolves to a local address (engine v0.21.1;
   [engine issue 90](https://github.com/richc117/legible-cities/issues/90)).
+- The bundled Python is 3.12.16, which refuses certificates from the
+  compromised eMudhra intermediates when a feed is downloaded, even through
+  a certificate bundle that still trusts their roots (CVE-2026-115557).
 
 ### Known issues
 
