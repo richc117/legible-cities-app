@@ -13,10 +13,15 @@
 //   back   0.1.0 installed again: the Library marks the project read-only
 //          and its record's bytes do not change, as install.md says
 //
-// Skipped unless LEGIBLE_UPGRADE_PHASE names a phase. Run one phase at a
-// time, the file named so the checklist's own spec is not run again:
+// Skipped unless LEGIBLE_UPGRADE_PHASE names a phase. **It refuses to run
+// outside CI** (CI=true) unless LEGIBLE_UPGRADE_ON_THIS_MACHINE=1 says this
+// machine's own default profile may be used: see below. Run one phase at a
+// time, the file named so the checklist's own spec is not run again, on a
+// machine that has never had Legible Cities (a fresh account, a virtual
+// machine):
 //
-//   LEGIBLE_UPGRADE_PHASE=seed LEGIBLE_UPGRADE_APP=<the installed app> \
+//   LEGIBLE_UPGRADE_ON_THIS_MACHINE=1 LEGIBLE_UPGRADE_PHASE=seed \
+//     LEGIBLE_UPGRADE_APP=<the installed app> \
 //     npm run test:acceptance -- tests/acceptance/upgrade.spec.ts
 //
 //   LEGIBLE_UPGRADE_APP      the executable, or on a Mac the `.app` bundle
@@ -32,7 +37,9 @@
 // `--user-data-dir`, so each version's own path resolution is what links
 // them, as it does for a person. That is the machine's own profile, so a
 // phase is never run on a machine where Legible Cities keeps anything of a
-// person's: the seed refuses a profile that already holds a project. Only
+// person's: the seed looks in the platform's default profile before 0.1.0
+// is launched, refuses one that already holds a project, and then holds
+// 0.1.0 to that folder. Only
 // the export folder is a temporary one, through LEGIBLE_EXPORT_FOLDER, so
 // nothing lands on a desktop.
 //
@@ -55,7 +62,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import { dayWords } from '../../src/renderer/src/dates'
@@ -65,10 +72,14 @@ import { MINUTE, SECOND, inside, launchApp, sleep, until, type LaunchSession } f
 import {
   FROM_VERSION,
   UPGRADE_RECORD,
+  defaultProfile,
   madeAt,
+  quietFor,
   readUpgrade,
+  refusal,
   sameMade,
   seedOf,
+  timesEntered,
   type Phase,
   type PhaseResult,
   type Upgrade,
@@ -104,6 +115,8 @@ const QUIT_MS = 30 * SECOND
 const SHORT_MS = 30 * SECOND
 /** How long nothing must run for "nothing runs" to be said. */
 const QUIET_MS = 5 * SECOND
+/** How often "nothing runs" reads the Jobs button. */
+const SAMPLE_MS = 100
 
 test.skip(PHASE === '', 'LEGIBLE_UPGRADE_PHASE names no phase of the update over 0.1.0')
 
@@ -279,15 +292,58 @@ async function runToEnd(
 const saidSoFar = (page: Page): Promise<string[]> =>
   page.evaluate(() => (window as unknown as { __said?: string[] }).__said ?? [])
 
-/** The Jobs button says none is running, and goes on saying so for `QUIET_MS`. */
+/**
+ * The Jobs button says none is running, at every sample for `QUIET_MS`. Each
+ * sample is one read of its name as it is now (its `aria-label`, `App.tsx`),
+ * never an expectation that waits for it, so a job shorter than a wait is
+ * still seen.
+ */
 async function nothingRuns(page: Page): Promise<void> {
   const toggle = page.getByRole('button', { name: /^Jobs, / })
-  const end = Date.now() + QUIET_MS
-  while (Date.now() < end) {
-    await expect(toggle).toHaveAccessibleName(NONE_RUNNING)
-    await sleep(500)
-  }
+  const { ok, seen } = await quietFor(
+    () => toggle.getAttribute('aria-label', { timeout: SHORT_MS }),
+    NONE_RUNNING,
+    { duration: QUIET_MS, every: SAMPLE_MS },
+  )
+  if (!ok) throw new Error(`the Jobs button said "${String(seen[seen.length - 1])}"`)
 }
+
+/**
+ * Record every state each cell enters, by its number, from a
+ * MutationObserver installed before the project opens: cell 03's
+ * "running" lasts as long as a redraw, which can be over before any poll.
+ * Kept by the cell's number, not its element, so a cell drawn again in the
+ * same state is not a second entry.
+ */
+async function recordCellStates(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const holder = window as unknown as { __cells?: Record<string, string[]> }
+    if (holder.__cells !== undefined) return
+    const cells: Record<string, string[]> = {}
+    holder.__cells = cells
+    const scan = (): void => {
+      for (const section of document.querySelectorAll('section.cell[data-cell]')) {
+        const n = section.getAttribute('data-cell') ?? ''
+        const state = section.getAttribute('data-state') ?? ''
+        const states = (cells[n] ??= [])
+        if (states[states.length - 1] !== state) states.push(state)
+      }
+    }
+    new MutationObserver(scan).observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    })
+    scan()
+  })
+}
+
+const cellStates = (page: Page, n: string): Promise<string[]> =>
+  page.evaluate(
+    (which) => (window as unknown as { __cells?: Record<string, string[]> }).__cells?.[which] ?? [],
+    n,
+  )
 
 /** Ask the platform to show nothing, and note what Reveal asked it to show. */
 async function catchReveal(app: ElectronApplication): Promise<void> {
@@ -327,18 +383,30 @@ async function openExportCell010(page: Page): Promise<Locator> {
 
 async function seed(session: LaunchSession, log: PhaseLog): Promise<Upgrade> {
   const upgrade: Upgrade = { record: UPGRADE_RECORD, phases: {} }
-  const { page, version } = await launch(session)
-  if (version !== FROM_VERSION) {
-    throw new Error(`the app launched is ${version}, not ${FROM_VERSION}`)
-  }
-  const userData = session.userData
-  log.note(`${FROM_VERSION} ran on its default profile.`)
-  const already = storedProjects(userData)
+  // Before anything is launched: a profile that holds a project is a
+  // person's, and 0.1.0 must not open it.
+  const expected = defaultProfile({
+    platform: process.platform,
+    home: homedir(),
+    appData: process.env.APPDATA,
+  })
+  const already = storedProjects(expected)
   if (already.length > 0) {
     throw new Error(
       `the default profile already holds ${already.length} project(s); the seed runs only on a machine with none`,
     )
   }
+  const { page, version } = await launch(session)
+  if (version !== FROM_VERSION) {
+    throw new Error(`the app launched is ${version}, not ${FROM_VERSION}`)
+  }
+  const userData = session.userData
+  if (!samePath(userData, expected) || storedProjects(userData).length > 0) {
+    throw new Error(
+      `${FROM_VERSION}'s default profile is ${userData}, not the ${expected} looked in before it was launched`,
+    )
+  }
+  log.note(`${FROM_VERSION} ran on its default profile.`)
   await libraryReady(page)
 
   const card = sampleCard(page)
@@ -441,6 +509,7 @@ async function after(session: LaunchSession, log: PhaseLog, upgrade: Upgrade): P
   }
   await libraryReady(page)
   await catchReveal(app)
+  await recordCellStates(page)
 
   // The first open: the map redrawn once, from the stored layout.
   await page.getByRole('button', { name: `Open ${LA}` }).click()
@@ -459,7 +528,11 @@ async function after(session: LaunchSession, log: PhaseLog, upgrade: Upgrade): P
   )
   await log.soft('and nothing runs after it', () => nothingRuns(page))
   const said = (await saidSoFar(page)).filter((line) => line === redraw.sentence).length
-  await log.soft('cell 02 said so', () => expect(said).toBeGreaterThan(0))
+  await log.soft('cell 02 said so once', () => expect(said).toBe(1))
+  const frame = await cellStates(page, '03')
+  await log.soft(`cell 03 ran once (its states: ${frame.join(', ')})`, () =>
+    expect(timesEntered(frame, 'running')).toBe(1),
+  )
   await log.soft(`"${ALL_DRAWN}"`, () =>
     expect(page.locator('p.project-run-state')).toHaveText(ALL_DRAWN),
   )
@@ -623,6 +696,8 @@ async function back(session: LaunchSession, log: PhaseLog, upgrade: Upgrade): Pr
 
 test(`the update over ${FROM_VERSION}: ${PHASE}`, async () => {
   test.setTimeout(50 * MINUTE)
+  const refused = refusal(process.env)
+  if (refused !== null) throw new Error(`refused: ${refused}`)
   if (APP === '') throw new Error('LEGIBLE_UPGRADE_APP names no installed app')
   const exe = executableOf(APP)
   if (!existsSync(exe)) throw new Error(`there is no app at ${exe}`)

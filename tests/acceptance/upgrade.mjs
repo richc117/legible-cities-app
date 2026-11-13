@@ -7,6 +7,8 @@
 // so `node` runs the CLI on a runner without a build; upgrade.d.mts gives
 // the TypeScript side its types.
 
+import { setTimeout as delay } from 'node:timers/promises'
+
 /** The version the update is made over. */
 export const FROM_VERSION = '0.1.0'
 
@@ -255,7 +257,7 @@ export const NOT_AUTOMATED =
 /**
  * Step 22's row from upgrade.json and the workflow's own outcome of each of
  * its steps (`[name, outcome]`, GitHub's success, failure, cancelled or
- * skipped). It passes only where every step succeeded and every phase wrote
+ * skipped), in the order they ran, the earlier version's install first. It passes only where every step succeeded and every phase wrote
  * that it passed; anything else is a failure that says which. `upgrade` is
  * what `readUpgrade` answered, or the sentence it threw.
  */
@@ -279,10 +281,14 @@ export function upgradeRow(upgrade, outcomes) {
       for (const note of ran.notes) notes.push(note)
     }
   }
+  // The first step is the earlier version's install: where it succeeded and
+  // the seed wrote nothing down, the version is known to have been there.
   const previous =
     typeof upgrade !== 'string' && upgrade.seed !== undefined
       ? upgrade.seed.version
-      : `not known: the ${FROM_VERSION} phase wrote nothing down`
+      : outcomes[0]?.[1] === 'success'
+        ? `${FROM_VERSION} (installed; the seed failed)`
+        : `not known: ${FROM_VERSION} was not installed`
   const result = problems.length === 0 ? 'pass, part not automated' : 'fail'
   const text = [
     ...problems.map((p) => `Failed: ${p.replace(/\.$/, '')}.`),
@@ -290,4 +296,78 @@ export function upgradeRow(upgrade, outcomes) {
     NOT_AUTOMATED,
   ].join(' ')
   return { result, notes: text, previous }
+}
+
+/** Step 22's row where the workflow did not start it, and why. */
+export function notRunRow(reason) {
+  return {
+    result: 'not run',
+    notes: `Not run: ${String(reason).replace(/\.$/, '')}. A person makes the step by hand (docs/acceptance.md, step 22).`,
+    previous: 'none: step 22 was not run',
+  }
+}
+
+// ---------------------------------------------------------- the machine
+
+/**
+ * Why a phase must not run here, or null where it may. A phase drives the
+ * app on the machine's own default profile, which on a person's machine
+ * holds their projects, so it runs on a CI runner or where the person says
+ * in so many words that this machine may be used.
+ */
+export function refusal(env) {
+  if (env.CI === 'true' || env.CI === '1') return null
+  if (env.LEGIBLE_UPGRADE_ON_THIS_MACHINE === '1') return null
+  return "a phase of the update over 0.1.0 runs the app on this machine's own default profile, so it runs only on a CI runner (CI=true) or with LEGIBLE_UPGRADE_ON_THIS_MACHINE=1"
+}
+
+/**
+ * The folder Electron makes an app's default profile in: the platform's
+ * application-data folder and the product's name. The seed looks in it for
+ * projects before 0.1.0 is launched, and then holds 0.1.0 to it.
+ */
+export function defaultProfile({ platform, home, appData, product = 'Legible Cities' }) {
+  const join = (...parts) => parts.join(platform === 'win32' ? '\\' : '/')
+  if (platform === 'darwin') return join(home, 'Library', 'Application Support', product)
+  if (platform === 'win32') {
+    if (!appData) throw new Error('APPDATA is not set, so the default profile cannot be named')
+    return join(appData, product)
+  }
+  return join(appData || join(home, '.config'), product)
+}
+
+/**
+ * Sample `read` every `every` ms for `duration` ms, and stop at the first
+ * answer that is not `quiet`. Each sample is one read of what is there now,
+ * never a wait for it to become `quiet`, so a job that starts and ends
+ * between two waits is not missed by a wait that outlasts it. `now` and
+ * `wait` are the clock, replaced in a test.
+ */
+export async function quietFor(
+  read,
+  quiet,
+  { duration, every, now = Date.now, wait = (ms) => delay(ms) },
+) {
+  const seen = []
+  const end = now() + duration
+  for (;;) {
+    const answer = await read()
+    seen.push(answer)
+    if (answer !== quiet) return { ok: false, seen }
+    if (now() >= end) return { ok: true, seen }
+    await wait(every)
+  }
+}
+
+/**
+ * How many times a sequence of states entered `value`: each entry equal to
+ * it whose predecessor was not. A cell's states as the page recorded them,
+ * so "cell 03 ran once" is one entry into running, however long it stayed.
+ */
+export function timesEntered(sequence, value) {
+  let count = 0
+  for (let i = 0; i < sequence.length; i += 1) {
+    if (sequence[i] === value && (i === 0 || sequence[i - 1] !== value)) count += 1
+  }
+  return count
 }

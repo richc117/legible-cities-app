@@ -55,8 +55,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-15, target: darwin-arm64, platform: macos, suffix: mac-arm64.dmg }
-          - { os: windows-latest, target: win-x64, platform: windows, suffix: windows-x64-setup.exe }
+          # old_sha256 is step 22's 0.1.0 installer for the target, fixed for
+          # ever: the line in v0.1.0's SHA256SUMS.txt, which GitHub's own
+          # digest of the Release asset agrees with. 0.1.0 predates
+          # attestations (ADR-057), so it has none to verify.
+          - {
+              os: macos-15,
+              target: darwin-arm64,
+              platform: macos,
+              suffix: mac-arm64.dmg,
+              old_sha256: 199fcf736985bca829c395a6e1b734be1dc1ffddf27cc11501ead9095fdbaab9,
+            }
+          - {
+              os: windows-latest,
+              target: win-x64,
+              platform: windows,
+              suffix: windows-x64-setup.exe,
+              old_sha256: 52514a57f5dbeae192d6d4fd8366c293355351c1a40f68e52c24f0cbdd71edd0,
+            }
     defaults:
       run:
         shell: bash
@@ -66,9 +82,17 @@ jobs:
       PLATFORM: ${{ matrix.platform }}
       # Step 22's earlier version: the first release, from its own Release.
       UPGRADE_FROM: v0.1.0
+      OLD_SHA256: ${{ matrix.old_sha256 }}
+      # The job's limit, as timeout-minutes says it, and what step 22's steps
+      # may take together: the most of each system's limits, and a margin.
+      # tests/unit/acceptance-upgrade.test.ts holds both to the steps.
+      JOB_MINUTES: 360
+      UPGRADE_MINUTES: 195
     steps:
       - name: Refuse a tag that names no Release
         run: |
+          # When the job began, near enough, for step 22's check of the time left.
+          echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
             echo "::error::$TAG is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>"
             exit 1
@@ -304,6 +328,47 @@ jobs:
           node tests/acceptance/record-cli.mjs leftovers "$env:OUT/made.json" "$env:OUT/acceptance-$env:PLATFORM.md" $env:INSTALLED
           exit $LASTEXITCODE
 
+      # The record and the evidence as steps 1 to 21 left them, kept now: a
+      # job that runs out of time is cancelled, and no step after that runs.
+      # Uploaded again, over these, once step 22 is written.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: acceptance-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/acceptance/*.md
+            ${{ runner.temp }}/acceptance/*.png
+          if-no-files-found: warn
+          retention-days: 30
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: acceptance-evidence-${{ matrix.target }}
+          path: ${{ runner.temp }}/acceptance/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # Step 22 starts only with the time for all of it: cut off part-way by
+      # the job's limit, it would leave nothing written. Otherwise its row says
+      # it was not run, and why.
+      - name: Step 22, the time left
+        if: ${{ !cancelled() && env.INSTALLED != '' }}
+        run: |
+          set -euo pipefail
+          left=$(( JOB_MINUTES - ( $(date +%s) - JOB_STARTED ) / 60 ))
+          if [ "$left" -ge "$UPGRADE_MINUTES" ]; then
+            echo "UPGRADE_RUN=yes" >> "$GITHUB_ENV"
+            echo "$left minutes left; step 22 may take $UPGRADE_MINUTES"
+          else
+            echo "::warning::step 22 not run: $left minutes of the job's time left, and it may take $UPGRADE_MINUTES"
+            record="$OUT/acceptance-$PLATFORM.md"
+            if [ -f "$record" ]; then
+              node tests/acceptance/record-cli.mjs step 22 "$record" --not-run \
+                "too little of the job's time left ($left minutes, and the step may take $UPGRADE_MINUTES)"
+            fi
+          fi
+
       # Step 22, the update over 0.1.0 (docs/acceptance.md). Each version is
       # installed the way a person installs it - on a Mac copied into
       # Applications, the old bundle removed first as the Finder's Replace
@@ -314,7 +379,7 @@ jobs:
       # read, holds absolute paths and is not uploaded.
       - name: Step 22, install 0.1.0 on macOS
         id: old_mac
-        if: ${{ !cancelled() && runner.os == 'macOS' && env.INSTALLED != '' }}
+        if: ${{ !cancelled() && runner.os == 'macOS' && env.UPGRADE_RUN == 'yes' }}
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ github.token }}
@@ -325,6 +390,10 @@ jobs:
           gh release download "$UPGRADE_FROM" --repo "$GITHUB_REPOSITORY" --dir "$UPGRADE/download" \
             --pattern "$OLD_ASSET" --pattern SHA256SUMS.txt
           actual=$(node "$cli" sha256 "$UPGRADE/download/$OLD_ASSET")
+          if [ "$actual" != "$OLD_SHA256" ]; then
+            echo "::error::$OLD_ASSET has SHA-256 $actual, not the $OLD_SHA256 this workflow holds for it"
+            exit 1
+          fi
           expected=$(node "$cli" sums "$UPGRADE/download/SHA256SUMS.txt" "$OLD_ASSET")
           if [ "$actual" != "$expected" ]; then
             echo "::error::$OLD_ASSET does not match its Release's SHA256SUMS.txt"
@@ -342,7 +411,7 @@ jobs:
 
       - name: Step 22, install 0.1.0 on Windows
         id: old_win
-        if: ${{ !cancelled() && runner.os == 'Windows' && env.INSTALLED != '' }}
+        if: ${{ !cancelled() && runner.os == 'Windows' && env.UPGRADE_RUN == 'yes' }}
         timeout-minutes: 10
         shell: pwsh
         env:
@@ -355,14 +424,23 @@ jobs:
           gh release download $env:UPGRADE_FROM --repo $env:GITHUB_REPOSITORY --dir $download --pattern $env:OLD_ASSET --pattern SHA256SUMS.txt
           if ($LASTEXITCODE -ne 0) { throw "could not download $env:OLD_ASSET" }
           $installer = Join-Path $download $env:OLD_ASSET
+          # Each command's exit and the shape of what it printed are checked
+          # before its output is compared: an empty or failed answer must
+          # never be what two failures agree on.
           $actual = node $cli sha256 $installer
+          if ($LASTEXITCODE -ne 0 -or $actual -notmatch '^[0-9a-f]{64}$') { throw "could not hash $env:OLD_ASSET" }
+          if ($actual -ne $env:OLD_SHA256) { throw "$env:OLD_ASSET has SHA-256 $actual, not the $env:OLD_SHA256 this workflow holds for it" }
           $expected = node $cli sums (Join-Path $download 'SHA256SUMS.txt') $env:OLD_ASSET
+          if ($LASTEXITCODE -ne 0 -or $expected -notmatch '^[0-9a-f]{64}$') { throw "SHA256SUMS.txt has no line for $env:OLD_ASSET" }
           if ($actual -ne $expected) { throw "$env:OLD_ASSET does not match its Release's SHA256SUMS.txt" }
           # The folder a per-user one-click installer uses is the package's
           # name at that tag; step 2 has refused an nsis section that would
           # move it for the release under test, and 0.1.0's is fixed history.
           # The exe is checked for, so a folder that moved is caught.
-          $name = (git show "refs/tags/$($env:UPGRADE_FROM):package.json" | Out-String | ConvertFrom-Json).name
+          $manifest = git show "refs/tags/$($env:UPGRADE_FROM):package.json" | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "git could not read package.json at $env:UPGRADE_FROM" }
+          $name = ($manifest | ConvertFrom-Json).name
+          if ($name -notmatch '^[a-z0-9][a-z0-9._-]*$') { throw "package.json at $env:UPGRADE_FROM names no package: '$name'" }
           $folder = Join-Path $env:LOCALAPPDATA "Programs\$name"
           $exe = Join-Path $folder 'Legible Cities.exe'
           if (Test-Path $exe) { throw "$exe is already there, so this is not the machine step 21 left" }
@@ -434,7 +512,7 @@ jobs:
       # 0.1.0 installed.
       - name: Step 22, install 0.1.0 again on macOS
         id: again_mac
-        if: ${{ !cancelled() && runner.os == 'macOS' && steps.after.outcome == 'success' }}
+        if: ${{ !cancelled() && runner.os == 'macOS' && (steps.after.outcome == 'success' || steps.after.outcome == 'failure') }}
         timeout-minutes: 10
         run: |
           set -euo pipefail
@@ -447,7 +525,7 @@ jobs:
 
       - name: Step 22, install 0.1.0 again on Windows
         id: again_win
-        if: ${{ !cancelled() && runner.os == 'Windows' && steps.after.outcome == 'success' }}
+        if: ${{ !cancelled() && runner.os == 'Windows' && (steps.after.outcome == 'success' || steps.after.outcome == 'failure') }}
         timeout-minutes: 15
         shell: pwsh
         run: |
@@ -463,8 +541,8 @@ jobs:
           if (-not (Test-Path $uninstaller)) { throw "no uninstaller at $uninstaller" }
           Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait | Out-Null
           $deadline = (Get-Date).AddMinutes(3)
-          while ((Test-Path $env:UPGRADE_APP) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
-          if (Test-Path $env:UPGRADE_APP) { throw "the uninstaller left $env:UPGRADE_APP" }
+          while ((Test-Path $folder) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
+          if (Test-Path $folder) { throw "the uninstaller left $folder" }
           $installer = Join-Path (Join-Path $env:UPGRADE 'download') $env:OLD_ASSET
           $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
           if ($process.ExitCode -ne 0 -or -not (Test-Path $env:UPGRADE_APP)) {
@@ -486,7 +564,7 @@ jobs:
       # Every step's outcome, so a step that failed or never ran is named in
       # the row; a phase's own findings are in upgrade.json.
       - name: Step 22, the record
-        if: ${{ !cancelled() && env.INSTALLED != '' }}
+        if: ${{ !cancelled() && env.UPGRADE_RUN == 'yes' }}
         timeout-minutes: 5
         env:
           OLD: ${{ runner.os == 'macOS' && steps.old_mac.outcome || steps.old_win.outcome }}
@@ -518,6 +596,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: acceptance-${{ matrix.target }}
+          # Over the copy kept after step 21.
+          overwrite: true
           # Not made.json: its paths are absolute and unredacted, for step 21's
           # check on the runner only. The screenshots are not redacted either,
           # but a runner's folders are outside any person's home.
@@ -534,6 +614,8 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: acceptance-evidence-${{ matrix.target }}
+          # Over the copy kept after step 21.
+          overwrite: true
           path: ${{ runner.temp }}/acceptance/evidence/
           if-no-files-found: warn
           retention-days: 30

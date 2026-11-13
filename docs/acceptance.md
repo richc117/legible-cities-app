@@ -1232,11 +1232,15 @@ lives is what links them:
   the old app removed and the new one copied into Applications, as
   **Replace** does; on Windows the installer, run silently.
 - **after**, on this release: every line under **See** below but the
-  **check:** and the Finder or File Explorer coming forward, with **Made**
-  compared as the moment it names, as **See** says. It also checks that
-  the post's bytes have not changed, that `project.json` is now version 2
-  and that a new still (`instagram-square`) exports beside the post, and
-  keeps the map as `upgrade-after-map.png`.
+  **check:** and the Finder or File Explorer coming forward. "Redrawn
+  once" is cell 03 entering its running state once and cell 02's sentence
+  said once, as the page recorded them, and nothing running for five
+  seconds after; "nothing runs" is the Jobs button read every tenth of a
+  second for five seconds. **Made** is compared as the moment it names, as
+  **See** says. It also checks that the post's bytes have not changed,
+  that `project.json` is now version 2 and that a new still
+  (`instagram-square`) exports beside the post, and keeps the map as
+  `upgrade-after-map.png`.
 - The workflow removes this release and installs 0.1.0 again, as
   [Updating from an earlier release](install.md#updating-from-an-earlier-release)
   says to go back.
@@ -1246,9 +1250,11 @@ lives is what links them:
 Its row reads "pass, part not automated" where all three pass, with
 **Previous version installed** 0.1.0; the part left is the **check:**
 below, which the assistant's visual review reads on `upgrade-after-map.png`
-beside the record. A run that does not make the step writes "not run" in
-its row, with why. Step 21 has left the machine without the app, as it was
-before the run.
+beside the record. Where too little of the job's time is left after step
+21 for all of the step's limits, it is not started, and its row reads "not
+run" with that reason; any other run that does not make the step writes
+"not run" in its row, with why. Step 21 has left the machine without the
+app, as it was before the run.
 
 **Do.**
 1. Move the export folder's `LA Metro Rail` folder, which step 21 left

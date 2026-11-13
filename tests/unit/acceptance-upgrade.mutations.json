@@ -105,18 +105,106 @@
   },
   {
     "file": "tests/acceptance/record-cli.mjs",
-    "find": "  const record = fillField(readRecord(recordPath), 'Previous version installed', previous)",
-    "replace": "  const record = readRecord(recordPath)",
+    "find": "  const record = fillField(readRecord(recordPath), 'Previous version installed', previous)\n",
+    "replace": "  const record = readRecord(recordPath)\n",
     "test": "tests/unit/acceptance-upgrade.test.ts",
     "title": "writes the row and the previous version into the record the spec wrote",
     "why": "The run table would go on saying the previous version is not known after the workflow installed 0.1.0 under the release."
   },
   {
     "file": "tests/acceptance/record-cli.mjs",
-    "find": "  return result === 'fail' ? 1 : 0",
+    "find": "  return row.result === 'fail' ? 1 : 0",
     "replace": "  return 0",
     "test": "tests/unit/acceptance-upgrade.test.ts",
     "title": "writes a failure, and exits 1, where a phase failed or nothing was written down",
     "why": "A failed step 22 written into the record with a green workflow step."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (answer !== quiet) return { ok: false, seen }\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "fails on the first answer that is not, even one sample long between quiet ones",
+    "why": "A job running at one sample and gone by the next would pass as nothing running."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (now() >= end) return { ok: true, seen }\n",
+    "replace": "    return { ok: true, seen }\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "samples for the whole duration while every answer is the quiet one",
+    "why": "One sample taken for the whole quiet time: \"nothing runs\" would be said of a single moment."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (sequence[i] === value && (i === 0 || sequence[i - 1] !== value)) count += 1",
+    "replace": "    if (sequence[i] === value) count += 1",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "counts each entry into a state, not how long it was held",
+    "why": "A redraw seen in running twice in a row would count as two, and \"cell 03 ran once\" would fail on a run that happened once."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  if (env.LEGIBLE_UPGRADE_ON_THIS_MACHINE === '1') return null",
+    "replace": "  if (env.LEGIBLE_UPGRADE_ON_THIS_MACHINE) return null",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses anywhere else, and says how to say yes",
+    "why": "Any value of the variable, a stray \"yes\" or \"0\", would let a phase drive the app on a person's own profile."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  if (env.CI === 'true' || env.CI === '1') return null",
+    "replace": "  if (env.CI !== undefined) return null",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses anywhere else, and says how to say yes",
+    "why": "CI=false or an empty CI would count as a runner, and a phase would run on a person's machine."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  const join = (...parts) => parts.join(platform === 'win32' ? '\\\\' : '/')",
+    "replace": "  const join = (...parts) => parts.join('/')",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "is the platform's application-data folder and the product's name",
+    "why": "The Windows default profile spelt with forward slashes: the seed's check before launch would look in the right folder only by luck of Node's path handling, and the later comparison with 0.1.0's own would be of two spellings."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "      : outcomes[0]?.[1] === 'success'\n",
+    "replace": "      : true\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "names 0.1.0 as installed where its install succeeded and the seed wrote nothing down",
+    "why": "A run whose 0.1.0 install failed would still name 0.1.0 as the previous version installed."
+  },
+  {
+    "file": "tests/acceptance/record-cli.mjs",
+    "find": "  if (upgradePath === '--not-run') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "writes step 22 as not run, with why, where the workflow did not start it",
+    "why": "The time check's row would read the reason as upgrade.json's path and fail, rather than say the step was not run and why."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      UPGRADE_MINUTES: 195\n",
+    "replace": "      UPGRADE_MINUTES: 150\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "gives every step of it a limit, and starts it only with time for all of them",
+    "why": "Step 22 could start with less time left than its steps may take, and be cut off by the job's limit with nothing written."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      JOB_MINUTES: 360\n",
+    "replace": "      JOB_MINUTES: 330\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "says the job's own limit",
+    "why": "The time check would count from a limit the job does not have."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        id: back\n        if: ${{ !cancelled() && (steps.again_mac.outcome == 'success' || steps.again_win.outcome == 'success') }}\n        timeout-minutes: 20\n",
+    "replace": "        id: back\n        if: ${{ !cancelled() && (steps.again_mac.outcome == 'success' || steps.again_win.outcome == 'success') }}\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "gives every step of it a limit, and starts it only with time for all of them",
+    "why": "A step 22 step with no limit of its own would take the job's whole remaining time when it hangs."
   }
 ]

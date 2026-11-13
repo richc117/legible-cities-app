@@ -13,12 +13,17 @@ import { fillField } from '../acceptance/pure.mjs'
 import { RunRecord } from '../acceptance/record'
 import {
   NOT_AUTOMATED,
+  defaultProfile,
   localFields,
   madeAt,
+  notRunRow,
   parseMade,
+  quietFor,
   readUpgrade,
+  refusal,
   sameMade,
   seedOf,
+  timesEntered,
   upgradeRow,
   type Upgrade,
 } from '../acceptance/upgrade.mjs'
@@ -281,11 +286,113 @@ describe('upgradeRow', () => {
     expect(upgradeRow(silent, ALL_SUCCEEDED).notes).toContain('Failed: seed: did not pass.')
   })
 
-  it('fails with the sentence where upgrade.json could not be read, and knows no version', () => {
+  it('fails with the sentence where upgrade.json could not be read', () => {
     const row = upgradeRow('upgrade.json is not JSON', ALL_SUCCEEDED)
     expect(row.result).toBe('fail')
     expect(row.notes).toMatch(/^Failed: upgrade\.json is not JSON\. /)
-    expect(row.previous).toMatch(/^not known/)
+  })
+
+  it('names 0.1.0 as installed where its install succeeded and the seed wrote nothing down', () => {
+    const begun: Upgrade = {
+      record: 1,
+      phases: { seed: { ok: false, problems: ['x'], notes: [] } },
+    }
+    expect(upgradeRow(begun, ALL_SUCCEEDED).previous).toBe('0.1.0 (installed; the seed failed)')
+    expect(upgradeRow('no file', ALL_SUCCEEDED).previous).toBe('0.1.0 (installed; the seed failed)')
+    const notInstalled = ALL_SUCCEEDED.map(([name, outcome], i) =>
+      i === 0 ? ([name, 'failure'] as const) : ([name, outcome] as const),
+    )
+    expect(upgradeRow(begun, notInstalled).previous).toBe('not known: 0.1.0 was not installed')
+  })
+})
+
+describe('notRunRow', () => {
+  it('is not run, with the reason and the way on, and no previous version', () => {
+    expect(notRunRow("too little of the job's time left.")).toEqual({
+      result: 'not run',
+      notes:
+        "Not run: too little of the job's time left. A person makes the step by hand (docs/acceptance.md, step 22).",
+      previous: 'none: step 22 was not run',
+    })
+  })
+})
+
+describe('refusal', () => {
+  it('lets a phase run on CI, or where this machine is named as one it may use', () => {
+    expect(refusal({ CI: 'true' })).toBeNull()
+    expect(refusal({ CI: '1' })).toBeNull()
+    expect(refusal({ LEGIBLE_UPGRADE_ON_THIS_MACHINE: '1' })).toBeNull()
+  })
+
+  it('refuses anywhere else, and says how to say yes', () => {
+    for (const env of [
+      {},
+      { CI: 'false' },
+      { CI: '' },
+      { LEGIBLE_UPGRADE_ON_THIS_MACHINE: 'yes' },
+    ]) {
+      expect(refusal(env), JSON.stringify(env)).toMatch(/LEGIBLE_UPGRADE_ON_THIS_MACHINE=1/)
+    }
+  })
+})
+
+describe('defaultProfile', () => {
+  it("is the platform's application-data folder and the product's name", () => {
+    expect(defaultProfile({ platform: 'darwin', home: '/profiles/a' })).toBe(
+      '/profiles/a/Library/Application Support/Legible Cities',
+    )
+    expect(
+      defaultProfile({
+        platform: 'win32',
+        home: 'D:\\profiles\\a',
+        appData: 'D:\\profiles\\a\\Roaming',
+      }),
+    ).toBe('D:\\profiles\\a\\Roaming\\Legible Cities')
+    expect(defaultProfile({ platform: 'linux', home: '/profiles/b' })).toBe(
+      '/profiles/b/.config/Legible Cities',
+    )
+  })
+
+  it('refuses to guess the Windows one without APPDATA', () => {
+    expect(() => defaultProfile({ platform: 'win32', home: 'D:\\profiles\\a' })).toThrow('APPDATA')
+  })
+})
+
+describe('quietFor', () => {
+  /** A clock that moves only when the sampler waits, and the answers read in turn. */
+  const fake = (answers: string[]) => {
+    let t = 0
+    let i = 0
+    return {
+      read: async () => answers[Math.min(i++, answers.length - 1)],
+      now: () => t,
+      wait: async (ms: number) => {
+        t += ms
+      },
+      reads: () => i,
+    }
+  }
+
+  it('samples for the whole duration while every answer is the quiet one', async () => {
+    const f = fake(['none'])
+    const result = await quietFor(f.read, 'none', { duration: 1000, every: 100, ...f })
+    expect(result.ok).toBe(true)
+    expect(f.reads()).toBe(11)
+  })
+
+  it('fails on the first answer that is not, even one sample long between quiet ones', async () => {
+    const f = fake(['none', 'none', '1 running', 'none'])
+    const result = await quietFor(f.read, 'none', { duration: 1000, every: 100, ...f })
+    expect(result).toEqual({ ok: false, seen: ['none', 'none', '1 running'] })
+  })
+})
+
+describe('timesEntered', () => {
+  it('counts each entry into a state, not how long it was held', () => {
+    expect(timesEntered(['ready', 'running', 'running', 'ready'], 'running')).toBe(1)
+    expect(timesEntered(['running', 'ready', 'running', 'ready'], 'running')).toBe(2)
+    expect(timesEntered(['ready', 'stale', 'ready'], 'running')).toBe(0)
+    expect(timesEntered([], 'running')).toBe(0)
   })
 })
 
@@ -348,7 +455,25 @@ describe('record-cli step 22', () => {
     expect(rowOf(written, '| 22 |')).toMatch(
       /^\| 22 \| Update over 0\.1\.0 \| fail \| Failed: there is no upgrade\.json: no phase ran\. /,
     )
-    expect(rowOf(written, '| Previous version installed |')).toMatch(/\| not known: /)
+    expect(rowOf(written, '| Previous version installed |')).toBe(
+      '| Previous version installed | 0.1.0 (installed; the seed failed) |',
+    )
+  })
+
+  it('writes step 22 as not run, with why, where the workflow did not start it', () => {
+    const dir = scratch()
+    const recordPath = join(dir, 'acceptance-macos.md')
+    new RunRecord(recordPath).write()
+    const run = runCli(['step', '22', recordPath, '--not-run', "too little of the job's time left"])
+    expect(run.status, run.stderr).toBe(0)
+    const written = readFileSync(recordPath, 'utf8')
+    expect(rowOf(written, '| 22 |')).toBe(
+      "| 22 | Update over 0.1.0 | not run | Not run: too little of the job's time left. A person makes the step by hand (docs/acceptance.md, step 22). |",
+    )
+    expect(rowOf(written, '| Previous version installed |')).toBe(
+      '| Previous version installed | none: step 22 was not run |',
+    )
+    expect(runCli(['step', '22', recordPath, '--not-run']).stderr).toMatch(/needs the reason/)
   })
 
   it('takes step 22 only, and every outcome as name=outcome', () => {
@@ -364,5 +489,49 @@ describe('record-cli step 22', () => {
     expect(runCli(['step', '22', recordPath, join(dir, 'u.json')]).stderr).toMatch(
       /needs the outcome/,
     )
+  })
+})
+
+// ------------------------------------------------------------ the workflow
+
+describe("acceptance.yml's time for step 22", () => {
+  const workflow = readFileSync(
+    resolve(__dirname, '../../.github/workflows/acceptance.yml'),
+    'utf8',
+  )
+  const env = (name: string): number => {
+    const match = new RegExp(`^ {6}${name}: (\\d+)$`, 'm').exec(workflow)
+    if (match === null) throw new Error(`no ${name} in the job's env`)
+    return Number(match[1])
+  }
+  /** Each step 22 step that runs on `os`: its name and its own limit. */
+  const steps = (os: 'macOS' | 'Windows'): { name: string; minutes: number }[] =>
+    workflow
+      .split(/\n(?= {6}- )/)
+      .filter((block) => /^ {6}- name: Step 22, /.test(block))
+      .filter((block) => !/^ {6}- name: Step 22, the time left/.test(block))
+      .filter((block) => {
+        // The step's own condition, not an expression in its env.
+        const only = /^ {8}if: .*runner\.os == '(macOS|Windows)'/m.exec(block)
+        return only === null || only[1] === os
+      })
+      .map((block) => ({
+        name: /- name: (.+)/.exec(block)?.[1] ?? '',
+        minutes: Number(/^ {8}timeout-minutes: (\d+)$/m.exec(block)?.[1] ?? NaN),
+      }))
+
+  it("says the job's own limit", () => {
+    const job = /^ {4}timeout-minutes: (\d+)$/m.exec(workflow)
+    expect(Number(job?.[1])).toBe(env('JOB_MINUTES'))
+  })
+
+  it('gives every step of it a limit, and starts it only with time for all of them', () => {
+    for (const os of ['macOS', 'Windows'] as const) {
+      const each = steps(os)
+      expect(each.length, os).toBe(7)
+      for (const step of each) expect(step.minutes, step.name).toBeGreaterThan(0)
+      const total = each.reduce((sum, step) => sum + step.minutes, 0)
+      expect(env('UPGRADE_MINUTES'), os).toBeGreaterThanOrEqual(total)
+    }
   })
 })

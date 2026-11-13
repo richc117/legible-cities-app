@@ -71,3 +71,27 @@ export function upgradeRow(
   upgrade: Upgrade | string,
   outcomes: readonly (readonly [string, string])[],
 ): { result: Result; notes: string; previous: string }
+
+export function notRunRow(reason: string): { result: Result; notes: string; previous: string }
+
+export function refusal(env: Record<string, string | undefined>): string | null
+
+export function defaultProfile(options: {
+  platform: string
+  home: string
+  appData?: string
+  product?: string
+}): string
+
+export function quietFor<T>(
+  read: () => Promise<T>,
+  quiet: T,
+  options: {
+    duration: number
+    every: number
+    now?: () => number
+    wait?: (ms: number) => Promise<void>
+  },
+): Promise<{ ok: boolean; seen: T[] }>
+
+export function timesEntered<T>(sequence: readonly T[], value: T): number

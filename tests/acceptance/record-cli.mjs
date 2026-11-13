@@ -10,6 +10,7 @@
 //   node tests/acceptance/record-cli.mjs fill <record.md> <n> <result> <notes>
 //   node tests/acceptance/record-cli.mjs leftovers <made.json> <record.md> [<install folder>]
 //   node tests/acceptance/record-cli.mjs step 22 <record.md> <upgrade.json> <name=outcome>...
+//   node tests/acceptance/record-cli.mjs step 22 <record.md> --not-run <reason>
 //
 // `leftovers` is step 21 after the uninstall: every place install.md's
 // tables name for this system, the folders the spec made, and a shallow
@@ -19,7 +20,9 @@
 // (tests/acceptance/upgrade.spec.ts): its row from what upgrade.json says
 // each phase found and from the workflow's outcome of each of its steps,
 // given as `name=outcome` with GitHub's words (success, failure, cancelled,
-// skipped), and the run table's Previous version installed.
+// skipped), the earlier version's install first, and the run table's
+// Previous version installed. With --not-run it says the workflow did not
+// start the step, and why.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -28,7 +31,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { fillField, fillStep, parseSums, redact, RESULTS } from './pure.mjs'
-import { readUpgrade, upgradeRow } from './upgrade.mjs'
+import { notRunRow, readUpgrade, upgradeRow } from './upgrade.mjs'
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -182,7 +185,18 @@ function leftovers(madePath, recordPath, installFolder) {
 }
 
 /** Step 22's row and the previous version, written into the record the spec wrote. */
+function writeUpgradeRow(recordPath, { result, notes, previous }) {
+  const record = fillField(readRecord(recordPath), 'Previous version installed', previous)
+  writeFileSync(recordPath, fillStep(record, 22, result, notes))
+  process.stdout.write(`step 22: ${result}: ${redact(notes)}\n`)
+}
+
 function upgradeStep(recordPath, upgradePath, pairs) {
+  if (upgradePath === '--not-run') {
+    if (pairs.length === 0) throw new Error('--not-run needs the reason')
+    writeUpgradeRow(recordPath, notRunRow(pairs.join(' ')))
+    return 0
+  }
   const outcomes = pairs.map((pair) => {
     const at = pair.lastIndexOf('=')
     if (at <= 0) throw new Error(`${pair} is not name=outcome`)
@@ -201,11 +215,9 @@ function upgradeStep(recordPath, upgradePath, pairs) {
           ? error.message
           : String(error)
   }
-  const { result, notes, previous } = upgradeRow(upgrade, outcomes)
-  const record = fillField(readRecord(recordPath), 'Previous version installed', previous)
-  writeFileSync(recordPath, fillStep(record, 22, result, notes))
-  process.stdout.write(`step 22: ${result}: ${redact(notes)}\n`)
-  return result === 'fail' ? 1 : 0
+  const row = upgradeRow(upgrade, outcomes)
+  writeUpgradeRow(recordPath, row)
+  return row.result === 'fail' ? 1 : 0
 }
 
 function main(args) {
