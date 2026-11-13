@@ -30,7 +30,8 @@ of secrets and the sitting at the gate (`docs/acceptance.md`), and those stay
 with the maintainer.
 
 Three facts bound the decision. The repository's `allow_auto_merge` setting is
-off (`docs/repository-settings.md`), and GitHub's auto-merge would merge the
+off (as the repository's settings read on the day of this record), and
+GitHub's auto-merge would merge the
 moment the checks pass, with no reviewer between. `main` must be up to date
 before a merge, and the lanes procedure rebases for that. And a candidate is
 published as a pre-release, which is not what the Releases page offers as the
@@ -59,8 +60,10 @@ by pulling a release.
 
 The coordinating assistant session merges a pull request when the seven
 required checks are green and the `reviewer` subagent has passed it, and
-again after any fix in a destructive path (the reset is the one). It never merges with `--admin`, and it
-squashes with the scanned message, as `/lanes` step 9 says.
+again after any fix in a destructive path (the paths `/lanes` step 5
+names: the reset, a sweep, feed removal, the export, the capture, a child
+process, the bridge). It never merges with `--admin`, and it squashes with
+the scanned message, as `/lanes` step 9 says.
 
 It merges only pull requests opened by its own lanes, and Dependabot pull
 requests the maintainer has named. Any other pull request, including every
