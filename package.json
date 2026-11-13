@@ -22,10 +22,12 @@
     "dist": "electron-builder --dir",
     "dist:check": "node scripts/check-vendored.mjs",
     "typegen": "node --experimental-strip-types scripts/protocol.ts",
-    "test:acceptance": "playwright test -c playwright.acceptance.config.ts"
+    "test:acceptance": "playwright test -c playwright.acceptance.config.ts",
+    "test:reader": "playwright test -c playwright.reader.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@guidepup/guidepup": "0.40.0",
     "@playwright/test": "1.64.1",
     "@rogieking/figui3": "11.3.2",
     "@swc/core": "1.16.18",

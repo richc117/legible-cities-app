@@ -15,6 +15,8 @@ coverage/
 test-results/
 # The acceptance run's record and screenshots (tests/acceptance, A6-04).
 acceptance-results/
+# The scripted VoiceOver run's transcript and record copy (tests/reader, issue 691).
+reader-results/
 playwright-report/
 
 # Vendored runtimes and binaries are CI artefacts, never committed

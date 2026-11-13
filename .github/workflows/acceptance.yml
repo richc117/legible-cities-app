@@ -639,3 +639,190 @@ jobs:
           path: ${{ runner.temp }}/acceptance/evidence-key/
           if-no-files-found: warn
           retention-days: 30
+
+  # The screen-reader walkthrough's VoiceOver column, heard by a script
+  # (issue 691, tests/reader/voiceover.spec.ts): VoiceOver driven by
+  # Guidepup over the same Release's Mac app, one step per walkthrough row.
+  # What it writes is what was spoken, never a pass: the transcript, and the
+  # record with a clause appended to each row's VoiceOver cell, for a person
+  # to read and commit. Hosted macOS only: on a person's Mac the setup asks
+  # for a checkbox ticked by hand and takes over their VoiceOver. The method
+  # is the spike's (docs/adr/spikes/gate-tools-on-hosted-macos.md).
+  reader:
+    name: reader (VoiceOver, darwin-arm64)
+    runs-on: macos-15
+    # Two real layouts, an export and some seventy rows; the spec's own limit
+    # is two hours, and the two setup steps may take three tries each. The
+    # steps' own limits add up to 243 minutes, and the job's covers them.
+    timeout-minutes: 250
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      # The setup below rewrites VoiceOver's and the system's accessibility
+      # settings and takes over the keyboard: never on a person's machine,
+      # and never on a self-hosted runner, which is one.
+      - name: Refuse anything but a GitHub-hosted runner
+        timeout-minutes: 1
+        run: |
+          if [ "${RUNNER_ENVIRONMENT:-}" != "github-hosted" ]; then
+            echo "::error::the reader job sets up VoiceOver for automation and runs only on a GitHub-hosted runner (this is ${RUNNER_ENVIRONMENT:-unknown})"
+            exit 1
+          fi
+
+      - name: Refuse a tag that names no Release
+        timeout-minutes: 1
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::$TAG is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>"
+            exit 1
+          fi
+
+      # The whole history and every tag, for the attestation check below.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        timeout-minutes: 10
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Node 24, as the spike ran Guidepup's setup (its record names Node 24
+      # for the setup step; Node 22 was not tried there).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        timeout-minutes: 10
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        timeout-minutes: 10
+        run: npm ci
+
+      # Checked as step 1 of the acceptance job checks it: against
+      # SHA256SUMS.txt, and, for a tag that contains the commit that brought
+      # attestations (ATTESTED_SINCE, ADR-057), by gh attestation verify for
+      # this repository's build workflow and this tag.
+      - name: The Mac app
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTESTED_SINCE: 8d37d20ea4a97190104bbbadaf88b70eb83d570f
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          asset="Legible-Cities-${TAG#v}-mac-arm64.dmg"
+          download="$RUNNER_TEMP/download"
+          mount="$RUNNER_TEMP/dmg"
+          apps="$RUNNER_TEMP/apps"
+          mkdir -p "$download" "$mount" "$apps"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$download" \
+            --pattern "$asset" --pattern SHA256SUMS.txt
+          actual=$(node "$cli" sha256 "$download/$asset")
+          expected=$(node "$cli" sums "$download/SHA256SUMS.txt" "$asset")
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::$asset has SHA-256 $actual; SHA256SUMS.txt says $expected"
+            exit 1
+          fi
+          attested=0
+          git merge-base --is-ancestor "$ATTESTED_SINCE" "refs/tags/$TAG" || attested=$?
+          case "$attested" in
+            0)
+              commit=$(git rev-parse --verify --quiet "refs/tags/${TAG}^{commit}")
+              for file in "$download/$asset" "$download/SHA256SUMS.txt"; do
+                if ! gh attestation verify "$file" \
+                    --repo "$GITHUB_REPOSITORY" \
+                    --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build.yml" \
+                    --source-ref "refs/tags/${TAG}" \
+                    --source-digest "$commit" \
+                    --deny-self-hosted-runners; then
+                  echo "::error::$(basename "$file") has no attestation from this repository's build workflow for $TAG"
+                  exit 1
+                fi
+              done
+              ;;
+            1)
+              echo "$TAG was tagged before attestations (${ATTESTED_SINCE:0:7}); it has none to verify."
+              ;;
+            *)
+              echo "::error::git could not tell whether $TAG contains the commit that brought attestations"
+              exit 1
+              ;;
+          esac
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$download/$asset"
+          ditto "$mount/Legible Cities.app" "$apps/Legible Cities.app"
+          hdiutil detach "$mount"
+          echo "LEGIBLE_READER_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
+
+      # Up to three tries, a pause between: its AppleScript for the
+      # system's settings has failed once on a runner where it passed
+      # before (error -2700, Do Not Disturb in Control Center). Each try is
+      # ended at 600 s by an alarm the command inherits; three tries and the
+      # pauses are inside the step's limit.
+      - name: Set up VoiceOver for automation
+        timeout-minutes: 32
+        run: |
+          for try in 1 2 3; do
+            if perl -e 'alarm 600; exec @ARGV' npx -y @guidepup/setup@0.29.3 setup --ci; then exit 0; fi
+            echo "::warning::guidepup's VoiceOver setup failed on try $try of 3"
+            if [ "$try" -lt 3 ]; then sleep 20; fi
+          done
+          echo "::error::guidepup's setup (@guidepup/setup setup --ci) failed three times: the runner could not be prepared for VoiceOver, so the walkthrough was not run; this is not a result of the walk"
+          exit 1
+
+      # Without these VoiceOver will not start under Guidepup ("Failed to
+      # mount Guidepup preferences"). Run where @guidepup/guidepup is
+      # installed, since it reads that package's manifest. Tried as above.
+      - name: Guidepup's VoiceOver assets
+        timeout-minutes: 32
+        run: |
+          for try in 1 2 3; do
+            if perl -e 'alarm 600; exec @ARGV' npx -y @guidepup/setup@0.29.3 install voiceover; then exit 0; fi
+            echo "::warning::guidepup's VoiceOver assets failed to install on try $try of 3"
+            if [ "$try" -lt 3 ]; then sleep 20; fi
+          done
+          echo "::error::guidepup's setup (@guidepup/setup install voiceover) failed three times: VoiceOver's assets for Guidepup are missing, so the walkthrough was not run; this is not a result of the walk"
+          exit 1
+
+      # Fails only when a row's script stopped: a row not heard is a
+      # finding (ADR-063), listed at the top of the summary, whose clause
+      # carries #<issue> until a person files one.
+      - name: The walkthrough, heard
+        timeout-minutes: 130
+        env:
+          CI: 'true'
+        run: |
+          export LEGIBLE_READER_OUT="$RUNNER_TEMP/reader"
+          npm run test:reader
+
+      - name: The transcript, as the job's summary
+        # Even after a timeout, so what was heard is kept.
+        if: always()
+        timeout-minutes: 2
+        run: |
+          transcript="$RUNNER_TEMP/reader/transcript.md"
+          notheard="$RUNNER_TEMP/reader/not-heard.md"
+          {
+            # First, the findings: a row not heard does not fail the job
+            # (ADR-063); a row whose script stopped does.
+            if [ -f "$notheard" ]; then
+              cat "$notheard"
+              echo
+            fi
+            echo "Heard is not a pass: no one listened. Before any clause in this run's accessibility.md or clauses.md is committed, replace each \`#<issue>\` with the number of an issue filed for what was not heard; the record's test refuses the cell until then."
+            echo
+            if [ -f "$transcript" ]; then
+              cat "$transcript"
+            else
+              echo "No transcript was written: the spec did not start."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        # Even after a timeout, so what was heard is kept.
+        if: always()
+        timeout-minutes: 5
+        with:
+          name: reader-darwin-arm64
+          path: |
+            ${{ runner.temp }}/reader/*.md
+            ${{ runner.temp }}/reader/*.json
+          if-no-files-found: warn
+          retention-days: 30

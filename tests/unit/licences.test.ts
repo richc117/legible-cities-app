@@ -37,6 +37,7 @@ const noticeRows = (): string[] => [...noticeTable().keys()]
 const NOT_SHIPPED = [
   'electron-vite, Vite, Vitest, Playwright, TypeScript, ESLint, Prettier, electron-builder',
   'axe-core',
+  'Guidepup',
   'PyInstaller (measured, not chosen: ADR-020)',
   'vscode-jsonrpc (planned)',
   'Spec Kit',
