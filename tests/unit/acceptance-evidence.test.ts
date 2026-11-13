@@ -470,14 +470,24 @@ describe('the manifest', () => {
   })
 
   it('orders the manifest by step and id, so position does not give a control away', async () => {
-    const evidence = new Evidence(dir)
-    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-aaa')
-    pair.target = camera(picture(BG, 4000))
-    await evidence.finish(pair, { wait: async () => undefined })
-    const ids = (
-      JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf8')) as { entries: { id: string }[] }
-    ).entries.map((e) => e.id)
-    expect(ids).toEqual(['8-aaa', '8-theme'])
+    for (const swap of [false, true]) {
+      rmSync(dir, { recursive: true, force: true })
+      mkdirSync(dir)
+      const evidence = new Evidence(dir, () => swap)
+      // Added in the reverse of the order they must come out in, across two
+      // steps and several ids, so only sorting can put them right.
+      for (const id of ['9-zeta', '9-alpha', '8-zeta', '8-mid'])
+        evidence.keep({ ...init, id, step: Number(id[0]) }, [])
+      const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-aaa')
+      pair.target = camera(picture(BG, 4000))
+      await evidence.finish(pair, { wait: async () => undefined })
+      const ids = (
+        JSON.parse(readFileSync(join(dir, 'evidence.json'), 'utf8')) as {
+          entries: { id: string }[]
+        }
+      ).entries.map((e) => e.id)
+      expect(ids).toEqual(['8-aaa', '8-mid', '8-theme', '8-zeta', '9-alpha', '9-zeta'])
+    }
   })
 
   it('only notes that nothing changed for a setting the picture need not show', async () => {
