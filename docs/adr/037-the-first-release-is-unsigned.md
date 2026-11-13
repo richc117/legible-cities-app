@@ -4,7 +4,8 @@
   in as far as they were recorded.
 - **Date:** 2026-09-13
 - **Revisit:** at the first release with an update to deliver
-- **See also:** [ADR-054](054-1-0-ships-unsigned-with-no-automatic-update.md), which keeps 1.0 unsigned with no automatic update
+- **See also:** [ADR-054](054-1-0-ships-unsigned-with-no-automatic-update.md), which keeps 1.0 unsigned with no automatic update;
+  [ADR-062](062-the-mac-build-is-signed-with-a-developer-id-and-notarised.md), which signs and notarises the Mac build and answers the checks this record lists for whoever signs
 - **Supersedes:** none
 - **Superseded by:** none
 

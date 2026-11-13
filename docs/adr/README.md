@@ -99,7 +99,7 @@ you add a row, fill this column from your record's header.
 | 034 | [Assistant plugins are opted in per repository](034-assistant-plugins-are-opted-in-per-repository.md) | Accepted | - |
 | 035 | [Installers are built from the same run's vendor artefacts](035-installers-are-built-from-the-same-runs-vendor-artefacts.md) | Accepted | Amended by 040, 042 |
 | 036 | [The inspector spans projects](036-the-inspector-spans-projects.md) | Accepted, in part superseded | Superseded in part by 045 (the left rail's deferral) |
-| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Accepted | See also 054 |
+| 037 | [The first release is unsigned](037-the-first-release-is-unsigned.md) | Accepted | See also 054, 062 |
 | 038 | [The sidecar runtime, measured on three targets](038-the-sidecar-runtime-measured-on-three-targets.md) | Accepted | Amends 020; amended by 042 |
 | 039 | [The determinism gate judges the capture, and the file for its structure](039-the-determinism-gate-judges-the-capture.md) | Accepted, in part superseded | Superseded in part by 055 (the GIFs) |
 | 040 | [FFmpeg is built here, from pinned sources, with only what the export uses](040-ffmpeg-is-built-from-pinned-sources.md) | Accepted | Amends 012, 035 |
@@ -116,7 +116,7 @@ you add a row, fill this column from your record's header.
 | 051 | [A storyboard is a name or a list of beats, and the opening beat is named](051-inline-beats-and-the-opening-beat.md) | Accepted | - |
 | 052 | [A caption, the clock's corner, and the safe zones as data](052-caption-clock-corner-and-safe-zones-as-data.md) | Accepted | - |
 | 053 | [A line can be renamed and hidden; width, casing and dash wait on the pitch](053-per-line-name-and-hidden.md) | Accepted | - |
-| 054 | [1.0 ships unsigned, with no automatic update](054-1-0-ships-unsigned-with-no-automatic-update.md) | Accepted | - |
+| 054 | [1.0 ships unsigned, with no automatic update](054-1-0-ships-unsigned-with-no-automatic-update.md) | Accepted, in part superseded | Superseded in part by 062 (the Mac's signature) |
 | 055 | [A GIF export takes a fixed palette composed from the plan](055-a-fixed-palette-for-gif-exports.md) | Accepted | Supersedes 039 in part (the GIFs) |
 | 056 | [A record keeps the keys it does not know](056-the-record-keeps-unknown-keys.md) | Accepted | - |
 | 057 | [The shipped Python runtime is locked, and the release is attested](057-the-shipped-python-runtime-is-locked-and-attested.md) | Accepted | Amends 020, 041 |
@@ -124,6 +124,7 @@ you add a row, fill this column from your record's header.
 | 059 | [Rendered unit tests run in jsdom, and the kit-facing ones in a browser](059-rendered-unit-tests-run-in-jsdom-and-the-kit-facing-ones-in-a-browser.md) | Accepted | - |
 | 060 | Reserved: issue 556's record, written in its own pull request | - | - |
 | 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its "no undo stack" |
+| 062 | [The Mac build is signed with a Developer ID and notarised](062-the-mac-build-is-signed-with-a-developer-id-and-notarised.md) | Proposed | Supersedes 054 in part (the Mac's signature); see also 037, 043 |
 
 ## Amending rather than superseding
 
