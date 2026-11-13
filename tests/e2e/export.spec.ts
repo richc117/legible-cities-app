@@ -30,7 +30,7 @@ import {
 import { KEEP_BOTH } from '../../src/renderer/src/notebook/outputWords'
 import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { quitApp } from '../support/quit'
+import { pressAndLetTheWindowGo, quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -508,8 +508,9 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
   await exportButton(page).click()
   await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
   // A quit with the export still going is asked about first (issue 552), and
-  // a second quit is the answer: `quitApp` asks twice. What the question
-  // says, and that "Quit anyway" does the same, is quit-guard.spec.ts's.
+  // a second quit is the answer, which `quitApp` gives where the first was
+  // held. What the question says, and that "Quit anyway" does the same, is
+  // quit-guard.spec.ts's.
   await quitApp(app)
   expect(existsSync(deliverable(h))).toBe(false)
 
@@ -541,7 +542,8 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
 async function closeAnyway(page: Page): Promise<void> {
   const asked = page.getByRole('dialog', { name: 'Close while an export is running?', exact: true })
   await expect(asked).toBeVisible()
-  await asked.getByRole('button', { name: 'Close anyway', exact: true }).click()
+  // The press closes the window it is in.
+  await pressAndLetTheWindowGo(asked.getByRole('button', { name: 'Close anyway', exact: true }))
 }
 
 /** Close the app's own window, not the capture's. */

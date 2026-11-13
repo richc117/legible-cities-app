@@ -36,7 +36,7 @@ import {
 } from '@playwright/test'
 import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { askToQuit, hasExited, quitApp } from '../support/quit'
+import { askToQuit, hasExited, pressAndLetTheWindowGo, quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -60,8 +60,10 @@ const REEL = 'la-metro-rail-instagram-reel.mp4'
 // wait for a cancelled export's frames to be removed before it goes - a start
 // sweeps what a quit left - so the removal is given the length of the
 // engine's stop, and "no frames are left" can be read the moment the process
-// has gone.
-const HELD_EXPORT = { export_seconds: 300, shutdown_delay_ms: 800 }
+// has gone. Two seconds, inside the three the supervisor gives the engine to
+// leave when asked: these tests capture for longer than that one before
+// they quit, so there is more to remove.
+const HELD_EXPORT = { export_seconds: 300, shutdown_delay_ms: 2_000 }
 const HELD_LAYOUT = { octi_child: true, octi_ms: 240_000 }
 
 interface Home {
@@ -405,7 +407,8 @@ test('closing the window during an export asks first: Keep working keeps it, Clo
       'Close while an export is running?',
       'The export of Los Angeles has not finished. Closing stops it, and nothing of it is kept.',
     )
-    await button(again, 'Close anyway').click()
+    // The press closes the window it is in.
+    await pressAndLetTheWindowGo(button(again, 'Close anyway'))
 
     if (process.platform === 'darwin') {
       // The app stays running with no window, as its apps do, and nothing of
@@ -446,7 +449,8 @@ test('quitting with nothing running shows no dialog and quits at once', async ()
     await expect(jobsToggle(page)).toHaveAccessibleName('Jobs, none running')
     await expect(page.locator('dialog[open]')).toHaveCount(0)
 
-    await askToQuit(app)
+    // The app can be gone before it has said the quit was asked for.
+    await askToQuit(app).catch(() => undefined)
     // One quit, and no answer from anybody: had the app asked, it would
     // still be here at the deadline.
     await exits(child, 'the app quit at the one quit, with nothing asked')
