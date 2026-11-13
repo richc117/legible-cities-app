@@ -153,8 +153,8 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "{ ...e, control: undefined }",
-    "replace": "{ ...e }",
+    "find": ".map((e) => ({ ...e, control: undefined, check: undefined }))",
+    "replace": ".map((e) => ({ ...e, check: undefined }))",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "asks the control as if the settings had changed",
     "why": "The manifest would say which entries are control pairs, and the reviewer's reading would not be blind."
