@@ -1456,7 +1456,9 @@ export async function expectAxeClean(page: Page, where: string, theme: string): 
     try {
       raw = await Promise.race([
         (async () => {
-          await page.evaluate(axeCore.source)
+          // Once per page: a run the deadline gave up on is still going, and a
+          // second injection would start axe afresh beside it.
+          if (!(await page.evaluate(`'axe' in window`))) await page.evaluate(axeCore.source)
           return page.evaluate(
             (options) =>
               (
@@ -1464,7 +1466,7 @@ export async function expectAxeClean(page: Page, where: string, theme: string): 
                   axe: { run: (c: Document, o: unknown) => Promise<typeof raw> }
                 }
               ).axe.run(document, options),
-            { iframes: false, runOnly: { type: 'tag', values: AXE_TAGS } },
+            { iframes: false, restoreScroll: true, runOnly: { type: 'tag', values: AXE_TAGS } },
           )
         })(),
         deadline,
@@ -1486,9 +1488,10 @@ export async function expectAxeClean(page: Page, where: string, theme: string): 
         impact: rule.impact ?? null,
         nodes: await Promise.all(
           rule.nodes.map(async (node) => {
-            const target = node.target.map((t) => (typeof t === 'string' ? t : String(t)))
+            // A path into shadow roots reads `host >>> inner`.
+            const target = node.target.map((t) => (Array.isArray(t) ? t.join(' >>> ') : String(t)))
             const matches =
-              node.target.length === 1 && typeof node.target[0] === 'string'
+              node.target.length === 1
                 ? await page.evaluate(
                     `(${selectorsMatching.toString()})(document, ${JSON.stringify(node.target[0])}, ${JSON.stringify(selectors)})`,
                   )

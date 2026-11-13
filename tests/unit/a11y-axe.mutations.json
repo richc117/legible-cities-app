@@ -49,7 +49,7 @@
   },
   {
     "file": "tests/support/a11y-axe.ts",
-    "find": "return selectors.filter((selector) => element.matches(selector))",
+    "find": "return selectors.filter((selector) => target.matches(selector))",
     "replace": "return selectors",
     "test": "tests/unit/a11y-axe.test.ts",
     "title": "gives nothing for an element that is not a sample card",
@@ -62,5 +62,21 @@
     "test": "tests/unit/a11y-axe.test.ts",
     "title": "judges an entry in its themes alone, for excuses and for staleness",
     "why": "An entry that ignores its themes excuses Night's contrast in Parchment too, and is called stale where it was never due."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "if (element.shadowRoot === null) return []\n        scope = element.shadowRoot",
+    "replace": "scope = element.shadowRoot ?? element",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "walks a path into open shadow roots, one element at each step",
+    "why": "Stepping into a host that has no shadow root walks the light tree instead, and a node is read as an element it is not."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "      const found = scope.querySelectorAll(steps[i])\n      if (found.length !== 1) return []",
+    "replace": "      const found = scope.querySelectorAll(steps[i])\n      if (found.length < 1) return []",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "walks a path into open shadow roots, one element at each step",
+    "why": "Taking the first of several matches inside a root excuses a node on the strength of another element."
   }
 ]

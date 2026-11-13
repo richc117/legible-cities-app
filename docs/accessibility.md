@@ -129,17 +129,24 @@ person's, recorded in [Reader runs](#reader-runs).
    where it holds in one theme only, that theme. **The first run found
    these**, on macOS and on Windows alike, and they are the list:
    `label-content-name-mismatch` (WCAG 2.5.3, issue 707) on the sample
-   cities' cards, the project cards, the notebook's cell headers,
-   Settings' two folder buttons and the Jobs toggle while a job runs, each
-   named by an `aria-label` that does not hold the words the control shows
-   in the order axe reads them; and `color-contrast` (issue 710), in Night
+   cities' cards, the project cards, the rail's step buttons (each given
+   an `aria-label` of its number, name and state), each of Settings' two
+   folder buttons and the Jobs toggle while a job runs, each named by an
+   `aria-label` that does not hold the words the control shows in the
+   order axe reads them (the kit's buttons keep the real `button` in a
+   shadow root, so those entries name the inner element, and a path into
+   shadow roots is printed `host >>> inner`); and `color-contrast` (issue 710), in Night
    only, on the layout tuning's, a line's options' and the network in
    words' disclosures and the engine log's toggle. **The list must shrink
    to empty** as those issues are fixed: an entry excuses nothing else, so
    the same rule on another element still fails, and one that matches
    nothing on the sweeps (and in the themes) it is expected on, which a
    unit test holds to be sweeps that exist, fails them, so a fixed defect
-   cannot leave its entry behind. The
+   cannot leave its entry behind. The Jobs toggle's entry is the one
+   exception: it names no sweep, since the download holds the job for
+   about twenty seconds and the toggle may read "Jobs" again by the time a
+   sweep looks, so the stale check cannot judge it, and its removal is
+   tracked by issue 707. The
    rule is a function of the findings and is tested without the app
    (`tests/unit/a11y-axe.test.ts`, with mutations). Only CI's `e2e` job
    runs axe on the real screens.

@@ -74,10 +74,13 @@ export const KNOWN_FINDINGS: readonly KnownFinding[] = [
     expectedOn: ['Library, with a project'],
   },
   {
-    // The notebook's cell headers, named "01 Data, ready" and so on over a
-    // row that shows its number, name, state and summary.
+    // The rail's step buttons (`Rail.tsx`, `stepName`), each given an
+    // `aria-label` of its number, name and state ("01 Data, ready") over
+    // three spans that say them without the punctuation. They are the
+    // `button[aria-label="01 Data, ready"]` of the first run, not the
+    // cells' own headers, which carry no label of their own.
     rule: 'label-content-name-mismatch',
-    selector: 'button.cell-head',
+    selector: 'nav[aria-label="Steps"] button.rail-step',
     issue: 707,
     expectedOn: [
       'a sample, its download in cell 01',
@@ -100,26 +103,45 @@ export const KNOWN_FINDINGS: readonly KnownFinding[] = [
     ],
   },
   {
-    // Settings' two folder buttons, named "Choose the export folder" over
-    // their own words. Only drawn when the folder is not locked.
+    // Settings' folder buttons, named "Choose the export folder" over their
+    // own words. The real `button` is in the kit button's shadow root, so
+    // the selector is the inner element's own. Only drawn when the folder
+    // is not locked.
     rule: 'label-content-name-mismatch',
-    selector:
-      'fig-button[aria-label="Choose the export folder"] button, fig-button[aria-label="Choose the engine data folder"] button',
+    selector: '.fig-button-control[aria-label="Choose the export folder"]',
     issue: 707,
     expectedOn: ['Settings', 'Settings, with the Bundled tools rows'],
   },
   {
-    // The Jobs toggle while a job runs, named "Jobs, 1 running".
+    rule: 'label-content-name-mismatch',
+    selector: '.fig-button-control[aria-label="Choose the engine data folder"]',
+    issue: 707,
+    expectedOn: ['Settings', 'Settings, with the Bundled tools rows'],
+  },
+  {
+    // The Jobs toggle while a job runs, named "Jobs, 1 running". It has no
+    // `expectedOn` on purpose: the download holds the job for about twenty
+    // seconds, which two themes of axe and the Tab walks can outlast, and
+    // the toggle then reads "Jobs" and a stale check would fail a correct
+    // build. It is excused where it is seen and never checked for
+    // staleness; issue 707 tracks its removal.
     rule: 'label-content-name-mismatch',
     selector: '.fig-button-control[aria-label^="Jobs, "]',
     issue: 707,
-    expectedOn: ['a sample, its download in cell 01'],
+    expectedOn: [],
   },
   // Colour contrast, in Night only (issue 710): the words of three
   // disclosures and the engine log's toggle.
   {
     rule: 'color-contrast',
-    selector: 'button.layout-tuning-toggle, button.line-options-toggle',
+    selector: 'button.layout-tuning-toggle',
+    issue: 710,
+    expectedOn: ["the project, the layout tuning and a line's options open"],
+    themes: ['Night'],
+  },
+  {
+    rule: 'color-contrast',
+    selector: 'button.line-options-toggle',
     issue: 710,
     expectedOn: ["the project, the layout tuning and a line's options open"],
     themes: ['Night'],
@@ -204,19 +226,38 @@ export function judgeAxe(
 }
 
 /**
- * Which of `selectors` the one element `css` names matches. It is run in the
- * page, as source (`.toString()`), so it holds no reference to anything
- * outside itself. `css` is axe's selector for a node: it is an answer only
- * when exactly one element matches it, and an empty one is given when none
- * does, several do, or the selector will not parse, so a node is never
- * excused on the strength of a different element.
+ * Which of `selectors` the one element `path` names matches. `path` is axe's
+ * selector for a node: a string, or, for an element inside open shadow roots,
+ * one selector per root, outermost first (the kit's buttons keep the real
+ * `button` in the host's shadow root, which `querySelectorAll` and a
+ * descendant combinator do not enter). It is run in the page, as source
+ * (`.toString()`), so it holds no reference to anything outside itself. An
+ * answer is given only when exactly one element matches at every step; an
+ * empty one when none does, several do, a step has no open shadow root to go
+ * into, or a selector will not parse, so a node is never excused on the
+ * strength of a different element.
  */
-export function selectorsMatching(root: ParentNode, css: string, selectors: string[]): string[] {
+export function selectorsMatching(
+  root: ParentNode,
+  path: string | string[],
+  selectors: string[],
+): string[] {
   try {
-    const found = root.querySelectorAll(css)
-    if (found.length !== 1) return []
-    const element = found[0]
-    return selectors.filter((selector) => element.matches(selector))
+    const steps = typeof path === 'string' ? [path] : path
+    if (steps.length === 0) return []
+    let scope: ParentNode = root
+    let element: Element | null = null
+    for (let i = 0; i < steps.length; i++) {
+      const found = scope.querySelectorAll(steps[i])
+      if (found.length !== 1) return []
+      element = found[0]
+      if (i < steps.length - 1) {
+        if (element.shadowRoot === null) return []
+        scope = element.shadowRoot
+      }
+    }
+    const target = element as Element
+    return selectors.filter((selector) => target.matches(selector))
   } catch {
     return []
   }

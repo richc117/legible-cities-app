@@ -102,7 +102,8 @@ describe('judgeAxe', () => {
       if (k.rule === 'label-content-name-mismatch') expect(k.issue).toBe(707)
       else if (k.rule === 'color-contrast') expect(k.issue).toBe(710)
       else throw new Error(`${k.rule} is on the list with no decided issue`)
-      expect(k.expectedOn.length).toBeGreaterThan(0)
+      // Only the Jobs toggle is never checked for staleness, and says why.
+      if (k.expectedOn.length === 0) expect(k.selector).toContain('Jobs, ')
     }
     // Contrast is Night's alone, and the project cards have an entry of their own.
     const contrast = KNOWN_FINDINGS.filter((k) => k.rule === 'color-contrast')
@@ -131,6 +132,25 @@ describe('selectorsMatching', () => {
         '<li><button class="card">y</button></li></ul><p class="card">z</p>',
     )
     expect(selectorsMatching(d, '.card', [CARD_SELECTOR])).toEqual([])
+  })
+
+  it('walks a path into open shadow roots, one element at each step', () => {
+    const d = page('<fig-button id="h"></fig-button><p class="b">outside</p>')
+    const root = d.getElementById('h')!.attachShadow({ mode: 'open' })
+    root.innerHTML = '<button class="b" aria-label="Choose">x</button>'
+    const own = '.b[aria-label="Choose"]'
+    expect(selectorsMatching(d, ['#h', '.b'], [own, 'p'])).toEqual([own])
+    // A flat selector does not cross the boundary, and the outside `.b` is another element.
+    expect(selectorsMatching(d, '#h .b', [own])).toEqual([])
+    // A host with no open shadow root has nothing to step into, whatever its light children are.
+    d.body.insertAdjacentHTML(
+      'beforeend',
+      '<div id="plain"><button class="b" aria-label="Choose">z</button></div>',
+    )
+    expect(selectorsMatching(d, ['#plain', '.b'], [own])).toEqual([])
+    // Several matches inside the root are not an answer.
+    root.innerHTML += '<button class="b">y</button>'
+    expect(selectorsMatching(d, ['#h', '.b'], [own])).toEqual([])
   })
 
   it('gives nothing when the selector names none, or does not parse', () => {
