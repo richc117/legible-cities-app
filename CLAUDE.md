@@ -27,7 +27,9 @@ records are on issue 37, and ADR-037 is Accepted on that basis. ADR-054
 (ADR-030): `gh issue list`, `gh api repos/{owner}/{repo}/milestones`; read
 the board, since nothing here lists it. `main` changes only through pull
 requests with the required checks green: one issue, one branch, one pull
-request, the maintainer included.
+request, the maintainer included. The coordinating session merges its own lanes'
+pull requests and cuts release candidates under ADR-064; the final release
+stays the maintainer's.
 
 **The project screen is a notebook of six numbered cells** (ADR-045;
 `specs/028-the-notebook/contracts/run-graph.md` is its one specification)

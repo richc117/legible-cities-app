@@ -4,6 +4,7 @@
 - **Date:** 2026-10-25
 - **Supersedes:** none
 - **Superseded by:** none
+- **Amended by:** [ADR-064](064-the-coordinating-session-merges-and-cuts-candidates.md): the maintainer no longer reads and merges every pull request, though a contributor's is still his.
 
 ## Context
 
@@ -127,7 +128,7 @@ compared with are whatever git was told. GitHub links a commit to an
 account by its address, so a commit that claims the owner's address, or a
 bot's, is exempt from the check. The exemptions do not open anything that
 review leaves shut: the maintainer reads every pull request and merges by
-hand, the squash message is his, and a contribution that claimed to be his
+hand (as of 2026-11-13, for contributors' pull requests only, ADR-064), the squash message is his, and a contribution that claimed to be his
 would have to survive that reading. What the check is for is the honest
 mistake, a contributor who does not know of the DCO or forgot `-s`, and the
 exemptions are the commits where there is nobody who could have forgotten.

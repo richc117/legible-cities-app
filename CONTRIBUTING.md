@@ -201,8 +201,9 @@ the issue templates, `LICENSE`, `.claude/`) still gets its `e2e` results, which
 pass in a couple of minutes without running the suite; anything else runs it,
 and so does every push to `main`.
 Other workflows are not required: the determinism run also starts on pull
-requests that touch the app, and the installers and the acceptance run are the
-maintainer's, on a tag or by hand; [`docs/releasing.md`](docs/releasing.md)
+requests that touch the app, and the installers and the acceptance run are run
+on a tag or by hand, by the maintainer or, for a release candidate, by the
+coordinating session (ADR-064); [`docs/releasing.md`](docs/releasing.md)
 says how a release is cut, gated, published and, if it must be, pulled.
 
 ### The gate documents
@@ -257,7 +258,9 @@ is.
    one pull request. `main` only changes through pull requests with green
    checks: since 2026-09-07, when the `ci` check landed with the skeleton,
    branch protection refuses a direct push, the maintainer's included.
-4. **Review.** The maintainer reviews every pull request; automated checks
+4. **Review.** The maintainer reviews every pull request, except those the
+   coordinating session merges under ADR-064, which the `reviewer` subagent
+   reads and the pull request body records; automated checks
    must pass; the pull request template's checklist must be honest.
    **If this is your first contribution here, the checks do not start by
    themselves.** The repository is set to require approval for workflows from
@@ -279,9 +282,22 @@ is.
    (`gh run rerun <id> --failed`). A failure that comes back is the change's
    until `main` has been run the same number of times; one that goes away is
    a flake, and **Flaky tests**, below, says what it gets.
-5. **Squash merge.** The maintainer merges, and `main` reads as one commit per
+5. **Squash merge.** The maintainer merges, except that the coordinating
+   assistant session merges pull requests opened by its own lanes, and the
+   Dependabot ones the maintainer has named, once the seven required checks
+   are green and the `reviewer` subagent has passed them (ADR-064); the
+   session merges only a pull request whose head branch is in this repository
+   and whose body has a **Reviewed** paragraph, and every other pull request,
+   a contributor's included, waits for the maintainer. So does any pull
+   request that touches the guards: `.claude/hooks/`, `.claude/settings.json`,
+   `.claude/agents/`, `bin/preflight`, `bin/land`, `bin/candidate`,
+   `.gitleaks.toml`, `.pre-commit-config.yaml`, `scripts/dco-check.mjs`,
+   `ci.yml`, `gitleaks.yml`, `preflight.yml`, `build.yml` and ADR-064, because
+   the checks run the tree's own guards and a weakened guard would be tested
+   against its own edited tables.
+   Whoever merges, `main` reads as one commit per
    issue, so your pull request's title becomes the subject line: write it as
-   one. The maintainer does **not** use GitHub's default squash message, which
+   one. The merge does **not** use GitHub's default squash message, which
    carries every commit's message and adds a `Co-authored-by:` trailer with
    each other author's commit address: a personal address there would sit on
    `main` for good, because `preflight` reads the whole history on every push

@@ -84,7 +84,8 @@ access.
 - [x] Restrict creations, updates and deletions of matching tags.
 - [x] Block force pushes.
 - [x] Bypass list: the **Repository admin** role, always. The maintainer
-      pushes release tags by hand; nothing in a workflow creates, moves or
+      pushes release tags by hand, and the coordinating session those of a
+      candidate (ADR-064); nothing in a workflow creates, moves or
       deletes one, so the Actions token needs no bypass.
 
 ## Discussions

@@ -2690,7 +2690,8 @@ A `verify (attestations)` job after it, with `contents: read` and
 `attestations: read` and no `id-token`, runs `gh attestation verify` over the
 same files, asking for this repository, `build.yml`, the run's ref and
 commit and no self-hosted runner (issue 557). Nothing is published: the
-maintainer reads the draft and publishes it by hand, only after the attest
+maintainer reads the draft and publishes it by hand (the coordinating
+session does so for a release candidate, ADR-064), only after the attest
 and verify jobs are green. If `vendor / electron ffmpeg
 (source)` fails on a tag's run, re-run the failed jobs before anything
 else (`gh run rerun <id> --failed`): its fetch from Chromium's mirror can
