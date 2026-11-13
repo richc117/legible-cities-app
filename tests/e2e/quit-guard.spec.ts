@@ -344,6 +344,34 @@ test('a quit during a layout asks first: Keep working keeps it, Quit anyway quit
   })
 })
 
+// Mutation: `[...named.values()]` made `[...named.values()].reverse()` in
+// `quitQuestion` - the sentence names Bart before Los Angeles, which started
+// first.
+test('a quit during two runs counts them and names each project once, in the order they started', async () => {
+  const h = home(HELD_LAYOUT)
+  await withApp(h, async (page, app) => {
+    const child = app.process()
+    await layingOut(page)
+    // A run outlives the screen that started it: a second project, laid out
+    // while the first still is.
+    await page.getByRole('button', { name: 'Back to Library' }).click()
+    await openNewProject(page, 'Bart')
+    await layOutButton(page).click()
+    await expect(jobsToggle(page)).toHaveAccessibleName('Jobs, 2 running', { timeout: 20_000 })
+
+    await askToQuit(app)
+    const asked = await question(
+      page,
+      'Quit while 2 runs are going?',
+      'The runs of Los Angeles and Bart have not finished. Quitting stops them, and nothing of them is kept.',
+    )
+    await expect(button(asked, 'Keep working')).toBeFocused()
+    await button(asked, 'Quit anyway').click()
+    await exits(child, 'the app quit once the person said Quit anyway')
+    engineWasStopped(h)
+  })
+})
+
 // Mutations: the `close` handler in index.ts made to keep the window's place
 // and nothing else (`onAppWindowClose` not consulted) - the window closes at
 // the first close and no dialog is found; `stopExports` taken out of the
