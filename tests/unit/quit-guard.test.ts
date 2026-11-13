@@ -356,6 +356,29 @@ describe('closing the window', () => {
     expect(two.did).toEqual(['ask quit', 'stop exports'])
   })
 
+  it('is not asked a second time by the quit that follows the window on Windows and Linux', () => {
+    // The whole of "Close anyway" there, in the order index.ts sees it: the
+    // window's `close` comes back through the guard, the window goes, and the
+    // quit that follows it reaches `before-quit` with the export still
+    // unwinding. Two things each keep that quit from being asked about - it
+    // is the app's own, and no page is left to ask - so this was watched
+    // failing with both taken out (`this.#own = true` from `quit()` and
+    // `this.#listener = null` from `gone()`), not as an entry of its own.
+    const { guard, did, exporting } = world()
+    exporting()
+    guard.closing(event(), false)
+    guard.answer(PAGE, 1, 'anyway')
+    expect(guard.closing(event(), false), 'the confirmed close goes ahead').toBe(false)
+    guard.gone()
+    guard.quit()
+    const following = event()
+    expect(guard.beforeQuit(following, false)).toBe(false)
+    expect(following.preventDefault).not.toHaveBeenCalled()
+    // And `window-all-closed` behind it, once the gate has the quit.
+    expect(guard.beforeQuit(event(), true)).toBe(false)
+    expect(did).toEqual(['ask close', 'stop exports', 'close', 'quit'])
+  })
+
   it('forgets the close it was making once the window has gone', () => {
     const { guard, state, exporting } = world()
     exporting()
