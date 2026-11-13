@@ -167,7 +167,7 @@ agency's terms allow.
   configuration it imports), `tools/generate_stubs` (which writes the
   Windows DLL's exports) and `third_party/nasm` (the assembler for its
   x86-64 assembly) at the Chromium commit Electron's DEPS names; Electron's
-  FFmpeg patch, its release gn args and its patches to Chromium's `build/`;
+  FFmpeg patches, its release gn args and its patches to Chromium's `build/`;
   copies of the script, the pins and the vendor workflow; and a `BUILD.txt`
   saying what each part is, how the library is built, and what is left out
   (the toolchain and the rest of a Chromium checkout). Each part is verified by its git object id

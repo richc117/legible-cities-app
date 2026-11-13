@@ -61,7 +61,7 @@
 #   src/media/ffmpeg/         the scripts that configure FFmpeg and generate the GN files
 #   src/tools/generate_stubs/ the script that writes ffmpeg.dll's export list
 #   src/build/                Chromium's GN build configuration that BUILD.gn imports
-#   electron/                 Electron's FFmpeg patch, its release gn args, and its
+#   electron/                 Electron's FFmpeg patches, its release gn args, and its
 #                             patches to Chromium's build/
 #   legible-cities/           copies of this script, the pins and the vendor workflow
 #   BUILD.txt                 what each part is, how the library was built, and
@@ -308,6 +308,28 @@ check_ffmpeg_version() {
   [ "$version" = "#define FFMPEG_VERSION \"$ffmpeg_reports\"" ] || fail "$2 says ${version:-no version}, and the pins say $ffmpeg_reports"
 }
 
+# check_patch_list <electron dir>: every patch the packed
+# patches/ffmpeg/.patches lists is a pinned file, and every pinned
+# patches/ffmpeg/*.patch is listed, so the archive holds every change Electron
+# makes to FFmpeg and a bump that pins a new list but misses a patch fails.
+# Offline, so it covers a cached archive too.
+check_patch_list() {
+  local listed line pinned key
+  listed=$(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$1/patches/ffmpeg/.patches" || true)
+  pinned=$(while IFS= read -r key; do
+    case $key in patches/ffmpeg/*.patch) printf '%s\n' "${key#patches/ffmpeg/}" ;; esac
+  done <<< "$file_keys")
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    line=${line%"${line##*[![:space:]]}"}
+    grep -qxF "$line" <<< "$pinned" || fail "Electron's patches/ffmpeg/.patches lists $line, which the pins do not hold: add patches/ffmpeg/$line to electron_files, or the archive lacks a change to the library"
+  done <<< "$listed"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    grep -qxF "$line" <<< "$listed" || fail "the pins hold patches/ffmpeg/$line, which Electron's patches/ffmpeg/.patches does not list: drop it from electron_files"
+  done <<< "$pinned"
+}
+
 # pack_archive <parent> <mtime> <file>: <parent>/$name packed as the archive
 # is, with names sorted, owner and group 0, modes normalised and every time
 # <mtime>, and one xz thread, since xz's block layout depends on its thread
@@ -469,11 +491,9 @@ write_build_txt() {
     echo "electron/"
     echo "  Files of Electron $electron_tag, commit $electron_commit of $electron_repo:"
     printf '%s' "$files"
-    echo "  patches/ffmpeg/ holds the changes Electron makes to FFmpeg, applied to"
-    echo "  src/third_party/ffmpeg in the order its .patches lists: one that links the macOS"
-    echo "  library with an @loader_path install name, and cherry-picks of FFmpeg fixes."
-    echo "  build/args/ holds the gn args Electron's"
-    echo "  release builds use. patches/chromium/ holds, with the list that orders them, the"
+    echo "  patches/ffmpeg/ holds the changes Electron makes to FFmpeg, the files listed above,"
+    echo "  applied to src/third_party/ffmpeg in the order its .patches lists. build/args/ holds"
+    echo "  the gn args Electron's release builds use. patches/chromium/ holds, with the list that orders them, the"
     echo "  patches Electron applies to Chromium that change files under src/build/; apply them"
     echo "  to src/ with the others that list names. Electron's DEPS at that commit names"
     echo "  Chromium $chromium_version, and Chromium's tag $chromium_tag is commit $chromium_commit."
@@ -567,6 +587,8 @@ verify() {
     [ "$found" = "$want" ] || fail "$archive's electron/$path is blob $found, and the pins say $want"
   done <<< "$file_keys"
   echo "electron/: every file its pinned blob"
+  check_patch_list "$root/electron"
+  echo "electron/patches/ffmpeg/: every patch its list names is pinned, and every pinned one is listed"
   cmp -s "$root/legible-cities/electron-ffmpeg-source.sh" "$here/scripts/electron-ffmpeg-source.sh" \
     || fail "$archive's legible-cities/electron-ffmpeg-source.sh is not this checkout's scripts/electron-ffmpeg-source.sh"
   cmp -s "$root/legible-cities/vendor.yml" "$here/.github/workflows/vendor.yml" \
@@ -811,6 +833,7 @@ while IFS= read -r path; do
   [ "$found" = "$want" ] || fail "Electron's $path at $electron_commit is blob $found, and the pins say $want"
   echo "electron/$path: blob $want"
 done <<< "$file_keys"
+check_patch_list "$root/electron"
 
 cp "$here/scripts/electron-ffmpeg-source.sh" "$here/.github/workflows/vendor.yml" "$root/legible-cities/"
 cp "$pins" "$root/legible-cities/pins.json"

@@ -1,0 +1,18 @@
+[
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "    grep -qxF \"$line\" <<< \"$pinned\" || fail",
+    "replace": "    true || fail",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses a patches/ffmpeg/.patches that lists a patch the pins do not hold",
+    "why": "A patch Electron applies to FFmpeg that the pins do not hold: the source archive would lack a change to the shipped library."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "    grep -qxF \"$line\" <<< \"$listed\" || fail",
+    "replace": "    true || fail",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses a pinned patches/ffmpeg patch that the list does not name",
+    "why": "A pinned FFmpeg patch Electron no longer applies: the archive would offer a change the library does not carry."
+  }
+]

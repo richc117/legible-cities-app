@@ -125,6 +125,8 @@ function fixture(): {
   }
   for (const path of Object.keys(PINS.electron_files))
     put(join(root, 'electron', path), `${path}\n`)
+  // The list of FFmpeg patches names each pinned one, as Electron's does.
+  put(join(root, 'electron', 'patches', 'ffmpeg', '.patches'), ffmpegPatchList(PINS))
 
   const treeId = (folder: string): string => {
     const result = tool('bash', [SCRIPT, '--tree-id', folder])
@@ -214,6 +216,14 @@ function fixture(): {
   )
   expect(second.status).toBe(1)
   return { base, good: join(again, 'repacked', ARCHIVE), pinsFile, pack, copy }
+}
+
+/** The text of patches/ffmpeg/.patches that names every pinned patch, as Electron's list does. */
+function ffmpegPatchList(pins: typeof PINS): string {
+  return `${Object.keys(pins.electron_files)
+    .filter((key) => /^patches\/ffmpeg\/.+\.patch$/.test(key))
+    .map((key) => key.slice('patches/ffmpeg/'.length))
+    .join('\n')}\n`
 }
 
 /** Text for a regular expression that matches it literally. */
@@ -390,6 +400,40 @@ describe.skipIf(lacking)(
           `${ARCHIVE} holds ${ffmpeg}/chromium/ at mode ${mode.toString(8).padStart(4, '0')}, and a folder is packed 0755`,
         )
       }
+    })
+
+    it('refuses a patches/ffmpeg/.patches that lists a patch the pins do not hold', () => {
+      const { pinsFile, pack, copy } = fixture()
+      const other = copy()
+      const list = join(other, NAME, 'electron', 'patches', 'ffmpeg', '.patches')
+      writeFileSync(list, `${readFileSync(list, 'utf8')}cherry-pick-0123456789ab.patch\n`)
+      const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
+      const blob = tool('git', ['hash-object', '--no-filters', list])
+      pins.electron_ffmpeg.electron_files['patches/ffmpeg/.patches'] = blob.stdout.trim()
+      writeFileSync(pinsFile, JSON.stringify(pins, null, 2))
+      refused(
+        pack(other),
+        pinsFile,
+        "Electron's patches/ffmpeg/.patches lists cherry-pick-0123456789ab.patch, which the pins do not hold",
+      )
+    })
+
+    it('refuses a pinned patches/ffmpeg patch that the list does not name', () => {
+      const { pinsFile, pack, copy } = fixture()
+      const other = copy()
+      const list = join(other, NAME, 'electron', 'patches', 'ffmpeg', '.patches')
+      const kept = readFileSync(list, 'utf8').split('\n').slice(1).join('\n')
+      writeFileSync(list, kept)
+      const pins = JSON.parse(readFileSync(pinsFile, 'utf8'))
+      const blob = tool('git', ['hash-object', '--no-filters', list])
+      pins.electron_ffmpeg.electron_files['patches/ffmpeg/.patches'] = blob.stdout.trim()
+      writeFileSync(pinsFile, JSON.stringify(pins, null, 2))
+      const dropped = ffmpegPatchList(PINS).split('\n')[0]
+      refused(
+        pack(other),
+        pinsFile,
+        `the pins hold patches/ffmpeg/${dropped}, which Electron's patches/ffmpeg/.patches does not list`,
+      )
     })
 
     it('refuses a BUILD.txt whose commit is not 40 lowercase hex digits', () => {
