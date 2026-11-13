@@ -12,9 +12,14 @@ const lead = (status: string): string => status.trim().split(/[;,\s]/)[0] ?? ''
 // Number | Title | Status | Relations: four cells, no `|` inside a title.
 const rows = new Map<string, string>()
 const relations = new Map<string, string>()
+// Every number a row opens with, repeats kept: two pull requests that each
+// reserve or take a number can both add its row, and the map above would
+// keep only the last.
+const numbered: string[] = []
 for (const line of readFileSync(join(dir, 'README.md'), 'utf8').split('\n')) {
   const num = /^\| (\d{3}) \|/.exec(line)
   if (!num) continue
+  numbered.push(num[1]!)
   const cells = line.slice(1, -1).split('|')
   expect(cells.length, `the index row for ADR-${num[1]} has four cells: ${line}`).toBe(4)
   rows.set(num[1]!, cells[2]!.trim())
@@ -61,6 +66,11 @@ describe('docs/adr index', () => {
       const n = String(i).padStart(3, '0')
       expect(rows.has(n), `ADR-${n} has a row, a reserved one if it has no record`).toBe(true)
     }
+  })
+
+  it('has one row for each number', () => {
+    const repeated = numbered.filter((n, i) => numbered.indexOf(n) !== i)
+    expect(repeated, 'numbers with more than one row in the index').toEqual([])
   })
 
   it('gives each record the status its file gives it', () => {

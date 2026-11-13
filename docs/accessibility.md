@@ -167,10 +167,11 @@ its Tab walk and focus ring, and its motion, in both of the interface's
 themes. Contrast is `tests/unit/contrast.test.ts`, by token pair.
 
 The two reader columns are a person's, recorded per run in
-[Reader runs](#reader-runs). Since ADR-063 the VoiceOver column can also
-hold what a scripted run heard (issue 691), and the gate's sitting
-([`acceptance-sitting.md`](acceptance-sitting.md)) walks by ear what the
-script could not.
+[Reader runs](#reader-runs). Once issue 691 lands, the VoiceOver column
+can also hold what a scripted run heard (ADR-063); until then it holds
+only a person's words. Either way the gate's sitting
+([`acceptance-sitting.md`](acceptance-sitting.md)) walks by ear what no
+script heard.
 
 **Reader legend.** *pass*, *finding* and *not reachable* are a person's
 words, written by someone who listened (the walkthrough's "Before you
@@ -194,8 +195,8 @@ cannot establish at all (the rotor's lists, speech flooded by progress
 sentences, native choosers and the Finder, the engine's page inside the
 frames, a person's own VoiceOver settings), are the sitting's. **The
 Narrator column is not scripted**, since no tool here drives Narrator, and
-for 1.0, whose Windows build is a beta, it is not walked either (ADR-063):
-its cells keep what they say. A unit test,
+for 1.0 and every release while the Windows build is a beta it is not
+walked either (ADR-063): its cells keep what they say. A unit test,
 `tests/unit/accessibility-record.test.ts`, holds both reader columns to
 this legend.
 
@@ -1727,5 +1728,6 @@ filled in here.
 - For 1.0 (ADR-063): the VoiceOver rows the scripted run marks `not heard`
   or `heard in part`, and what no script can establish, in the gate's
   sitting ([`acceptance-sitting.md`](acceptance-sitting.md), item 5). The
-  Narrator walk is not made for 1.0, whose Windows build is a beta.
+  Narrator walk is not made for 1.0, nor for any release while the
+  Windows build is a beta.
 - A look at the Parchment primary button (C1).

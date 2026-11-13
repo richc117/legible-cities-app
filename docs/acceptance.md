@@ -6,8 +6,9 @@ it. For a release it is run by a machine, on a macOS and a Windows runner
 ([The automated run](#the-automated-run)); a person can follow it the same
 way, on a clean Mac or a Windows PC that has never had Legible Cities on
 it, and record it with the [results template](#results-template).
-[Step 22](#22-update-over-010), the update over 0.1.0, is made on one of
-the two runs, a Mac on one release and Windows on the next. What else the
+[Step 22](#22-update-over-010), the update over 0.1.0, is made by the
+automated run once issue 690 lands; until then a person makes it on one
+machine, a Mac on one release and Windows on the next. What else the
 gate asks is in [`releasing.md`](releasing.md#the-gate) (ADR-063): the
 person's part is one sitting, [`acceptance-sitting.md`](acceptance-sitting.md);
 the stranger's timed run, [`acceptance-stranger.md`](acceptance-stranger.md),
@@ -101,9 +102,10 @@ checked rather than failing it.
 
 Where it cannot do something, the record says so step by step ("not
 automated") and never counts it as passed, whatever another part of the
-gate later finds. Each item below says where the gate (ADR-063) looks at
-it instead; Windows is a beta and is accepted on the automated results
-alone, so on Windows none of these is looked at by a person:
+gate later finds. Where the gate (ADR-063) looks at an item another way,
+the item says so. Windows is a beta, and while it is one it is accepted on
+the automated results alone, so on Windows none of these is looked at by a
+person:
 
 - **Step 2**: a runner downloads without a quarantine attribute or a mark of
   the web, so neither Gatekeeper nor SmartScreen warns, and the way past
@@ -123,16 +125,20 @@ alone, so on Windows none of these is looked at by a person:
   checks it stays open, and a line of the order by its grip and checks
   where it lands), and whether the Finder or File Explorer came to
   the front with the file selected (the spec records what the app asked
-  the system to show or open, and checks those files). The run keeps
-  images of these rows with the checks a machine can make of them (issue
-  689); whether each looks right is the assistant's visual review, under
-  [The reviewer's protocol](#the-reviewers-protocol), posted on the gate
-  issue. The review's doubtful rows and its two control pairs are the
-  sitting's [item 6](acceptance-sitting.md#6-the-assistants-visual-review),
-  the drags its item 7, and the Finder its item 8.
-- **Step 22**: the run installs the one version under test on a runner
-  that has never had another, so the update over 0.1.0 is recorded as not
-  automated, and so is **Previous version installed**.
+  the system to show or open, and checks those files). Once issue 689
+  lands, the run keeps images of the map, preview and export rows with the
+  checks a machine can make of them, and whether each looks right is the
+  assistant's visual review under
+  [The reviewer's protocol](#the-reviewers-protocol), which that issue
+  adds; its verdicts go into the run's record. Until then the record says
+  only that these rows are not automated. The review's doubtful rows and
+  its control pairs are the sitting's
+  [item 6](acceptance-sitting.md#6-the-assistants-visual-review), the drags
+  its item 7, and the Finder its item 8.
+- **Step 22**: until issue 690 lands, the run installs the one version
+  under test on a runner that has never had another, so the update over
+  0.1.0 is recorded as not automated, and so is **Previous version
+  installed**; the gate is not passed without it (ADR-063).
 - **Places**: the profile and export folder are temporary, so the folders
   in `install.md`'s tables are checked only in step 21.
 - **Older than the checklist**: a release tagged before the front door and
@@ -142,12 +148,14 @@ alone, so on Windows none of these is looked at by a person:
   and spec at its own tag: dispatch the workflow on the tag itself. The
   workflow names the tag; a local run names it with
   `LEGIBLE_ACCEPTANCE_TAG`, and without one nothing is refused.
-- **The screen-reader walkthrough**, a separate document: its VoiceOver
-  rows are scripted on the macOS runner where a script can reach them
-  (issue 691), and what the script heard is not a pass
+- **The screen-reader walkthrough**, a separate document. Once issue 691
+  lands, its VoiceOver rows are scripted on the macOS runner where a
+  script can reach them, and what the script heard is not a pass
   ([`accessibility.md`](accessibility.md#results-by-screen), the reader
-  legend). What it did not hear, and what no script can judge, is the
-  sitting's items 2 to 5. Narrator is not walked for 1.0.
+  legend); until then, and for a candidate with no scripted run, the
+  sitting walks the changed rows by ear. What the script did not hear, and
+  what no script can judge, is the sitting's items 2 to 5. Narrator is not
+  walked while the Windows build is a beta.
 - **The stranger's timed run**, a separate document, made after the
   release as feedback and not part of the gate.
 

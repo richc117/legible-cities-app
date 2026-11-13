@@ -6,7 +6,7 @@
 
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cell,
@@ -339,12 +339,19 @@ describe('the sitting', () => {
 })
 
 describe('the gate documents', () => {
-  // The four documents send a reader to each other by heading (ADR-063 made
-  // them one gate), and a renamed heading breaks a link silently on GitHub.
-  // Each link to a heading in a Markdown file under docs/ must land on one.
+  // The gate's documents send a reader to each other by heading (ADR-063
+  // made them one gate), and a renamed heading breaks a link silently on
+  // GitHub. Each link to a heading in a Markdown file must land on one.
   const docs = resolve(__dirname, '../../docs')
-  const GATE = ['acceptance.md', 'acceptance-sitting.md', 'acceptance-stranger.md', 'releasing.md']
-  // A heading another pull request adds; remove its entry when it has landed.
+  const GATE = [
+    'acceptance.md',
+    'acceptance-sitting.md',
+    'acceptance-stranger.md',
+    'accessibility.md',
+    'releasing.md',
+  ]
+  // A heading another pull request adds, allowed to be missing until it
+  // lands; once it is there, the test below fails until its entry goes.
   const PENDING = new Set([
     'acceptance.md#the-reviewers-protocol', // issue 689, the visual evidence
   ])
@@ -375,6 +382,23 @@ describe('the gate documents', () => {
     return anchors
   }
 
+  /** The anchors of a document named from docs/, or null where there is none. */
+  const anchorsIn = (file: string): Set<string> | null => {
+    try {
+      return anchorsOf(readFileSync(join(docs, file), 'utf8'))
+    } catch {
+      return null
+    }
+  }
+
+  /** Every link to a heading in a document under docs/, as `<path from docs/>#<anchor>`. */
+  const linksIn = (name: string): string[] =>
+    [
+      ...readFileSync(join(docs, name), 'utf8').matchAll(
+        /\]\(((?:[\w.-]+\/)*[\w.-]+\.md)?#([^)\s]+)\)/g,
+      ),
+    ].map(([, linked, anchor]) => `${posix.normalize(linked ?? name)}#${anchor}`)
+
   it('makes anchors as GitHub does', () => {
     expect([...anchorsOf('# 22. Update over 0.1.0\n## The reviewer’s protocol\n')]).toEqual([
       '22-update-over-010',
@@ -385,27 +409,36 @@ describe('the gate documents', () => {
     ]).toEqual(['a-b', 'a-b-1', 'code-optional'])
   })
 
+  it('reads links by any relative path', () => {
+    // linksIn reads the docs; the pattern is checked here on a sample.
+    const sample = '[a](../README.md#x) [b](adr/README.md#y) [c](#z) [d](acceptance.md#w)'
+    const found = [...sample.matchAll(/\]\(((?:[\w.-]+\/)*[\w.-]+\.md)?#([^)\s]+)\)/g)].map(
+      (m) => `${m[1] ?? 'here.md'}#${m[2]}`,
+    )
+    expect(found).toEqual(['../README.md#x', 'adr/README.md#y', 'here.md#z', 'acceptance.md#w'])
+  })
+
   it('links only to headings that are there', () => {
     const broken: string[] = []
     let links = 0
-    for (const name of GATE) {
-      const text = readFileSync(join(docs, name), 'utf8')
-      for (const [, linked, anchor] of text.matchAll(/\]\(([\w.-]*\.md)?#([^)\s]+)\)/g)) {
+    for (const name of GATE)
+      for (const target of linksIn(name)) {
         links += 1
-        const file = linked ?? name
-        const target = `${file}#${anchor}`
         if (PENDING.has(target)) continue
-        let other: string
-        try {
-          other = readFileSync(join(docs, file), 'utf8')
-        } catch {
-          broken.push(`${name}: ${target} (no such document)`)
-          continue
-        }
-        if (!anchorsOf(other).has(anchor!)) broken.push(`${name}: ${target}`)
+        const [file, anchor] = target.split('#') as [string, string]
+        const anchors = anchorsIn(file)
+        if (anchors === null) broken.push(`${name}: ${target} (no such document)`)
+        else if (!anchors.has(anchor)) broken.push(`${name}: ${target}`)
       }
-    }
-    expect(links, 'the documents link to headings').toBeGreaterThan(20)
+    expect(links, 'the documents link to headings').toBeGreaterThan(40)
     expect(broken, 'links to a heading that is not there').toEqual([])
+  })
+
+  it('has no pending heading that has landed', () => {
+    const landed = [...PENDING].filter((target) => {
+      const [file, anchor] = target.split('#') as [string, string]
+      return anchorsIn(file)?.has(anchor) === true
+    })
+    expect(landed, 'these headings are there now: take them out of PENDING').toEqual([])
   })
 })

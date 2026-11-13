@@ -4,10 +4,12 @@ The person's part of the release gate (ADR-063): one person, about 45
 minutes, on the final candidate, on a Mac. Everything else in the gate is
 done before it, by machines and by the assistant
 ([`releasing.md`](releasing.md#the-gate)): the automated run on a macOS and
-a Windows runner, the scripted VoiceOver run, and the assistant's visual
-review of the images the run kept, posted on the gate issue. The sitting
-goes straight to what none of those can judge. Windows, a beta, is not
-part of it.
+a Windows runner; the scripted VoiceOver run, once issue 691 lands; and,
+once issue 689 lands, the assistant's visual review of the images the run
+kept, written into the run's record. Where one of those is missing for
+the candidate, the item that relies on it says what to do instead. The
+sitting goes straight to what none of those can judge. Windows, a beta, is
+not part of it.
 
 Ten items, each with the minutes it should take. Do them in order, since
 each leaves the app where the next one starts. Quoted text is the app's
@@ -32,7 +34,8 @@ go. File every finding as an issue of its own, as the checklist's
   `curl`: only a browser's download is marked as coming from the internet,
   and item 1 is about what macOS does with that mark.
 - **The gate issue**, open in another window, with the automated run's
-  records, the scripted VoiceOver run's and the assistant's visual review.
+  records and, where they exist for this candidate, the scripted
+  VoiceOver run's and the assistant's visual review.
 - **VoiceOver off** to begin with. Its keys are in the walkthrough's
   [table](accessibility.md#turning-the-readers-on-and-off-and-the-few-keys-needed).
 - **A clock.** Note the time you start: the form asks how long it took.
@@ -49,7 +52,7 @@ say (choose **Replace**), and open it. Write down, word for word, every
 dialog macOS shows before the app's window, and whether `install.md`
 describes it. Quit the app.
 
-Then once more with no network: move the app to the Bin, turn Wi-Fi off
+Then once more with no network: move the app to the Trash, turn Wi-Fi off
 (and unplug any network cable), drag the app from the disk image to
 Applications again and open it. Write down what macOS showed this time,
 and whether the app's window opened. Quit, and turn the network back on.
@@ -110,22 +113,29 @@ VoiceOver's own navigation and with Tab:
   listed on the gate issue: listen for what the row expects and write
   down what you heard.
 
-If the gate issue has no scripted VoiceOver run for this candidate, walk
-instead every VoiceOver row of the walkthrough whose cell says the part
-changed or is new after 0.1.0. That takes about 20 minutes more, and the
-form's row 5 says it was the walk.
+If the gate issue has no scripted VoiceOver run for this candidate (issue
+691 has not landed, or the run was not recorded), walk instead every row
+of the [results by screen](accessibility.md#results-by-screen) whose
+VoiceOver cell reads "not yet run: a person's" or "pass as it stood at
+0.1.0", each by its part of the walkthrough. That takes about 20 minutes
+more, and the form's row 5 says it was the walk.
 
 ### 6. The assistant's visual review
 
-**10 minutes.** The review is the table on the gate issue that the
-assistant wrote under [the reviewer's protocol](acceptance.md#the-reviewers-protocol),
-with the images it names. With VoiceOver off:
+**10 minutes.** The review is the table of verdicts the assistant wrote
+into the automated run's record, linked from the gate issue, under the
+reviewer's protocol that issue 689 adds to
+[`acceptance.md`](acceptance.md#the-reviewers-protocol), with the images
+it names. Two control pairs sit among its rows unmarked; which they were
+is in the evidence's separate key, which the reviewer opens only after
+writing every verdict. With VoiceOver off:
 
-1. **The two control pairs first.** Each is two images made with the same
-   settings and asked about as if something had changed. If the review
-   names a difference in either, or calls either `looks right` for the
-   change it was asked about, write that down: the review is not relied
-   on for this candidate, and every row is yours to look at.
+1. **The two control pairs first.** Open the key and find them: each is
+   two images made with the same settings and asked about as if something
+   had changed. If the review names a difference in either, or calls
+   either `looks right` for the change it was asked about, write that
+   down: the review is not relied on for this candidate, and every row is
+   yours to look at.
 2. **Every row marked `looks wrong` or `cannot tell`.** Look at its images
    and write your own verdict.
 3. **Five rows marked `looks right`, chosen at random.** Look at each and
@@ -133,6 +143,12 @@ with the images it names. With VoiceOver off:
 4. **The reel and the GIF**, the ones the automated run exported or ones
    you export in cell **06 Export**: play each once at full speed and
    write down anything that stutters, jumps or is cut off.
+
+With no review for this candidate (issue 689 has not landed, or the
+review was not written), look at the run's kept images yourself in the
+same ten minutes, the map, preview and export rows first, and write your
+own verdicts; with no kept images either, write in row 6 that the item
+was not done, and why. Either way, step 4 is still made.
 
 ### 7. The feel of the controls you drag
 
@@ -142,8 +158,9 @@ other than where you let go:
 - In cell 05's **Line colours**, open a line's colour and drag across
   the colour square and along the hue.
 - In **Line order**, carry a line by its grip and drop it two rows away.
-- Hover over a Move up or Move down arrow in **Line order**, then Tab to
-  one: its name shows as a tooltip each way, and Escape sends it away.
+- Hover over an arrow in **Line order**, then Tab to one: its name, such
+  as "Move line `<label>` up", shows as a tooltip each way, and Escape
+  sends it away.
 - In cell 03's **Transport**, drag the "Time of day" slider back and
   forth while the map plays.
 
@@ -158,10 +175,11 @@ other than where you let go:
   a person would expect, as [step 19](acceptance.md#19-licences) says;
   close each.
 - In cell 06, start exporting a reel, and while it runs press Command-Q.
-  **check:** the app asks before it throws the export away, and choosing
-  not to quit leaves the export running (issue 552); write down the
-  question word for word. Where this candidate does not ask, write that,
-  and whether the export was lost.
+  **check:** once issue 552 lands, the app asks before it throws the
+  export away, and choosing not to quit leaves the export running; write
+  down the question word for word. Until then, or where this candidate
+  does not ask, write that it did not ask, and whether the export was
+  lost.
 - With nothing running, press Command-Q: the app quits at once, asking
   nothing.
 

@@ -22,10 +22,11 @@ import { describe, expect, it } from 'vitest'
 // 3. every spec a table row names exists, so a renamed spec cannot take its
 //    row out of the rule above by no longer being found;
 // 4. the reader columns say who listened (ADR-063, the record's "Reader
-//    legend"): a scripted VoiceOver run appends one of four clauses, each
-//    naming its versions and its run, and no other mention of hearing or a
-//    script stands in either column, so a script cannot write `pass` and
-//    Narrator, which nothing here scripts, cannot claim to have been heard.
+//    legend"): a scripted VoiceOver run appends, after a `; `, one of four
+//    clauses, each naming its versions and its run, and nothing shaped like
+//    a scripted clause stands otherwise in either column, so a script cannot
+//    write `pass` and Narrator, which nothing here scripts, cannot claim to
+//    have been heard.
 
 const root = join(__dirname, '..', '..')
 const record = readFileSync(join(root, 'docs', 'accessibility.md'), 'utf8')
@@ -364,7 +365,9 @@ describe('the record does not say a check CI runs has not run', () => {
 // ADR-063: a scripted VoiceOver run may write into the VoiceOver column, in
 // four clauses the record's "Reader legend" sets out, and nothing else of
 // its own. `heard` is not a pass: no one listened, and `pass` stays a
-// person's word. Nothing scripts Narrator, so its column holds no such words.
+// person's word. Nothing scripts Narrator, so its column holds no clause.
+// Only the shapes of a clause are read: a person's own words, "heard twice"
+// say, are theirs to write.
 
 /** The versions and the run a scripted clause names, in its brackets. */
 const SCRIPTED_RUN = String.raw`\(scripted VoiceOver [\w.]+, macOS [\w.]+, Guidepup [\w.]+, app [\w.+-]+, run \d+\)`
@@ -377,19 +380,19 @@ const SCRIPTED_CLAUSES = [
   String.raw`not scripted: a person['’]s`,
 ]
 
-/** A scripted clause where it may stand: opening the cell, or after a `; `. */
-const SCRIPTED_CLAUSE = new RegExp(
-  String.raw`(?:^|; )(?:${SCRIPTED_CLAUSES.join('|')})(?=$|; )`,
-  'g',
-)
+/**
+ * A scripted clause where it may stand: after a `; `, appended to what the
+ * cell held, never opening it, since a script never overwrites a cell.
+ */
+const SCRIPTED_CLAUSE = new RegExp(String.raw`; (?:${SCRIPTED_CLAUSES.join('|')})(?=$|; )`, 'g')
 
-/** Any word of hearing or of a script. */
-const SCRIPT_WORDS = /\bheard\b|\bscripted\b/i
+/** What any scripted clause starts with, well formed or not. */
+const CLAUSE_SHAPE = /\b(?:not )?heard(?: in part)? \(|\(scripted\b|\bnot scripted:/i
 
-/** What a VoiceOver cell says of hearing or a script outside a clause of the legend's. */
+/** What a VoiceOver cell holds of a scripted clause outside the legend's four, each after a `; `. */
 const strayInVoiceOver = (cell: string): string | null => {
   const rest = cell.replace(SCRIPTED_CLAUSE, '')
-  return SCRIPT_WORDS.test(rest) ? rest : null
+  return CLAUSE_SHAPE.test(rest) ? rest : null
 }
 
 /** The legend's own wording of the four, as the record prints them. */
@@ -427,9 +430,11 @@ describe('the reader columns say who listened', () => {
       `${kept}; heard ${run}`,
       `${kept}; heard in part ${run}: not scripted: the rotor`,
       `${kept}; not heard ${run}: "Laid out." expected after the run's end; #800`,
-      `heard ${run}`,
       `${kept}; not scripted: a person's`,
       kept,
+      // A person's own words, which only look like a clause in passing.
+      'pass; the alert was heard twice, which is a finding: #812',
+      `${kept}; heard by a script`,
     ])
       expect(strayInVoiceOver(ok), ok).toBeNull()
     for (const bad of [
@@ -439,16 +444,16 @@ describe('the reader columns say who listened', () => {
       // A clause that does not name its versions and its run.
       `${kept}; heard (scripted VoiceOver 10, macOS 15.8.2, app 1.0.0)`,
       `${kept}; heard (scripted ...)`,
-      // A clause that overwrites rather than appends, run into the cell.
+      // A clause that overwrites rather than appends, or is run into the cell.
+      `heard ${run}`,
       `${kept} heard ${run}`,
       // Not heard with no issue.
       `${kept}; not heard ${run}: "Laid out." expected after the run's end`,
-      `${kept}; heard by a script`,
     ])
       expect(strayInVoiceOver(bad), bad).not.toBeNull()
   })
 
-  it('has, in the VoiceOver column, no word of hearing or a script outside those clauses', () => {
+  it('has, in the VoiceOver column, no scripted clause but the four, each after a `; `', () => {
     const stray = screens
       .map(({ line, at }) => ({ at, said: strayInVoiceOver(cellsOf(line)[VOICEOVER] ?? '') }))
       .filter((r) => r.said !== null)
@@ -459,9 +464,9 @@ describe('the reader columns say who listened', () => {
     ).toEqual([])
   })
 
-  it('has, in the Narrator column, no word of hearing or a script at all', () => {
+  it('has, in the Narrator column, no scripted clause at all', () => {
     const stray = screens
-      .filter(({ line }) => SCRIPT_WORDS.test(cellsOf(line)[NARRATOR] ?? ''))
+      .filter(({ line }) => CLAUSE_SHAPE.test(cellsOf(line)[NARRATOR] ?? ''))
       .map(({ line, at }) => `line ${at}: ${cellsOf(line)[NARRATOR]}`)
     expect(
       stray,

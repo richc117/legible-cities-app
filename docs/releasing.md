@@ -80,7 +80,9 @@ A version is released only after a candidate of it has passed the release
 gate. ADR-063 decided what the gate is and why: machines where they can
 measure, the assistant's review of what they keep, and one person's
 sitting for what neither can judge. Each part is recorded on the gate
-issue, one per version.
+issue, one per version. **The gate is not passed without each part named
+here having landed and run on the final candidate. Until a part's issue
+has landed, the record says that part is not automated.**
 
 - **The automated run**, `.github/workflows/acceptance.yml`, dispatched with
   the candidate's tag. Its token cannot see a draft, so the candidate is
@@ -88,21 +90,27 @@ issue, one per version.
   [`docs/acceptance.md`](acceptance.md) on a macOS and a Windows runner,
   and must be green on both: steps 1 to 21, the update over 0.1.0 (step
   22, issue 690), and the visual evidence with its machine assertions
-  (issue 689). Until a part's issue has landed, the record says that part
-  is not automated, and the gate is not passed without it.
+  (issue 689).
 - **The scripted VoiceOver run** on the macOS runner (issue 691), its
   cells worded as [`docs/accessibility.md`](accessibility.md#results-by-screen)'s
-  legend says. What it hears is not a pass. If it is not recorded for the
-  final candidate, the sitting walks the VoiceOver rows by ear instead.
+  reader legend says. What it hears is not a pass. If it is not recorded
+  for the final candidate, the sitting walks by ear instead the VoiceOver
+  rows the record marks as changed or new since 0.1.0: those reading "not
+  yet run: a person's" and those walked only "as it stood at 0.1.0".
 - **The assistant's visual review**: every image the automated run kept,
-  read under [the reviewer's protocol](acceptance.md#the-reviewers-protocol)
-  and posted on the gate issue with its images. Its verdicts are `looks
-  right`, `looks wrong` and `cannot tell`, never `pass`.
+  read under the reviewer's protocol, which issue 689 adds to
+  [`docs/acceptance.md`](acceptance.md#the-reviewers-protocol). Its
+  verdicts, `looks right`, `looks wrong` or `cannot tell` and never `pass`,
+  go into the run's record, in the results template's table for them, and
+  the gate issue links that record. Two control pairs sit among the rows
+  unmarked; which they were is in a separate key, opened only after every
+  verdict is written.
 - **The sitting**, [`docs/acceptance-sitting.md`](acceptance-sitting.md):
   one person, about 45 minutes, on the final candidate, on a Mac, recorded
   in an issue of its own and ending in the go or no-go on the gate issue.
-- **Windows** is a beta, and is accepted on its automated results alone:
-  no person run, no SmartScreen check and no Narrator walk.
+- **Windows** is a beta, and while it is one it is accepted on its
+  automated results alone: no person run, no SmartScreen check and no
+  Narrator walk.
 
 **After the release**, the stranger's timed run,
 [`docs/acceptance-stranger.md`](acceptance-stranger.md), is feedback on
