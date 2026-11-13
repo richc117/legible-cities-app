@@ -113,7 +113,7 @@
       "severity": "medium",
       "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/hap.c, which libavcodec/Makefile builds only for CONFIG_HAP_DECODER, CONFIG_HAP_ENCODER and CONFIG_HAPQA_EXTRACT_BSF; none is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/hap.c, which libavcodec/Makefile builds only for CONFIG_HAP_DECODER, CONFIG_HAP_ENCODER and CONFIG_HAPQA_EXTRACT_BSF; none is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -123,7 +123,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/vulkan_av1.c, which libavcodec/Makefile builds only for CONFIG_AV1_VULKAN_HWACCEL; no hwaccel is enabled and Vulkan is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/vulkan_av1.c, which libavcodec/Makefile builds only for CONFIG_AV1_VULKAN_HWACCEL; no hwaccel is enabled and Vulkan is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -133,7 +133,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/vaapi_hevc.c, which libavcodec/Makefile builds only for CONFIG_HEVC_VAAPI_HWACCEL; no hwaccel is enabled and VAAPI is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/vaapi_hevc.c, which libavcodec/Makefile builds only for CONFIG_HEVC_VAAPI_HWACCEL; no hwaccel is enabled and VAAPI is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -143,7 +143,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/cook.c, which libavcodec/Makefile builds only for CONFIG_COOK_DECODER; the decoders enabled are png, h264, mjpeg, gif, wrapped_avframe and five PCM ones. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/cook.c, which libavcodec/Makefile builds only for CONFIG_COOK_DECODER; the decoders enabled are png, h264, mjpeg, gif, wrapped_avframe and five PCM ones. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -153,7 +153,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/dvdsubenc.c, which libavcodec/Makefile builds only for CONFIG_DVDSUB_ENCODER; the encoders enabled are libx264, aac, gif, png, mjpeg and rawvideo. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/dvdsubenc.c, which libavcodec/Makefile builds only for CONFIG_DVDSUB_ENCODER; the encoders enabled are libx264, aac, gif, png, mjpeg and rawvideo. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -163,7 +163,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/vdpau_hevc.c, which libavcodec/Makefile builds only for CONFIG_HEVC_VDPAU_HWACCEL; no hwaccel is enabled and VDPAU is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/vdpau_hevc.c, which libavcodec/Makefile builds only for CONFIG_HEVC_VDPAU_HWACCEL; no hwaccel is enabled and VDPAU is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -173,7 +173,7 @@
       "severity": "medium",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:L/VI:N/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/vorbisenc.c, which libavcodec/Makefile builds only for CONFIG_VORBIS_ENCODER; the encoders enabled are libx264, aac, gif, png, mjpeg and rawvideo. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/vorbisenc.c, which libavcodec/Makefile builds only for CONFIG_VORBIS_ENCODER; the encoders enabled are libx264, aac, gif, png, mjpeg and rawvideo. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -183,7 +183,7 @@
       "severity": "medium",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in the Vulkan hwaccel path of libavcodec/dpx.c, and dpx.c itself is built only for CONFIG_DPX_DECODER (libavcodec/Makefile), which is not enabled; the Vulkan side (vulkan_dpx.c) needs CONFIG_DPX_VULKAN_HWACCEL, and no hwaccel is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in the Vulkan hwaccel path of libavcodec/dpx.c, and dpx.c itself is built only for CONFIG_DPX_DECODER (libavcodec/Makefile), which is not enabled; the Vulkan side (vulkan_dpx.c) needs CONFIG_DPX_VULKAN_HWACCEL, and no hwaccel is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -193,7 +193,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/dxva2_hevc.c, which libavcodec/Makefile builds only for CONFIG_HEVC_DXVA2_HWACCEL, CONFIG_HEVC_D3D11VA_HWACCEL and CONFIG_HEVC_D3D12VA_HWACCEL; no hwaccel is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/dxva2_hevc.c, which libavcodec/Makefile builds only for CONFIG_HEVC_DXVA2_HWACCEL, CONFIG_HEVC_D3D11VA_HWACCEL and CONFIG_HEVC_D3D12VA_HWACCEL; no hwaccel is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -203,7 +203,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/vvc/ps.c, which libavcodec/vvc/Makefile builds only for CONFIG_VVC_DECODER; no VVC decoder is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/vvc/ps.c, which libavcodec/vvc/Makefile builds only for CONFIG_VVC_DECODER; no VVC decoder is enabled. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -213,7 +213,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/ffv1enc_vulkan.c, which libavcodec/Makefile builds only for CONFIG_FFV1_VULKAN_ENCODER; the encoders enabled are libx264, aac, gif, png, mjpeg and rawvideo, and Vulkan is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/ffv1enc_vulkan.c, which libavcodec/Makefile builds only for CONFIG_FFV1_VULKAN_ENCODER; the encoders enabled are libx264, aac, gif, png, mjpeg and rawvideo, and Vulkan is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -223,7 +223,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/vulkan_decode.c, which libavcodec/Makefile builds only for the *_VULKAN_HWACCEL options; no hwaccel is enabled and Vulkan is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/vulkan_decode.c, which libavcodec/Makefile builds only for the *_VULKAN_HWACCEL options; no hwaccel is enabled and Vulkan is not linked. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     },
     {
@@ -233,7 +233,7 @@
       "severity": "high",
       "osv_severity": "CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N",
       "verdict": "not-affected",
-      "reason": "The flaw is in libavcodec/apac.c, which libavcodec/Makefile builds only for CONFIG_APAC_DECODER; the decoders enabled are png, h264, mjpeg, gif, wrapped_avframe and five PCM ones. Nothing of it is compiled: the pinned build is configured --disable-everything and enables only the codecs, parsers, muxers, demuxers, filters and protocols named in scripts/vendor-ffmpeg.sh, with no hardware acceleration (ADR-040), and the proof refuses a binary whose configuration differs.",
+      "reason": "The flaw is in libavcodec/apac.c, which libavcodec/Makefile builds only for CONFIG_APAC_DECODER; the decoders enabled are png, h264, mjpeg, gif, wrapped_avframe and five PCM ones. Nothing of it is compiled: the pinned build is configured --disable-everything --disable-autodetect, so only the components scripts/vendor-ffmpeg.sh enables and what those select are built, no hwaccel is among them and none can be autodetected, and the proof refuses a binary whose configuration differs (ADR-040).",
       "triaged": "2026-11-13"
     }
   ]
