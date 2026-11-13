@@ -3,7 +3,7 @@
 # candidate: every tag this makes is v<version>-rc.<N>, and there is no way
 # to ask for a final.
 #
-#   bin/candidate tag <N> [--dry-run]
+#   bin/candidate tag <N> [--dry-run] [--flaky-accepted N,N]
 #   bin/candidate publish <N> [--dry-run]
 #
 # tag      checks main is green, the notes would draft, dispatches the vendor
@@ -16,20 +16,27 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'USAGE'
-usage: bin/candidate tag <N> [--dry-run]
+usage: bin/candidate tag <N> [--dry-run] [--flaky-accepted N,N]
        bin/candidate publish <N> [--dry-run]
   tag      tag v<version>-rc.<N> on origin/main, after the checks a machine can make
   publish  publish that tag's draft Release as a pre-release and dispatch acceptance
   --dry-run  print each step; change nothing
+  --flaky-accepted N,N  issues labelled flaky that name an acceptance spec and
+                        that the maintainer has accepted in writing on the issue
 USAGE
 }
 die() { echo "candidate: $*" >&2; exit 1; }
 
-cmd='' n='' dry=0
-for arg in "$@"; do
+cmd='' n='' dry=0 accepted=''
+while [ $# -gt 0 ]; do
+  arg=$1; shift
   case "$arg" in
     -h|--help) usage; exit 0 ;;
     --dry-run) dry=1 ;;
+    --flaky-accepted)
+      [ $# -ge 1 ] || { usage; exit 2; }
+      accepted=$1; shift
+      case "$accepted" in ''|*[!0-9,]*) usage; exit 2 ;; esac ;;
     -*) echo "candidate: unknown option: $arg" >&2; usage; exit 2 ;;
     *) if [ -z "$cmd" ]; then cmd=$arg; elif [ -z "$n" ]; then n=$arg; else usage; exit 2; fi ;;
   esac
@@ -40,6 +47,20 @@ case "$n" in ''|*[!0-9]*|0*) usage; exit 2 ;; esac
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
 quote() { printf '%q ' "$@"; }
+# Run a command, killing it when it outlives <seconds>; 124 says it did.
+deadline_run() {
+  local secs=$1 pid watcher rc=0; shift
+  "$@" & pid=$!
+  # The watcher's output goes nowhere, or an orphaned sleep would hold open
+  # the pipe of whoever captures this tool's output.
+  ( sleep "$secs"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 & watcher=$!
+  wait "$pid" || rc=$?
+  pkill -P "$watcher" 2>/dev/null || true
+  kill "$watcher" 2>/dev/null || true
+  wait "$watcher" 2>/dev/null || true
+  [ "$rc" -ne 143 ] || rc=124
+  return "$rc"
+}
 act() {
   if [ "$dry" = 1 ]; then printf 'would run: %s\n' "$(quote "$@")"
   else printf 'running: %s\n' "$(quote "$@")"; "$@"; fi
@@ -60,28 +81,49 @@ if [ "$cmd" = tag ]; then
   [ "$(git rev-parse HEAD)" = "$sha" ] || die "this checkout is not at origin/main ($sha); pull first, the notes are checked on this tree."
   ci=$(gh run list --workflow ci.yml --branch main --limit 1 --json conclusion,headSha --jq '.[0] | "\(.conclusion) \(.headSha)"')
   [ "$ci" = "success $sha" ] || die "main is not green on $sha (latest ci run: $ci)."
+  flaky=$(gh issue list --label flaky --state open --limit 100 --json number,title,body)
+  blocking=$(printf '%s' "$flaky" | jq -r --arg acc ",$accepted," \
+    '.[] | . as $i
+         | select((($i.title // "") + " " + ($i.body // "")) | contains("tests/acceptance/"))
+         | select(($acc | contains("," + ($i.number | tostring) + ",")) | not)
+         | "  #\($i.number) \($i.title)"')
+  if [ -n "$blocking" ]; then
+    printf '%s\n' "$blocking" >&2
+    die "open flaky issues name an acceptance spec (above); fix them, or accept each in writing on the issue and pass --flaky-accepted <N,...>."
+  fi
+  echo "candidate: open flaky issues: $(printf '%s' "$flaky" | jq -r '[.[] | "#\(.number)"] | join(" ") | if . == "" then "none" else . end')"
   notes=$(mktemp); trap 'rm -f "$notes"' EXIT
   node scripts/release.mjs notes "$tag" "$notes" || die "the release notes for $tag would be refused; fix the changelog first."
   echo "candidate: main is green on $sha and the notes for $tag draft"
-  before=$(gh run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+  started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   act gh workflow run vendor.yml --ref main
   if [ "$dry" = 0 ]; then
-    run=$before
+    # The run this dispatch made: on main's commit, created after the
+    # dispatch, not merely the newest one.
+    run=0
     for _ in $(seq 1 40); do
-      run=$(gh run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId // 0')
-      [ "$run" != "$before" ] && break
+      run=$(gh run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 10 --json databaseId,headSha,createdAt \
+        --jq "[.[] | select(.headSha == \"$sha\" and .createdAt >= \"$started\")] | .[0].databaseId // 0")
+      [ "$run" != 0 ] && break
       sleep "${CANDIDATE_POLL:-3}"
     done
-    [ "$run" != "$before" ] || die "the vendor run did not appear."
-    gh run watch "$run" --exit-status || die "the vendor run $run failed."
+    [ "$run" != 0 ] || die "the vendor run for this dispatch did not appear."
+    rc=0
+    deadline_run "${CANDIDATE_DEADLINE:-7200}" gh run watch "$run" --exit-status || rc=$?
+    [ "$rc" -ne 124 ] || die "the vendor run $run did not finish before the deadline (CANDIDATE_DEADLINE)."
+    [ "$rc" -eq 0 ] || die "the vendor run $run failed."
   fi
-  act git tag "$tag" "$sha"
-  act git push origin "$tag"
+  act git -c tag.gpgSign=false tag "$tag" "$sha"
+  act git push --no-follow-tags origin "refs/tags/$tag"
 else
   run=$(gh run list --workflow build.yml --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
   [ -n "$run" ] || die "no build run for $tag."
-  built=$(gh run view "$run" --json status,jobs)
+  built=$(gh run view "$run" --json status,conclusion,headSha,jobs)
   [ "$(printf '%s' "$built" | jq -r .status)" = completed ] || die "the build run $run for $tag has not completed."
+  [ "$(printf '%s' "$built" | jq -r .conclusion)" = success ] || die "the build run $run for $tag did not conclude in success."
+  [ "$(printf '%s' "$built" | jq '.jobs | length')" -gt 0 ] || die "the build run $run for $tag lists no jobs."
+  tagged=$(git rev-parse "$tag^{commit}") || die "tag $tag is not here; git fetch origin tag $tag first."
+  [ "$(printf '%s' "$built" | jq -r .headSha)" = "$tagged" ] || die "the build run $run was not made on $tag's commit $tagged."
   bad=$(printf '%s' "$built" | jq -r '.jobs[] | select(.conclusion != "success") | "  \(.name): \(.conclusion)"')
   if [ -n "$bad" ]; then echo "$bad" >&2; die "jobs of build run $run did not succeed."; fi
   [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ] || die "the Release for $tag is not a draft."
