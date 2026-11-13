@@ -1,0 +1,82 @@
+[
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "    if (problem !== null) {\n      say(`verify: ${problem}`)\n      return EXIT.usage\n    }\n",
+    "replace": "",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "refuses the placeholder team, and anything that is not a team, before anything runs",
+    "why": "The team never checked: a build is judged against TEAMID_TBD, and every failure reads as a signing fault instead of a Team ID nobody wrote in."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (team === PLACEHOLDER) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "is ten capital letters and digits, and never the placeholder",
+    "why": "The placeholder with no sentence of its own: it is refused as a malformed Team ID, which does not say where the real one goes."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (display.signature === 'adhoc') problems.push('it is signed ad hoc, not with a Developer ID')",
+    "replace": "",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "passes the team's Developer ID build and names what an ad-hoc one is not",
+    "why": "An ad-hoc signature not named as one: a signing-mode build that fell back to ad hoc fails on its consequences without the cause."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (display.team !== team) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "refuses another team's certificate, a development one, no timestamp and no runtime",
+    "why": "TeamIdentifier not held to the team: a build signed by any Developer ID passes as this project's."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (display.timestamp === null || display.timestamp === '' || display.timestamp === 'none') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "refuses another team's certificate, a development one, no timestamp and no runtime",
+    "why": "A signature with no secure timestamp passed: the notary refuses it an hour later, and the disk image's own timestamp is the one thing only this check reads."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (display.signature !== 'adhoc') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "passes an ad-hoc build and names what a Developer ID one is not",
+    "why": "The ad-hoc mark not required in adhoc mode: a branch build that picked up a certificate from somewhere passes as an ordinary one."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  return new RegExp(`<key>${escaped}</key>\\\\s*<true\\\\s*/>`).test(String(text ?? ''))",
+    "replace": "  return true",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "must set library validation off, as true, by its whole name",
+    "why": "The entitlement never looked for: a build without disable-library-validation ships, and a person can no longer replace Electron's FFmpeg library (ADR-043)."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (override !== undefined) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "fails on any override line, whatever else the verdict says",
+    "why": "An overridden verdict taken as Gatekeeper's: on a machine with assessments off everything is accepted, signed or not."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  if (source !== 'Notarized Developer ID') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "passes only accepted, Notarized Developer ID, from the team",
+    "why": "The source not read: an image that is signed and not notarised is accepted here and refused on a person's Mac."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "      'assessments enabled',",
+    "replace": "      'assessments',",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "fails when Gatekeeper is turned off, overridden, or names another team",
+    "why": "Assessments turned off read as on: every verdict after it is a setting of the machine's, not a judgement of the build."
+  }
+]
