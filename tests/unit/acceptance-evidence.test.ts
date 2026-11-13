@@ -303,7 +303,7 @@ describe('the manifest', () => {
     expect((await evidence.settled('8-y', never, async () => undefined)).settled).toBe(false)
   })
 
-  it('writes the row, the images, the question, the expected text and the check', async () => {
+  it('writes the row, the images, the question and the expected text, and no check', async () => {
     const evidence = new Evidence(dir)
     const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10))
     pair.target = camera(picture(BG, 4000, [200, 160, 100]))
@@ -324,9 +324,15 @@ describe('the manifest', () => {
       ],
       question: init.question,
       expected: ['Sepia'],
-      check: { name: 'theme', threshold: null, outcome: 'note' },
     })
-    expect((manifest.entries[0].check as { value: number }).value).toBeGreaterThan(0.3)
+    expect(manifest.entries[0]).not.toHaveProperty('check')
+    // The check is the record's: kept in memory, and said in the step's row.
+    expect(evidence.entries[0].check).toMatchObject({
+      name: 'theme',
+      threshold: null,
+      outcome: 'note',
+    })
+    expect(evidence.entries[0].check?.value).toBeGreaterThan(0.3)
   })
 
   it('fails a change that did not happen, with its images kept', async () => {
@@ -362,7 +368,6 @@ describe('the manifest', () => {
     expect((a.images as string[]).length).toBe((b.images as string[]).length)
     for (const name of [...(a.images as string[]), ...(b.images as string[])])
       expect(name).toMatch(/^8-[0-9a-f]{10}\.png$/)
-    expect(Object.keys(a.check as object).sort()).toEqual(Object.keys(b.check as object).sort())
     expect(manifest).not.toMatch(/control|recheck/i)
     // No machine check, value or outcome: those are the record's, read after the verdicts.
     expect(manifest).not.toMatch(/"check"|"value"|"outcome"|"threshold"|measured/i)
