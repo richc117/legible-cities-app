@@ -651,8 +651,9 @@ jobs:
   reader:
     name: reader (VoiceOver, darwin-arm64)
     runs-on: macos-15
-    # Two real layouts, an export and some seventy rows; the spec's own limit is two hours.
-    timeout-minutes: 160
+    # Two real layouts, an export and some seventy rows; the spec's own limit
+    # is two hours, and the two setup steps may take three tries each.
+    timeout-minutes: 200
     env:
       TAG: ${{ inputs.tag }}
     steps:
@@ -749,16 +750,34 @@ jobs:
           hdiutil detach "$mount"
           echo "LEGIBLE_READER_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
 
+      # Up to three tries, a pause between: its AppleScript for the
+      # system's settings has failed once on a runner where it passed
+      # before (error -2700, Do Not Disturb in Control Center). Ten minutes
+      # a try at most, three tries and the pauses inside the step's limit.
       - name: Set up VoiceOver for automation
-        timeout-minutes: 10
-        run: npx -y @guidepup/setup@0.29.3 setup --ci
+        timeout-minutes: 32
+        run: |
+          for try in 1 2 3; do
+            if npx -y @guidepup/setup@0.29.3 setup --ci; then exit 0; fi
+            echo "::warning::guidepup's VoiceOver setup failed on try $try of 3"
+            if [ "$try" -lt 3 ]; then sleep 20; fi
+          done
+          echo "::error::guidepup's setup (@guidepup/setup setup --ci) failed three times: the runner could not be prepared for VoiceOver, so the walkthrough was not run; this is not a result of the walk"
+          exit 1
 
       # Without these VoiceOver will not start under Guidepup ("Failed to
       # mount Guidepup preferences"). Run where @guidepup/guidepup is
-      # installed, since it reads that package's manifest.
+      # installed, since it reads that package's manifest. Tried as above.
       - name: Guidepup's VoiceOver assets
-        timeout-minutes: 10
-        run: npx -y @guidepup/setup@0.29.3 install voiceover
+        timeout-minutes: 32
+        run: |
+          for try in 1 2 3; do
+            if npx -y @guidepup/setup@0.29.3 install voiceover; then exit 0; fi
+            echo "::warning::guidepup's VoiceOver assets failed to install on try $try of 3"
+            if [ "$try" -lt 3 ]; then sleep 20; fi
+          done
+          echo "::error::guidepup's setup (@guidepup/setup install voiceover) failed three times: VoiceOver's assets for Guidepup are missing, so the walkthrough was not run; this is not a result of the walk"
+          exit 1
 
       - name: The walkthrough, heard
         timeout-minutes: 130
