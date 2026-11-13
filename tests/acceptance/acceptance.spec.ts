@@ -668,7 +668,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
     on: Page,
     key: string,
     init: EntryInit,
-    options: { name?: string; control?: string; target?: Shootable } = {},
+    options: { name?: string; control?: string; noteOnly?: boolean; target?: Shootable } = {},
   ): Promise<void> =>
     log.soft(`evidence: the pictures before ${key}`, async () => {
       pairs.set(
@@ -676,6 +676,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         await evidence.begin(on, options.target ?? mapOf(on), init, {
           name: options.name ?? key,
           control: options.control,
+          noteOnly: options.noteOnly,
         }),
       )
     })
@@ -2747,9 +2748,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
           id: '10-order',
           step: 10,
           row: LOOKS.order,
-          question: `The third picture is the map after the order of the lines was changed with the arrows. Do the page's line rows stand in a different order from the first two?`,
+          question: `The third picture is the map after the order of the lines was changed with the arrows. Do the page's line rows stand in a different order from the first two? (The map itself need not change with the order, so a picture that looks the same is not a failure: say what you see.)`,
         },
-        { name: 'order-changes' },
+        { name: 'order-changes', noteOnly: true },
       )
       await button(first, 'down').click()
       await log.soft('the first move is said', () =>

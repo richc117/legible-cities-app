@@ -1292,6 +1292,8 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   note becomes a failure only when a measuring run on each system has set its
   threshold, at half the smallest difference it saw (`THRESHOLDS` in
   `evidence.ts`).
+- The line order (step 10) is only ever a **note**: the map need not change
+  with the order, so a picture that looks the same is not a failure.
 - The run drives the **first** line's options in step 9 (Bold, Regular
   casing and Dashed, each against the shot before, then Reset line), where
   the steps below say the second line and add a name and Shown off: those

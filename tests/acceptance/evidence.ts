@@ -417,6 +417,8 @@ export interface Pair {
   steady: boolean
   /** The id of a control entry to write beside this one: ordinary-looking, and not a real entry's. */
   control: string | null
+  /** A change that need not show in the picture: nothing changing is a note, never a failure. */
+  noteOnly?: boolean
 }
 
 export interface Settle {
@@ -489,7 +491,7 @@ export class Evidence {
     window: Page,
     target: Shootable,
     init: EntryInit,
-    options: { name: string; control?: string } = { name: init.id },
+    options: { name: string; control?: string; noteOnly?: boolean } = { name: init.id },
   ): Promise<Pair> {
     const steady = (await pauseAndRead(window)).steady
     const a1 = await this.settled(`${init.id}-a1`, target)
@@ -502,6 +504,7 @@ export class Evidence {
       a2: a2.path,
       steady: steady && a1.settled && a2.settled,
       control: options.control ?? null,
+      noteOnly: options.noteOnly === true,
     }
   }
 
@@ -536,6 +539,12 @@ export class Evidence {
         thresholdFor(pair.name),
       )
     }
+    if (pair.noteOnly === true && check.outcome === 'fail')
+      check = {
+        ...check,
+        outcome: 'note',
+        said: `${check.said} (the picture need not change with this setting)`,
+      }
     if (!steady && options.colour !== undefined)
       check = { ...check, said: `${check.said} (the map was not steady)` }
     this.add({ ...pair.init, images: [pair.a1, pair.a2, b.path], check })

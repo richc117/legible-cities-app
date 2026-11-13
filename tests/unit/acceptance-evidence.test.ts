@@ -363,6 +363,17 @@ describe('the manifest', () => {
     expect(ids).toEqual(['8-aaa', '8-theme'])
   })
 
+  it('only notes that nothing changed for a setting the picture need not show', async () => {
+    const evidence = new Evidence(dir)
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10))
+    pair.noteOnly = true
+    pair.target = camera(picture(BG, 10))
+    const check = await evidence.finish(pair, { wait: async () => undefined })
+    expect(check.outcome).toBe('note')
+    expect(check.said).toContain('need not change')
+    expect(evidence.failures(8)).toEqual([])
+  })
+
   it('notes, never fails, what was measured of a map that was not steady', async () => {
     const evidence = new Evidence(dir)
     const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10))

@@ -182,5 +182,13 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "orders the manifest by step and id",
     "why": "A control written straight after the entry it shadows would be recognised by its position."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (pair.noteOnly === true && check.outcome === 'fail')",
+    "replace": "if (false && check.outcome === 'fail')",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "only notes that nothing changed for a setting the picture need not show",
+    "why": "A line order that moves no pixel of the map would fail the step, as it did on one system."
   }
 ]
