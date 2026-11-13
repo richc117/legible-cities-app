@@ -176,9 +176,14 @@ is the empty string.
   checks out the two scripts and the release config and nothing else,
   installs nothing and runs no npm code; the scripts import nothing but
   Node's own modules. It downloads the signed image, which it never runs,
-  turns Gatekeeper's assessments on if the runner came with them off,
-  notarises and staples, checks the result with the `dmg` mode, and uploads
-  it as `installer-<target>`. The key is written to a file readable by the
+  into a folder of its own and never over the checkout, and refuses the
+  download, before the key exists, unless it is exactly one disk image and
+  its target's manifest, both plain files: the artefact is the one thing
+  here that a runner which ran npm's code made, and a file in it named
+  like one of this job's scripts would otherwise have replaced the script.
+  It then turns Gatekeeper's assessments on if the runner came with them
+  off, notarises and staples, checks the result with the `dmg` mode, and
+  uploads it as `installer-<target>`. The key is written to a file readable by the
   runner's user alone, in the notarising step alone, and removed when that
   step's shell exits normally or fails; on a cancelled or timed-out step
   the hosted runner is discarded with the file.
@@ -257,17 +262,40 @@ no npm. The Team ID is public and committed; nothing else about the
 account is in the repository.
 
 **The certificate is within reach of npm's code, in one step of signing
-runs, and the notary's key is not, by construction.** A dependency of the
-packager that turned hostile could read the certificate where the packager
-is given it; that is the accepted cost of the first decision. It could not
-reach the notary's key by any means the workflow offers: the packaging job
-is never in `release-notarize`, so GitHub has nothing of that environment
-to hand its runner, in a step's environment or in the runner's memory,
-whatever the job names and whatever the runner's user can read. A
-certificate taken that way signs; it does not notarise, which takes the
-notary's key, and macOS stops a downloaded app that is signed and not
-notarised. The reverse holds as well: the notarising job is never in
+runs, and the notary's key is not.** A dependency of the packager that
+turned hostile could read the certificate where the packager is given it;
+that is the accepted cost of the first decision. A certificate taken that
+way signs; it does not notarise, which takes the notary's key, and macOS
+stops a downloaded app that is signed and not notarised.
+
+The key it could not take, and that rests on two things together, neither
+enough alone. The packaging job is never in `release-notarize`, so GitHub
+has nothing of that environment to hand its runner, in a step's
+environment or in the runner's memory, whatever the job names and whatever
+the runner's user can read. And the one thing that passes from the
+packaging job to the notarising job, the artefact, cannot carry code into
+it: it is unpacked into a folder of its own, not over the checkout, and
+is refused before the key is written unless it holds exactly one disk
+image and its target's manifest, both plain files, with no link and no
+third file. Without that second half the first would not hold: a
+packaging step that had turned hostile could ship a file named like one of
+the notarising job's scripts, or like the config it reads the team from,
+and have it run, or trusted, with the key in hand. The reverse of the
+first half holds as well: the notarising job is never in
 `release-signing`, and cannot sign.
+
+**What is not stopped, and is accepted.** A packaging step that has turned
+hostile decides which bytes go into `unnotarised-<target>`, and the
+notarising job will notarise whatever image signed by this team it is
+given that Apple's scan accepts. The two environments stop the key being
+stolen and used outside this pipeline; they do not stop a notarised
+hostile build coming out of a run whose packaging step is compromised.
+The defence there is not in this record's machinery. It is the hygiene
+that keeps the packaging step's code what it is meant to be, the lockfile
+`npm ci` installs from, Dependabot and the weekly vulnerability watch
+(`SECURITY.md`), and the attestation, which ties each installer to the
+one workflow run that made it (ADR-057), so that a run found to be
+compromised names exactly what it built.
 
 **The variable is turned on last.** `MAC_SIGNING` goes to `on` only once
 both environments exist, each with the deployment rule (`v*` tags and

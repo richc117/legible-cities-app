@@ -117,7 +117,8 @@ gate, [`docs/acceptance.md`](acceptance.md):
     image has no signature of its own, so this tag was built ad hoc, with
     signing off (the MAC_SIGNING variable)." The run also warns if signing
     is on for the repository by then, in case that candidate was meant to
-    be signed.
+    be signed. The step fails if the app inside an unsigned image is not
+    itself signed ad hoc: that is neither build this repository makes.
 - **The person runs**: once on a Windows PC and once on a clean Mac, each
   recorded in an issue of its own from the checklist's results template.
   Step 22, "Update over 0.1.0", is made on one of the two.

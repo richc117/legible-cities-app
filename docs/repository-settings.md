@@ -157,6 +157,13 @@ Holds the notary's key and nothing else. Only the `notarize` job joins it.
       reviewer in front of it, and to both jobs here, which is what the
       two environments are for. To be checked when the environments are
       created, and again when this page is re-read.
+- [ ] **No variable named `MAC_SIGNING` in either environment** (each
+      environment's own "Environment variables"). An environment's
+      variable shadows the repository's for a job that has joined it, so
+      one there would give the steps inside a signing job another answer
+      than the one that decided whether the job signs. The switch is the
+      repository's variable alone. To be checked when the environments are
+      created, and again when this page is re-read.
 - [ ] The Team ID written into `electron-builder.release.yml` in place of
       `TEAMID_TBD`, by a pull request. It is public, and it is not a
       setting, but nothing signs without it.

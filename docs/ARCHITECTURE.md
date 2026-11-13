@@ -2619,7 +2619,9 @@ neither (ADR-062, Proposed; ADR-054).
   `unnotarised-<target>`. `notarize` joins `release-notarize`, on a
   runner of its own that checks out the two scripts and the release config
   and nothing else and runs no npm code, and is given the notary's key: it
-  downloads that image, turns Gatekeeper's assessments on if the runner
+  downloads that image into a folder of its own, refuses the download
+  unless it is exactly the image and its target's manifest, both plain
+  files, turns Gatekeeper's assessments on if the runner
   has them off, notarises and staples it (`scripts/notarize-dmg.mjs`),
   checks it and the app inside it (`scripts/verify-mac-signing.mjs dmg`),
   and uploads it as `installer-<target>`. The release job takes
@@ -2633,7 +2635,8 @@ runtime is on, and the app and the bundled Python keep the entitlement
 ADR-043 needs. The runtime's bytecode is left out of the signer's
 file-by-file pass (`mac.signIgnore`) and sealed as a resource of the bundle.
 `acceptance.yml`'s step 2 tells the two builds apart by the image, which
-only signing mode signs, and holds a signed one to the Developer ID checks.
+only signing mode signs, holds a signed one to the Developer ID checks, and
+fails an unsigned one whose app is not signed ad hoc.
 
 A local `npm run dist` builds an unpacked app with whatever is
 vendored: with nothing, the hook lets it through and says it is not an
