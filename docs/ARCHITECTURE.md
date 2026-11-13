@@ -425,13 +425,15 @@ waiting 3 s after that, each step in the log. A restart waits for that
 before it starts the next engine, a person's **Try again** is refused
 meanwhile (the engine is "still stopping"), and a quit waits for it, so
 nothing an exited engine started runs beside the next one on the same home
-or outlives the app. An engine that outlived the kill (issue 562) is the
-exception: the quit does not wait for it, and what it left is ended only if
-it exits while the app is still running. Nothing is started beside it
-while the app runs (issue 673), by a restart or by **Try again**. Each
-signal is sent straight after
-a look that found the group still there, and the group's id is the
-engine's pid, which no other process takes while the group has a member.
+or outlives the app, unless it is still there after SIGKILL and that last
+wait: it is no longer waited for then, and a restart, **Try again**, the
+reset and a quit go on beside it (issue 697). An engine that outlived the
+kill (issue 562) is the other exception: the quit does not wait for it, and
+what it left is ended only if it exits while the app is still running.
+Nothing is started beside it while the app runs (issue 673), by a restart
+or by **Try again**. Each signal is sent straight after a look that found
+the group still there, and the group's id is the engine's pid, which no
+other process takes while the group has a member.
 What remains are the moments the app does not see the group - from the
 reap to the first look, between two looks, and between a look and its
 signal - in which the group could empty and its id pass to a new group

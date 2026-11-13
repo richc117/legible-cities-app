@@ -46,13 +46,12 @@ export const RETRY_REFUSALS = {
  * failing too often, where it would not restart the engine beside one that
  * had outlived the kill (issue 673), or where the interpreter existed when
  * the app opened and its spawn then failed (not executable, say, or taken
- * away since); false
- * where no interpreter was found at all, and for the app's own quit. The
- * interpreter is looked for once, as the app opens, and a retry does not look
- * again: one missing then, a runtime a scanner quarantined before the start
- * among them, is `command: null` and offers no button. A
- * mismatched engine has no such flag: starting it again finds the same
- * version, and its dialog says so.
+ * away since); false where no interpreter was found at all, and for the
+ * app's own quit. The interpreter is looked for once, as the app opens, and
+ * a retry does not look again: one missing then, a runtime a scanner
+ * quarantined before the start among them, is `command: null` and offers no
+ * button. A mismatched engine has no such flag: starting it again finds the
+ * same version, and its dialog says so.
  */
 export type EngineState =
   | { state: 'starting'; attempt: number }
