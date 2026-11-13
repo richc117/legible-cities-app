@@ -244,7 +244,8 @@ export const SAMPLES_ENGINE_DOWN_LISTED =
 /**
  * What a stopped engine leads with: the two ways to begin it anew, the one
  * under the sentence first (issue 562). A stop after giving up is always
- * retryable, so Try again is there whenever this is said.
+ * retryable, and so is one beside an engine that had outlived the kill
+ * (issue 673), so Try again is there whenever this is said.
  */
 export const SAMPLES_STOPPED_FIRST =
   'Press Try again to start the engine once more, or quit and open Legible Cities again.'

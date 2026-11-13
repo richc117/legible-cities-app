@@ -245,6 +245,24 @@ export function engineWorkRefusal(engine: EngineWork): string | null {
 export const RESTART_WAITS_FOR_RESET =
   'The engine data is being reset; the engine starts again once the reset has finished.'
 
+/**
+ * What ends the `stopped` state's reason when the engine a failure ended
+ * outlived the kill, so nothing was started beside it (issue 673): the
+ * failure's own reason comes first, as it does before "The engine failed n
+ * times in a row." A person's Try again is the way back, refused in the
+ * retry's own words (`RETRY_REFUSALS.stillStopping`) for as long as that
+ * engine is there.
+ *
+ * Those words, in the past tense and without their step. A state's reason
+ * stays on screen after that engine has gone, when "is still stopping" would
+ * no longer be so and nothing would redraw it. And like the supervisor's
+ * other stopped reasons it gives no step of its own: the Library leads a
+ * stopped engine with Try again already (issue 547), so "Try again in a
+ * moment." here would be a second order.
+ */
+export const NOT_RESTARTED_STILL_STOPPING =
+  'The engine was still stopping, so it was not started again.'
+
 /** Whole milliseconds since a `performance.now()` reading. */
 const elapsedMs = (since: number): number => Math.round(performance.now() - since)
 
@@ -293,7 +311,10 @@ export class Sidecar {
    * A child that had not exited when the last wait after SIGKILL lapsed,
    * until its exit is seen: one in uninterruptible sleep, say, on a disk
    * that has stopped answering. A retry while it lives would start a second
-   * engine beside it on the same home (issue 562).
+   * engine beside it on the same home (issue 562), and so would a restart
+   * (issue 673): both ask `stillEnding`, and nothing else starts an engine
+   * after the first. So one is enough to hold: no engine is started while
+   * this one is there, and none can come to outlive the kill beside it.
    */
   private unended: ChildProcess | null = null
   /**
@@ -389,7 +410,9 @@ export class Sidecar {
    * Whether an engine, or what one left running, is still being ended, so
    * may still be writing into the home: the one question a person's retry
    * and the reset of the engine's data both ask, and both answer "The
-   * engine is still stopping. Try again in a moment." (issue 637).
+   * engine is still stopping. Try again in a moment." (issue 637). A restart
+   * asks it too, once the engine it follows has been ended, and where the
+   * answer is yes says stopped and starts nothing (`failed`, issue 673).
    *
    * - An engine being ended (`ending`): `failed()` says `stopped` before it
    *   ends a live child it gave up on (a handshake that timed out, a stray
@@ -881,6 +904,24 @@ export class Sidecar {
     await this.groupsEnded()
     // stop() may have run while the child was being ended.
     if (this.stopping || giveUp) return
+    // The engine just ended may have outlived the kill, and be there still
+    // (issue 673): the next engine would start beside it on the same home.
+    // So a restart asks what a person's retry and the reset ask, and where
+    // the answer is yes it arms nothing and says stopped, with why. Try
+    // again is then the way back, refused for as long as that engine is
+    // there. Asked once, here: only this function, a mismatch and a quit end
+    // an engine, the last two start nothing after, and no engine runs while
+    // a restart waits, so none can come to outlive the kill between this
+    // look and the launch.
+    if (this.stillEnding) {
+      this.log('the engine that was ended is still there; nothing is started beside it')
+      this.setState({
+        state: 'stopped',
+        reason: `${reason} ${NOT_RESTARTED_STILL_STOPPING}`,
+        retryable: true,
+      })
+      return
+    }
     this.armRestart(delays[this.failures - 1])
   }
 
@@ -1198,9 +1239,13 @@ export class Sidecar {
 
   /**
    * Every exited engine's group being ended, once each has been: looked at
-   * again until none is left, since one added meanwhile - an engine that
-   * outlived the last wait after SIGKILL, exiting at last - is waited for
-   * too. Bounded: each is, and only an engine's exit adds one.
+   * again until none is left, so one added meanwhile would be waited for
+   * too. None is now: only an engine's exit adds one, and since nothing is
+   * started beside an engine that outlived the kill (issue 673) there is
+   * one engine at a time, whose exit comes before this is awaited or, for
+   * one that outlived the kill, when nothing else is left to wait for here.
+   * The second look stays, so that whoever awaits this never goes on with a
+   * group still being ended should that change. Bounded: each group is.
    */
   private async groupsEnded(): Promise<void> {
     while (this.groupsEnding.size > 0) await Promise.all(this.groupsEnding.values())

@@ -105,11 +105,19 @@
   },
   {
     "file": "src/main/sidecar.ts",
-    "find": "    while (this.groupsEnding.size > 0) await Promise.all(this.groupsEnding.values())\n",
-    "replace": "    await Promise.all(this.groupsEnding.values())\n",
+    "find": "    // nothing outlives the app (issue 640); each bounded by its own waits.\n    await this.groupsEnded()\n",
+    "replace": "    // nothing outlives the app (issue 640); each bounded by its own waits.\n",
     "test": "tests/unit/sidecar.test.ts",
-    "title": "has a quit wait too for a group added while it waits",
-    "why": "A wait that takes the groups there when it began (issue 640): an engine that outlived the kill and exits meanwhile leaves its group unwaited, and the quit resolves with it still running."
+    "title": "ends what an engine that outlived the kill left as it exits at last, before a retry or a quit goes on",
+    "why": "A quit that does not wait for the group of an engine that outlived the kill and exited at last (issues 640, 673): the app exits before the kill is sent, and what that engine left outlives it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.groupsEnding.size > 0) return true\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "ends what an engine that outlived the kill left as it exits at last, before a retry or a quit goes on",
+    "why": "What an engine that outlived the kill left as it exited at last not counted as still ending (issues 640, 673): once its exit is seen a person's Try again starts the next engine beside its tools on the same home."
   },
   {
     "file": "src/main/sidecar.ts",
@@ -190,5 +198,53 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "says the wait again when a later restart meets a later reset",
     "why": "The record of a wait for a reset never cleared (issue 637): a later restart that meets a later reset keeps the failure's reason alone, says nothing of the wait, and logs nothing of it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.stillEnding) {\n      this.log('the engine that was ended is still there; nothing is started beside it')\n      this.setState({\n        state: 'stopped',\n        reason: `${reason} ${NOT_RESTARTED_STILL_STOPPING}`,\n        retryable: true,\n      })\n      return\n    }\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine beside it, says stopped and why, and starts one on Try again once it has gone",
+    "why": "A restart that does not ask whether the engine it ended is still there (issue 673): one that outlived the kill has the next engine started beside it on the same home as the restart's wait ends."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.stillEnding) {\n      this.log('the engine that was ended",
+    "replace": "    if (!this.stillEnding) {\n      this.log('the engine that was ended",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine beside it, says stopped and why, and starts one on Try again once it has gone",
+    "why": "The restart's question inverted (issue 673): an engine that outlived the kill has the next started beside it, as before the question was asked."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.stillEnding) {\n      this.log('the engine that was ended",
+    "replace": "    if (!this.stillEnding) {\n      this.log('the engine that was ended",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "restarts as before where the engine has gone: ended as asked, then exited by itself",
+    "why": "The restart's question inverted (issue 673): an engine that went when asked, or exited by itself, is never restarted, and the state says it was still stopping when it had gone."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.stillEnding) {\n      this.log('the engine that was ended",
+    "replace": "    {\n      this.log('the engine that was ended",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "restarts as before where the engine has gone: ended as asked, then exited by itself",
+    "why": "Every restart held back, whatever the answer (issue 673): the engine is never started again by itself after a failure, which the test of an engine that outlived the kill alone would pass."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "        reason: `${reason} ${NOT_RESTARTED_STILL_STOPPING}`,\n        retryable: true,\n",
+    "replace": "        reason: `${reason} ${NOT_RESTARTED_STILL_STOPPING}`,\n        retryable: false,\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine beside it, says stopped and why, and starts one on Try again once it has gone",
+    "why": "The stop beside an engine that outlived the kill not retryable (issue 673): the Library offers no Try again and the supervisor refuses one, so only a quit and a reopen start the engine again."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "        reason: `${reason} ${NOT_RESTARTED_STILL_STOPPING}`,\n",
+    "replace": "        reason,\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "starts no engine beside it, says stopped and why, and starts one on Try again once it has gone",
+    "why": "The stopped state's reason without its last sentence (issue 673): the screen says the engine stopped and the failure, and nothing says why it was not started again as after every other failure."
   }
 ]
