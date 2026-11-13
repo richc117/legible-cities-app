@@ -58,6 +58,7 @@ import {
 } from './parts'
 import {
   appendClauses,
+  changedWants,
   clausesByTable,
   containerWants,
   freshPhrase,
@@ -282,6 +283,11 @@ class Session implements Ctx {
     return this.capture(async () => undefined, false)
   }
 
+  /** Listen until VoiceOver has held one phrase still, so what it says next is the next action's. */
+  settle(): Promise<void> {
+    return this.capture(async () => undefined, true)
+  }
+
   private async saidCount(): Promise<number> {
     return this.page.evaluate(
       () => (window as unknown as { __readerSaid?: unknown[] }).__readerSaid?.length ?? 0,
@@ -368,10 +374,25 @@ class Session implements Ctx {
         el?.getAttribute(name) ?? host?.getAttribute(name) ?? null
       const byId = (id: string): Element | null =>
         (root instanceof ShadowRoot ? root.getElementById(id) : null) ?? document.getElementById(id)
+      // Each text node apart, as VoiceOver reads them: a card's lines are
+      // spans stacked by the stylesheet, and their textContent runs them
+      // together ("Metro Railmap drawn", where VoiceOver said "Metro Rail
+      // map drawn"; issue 707 is the same glue).
+      const spaced = (node: Node): string => {
+        const parts: string[] = []
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+        for (let t = walker.nextNode(); t !== null; t = walker.nextNode()) {
+          parts.push(t.textContent ?? '')
+        }
+        return parts.join(' ')
+      }
       const textOf = (ids: string): string =>
         ids
           .split(/\s+/)
-          .map((id) => byId(id)?.textContent ?? '')
+          .map((id) => {
+            const described = byId(id)
+            return described === null ? '' : spaced(described)
+          })
           .join(' ')
           .replace(/\s+/g, ' ')
           .trim()
@@ -523,6 +544,10 @@ class Session implements Ctx {
       await target.focus()
       await this.page.keyboard.press('Shift+Tab')
     })
+    // And heard out to its end, hint and all: run 43431978278 caught only
+    // the target's hint ("You are currently on a text field…") after eight
+    // Tabs, its name and role spoken where no poll was looking.
+    await this.settle()
     const from = this.log.length
     await this.capture(() => this.page.keyboard.press('Tab'))
     if (!(await this.focusIn(target))) return this.notLanded('Tab', target, from)
@@ -532,6 +557,17 @@ class Session implements Ctx {
 
   async focus(target: Locator, also: Also = {}): Promise<void> {
     await target.waitFor({ state: 'visible', timeout: 30 * SECOND })
+    // Focus put where it already is says nothing: run 43431978278 heard
+    // only "The map is drawn." when the project's heading, focused on
+    // arrival, was focused again. So it is taken away first.
+    await this.capture(() =>
+      this.page.evaluate(() => {
+        let el: Element | null = document.activeElement
+        while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+        ;(el as HTMLElement | null)?.blur()
+      }),
+    )
+    await this.settle()
     const from = this.log.length
     await this.capture(() => target.focus())
     const { wants, on } = await this.wantsOfFocus(also)
@@ -539,7 +575,12 @@ class Session implements Ctx {
   }
 
   async press(key: string, after: After): Promise<void> {
-    const action = `${key} on ${await this.onNow()}`
+    const before = await this.reading().catch(() => null)
+    await this.page.evaluate(() => {
+      const holder = window as unknown as { __readerFocus?: Element; __readerBefore?: Element }
+      holder.__readerBefore = holder.__readerFocus
+    })
+    const action = `${key} on ${before === null ? 'nothing' : before.name || before.role}`
     const from = this.log.length
     const saidFrom = await this.saidCount()
     const saids: readonly Said[] =
@@ -554,7 +595,19 @@ class Session implements Ctx {
         while (!(await this.focusIn(target)) && Date.now() < end) await this.poll()
         if (!(await this.focusIn(target))) return this.notLanded(action, target, from)
       }
-      wants.push(...(await this.wantsOfFocus(after.also)).wants)
+      const stayed = await this.page.evaluate(() => {
+        let el: Element | null = document.activeElement
+        while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+        return el === (window as unknown as { __readerBefore?: Element }).__readerBefore
+      })
+      if (stayed && before !== null) {
+        // Focus did not move: only what changed is said again.
+        const now = await this.reading()
+        if (now !== null) wants.push(...changedWants(before, now, after.also))
+        for (const word of after.also?.words ?? []) wants.push(wantText(word))
+      } else {
+        wants.push(...(await this.wantsOfFocus(after.also)).wants)
+      }
     }
     if (after.words !== undefined) wants.push(...(await after.words()).map(wantText))
     for (const [at, said] of saids.entries()) {
@@ -565,12 +618,10 @@ class Session implements Ctx {
 
   private async walkFrom(
     action: string,
-    texts: readonly string[],
+    wants: readonly Want[],
     steps: number,
     move: () => Promise<void>,
   ): Promise<void> {
-    // An empty term or value would be heard in anything: refused, not skipped.
-    const wants = texts.map(wantText)
     if (wants.length === 0) throw new Error(`${action}: nothing to listen for`)
     const from = this.log.length
     for (let step = 0; step < steps; step += 1) {
@@ -580,10 +631,21 @@ class Session implements Ctx {
       this.item = (await voiceOver.itemText()) || this.item
       if (missing(this.log.slice(from), wants).length === 0) break
     }
-    await this.hear(action, wants, from, 0)
+    await this.hear(action, [...wants], from, 0)
   }
 
   async walk(to: Locator, texts: readonly string[], steps: number): Promise<void> {
+    // An empty term or value would be heard in anything: refused, not skipped.
+    await this.walkOn(to, texts.map(wantText), steps)
+  }
+
+  async walkInto(container: Locator, words: readonly string[], steps: number): Promise<void> {
+    await container.waitFor({ state: 'attached', timeout: 30 * SECOND })
+    const wants = [...(await this.containerWants(container)), ...words.map(wantText)]
+    await this.walkOn(container, wants, steps)
+  }
+
+  private async walkOn(to: Locator, wants: readonly Want[], steps: number): Promise<void> {
     await to.waitFor({ state: 'attached', timeout: 30 * SECOND })
     // VoiceOver's cursor follows focus: focus the last control before
     // `to`, and walk on from there.
@@ -612,20 +674,31 @@ class Session implements Ctx {
         }
         if (last === null) return ''
         last.focus()
+        // Something to name it by, never empty: an input has no text
+        // (run 43431978278 stopped cell 03's footer on exactly that).
         return (
-          last.getAttribute('aria-label') ?? last.textContent?.trim().slice(0, 40) ?? last.tagName
+          last.getAttribute('aria-label') ||
+          last.textContent?.trim().slice(0, 40) ||
+          last.getAttribute('name') ||
+          last.id ||
+          last.tagName.toLowerCase()
         )
       })
     })
     if (before === '') throw new Error(`nothing focusable before ${to.toString()} to walk from`)
-    await this.walkFrom(`VoiceOver next, from ${before}`, texts, steps, () => voiceOver.next())
+    await this.settle()
+    await this.walkFrom(`VoiceOver next, from ${before}`, wants, steps, () => voiceOver.next())
   }
 
   async walkBack(from: Locator, texts: readonly string[], steps: number): Promise<void> {
     await from.waitFor({ state: 'visible', timeout: 30 * SECOND })
     await this.capture(() => from.focus())
-    await this.walkFrom(`VoiceOver previous, from ${await this.onNow()}`, texts, steps, () =>
-      voiceOver.previous(),
+    await this.settle()
+    await this.walkFrom(
+      `VoiceOver previous, from ${await this.onNow()}`,
+      texts.map(wantText),
+      steps,
+      () => voiceOver.previous(),
     )
   }
 
@@ -690,10 +763,22 @@ class Session implements Ctx {
     const text = await target.evaluate((el) => {
       const own = el.getAttribute('aria-description')
       if (own !== null) return own
+      // Each text node apart, as `reading` reads a description.
+      const spaced = (node: Node): string => {
+        const parts: string[] = []
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+        for (let t = walker.nextNode(); t !== null; t = walker.nextNode()) {
+          parts.push(t.textContent ?? '')
+        }
+        return parts.join(' ')
+      }
       const ids = el.getAttribute('aria-describedby') ?? ''
       return ids
         .split(/\s+/)
-        .map((id) => document.getElementById(id)?.textContent ?? '')
+        .map((id) => {
+          const described = document.getElementById(id)
+          return described === null ? '' : spaced(described)
+        })
         .join(' ')
     })
     const said = text.replace(/\s+/g, ' ').trim()
@@ -788,9 +873,13 @@ test('the walkthrough, heard with VoiceOver', async () => {
       timeout: LAUNCH_MS,
     })
     const page = await app.firstWindow({ timeout: LAUNCH_MS })
-    await installRecorder(page)
+    // Marked before the recorder's first look, so a status that changed
+    // before it (the engine ready already) is still the launch's: run
+    // 43431978278 stopped the Engine status line on finding nothing after a
+    // mark taken after it.
     const session = new Session(page)
     await session.mark('launch')
+    await installRecorder(page)
     await bringToFront(app)
     await session.until(
       'the engine ready and the Library drawn',

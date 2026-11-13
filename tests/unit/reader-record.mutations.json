@@ -17,8 +17,8 @@
   },
   {
     "file": "tests/reader/parts.ts",
-    "find": "        words: [SOURCE_HINT],\n",
-    "replace": "        words: ['A feed is a timetable of the transit agency.'],\n",
+    "find": "      await c.walkInto(startFrom(c), [SOURCE_HINT], 6)\n",
+    "replace": "      await c.walkInto(startFrom(c), ['A feed is a timetable of the transit agency.'], 6)\n",
     "test": "tests/unit/reader-record.test.ts",
     "title": "types no sentence",
     "why": "A sentence typed into a script is heard against itself, not against the app."
@@ -150,5 +150,45 @@
     "test": "tests/unit/reader-record.test.ts",
     "title": "types no word into what a row is to hear",
     "why": "A word typed into what a press is to be heard with is heard against itself."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "'menu button', 'menu pop up'],",
+    "replace": "'menu button'],",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "hears a native select as a menu pop up",
+    "why": "Every native select would be not heard for the words VoiceOver uses for it."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "'search text field', 'stepper'],",
+    "replace": "'search text field'],",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "hears a date field by its stepper",
+    "why": "The date field would be not heard for the word VoiceOver uses for its focused part."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (after.name !== before.name) wants.push(wantText(after.name))\n",
+    "replace": "  wants.push(wantText(after.name))\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "wants only what changed where focus stayed",
+    "why": "A press where focus stays would want the name VoiceOver does not say again."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "const NOT_SAID_IN_PLACE: readonly State[] = ['invalid']",
+    "replace": "const NOT_SAID_IN_PLACE: readonly State[] = []",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "does not want invalid said where focus stays",
+    "why": "A refusal would be not heard for an invalid VoiceOver says only on coming back to the field."
+  },
+  {
+    "file": "tests/reader/parts.ts",
+    "find": "      await c.walkInto(startFrom(c), [SOURCE_HINT], 6)\n",
+    "replace": "      await c.walkInto(startFrom(c), [SOURCE_HINT, 'Start from'], 6)\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "types no word into what a row is to hear",
+    "why": "A word typed into a walk into a group is heard against itself."
   }
 ]

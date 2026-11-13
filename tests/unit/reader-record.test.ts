@@ -7,6 +7,7 @@ import {
   SYNONYMS,
   appendClauses,
   clauseOf,
+  changedWants,
   clauseText,
   clausesByTable,
   containerWants,
@@ -166,7 +167,7 @@ describe('the parts and the walkthrough', () => {
     for (const m of partsSource.matchAll(/words:\s*(?:async\s*\(\)\s*=>\s*)?\[/g)) {
       arrays.push(bracketed((m.index ?? 0) + m[0].length - 1))
     }
-    for (const m of partsSource.matchAll(/\.walk(?:Back)?\(/g)) {
+    for (const m of partsSource.matchAll(/\.walk(?:Back|Into)?\(/g)) {
       const open = partsSource.indexOf('[', m.index ?? 0)
       const close = partsSource.indexOf(')', m.index ?? 0)
       if (open >= 0 && open < close) arrays.push(bracketed(open))
@@ -261,6 +262,77 @@ describe('what counts as heard', () => {
       name: 'Say "hi"',
     })
     expect(parseSnapshotLine('- iframe')).toEqual({ role: 'iframe', name: '' })
+  })
+})
+
+// Run 43431978278 (VoiceOver 10, macOS 15.8.2) on rc.3: each word the
+// synonyms table gained from it, held to the phrase VoiceOver said. A word
+// is added only for what a run heard; nothing here loosens a match.
+describe('what VoiceOver said in run 43431978278', () => {
+  const reading = (
+    role: string,
+    name: string,
+    over: Partial<Parameters<typeof wantsOf>[0]> = {},
+  ): Parameters<typeof wantsOf>[0] => ({
+    role,
+    name,
+    states: [],
+    level: null,
+    value: null,
+    description: null,
+    ...over,
+  })
+
+  it('hears a native select as a menu pop up', () => {
+    const select = wantsOf(reading('combobox', 'Mode', { value: 'all (every type)' }), {
+      value: true,
+    })
+    expect(
+      missing(['all (every type) Mode menu pop up collapsed button In the feed region'], select),
+    ).toEqual([])
+    // and not as a plain button
+    expect(missing(['all (every type) Mode button'], select).map((w) => w.said)).toEqual([
+      'combobox',
+    ])
+  })
+
+  it('hears a date field by its stepper', () => {
+    const date = wantsOf(reading('textbox', 'Draw for another day'))
+    expect(missing(['11 Month Draw for another day stepper'], date)).toEqual([])
+  })
+
+  it('wants only what changed where focus stayed', () => {
+    const copy = reading('button', 'Copy as text')
+    // "Copy as text" pressed: only its sentence was said.
+    expect(changedWants(copy, copy)).toEqual([])
+    const pause = reading('button', 'Pause')
+    const play = reading('button', 'Play day')
+    // "Pause" pressed was heard as "Play day", with no role.
+    expect(missing(['Play day'], changedWants(pause, play))).toEqual([])
+    const chip = reading('button', 'Choose the colour of line A', { states: ['collapsed'] })
+    const open = { ...chip, states: ['expanded' as const] }
+    expect(changedWants(chip, open).map((w) => w.said)).toEqual(['expanded'])
+    expect(
+      missing(['Choose the colour of line A expanded button'], changedWants(chip, open)),
+    ).toEqual([])
+    const clock = reading('slider', 'Time of day', { value: '11:22' })
+    const later = { ...clock, value: '11:23' }
+    expect(missing(['11:22. 11:23'], changedWants(clock, later, { value: true }))).toEqual([])
+    expect(changedWants(clock, later)).toEqual([])
+  })
+
+  it('does not want invalid said where focus stays, and wants it on coming back', () => {
+    const width = reading('textbox', 'Line width', { value: '30' })
+    const refused = { ...width, states: ['invalid' as const] }
+    // Enter in Line width: only the refusal was said.
+    expect(changedWants(width, refused)).toEqual([])
+    // Coming back to it, as Create's refusal was heard: "required invalid data edit text".
+    expect(
+      missing(
+        ['Name Give the project a name. required invalid data edit text'],
+        wantsOf(reading('textbox', 'Name', { states: ['invalid', 'required'] })),
+      ),
+    ).toEqual([])
   })
 })
 

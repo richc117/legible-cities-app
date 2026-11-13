@@ -40,6 +40,13 @@ export type State =
  * words VoiceOver may say for it; any one of them is enough. Keyed by the
  * role Playwright's accessibility snapshot names (`ariaSnapshot()`), which
  * is how the spec reads a control's role.
+ *
+ * A word is added only where a run heard VoiceOver say it for that role or
+ * state, and tests/unit/reader-record.test.ts cites the phrase. From run
+ * 43431978278 (VoiceOver 10, macOS 15.8.2): a native select is "menu pop
+ * up" ("all (every type) Mode menu pop up collapsed button"), and a date
+ * field's focused part is a "stepper" ("11 Month Draw for another day
+ * stepper").
  */
 export const SYNONYMS: {
   readonly roles: Readonly<Record<string, readonly string[]>>
@@ -49,8 +56,8 @@ export const SYNONYMS: {
     button: ['button'],
     link: ['link'],
     heading: ['heading'],
-    combobox: ['pop-up button', 'popup button', 'combo box', 'menu button'],
-    textbox: ['edit text', 'text field', 'text entry area', 'search text field'],
+    combobox: ['pop-up button', 'popup button', 'combo box', 'menu button', 'menu pop up'],
+    textbox: ['edit text', 'text field', 'text entry area', 'search text field', 'stepper'],
     checkbox: ['checkbox', 'check box'],
     switch: ['switch', 'toggle button', 'checkbox'],
     radio: ['radio button'],
@@ -213,6 +220,42 @@ export function wantsOf(reading: Reading, also: Also = {}): Want[] {
       throw new Error(`"${reading.name}" has no description to hear`)
     }
     wants.push(wantText(reading.description))
+  }
+  return wants
+}
+
+/**
+ * States VoiceOver does not say again of a control focus stays on: run
+ * 43431978278 heard the refusal's alert and not "invalid" after Enter in
+ * Line width, Merge distance and Feed address. A row that wants one listens
+ * for it by coming back to the field.
+ */
+const NOT_SAID_IN_PLACE: readonly State[] = ['invalid']
+
+/**
+ * What is to be heard after a key where focus did not move: VoiceOver does
+ * not say again a name, a role or a state that has not changed (run
+ * 43431978278: "Copy as text" pressed was heard only as "The figures and
+ * the caveats are on the clipboard."; "Pause" pressed only as "Play day").
+ * So only what changed is wanted: the name, a state, the value where the
+ * row reads it. A key that changed none of them wants nothing of the
+ * control.
+ */
+export function changedWants(before: Reading, after: Reading, also: Also = {}): Want[] {
+  const wants: Want[] = []
+  if (after.name !== before.name) wants.push(wantText(after.name))
+  for (const state of after.states) {
+    if (!before.states.includes(state) && !NOT_SAID_IN_PLACE.includes(state)) {
+      wants.push(stateWant(state))
+    }
+  }
+  if (
+    also.value === true &&
+    after.value !== null &&
+    after.value !== before.value &&
+    after.value.trim() !== ''
+  ) {
+    wants.push(wantText(after.value))
   }
   return wants
 }

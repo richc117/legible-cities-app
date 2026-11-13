@@ -27,7 +27,7 @@ import { EXPORT_ONE, NOTHING_YET } from '../../src/renderer/src/notebook/outputW
 import { WORDS_SUMMARY } from '../../src/renderer/src/networkWords'
 import { END, START, TRIP, WHOLE_NETWORK } from '../../src/renderer/src/tripWords'
 import { FIND_A_FEED, SOURCE_HINT } from '../../src/shared/feedHelp'
-import type { Also as ReadingAlso } from './transcript'
+import { withoutPaths, type Also as ReadingAlso } from './transcript'
 
 export type CellId = 'data' | 'process' | 'frame' | 'style' | 'lines' | 'export'
 
@@ -75,6 +75,12 @@ export interface Ctx {
   press(key: string, after: After): Promise<void>
   /** VoiceOver's own cursor moved on from just before `to` until each text is heard, at most `steps` times. */
   walk(to: Locator, texts: readonly string[], steps: number): Promise<void>
+  /**
+   * VoiceOver's own cursor moved on into `container` from just before it,
+   * until its name and role, and each of `words`, are heard: the context
+   * VoiceOver does not say on a Tab inside it.
+   */
+  walkInto(container: Locator, words: readonly string[], steps: number): Promise<void>
   /** VoiceOver's own cursor moved back from `from` until each text is heard. */
   walkBack(from: Locator, texts: readonly string[], steps: number): Promise<void>
   /** Mark this moment, to listen back to it. */
@@ -260,12 +266,12 @@ export const PARTS: readonly Part[] = [
     table: 'Your projects: one card each',
     scripted: 'part',
     phase: 'back',
-    notScripted: 'the same card in both of the interface’s themes and with no picture',
+    notScripted:
+      'the same card in both of the interface’s themes and with no picture, and the list Projects, which VoiceOver did not name on this Tab',
     run: async (c) => {
       const projects = c.page.getByRole('list', { name: 'Projects' })
       await c.tab(projects.getByRole('button', { name: `Open ${c.project}`, exact: true }), {
         description: true,
-        within: projects,
       })
     },
   },
@@ -275,11 +281,11 @@ export const PARTS: readonly Part[] = [
     scripted: 'part',
     phase: 'open',
     notScripted:
-      'the headings Sample cities and Your feeds, and an added feed’s row with its two buttons and its removal',
+      'the headings Sample cities and Your feeds, the list Presets, which VoiceOver does not name on a Tab to a card (it says the card’s own group), and an added feed’s row with its two buttons and its removal',
     run: async (c) => {
       const presets = c.page.getByRole('list', { name: 'Presets' })
       // The sample the acceptance checklist opens, and the spike heard.
-      await c.tab(presets.getByRole('button', { name: /^LA Metro Rail,/ }), { within: presets })
+      await c.tab(presets.getByRole('button', { name: /^LA Metro Rail,/ }))
       await c.mark('first layout')
       await c.press('Enter', {
         focus: heading(c),
@@ -304,13 +310,16 @@ export const PARTS: readonly Part[] = [
       await c.press('Enter', {
         focus: sheet(c).getByRole('button', { name: 'Cancel', exact: true }),
         also: { within: sheet(c) },
-        words: async () => [await c.description(sheet(c))],
       })
-      await c.tab(sheet(c).getByRole('button', { name: FIND_A_FEED }))
-      await c.tab(startFrom(c).getByRole('radio', { checked: true }), {
-        within: startFrom(c),
-        words: [SOURCE_HINT],
-      })
+      // A dialog's description is not said as focus enters it (run
+      // 43431978278): it is read with VoiceOver's own cursor, back from the
+      // first control after it.
+      const description = await c.description(sheet(c))
+      const findAFeed = sheet(c).getByRole('button', { name: FIND_A_FEED })
+      await c.walkBack(findAFeed, [description], 4)
+      await c.tab(findAFeed)
+      await c.walkInto(startFrom(c), [SOURCE_HINT], 6)
+      await c.tab(startFrom(c).getByRole('radio', { checked: true }))
       await c.tab(sheet(c).getByRole('combobox', { name: 'Feed' }), { value: true })
       const name = sheet(c).getByRole('textbox', { name: 'Name' })
       await c.tab(name, { value: true })
@@ -387,7 +396,7 @@ export const PARTS: readonly Part[] = [
       'Run all on a project not laid out, its handover to Stop, a failed run said once, and whether the sentence floods speech',
     run: async (c) => {
       const sentence = c.page.locator('p.project-run-state')
-      await c.walk(sentence, [await c.text(sentence)], 4)
+      await c.walk(sentence, [await c.text(sentence)], 12)
     },
   },
   {
@@ -395,10 +404,10 @@ export const PARTS: readonly Part[] = [
     table: 'Steps: six buttons',
     scripted: 'part',
     phase: 'project',
-    notScripted:
-      'the current step following the scroll, and the landmark found by VoiceOver’s own navigation',
+    notScripted: 'the current step following the scroll',
     run: async (c) => {
-      await c.tab(steps(c).getByRole('button').first(), { within: steps(c) })
+      await c.walkInto(steps(c), [], 14)
+      await c.tab(steps(c).getByRole('button').first())
       await c.tab(steps(c).getByRole('button').nth(3))
       await c.press('Enter', { focus: c.cellSection('style') })
     },
@@ -450,8 +459,9 @@ export const PARTS: readonly Part[] = [
     notScripted: 'the engine’s page inside the frame and its own controls',
     run: async (c) => {
       const map = c.page.getByRole('region', { name: 'Map' })
+      await c.walkInto(map, [], 6)
       await c.tab(skipPastMap(c))
-      await c.press('Tab', { focus: map, also: { within: map } })
+      await c.press('Tab', { focus: map })
     },
   },
 
@@ -482,7 +492,10 @@ export const PARTS: readonly Part[] = [
       for (const id of ['process', 'frame'] as const) {
         await c.openCell(id)
         const strip = c.cellSection(id).locator('.cell-footer > dl.cell-provenance')
-        await c.walk(strip, await listed(c, strip), 14)
+        const terms = await listed(c, strip)
+        // VoiceOver takes some four steps a term ("definition list 8
+        // items", "Layout: term (1 of 8)", "Layout", ":", …).
+        await c.walk(strip, terms, terms.length * 5 + 8)
       }
     },
   },
@@ -581,7 +594,7 @@ export const PARTS: readonly Part[] = [
       await c.tab(again)
       await c.mark('second layout')
       await c.press('Enter', {
-        focus: c.cellSection('process'),
+        focus: layoutRun(c).getByRole('button', { name: 'Cancel', exact: true }),
         said: [
           { scope: layoutRun(c), pick: 'last', until: done, deadlineMs: LAYOUT_MS },
           { scope: c.announcer, pick: 'first', until: done, deadlineMs: LAYOUT_MS },
@@ -602,12 +615,11 @@ export const PARTS: readonly Part[] = [
         .cellSection('process')
         .getByRole('button', { name: /^Lay out from scratch/ })
       const dialog = c.page.getByRole('dialog')
+      const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
       await c.tab(scratch)
-      await c.press('Enter', {
-        focus: dialog.getByRole('button', { name: 'Cancel', exact: true }),
-        also: { within: dialog },
-        words: async () => [await c.description(dialog)],
-      })
+      await c.press('Enter', { focus: cancel, also: { within: dialog } })
+      await c.walkBack(cancel, [await c.description(dialog)], 4)
+      await c.quietly.focus(cancel)
       await c.press('Enter', { focus: scratch })
     },
   },
@@ -631,6 +643,8 @@ export const PARTS: readonly Part[] = [
       // A figure out of range, as a person types it.
       await c.quietly.fill(merge, '600')
       await c.press('Enter', { focus: merge, said: { scope: group, pick: 'last' } })
+      // Invalid is not said where focus stays; it is read on coming back.
+      await c.tab(merge)
       await c.quietly.fill(merge, was)
       await c.quietly.press('Enter')
       await c.quietly.focus(toggle)
@@ -686,12 +700,12 @@ export const PARTS: readonly Part[] = [
     scripted: 'part',
     phase: 'project',
     notScripted:
-      'another day chosen and drawn, the busiest weekday put back, and a date outside the feed refused',
+      'the date’s value, which VoiceOver reads a part at a time (11 Month), another day chosen and drawn, the busiest weekday put back, and a date outside the feed refused',
     run: async (c) => {
       await c.openCell('frame')
       const sentence = serviceDay(c).locator('p.prose[role="status"]').first()
       await c.walk(sentence, [await c.text(sentence)], 6)
-      await c.tab(serviceDay(c).getByLabel('Draw for another day'), { value: true })
+      await c.tab(serviceDay(c).getByLabel('Draw for another day'))
     },
   },
   {
@@ -699,7 +713,8 @@ export const PARTS: readonly Part[] = [
     table: 'Revert, while a chosen day is not drawn',
     scripted: 'part',
     phase: 'project',
-    notScripted: 'that the button goes with its own press',
+    notScripted:
+      'that the button goes with its own press, and the date’s value, which VoiceOver reads a part at a time',
     run: async (c) => {
       await c.openCell('frame')
       const field = serviceDay(c).getByLabel('Draw for another day')
@@ -712,11 +727,7 @@ export const PARTS: readonly Part[] = [
       const revert = serviceDay(c).getByRole('button', { name: /^Revert to / })
       await c.visible(revert, ARRIVE_MS)
       await c.tab(revert)
-      await c.press('Enter', {
-        focus: field,
-        also: { value: true },
-        said: { scope: serviceDay(c), pick: 'last' },
-      })
+      await c.press('Enter', { focus: field, said: { scope: serviceDay(c), pick: 'last' } })
     },
   },
   {
@@ -801,6 +812,8 @@ export const PARTS: readonly Part[] = [
       // A figure out of range, then one in range, as a person types them.
       await c.quietly.fill(width, '30')
       await c.press('Enter', { focus: width, said: { scope: sizes(c), pick: 'last' } })
+      // Read as invalid, with the refusal in its description, on coming back.
+      await c.tab(width, { description: true })
       await c.quietly.fill(width, String(Number(was) + 1))
       await c.quietly.press('Enter')
       const reset = sizes(c).getByRole('button', { name: /^Reset to the engine/ })
@@ -897,14 +910,14 @@ export const PARTS: readonly Part[] = [
     scripted: 'part',
     phase: 'project',
     notScripted:
-      'a line moved to the end with focus handed to its up button, and the grip, which must not be heard',
+      'the list Lines in the order they are drawn, which VoiceOver did not name on a Tab to its buttons, a line moved to the end with focus handed to its up button, and the grip, which must not be heard',
     run: async (c) => {
       await c.openCell('lines')
       const order = c.page.getByRole('region', { name: 'Line order' })
       const list = order.getByRole('list')
       const down = list.getByRole('button', { name: /^Move line .* down$/ }).first()
       const name = await c.name(down)
-      await c.tab(down, { within: list })
+      await c.tab(down)
       await c.press('Enter', {
         focus: list.getByRole('button', { name, exact: true }),
         said: { scope: order, pick: 'last' },
@@ -1024,7 +1037,9 @@ export const PARTS: readonly Part[] = [
       await c.tab(exportButton)
       await c.mark('export')
       await c.press('Enter', {
-        focus: c.cellSection('export'),
+        focus: c.page
+          .getByRole('region', { name: 'Export run', exact: true })
+          .getByRole('button', { name: 'Cancel', exact: true }),
         said: {
           scope: c.announcer,
           pick: 'first',
@@ -1061,7 +1076,8 @@ export const PARTS: readonly Part[] = [
     phase: 'project',
     run: async (c) => {
       const dates = c.page.locator('main.project > dl.fields')
-      await c.walk(dates, await listed(c, dates), 10)
+      // From the last control before it, which is cell 06's, through its footer.
+      await c.walk(dates, await listed(c, dates), 40)
     },
   },
   {
@@ -1093,12 +1109,10 @@ export const PARTS: readonly Part[] = [
     run: async (c) => {
       const remove = c.page.getByRole('button', { name: 'Delete project', exact: true })
       const dialog = c.page.getByRole('dialog')
+      const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true })
       await c.tab(remove)
-      await c.press('Enter', {
-        focus: dialog.getByRole('button', { name: 'Cancel', exact: true }),
-        also: { within: dialog },
-        words: async () => [await c.description(dialog)],
-      })
+      await c.press('Enter', { focus: cancel, also: { within: dialog } })
+      await c.walkBack(cancel, [await c.description(dialog)], 4)
       await c.tab(dialog.getByRole('button', { name: 'Delete', exact: true }))
       await c.press('Enter', { focus: heading(c) })
     },
@@ -1146,11 +1160,13 @@ export const PARTS: readonly Part[] = [
   {
     row: 'Versions',
     table: 'Versions',
-    scripted: 'full',
+    scripted: 'part',
     phase: 'settings',
+    notScripted: 'a value that is a folder’s path (ffmpeg’s), which is a machine’s and not wanted',
     run: async (c) => {
       const versions = c.page.getByRole('region', { name: 'Versions' }).locator('dl.fields')
-      await c.walk(versions, await listed(c, versions), 24)
+      const said = (await listed(c, versions)).filter((t) => withoutPaths(t) === t)
+      await c.walk(versions, said, said.length * 5 + 8)
     },
   },
   {
@@ -1183,7 +1199,8 @@ export const PARTS: readonly Part[] = [
         await c.text(tools.getByRole('status').first()),
         ...(await listed(c, tools.locator('dl'))),
       ]
-      await c.walk(tools.getByRole('heading').first(), texts, 14)
+      // From Theme, the last control before it, through Versions.
+      await c.walk(tools.getByRole('heading').first(), texts, 110)
     },
   },
 
