@@ -273,9 +273,16 @@ describe('the answers', () => {
     guard.gone()
     guard.answer(PAGE, 1, 'anyway')
     expect(did, 'an answer from before the crash does nothing').toEqual(['ask quit'])
+    // With no question open, a close of the dead window is not an answer to
+    // one: it goes ahead as a close that cannot be asked about does, and the
+    // guard stops nothing. Nor is there a dialog for a quit to take back.
+    const close = event()
+    expect(guard.closing(close, false)).toBe(false)
+    expect(close.preventDefault).not.toHaveBeenCalled()
     const quit = event()
     expect(guard.beforeQuit(quit, false)).toBe(false)
     expect(quit.preventDefault).not.toHaveBeenCalled()
+    expect(did, 'nothing was stopped or taken back for a question that went').toEqual(['ask quit'])
   })
 })
 
