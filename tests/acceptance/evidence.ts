@@ -458,9 +458,9 @@ export class Evidence {
   #opaque(step: number, working: string): string {
     const kept = this.#kept.get(working)
     if (kept !== undefined) return kept
-    let name = ''
-    do name = `${step}-${randomBytes(5).toString('hex')}.png`
-    while ([...this.#kept.values()].includes(name))
+    const fresh = (): string => `${step}-${randomBytes(5).toString('hex')}.png`
+    let name = fresh()
+    while ([...this.#kept.values()].includes(name)) name = fresh()
     copyFileSync(working, join(this.#dir, name))
     this.#kept.set(working, name)
     return name
