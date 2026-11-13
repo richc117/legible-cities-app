@@ -1,11 +1,14 @@
 # The stranger's timed run
 
-Part of the release gate (issue A6-04), beside the
-[acceptance checklist](acceptance.md). One person who is not the maintainer,
-and has never used Legible Cities, goes from the release on GitHub to a
-first exported reel with nothing but the README, the install document and
-the app itself, while someone watches, times and writes down, and does not
-help.
+Feedback on a release, made after it is published (ADR-063). It is not
+part of the release gate, which is the
+[acceptance checklist](acceptance.md)'s automated run, the assistant's
+review and [the sitting](acceptance-sitting.md) ([`releasing.md`](releasing.md#the-gate)),
+and it holds no release back: what it finds is filed and goes into the next
+one. One person who is not the maintainer, and has never used Legible
+Cities, goes from the release on GitHub to a first exported reel with
+nothing but the README, the install document and the app itself, while
+someone watches, times and writes down, and does not help.
 
 This page has three parts: [the handout](#the-handout), which is given to
 the person and is all they read before starting;
@@ -55,8 +58,8 @@ need to post it anywhere or watch it.
 - **There is no wrong way.** If something goes wrong, do what you would do
   if you were alone.
 - **You may stop at any time**, for any reason. Just say so.
-- The app is unsigned, so your computer will warn you when you open it.
-  The install guide explains what to do.
+- Your computer may warn you the first time you open the app. The install
+  guide explains what to do.
 
 Thank you. Say "ready" when you want to start.
 
@@ -71,8 +74,8 @@ Thank you. Say "ready" when you want to start.
   [install.md](install.md#what-the-app-writes-and-where) are absent), with a
   working internet connection and a browser. Not the maintainer's machine,
   unless it is a fresh account on it.
-- **The release.** Published, or a draft the person can reach while signed
-  in. Note the tag.
+- **The release.** The latest published release, as anyone finds it on the
+  Releases page. Note the tag.
 - **The screen.** A browser open on the release's page, and nothing else
   open. Do not open the README or the install guide for them.
 - **Consent.** If you record the screen or the voice, ask first, and keep
@@ -190,14 +193,17 @@ answers down in their words.
 
 After the run, file an issue for every place they got stuck that the app or
 a document could fix, and link each one from the run's issue. Do not file
-the person's mistakes; file what led to them.
+the person's mistakes; file what led to them. Since the release is already
+out, each goes to the next release's milestone; one that shows a person
+giving up at the warning macOS or Windows shows on first open is also a
+reason ADR-054 names for reopening how the app is signed.
 
 ---
 
 ## Results form
 
 Copy everything in the block below into a new issue titled
-`A6-04 stranger's run: <macOS or Windows>, <date>`.
+`Stranger's run: <version>, <macOS or Windows>, <date>`.
 
 ```markdown
 ## The stranger's timed run

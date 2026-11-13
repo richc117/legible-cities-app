@@ -1,14 +1,18 @@
 # Acceptance checklist
 
-The release gate's run over an installed app (issue A6-04): one person, one
-machine, an installer from a GitHub Release draft, and
-[`install.md`](install.md) open beside it. Run it once on a Windows PC and
-once on a clean Mac, a Mac that has never had Legible Cities on it.
+The release gate's run over an installed app (issue A6-04): one machine,
+an installer from a GitHub Release, and [`install.md`](install.md) beside
+it. For a release it is run by a machine, on a macOS and a Windows runner
+([The automated run](#the-automated-run)); a person can follow it the same
+way, on a clean Mac or a Windows PC that has never had Legible Cities on
+it, and record it with the [results template](#results-template).
 [Step 22](#22-update-over-010), the update over 0.1.0, is made on one of
-the two runs, a Mac on one release and Windows on the next. The
-stranger's timed run is a separate document,
-[`acceptance-stranger.md`](acceptance-stranger.md); the screen-reader
-walkthrough is in [`accessibility.md`](accessibility.md#walking-it-with-a-screen-reader).
+the two runs, a Mac on one release and Windows on the next. What else the
+gate asks is in [`releasing.md`](releasing.md#the-gate) (ADR-063): the
+person's part is one sitting, [`acceptance-sitting.md`](acceptance-sitting.md);
+the stranger's timed run, [`acceptance-stranger.md`](acceptance-stranger.md),
+comes after the release; the screen-reader walkthrough is in
+[`accessibility.md`](accessibility.md#walking-it-with-a-screen-reader).
 
 The steps follow what a person does with the app: install it, open a
 sample city and watch it download and lay out, go down the project's six
@@ -95,14 +99,19 @@ a window hidden behind others and in a frame scrolled out of sight; if the
 window still is not visible, the record says the trains' movement was not
 checked rather than failing it.
 
-What it cannot do stays a person's, and the record says so step by step
-("not automated"), never counting it as passed:
+Where it cannot do something, the record says so step by step ("not
+automated") and never counts it as passed, whatever another part of the
+gate later finds. Each item below says where the gate (ADR-063) looks at
+it instead; Windows is a beta and is accepted on the automated results
+alone, so on Windows none of these is looked at by a person:
 
 - **Step 2**: a runner downloads without a quarantine attribute or a mark of
   the web, so neither Gatekeeper nor SmartScreen warns, and the way past
   the warning in `install.md` is not exercised. The Mac app is copied from
   the disk image rather than dragged to Applications; the Windows installer
-  runs silently and so does not open the app.
+  runs silently and so does not open the app. On the Mac, the first open
+  of a browser's download, with the network and without, is the sitting's
+  [item 1](acceptance-sitting.md#1-first-open-from-a-browser-download).
 - **Attestations of older tags**: step 1 verifies the installer's and
   `SHA256SUMS.txt`'s attestations, with `--source-ref` the tag. A tag that
   does not contain the commit that brought the attest job has none, so the
@@ -114,7 +123,13 @@ What it cannot do stays a person's, and the record says so step by step
   checks it stays open, and a line of the order by its grip and checks
   where it lands), and whether the Finder or File Explorer came to
   the front with the file selected (the spec records what the app asked
-  the system to show or open, and checks those files).
+  the system to show or open, and checks those files). The run keeps
+  images of these rows with the checks a machine can make of them (issue
+  689); whether each looks right is the assistant's visual review, under
+  [The reviewer's protocol](#the-reviewers-protocol), posted on the gate
+  issue. The review's doubtful rows and its two control pairs are the
+  sitting's [item 6](acceptance-sitting.md#6-the-assistants-visual-review),
+  the drags its item 7, and the Finder its item 8.
 - **Step 22**: the run installs the one version under test on a runner
   that has never had another, so the update over 0.1.0 is recorded as not
   automated, and so is **Previous version installed**.
@@ -127,8 +142,14 @@ What it cannot do stays a person's, and the record says so step by step
   and spec at its own tag: dispatch the workflow on the tag itself. The
   workflow names the tag; a local run names it with
   `LEGIBLE_ACCEPTANCE_TAG`, and without one nothing is refused.
-- **The stranger's timed run and the screen-reader walkthrough**, which
-  are separate documents and entirely a person's.
+- **The screen-reader walkthrough**, a separate document: its VoiceOver
+  rows are scripted on the macOS runner where a script can reach them
+  (issue 691), and what the script heard is not a pass
+  ([`accessibility.md`](accessibility.md#results-by-screen), the reader
+  legend). What it did not hear, and what no script can judge, is the
+  sitting's items 2 to 5. Narrator is not walked for 1.0.
+- **The stranger's timed run**, a separate document, made after the
+  release as feedback and not part of the gate.
 
 ## The steps
 
@@ -859,7 +880,10 @@ Result: ____
 
 ### 13. Outputs, and Reveal
 
-A named gate item **on Windows as much as on a Mac**.
+On a Mac, whether the Finder comes to the front with the file selected is
+also the sitting's [item 8](acceptance-sitting.md#8-the-system-around-the-app);
+on Windows, a beta, the automated run's record is all the gate asks
+(ADR-063).
 
 **Do.** Close cell **06 Export**. In the rail's **Outputs**, read the rows,
 and press **Reveal** on the newest.

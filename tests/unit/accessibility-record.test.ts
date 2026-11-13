@@ -18,9 +18,14 @@ import { describe, expect, it } from 'vitest'
 //    tests/e2e/ (ci.yml: `e2e`, which leaves out a test tagged
 //    `@quarantine`, and `e2e-quarantine`, which runs only those), so such a
 //    cell is wrong the day the spec exists. The reader columns are the last two of the nine and are judged
-//    by position: they are a person's, and no spec answers them;
+//    by position: no end-to-end spec answers them;
 // 3. every spec a table row names exists, so a renamed spec cannot take its
-//    row out of the rule above by no longer being found.
+//    row out of the rule above by no longer being found;
+// 4. the reader columns say who listened (ADR-063, the record's "Reader
+//    legend"): a scripted VoiceOver run appends one of four clauses, each
+//    naming its versions and its run, and no other mention of hearing or a
+//    script stands in either column, so a script cannot write `pass` and
+//    Narrator, which nothing here scripts, cannot claim to have been heard.
 
 const root = join(__dirname, '..', '..')
 const record = readFileSync(join(root, 'docs', 'accessibility.md'), 'utf8')
@@ -55,6 +60,22 @@ const SPEC_HAS_NOT_RUN = /not yet run|written,? (?:but )?not (?:yet )?run|has no
 
 /** A spec named in backticks, bare or by its path, `.spec.ts` or `.spec.tsx`. */
 const SPEC_NAMED = /`((?:[\w./-]+\/)?[\w-]+\.spec\.tsx?)`/g
+
+/**
+ * The rows of the screens' tables. A screen's table is the one whose header
+ * row begins "Part": every row of it, up to the first line that is not a
+ * table row, is a screen's row.
+ */
+function screenRows(): { line: string; at: number }[] {
+  const screens: { line: string; at: number }[] = []
+  let inScreenTable = false
+  lines.forEach((line, i) => {
+    if (!line.startsWith('|')) inScreenTable = false
+    else if (cellsOf(line)[0] === 'Part') inScreenTable = true
+    else if (inScreenTable && line.startsWith('| ')) screens.push({ line, at: i + 1 })
+  })
+  return screens
+}
 
 /** The lines of the section, from its heading to the next second-level one. */
 function section(): string[] {
@@ -266,17 +287,7 @@ describe('the record does not say a check CI runs has not run', () => {
   const tableRows = lines
     .map((line, i) => ({ line, at: i + 1 }))
     .filter((r) => r.line.startsWith('| '))
-  // A screen's table is the one whose header row begins "Part": every row of
-  // it, up to the first line that is not a table row, is a screen's row.
-  const screens: { line: string; at: number }[] = []
-  {
-    let inScreenTable = false
-    lines.forEach((line, i) => {
-      if (!line.startsWith('|')) inScreenTable = false
-      else if (cellsOf(line)[0] === 'Part') inScreenTable = true
-      else if (inScreenTable && line.startsWith('| ')) screens.push({ line, at: i + 1 })
-    })
-  }
+  const screens = screenRows()
 
   it('tells the person’s columns from the machine’s by position', () => {
     const row =
@@ -347,5 +358,114 @@ describe('the record does not say a check CI runs has not run', () => {
         })
     }
     expect(stale, 'cells that say a spec has not run when it exists and CI runs it').toEqual([])
+  })
+})
+
+// ADR-063: a scripted VoiceOver run may write into the VoiceOver column, in
+// four clauses the record's "Reader legend" sets out, and nothing else of
+// its own. `heard` is not a pass: no one listened, and `pass` stays a
+// person's word. Nothing scripts Narrator, so its column holds no such words.
+
+/** The versions and the run a scripted clause names, in its brackets. */
+const SCRIPTED_RUN = String.raw`\(scripted VoiceOver [\w.]+, macOS [\w.]+, Guidepup [\w.]+, app [\w.+-]+, run \d+\)`
+
+/** The four clauses, exactly; a clause runs to the next `; ` or the cell's end. */
+const SCRIPTED_CLAUSES = [
+  String.raw`heard ${SCRIPTED_RUN}`,
+  String.raw`heard in part ${SCRIPTED_RUN}: not scripted: [^;]+`,
+  String.raw`not heard ${SCRIPTED_RUN}: (?:"[^"]+"|“[^”]+”) expected after [^;]+; #\d+`,
+  String.raw`not scripted: a person['’]s`,
+]
+
+/** A scripted clause where it may stand: opening the cell, or after a `; `. */
+const SCRIPTED_CLAUSE = new RegExp(
+  String.raw`(?:^|; )(?:${SCRIPTED_CLAUSES.join('|')})(?=$|; )`,
+  'g',
+)
+
+/** Any word of hearing or of a script. */
+const SCRIPT_WORDS = /\bheard\b|\bscripted\b/i
+
+/** What a VoiceOver cell says of hearing or a script outside a clause of the legend's. */
+const strayInVoiceOver = (cell: string): string | null => {
+  const rest = cell.replace(SCRIPTED_CLAUSE, '')
+  return SCRIPT_WORDS.test(rest) ? rest : null
+}
+
+/** The legend's own wording of the four, as the record prints them. */
+const LEGEND_FORMS = [
+  '`heard (scripted VoiceOver <version>, macOS <version>, Guidepup <version>, app <version>, run <id>)`',
+  '`heard in part (scripted VoiceOver <version>, macOS <version>, Guidepup <version>, app <version>, run <id>): not scripted: <what>`',
+  '`not heard (scripted VoiceOver <version>, macOS <version>, Guidepup <version>, app <version>, run <id>): "<phrase>" expected after <action>; #<issue>`',
+  "`not scripted: a person's`",
+]
+
+describe('the reader columns say who listened', () => {
+  const screens = screenRows()
+  const VOICEOVER = COLUMNS - 2
+  const NARRATOR = COLUMNS - 1
+
+  it('reads both reader columns of every screen row', () => {
+    expect(screens.length).toBeGreaterThan(60)
+    const headers = lines.filter((line) => line.startsWith('| Part |')).map(cellsOf)
+    expect(headers.length).toBeGreaterThan(10)
+    for (const header of headers) {
+      expect(header[VOICEOVER]).toBe('VoiceOver (macOS)')
+      expect(header[NARRATOR]).toBe('Narrator (Windows)')
+    }
+  })
+
+  it('sets out the four clauses, and says heard is not a pass', () => {
+    for (const form of LEGEND_FORMS) expect(record, `the legend prints ${form}`).toContain(form)
+    expect(record).toContain('**Heard is not a pass: no one listened.**')
+  })
+
+  it('reads a scripted clause exactly', () => {
+    const run = '(scripted VoiceOver 10, macOS 15.8.2, Guidepup 0.40.0, app 1.0.0-rc.4, run 4321)'
+    const kept = "not yet run: a person's (this part changed after 0.1.0)"
+    for (const ok of [
+      `${kept}; heard ${run}`,
+      `${kept}; heard in part ${run}: not scripted: the rotor`,
+      `${kept}; not heard ${run}: "Laid out." expected after the run's end; #800`,
+      `heard ${run}`,
+      `${kept}; not scripted: a person's`,
+      kept,
+    ])
+      expect(strayInVoiceOver(ok), ok).toBeNull()
+    for (const bad of [
+      // A script that writes a person's word.
+      `${kept}; pass ${run}`,
+      `pass (scripted VoiceOver 10, macOS 15.8.2)`,
+      // A clause that does not name its versions and its run.
+      `${kept}; heard (scripted VoiceOver 10, macOS 15.8.2, app 1.0.0)`,
+      `${kept}; heard (scripted ...)`,
+      // A clause that overwrites rather than appends, run into the cell.
+      `${kept} heard ${run}`,
+      // Not heard with no issue.
+      `${kept}; not heard ${run}: "Laid out." expected after the run's end`,
+      `${kept}; heard by a script`,
+    ])
+      expect(strayInVoiceOver(bad), bad).not.toBeNull()
+  })
+
+  it('has, in the VoiceOver column, no word of hearing or a script outside those clauses', () => {
+    const stray = screens
+      .map(({ line, at }) => ({ at, said: strayInVoiceOver(cellsOf(line)[VOICEOVER] ?? '') }))
+      .filter((r) => r.said !== null)
+      .map((r) => `line ${r.at}: ${r.said}`)
+    expect(
+      stray,
+      'a VoiceOver cell words a scripted run as the Reader legend does, or not at all',
+    ).toEqual([])
+  })
+
+  it('has, in the Narrator column, no word of hearing or a script at all', () => {
+    const stray = screens
+      .filter(({ line }) => SCRIPT_WORDS.test(cellsOf(line)[NARRATOR] ?? ''))
+      .map(({ line, at }) => `line ${at}: ${cellsOf(line)[NARRATOR]}`)
+    expect(
+      stray,
+      'nothing here scripts Narrator, so no Narrator cell can say it was heard',
+    ).toEqual([])
   })
 })

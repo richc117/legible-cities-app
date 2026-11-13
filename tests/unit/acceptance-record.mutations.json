@@ -78,5 +78,37 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "answers null when reading the file fails or times out, whatever it printed",
     "why": "A read that failed or timed out taken as the file: the tag is judged as one without the feature, on what git never finished printing."
+  },
+  {
+    "file": "docs/acceptance-sitting.md",
+    "find": "**3 minutes.** Download the disk image",
+    "replace": "**4 minutes.** Download the disk image",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "adds up to the time it says the sitting takes",
+    "why": "An item's minutes changed and the sitting's stated length not: the person is told 45 minutes for a sitting of 46."
+  },
+  {
+    "file": "docs/acceptance-sitting.md",
+    "find": "### 10. The versions and the verdict\n\n**3 minutes.**",
+    "replace": "### 10. The versions and the verdict\n\n3 minutes.",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "has ten items, numbered in order, each opening on its minutes",
+    "why": "An item with no minutes line: its time drops out of the total silently, and the sum still looks whole."
+  },
+  {
+    "file": "docs/acceptance-sitting.md",
+    "find": "| 10 | The versions and the verdict | fine / finding | |\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "has a results form with a row for each item, by its title",
+    "why": "The verdict's row gone from the results form: the sitting's issue would have nowhere to say go or no-go."
+  },
+  {
+    "file": "docs/acceptance-sitting.md",
+    "find": "[Reader runs](accessibility.md#reader-runs)",
+    "replace": "[Reader runs](accessibility.md#reader-run)",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "links only to headings that are there",
+    "why": "A link from the sitting to a heading that is not there: GitHub opens the top of the page and the person is left to find the section."
   }
 ]
