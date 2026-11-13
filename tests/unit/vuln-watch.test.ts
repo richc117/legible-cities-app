@@ -695,7 +695,16 @@ describe('the judgement', () => {
     const { EXIT } = await load()
     const cves = { ...CVE.records }
     delete cves['CVE-2026-76844']
-    const result = await run({ fetch: standIn({ cves }).fetch })
+    // The entry carries its rating_note, as the real one does; take it off to see the ask.
+    const triage = triageWith((entries) =>
+      entries.map((e) => {
+        if (e.id !== 'CVE-2026-76844') return e
+        const bare = { ...e }
+        delete bare.rating_note
+        return bare
+      }),
+    )
+    const result = await run({ fetch: standIn({ cves }).fetch, triage })
     expect(result.code).toBe(EXIT.findings)
     expect(section(result.out, 'New or untriaged')).toMatch(
       /\| CVE-2026-76844 \|.*nothing rates the vector OSV gives/,

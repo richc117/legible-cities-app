@@ -350,5 +350,13 @@
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "counts \"e.g.\", \"i.e.\" and a mid-sentence \"etc.\" as part of a sentence",
     "why": "An abbreviation counted as a sentence: a reason of one sentence with an \"e.g.\" in it reads as two."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  if (source.rating === null) return `${source.why}: rate it, and say how in \"rating_note\"`\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "asks for a note where nothing rates the vector OSV gives",
+    "why": "A vector nothing rates passed without a rating_note: an id rated by hand, with no word on how, turns the run green."
   }
 ]
