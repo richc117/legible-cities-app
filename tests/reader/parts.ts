@@ -232,6 +232,13 @@ export const PARTS: readonly Part[] = [
       })
     },
   },
+  {
+    row: 'The quit question',
+    table: 'The quit question (issue 552)',
+    scripted: 'none',
+    notScripted:
+      'the question is asked by a quit or a close of the window during a run, and either answer ends the session the walk runs in or the run it needs (tests/e2e/quit-guard.spec.ts holds its names, focus and Escape)',
+  },
 
   // ------------------------------------------------ The front door (Library)
   {
