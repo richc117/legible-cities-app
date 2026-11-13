@@ -188,8 +188,8 @@
     "find": "images: pair.controlShots ?? [],",
     "replace": "images: [pair.a1, pair.a2, pair.a2],",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "keeps no picture twice",
-    "why": "A control built of copies of the pair's own shots would be picked out by comparing file hashes."
+    "title": "copies no file twice",
+    "why": "A control built of the pair's own shots would list the same files again, and copy none of them under a name of its own."
   },
   {
     "file": "tests/acceptance/evidence.ts",
@@ -206,5 +206,29 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "asks the control as if the settings had changed",
     "why": "The manifest would carry the machine checks, and a control's empty check would give it away."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const swapped = pair.control !== null && this.#swap()",
+    "replace": "const swapped = pair.control !== null && false",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "draws which of the two ids the real entry takes",
+    "why": "The real entry would always take the pair's own id, and the control the other: the ids would give it away."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "for (let again = 0; again < (pair.noteOnly === true ? 0 : 5); again++) {",
+    "replace": "for (let again = 0; again < 0; again++) {",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "looks again before it judges a B that equals A1",
+    "why": "A redraw slower than the shot would give B the same as A1, and fail a correct build."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const names = all.flatMap((e) => e.images).sort()",
+    "replace": "const names = all.filter((e) => !e.control).flatMap((e) => e.images).sort()",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "names the step’s pictures, controls included, as one sorted list",
+    "why": "The record's row would list the real pictures only, and so name the controls by leaving them out."
   }
 ]

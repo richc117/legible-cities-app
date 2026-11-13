@@ -346,7 +346,7 @@ describe('the manifest', () => {
   })
 
   it('asks the control as if the settings had changed: the same two shots, shaped as a real entry', async () => {
-    const evidence = new Evidence(dir)
+    const evidence = new Evidence(dir, () => false)
     const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-ground')
     pair.target = camera(picture(BG, 4000))
     await evidence.finish(pair, { wait: async () => undefined })
@@ -384,19 +384,15 @@ describe('the manifest', () => {
   /** The kept pictures: the folder's PNGs, not the working folder's. */
   const keptFiles = (): string[] => readdirSync(dir).filter((n) => n.endsWith('.png'))
 
-  it('keeps no picture twice: no two kept pictures are byte for byte the same', async () => {
+  it('copies no file twice: each file named is kept once, under a name of its own', async () => {
     const evidence = new Evidence(dir)
     const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 20), '8-ground')
     pair.target = camera(picture(BG, 4000))
     await evidence.finish(pair, { wait: async () => undefined })
-    const files = keptFiles()
-    expect(files).toHaveLength(6)
-    const hashes = files.map((n) =>
-      createHash('sha256')
-        .update(readFileSync(join(dir, n)))
-        .digest('hex'),
-    )
-    expect(new Set(hashes).size).toBe(6)
+    // Three shots of the pair and three of its twin: six working files, six kept.
+    expect(keptFiles()).toHaveLength(6)
+    const named = evidence.entries.flatMap((e) => e.images)
+    expect(new Set(named).size).toBe(6)
   })
 
   it('keeps a picture named by two entries once, under one name', () => {
@@ -443,6 +439,34 @@ describe('the manifest', () => {
       '8-theme-a2.png',
       '8-theme-b.png',
     ])
+  })
+
+  it('draws which of the two ids the real entry takes, and the key says which is the control', async () => {
+    for (const swap of [false, true]) {
+      rmSync(dir, { recursive: true, force: true })
+      mkdirSync(dir)
+      const evidence = new Evidence(dir, () => swap)
+      const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-ground')
+      pair.target = camera(picture(BG, 4000))
+      await evidence.finish(pair, { wait: async () => undefined })
+      const [real, twin] = evidence.entries
+      expect([real.control, twin.control]).toEqual([false, true])
+      expect([real.id, twin.id]).toEqual(swap ? ['8-ground', '8-theme'] : ['8-theme', '8-ground'])
+      const key = JSON.parse(readFileSync(join(`${dir}-key`, 'evidence-key.json'), 'utf8')) as {
+        controls: string[]
+      }
+      expect(key.controls).toEqual([twin.id])
+    }
+  })
+
+  it('looks again before it judges a B that equals A1, so a slow redraw is not a failure', async () => {
+    const evidence = new Evidence(dir)
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10))
+    const same = picture(BG, 10)
+    pair.target = camera(same, same, same, same, picture(BG, 4000), picture(BG, 4000))
+    const check = await evidence.finish(pair, { wait: async () => undefined })
+    expect(check.outcome).toBe('note')
+    expect(evidence.failures(8)).toEqual([])
   })
 
   it('orders the manifest by step and id, so position does not give a control away', async () => {
@@ -511,6 +535,18 @@ describe('the manifest', () => {
     )
     expect(said).toContain('Measured: theme:')
     expect(evidence.summary(9)).toBe('')
+  })
+
+  it('names the step’s pictures, controls included, as one sorted list, and measures only the real', async () => {
+    const evidence = new Evidence(dir)
+    const pair = await pairOf(evidence, picture(BG, 10), picture(BG, 10), '8-ground')
+    pair.target = camera(picture(BG, 4000))
+    await evidence.finish(pair, { wait: async () => undefined })
+    const said = evidence.summary(8)
+    const names = (/^Evidence kept: (.*?)\. Measured:/.exec(said) as RegExpExecArray)[1].split(', ')
+    expect(names).toHaveLength(6)
+    expect(names).toEqual([...names].sort())
+    expect(said.match(/theme:/g)).toHaveLength(1)
   })
 })
 

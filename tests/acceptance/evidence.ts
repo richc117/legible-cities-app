@@ -417,6 +417,8 @@ export interface Pair {
   steady: boolean
   /** The id of a control entry to write beside this one: ordinary-looking, and not a real entry's. */
   control: string | null
+  /** The page's draw count when the pair's shots were taken, or null where the page does not say. */
+  draws?: number | null
   /** A control's three shots at the same settings, of its own: never copies of the pair's. */
   controlShots?: string[]
   /** A change that need not show in the picture: nothing changing is a note, never a failure. */
@@ -435,8 +437,12 @@ export class Evidence {
   /** Working file to kept name. */
   readonly #kept = new Map<string, string>()
 
-  constructor(dir: string) {
+  /** One random bit per pair: whether the real entry takes the control's id, and the control the real's. */
+  readonly #swap: () => boolean
+
+  constructor(dir: string, swap: () => boolean = () => (randomBytes(1)[0] & 1) === 1) {
     this.#dir = dir
+    this.#swap = swap
     // The shots are taken under names that say what each is (`-a1`, `-b`);
     // what the manifest lists is a copy under a name that says nothing. The
     // working folder is hidden, which the artefact upload leaves out.
@@ -518,6 +524,7 @@ export class Evidence {
     options: { name: string; control?: string; noteOnly?: boolean } = { name: init.id },
   ): Promise<Pair> {
     const steady = (await pauseAndRead(window)).steady
+    const draws = await readDraws(window)
     const a1 = await this.settled(`${init.id}-a1`, target)
     const a2 = await this.settled(`${init.id}-a2`, target)
     // A control is a pair's twin: three fresh shots at the same settings,
@@ -535,6 +542,7 @@ export class Evidence {
       steady: steady && a1.settled && a2.settled,
       control: options.control ?? null,
       controlShots,
+      draws,
       noteOnly: options.noteOnly === true,
     }
   }
@@ -544,7 +552,16 @@ export class Evidence {
     pair: Pair,
     options: { colour?: string; wait?: typeof sleep; window?: Page } = {},
   ): Promise<Check> {
-    const b = await this.settled(`${pair.init.id}-b`, pair.target, options.wait)
+    // B is taken once the page has drawn again, not when the record says so.
+    if (options.window !== undefined) await untilRedrawn(options.window, pair.draws ?? null)
+    let b = await this.settled(`${pair.init.id}-b`, pair.target, options.wait)
+    // A redraw that is slow gives B the same as A: look again, to a short
+    // deadline, before it is judged as a change that did not happen.
+    for (let again = 0; again < (pair.noteOnly === true ? 0 : 5); again++) {
+      if (difference(this.#read(pair.a1), this.#read(b.path)).pixels > 0) break
+      await (options.wait ?? sleep)(1_000)
+      b = await this.settled(`${pair.init.id}-b`, pair.target, options.wait)
+    }
     const [a1, a2, bb] = [this.#read(pair.a1), this.#read(pair.a2), this.#read(b.path)]
     // B too is taken of a map standing still: its clock is read twice as A's was.
     const steady =
@@ -578,14 +595,17 @@ export class Evidence {
       }
     if (!steady && options.colour !== undefined)
       check = { ...check, said: `${check.said} (the map was not steady)` }
-    this.add({ ...pair.init, images: [pair.a1, pair.a2, b.path], check })
+    // Which of the two ids the real entry takes is drawn per pair, and the
+    // key says which is the control.
+    const swapped = pair.control !== null && this.#swap()
+    const realId = swapped ? (pair.control as string) : pair.init.id
+    this.add({ ...pair.init, id: realId, images: [pair.a1, pair.a2, b.path], check })
     if (pair.control !== null) {
       // Shaped as a real entry is: three pictures, a check of the same fields.
-      // Nothing in the manifest says which it is: the key file does.
       this.add(
         {
           ...pair.init,
-          id: pair.control,
+          id: swapped ? pair.init.id : pair.control,
           images: pair.controlShots ?? [],
           check: {
             name: pair.name,
@@ -690,11 +710,12 @@ export class Evidence {
 
   /** The step's row: "Evidence kept: <names>. Measured: <numbers>." Empty when nothing was kept. */
   summary(step: number): string {
-    const mine = this.entries.filter((e) => e.step === step && !e.control)
-    if (mine.length === 0) return ''
-    const names = mine.flatMap((e) => e.images)
-    const measured = mine
-      .filter((e) => e.check !== null)
+    const all = this.entries.filter((e) => e.step === step)
+    if (all.length === 0) return ''
+    // Every picture of the step, controls included, as one sorted list.
+    const names = all.flatMap((e) => e.images).sort()
+    const measured = all
+      .filter((e) => !e.control && e.check !== null)
       .map((e) => `${e.check?.name}: ${e.check?.said}`)
     return `Evidence kept: ${[...new Set(names)].join(', ')}. Measured: ${measured.length === 0 ? 'nothing' : measured.join('; ')}.`
   }
@@ -752,6 +773,45 @@ export async function pauseAndRead(
   await sleep(600)
   const second = (await clock.textContent().catch(() => null)) ?? ''
   return { clock: second, steady: first !== '' && first === second, paused }
+}
+
+/** The page's draw count (`state().draws`, as the capture reads it), or null where it has none. */
+export async function readDraws(window: Page): Promise<number | null> {
+  const root = window.frameLocator('iframe.viewer-frame').locator('html')
+  return root
+    .evaluate(() => {
+      const page = window as unknown as { __present?: { state?: () => { draws?: unknown } } }
+      try {
+        const draws = page.__present?.state?.().draws
+        return typeof draws === 'number' ? draws : null
+      } catch {
+        return null
+      }
+    })
+    .catch(() => null)
+}
+
+/**
+ * Wait, to a deadline and never failing, for the page to draw again after
+ * `since`: its draw count rises. A page that does not count draws is given a
+ * moment instead.
+ */
+export async function untilRedrawn(
+  window: Page,
+  since: number | null,
+  deadline = 10_000,
+): Promise<boolean> {
+  if (since === null) {
+    await sleep(1_500)
+    return false
+  }
+  const end = Date.now() + deadline
+  while (Date.now() < end) {
+    const now = await readDraws(window)
+    if (now !== null && now > since) return true
+    await sleep(250)
+  }
+  return false
 }
 
 /** Whether the page's clock reads the same twice, a moment apart: the map is standing still. */

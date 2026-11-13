@@ -67,6 +67,7 @@ import {
   PUT_BACK_SIZES,
   SIZES_RESET_SAID,
 } from '../../src/renderer/src/putBackWords'
+import { CARD_SECONDS, DRAW_IN_SECONDS } from '../../src/shared/opening'
 import { OFFERED_PRESETS } from '../../src/shared/export'
 import { FIND_A_FEED, SOURCE_HINT } from '../../src/shared/feedHelp'
 import type { ProjectRecord } from '../../src/shared/project/types'
@@ -2285,7 +2286,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
           question:
             'The third picture is the map after the dot size was set to 8. Are the trains larger than in the first two?',
         },
-        { name: 'dot-size' },
+        // No train need be in view at the hour the map is at, so the picture
+        // need not change with the dot size.
+        { name: 'dot-size', noteOnly: true },
       )
       await dot.fill('13')
       await dot.press('Enter')
@@ -3242,6 +3245,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
       })
       await log.soft('evidence: frames of the GIF', async () => {
+        const choice = (await recordOf(window, LA)).export
+        const openingSeconds =
+          (choice.cardSecs ?? CARD_SECONDS.fallback) +
+          (choice.drawInSecs ?? DRAW_IN_SECONDS.fallback)
         evidence.keepFrames(
           {
             id: '12-gif',
@@ -3253,9 +3260,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
           },
           sampledFrames(session.resources, gif.path),
           'gif-frames',
-          // The opening is the card and then the draw-in, at their defaults of 2
-          // and 6 seconds: a frame in it may be nearly empty and is not judged.
-          { openingSeconds: 8 },
+          // The opening is the card and then the draw-in, as long as the export's
+          // record says (the defaults where it says nothing): a frame in it may be
+          // nearly empty and is not judged.
+          { openingSeconds },
         )
         // The same pictures answer the other two sentences of the row.
         const names = ['sheet', 'first', 'last'].map((n) => evidence.pathOf(`12-gif-${n}.png`))

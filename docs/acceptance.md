@@ -1300,9 +1300,11 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   the steps below say the second line and add a name and Shown off: those
   stay as the person's.
 - The manifest holds **two control pairs**: the same settings, asked as if
-  they had changed (the theme, and the line width), under ids and files that
-  look like any other entry's. Which they are is in
-  `evidence-key.json`, uploaded as an artefact of its own
+  they had changed (the theme, and the line width). They are **unmarked**,
+  not undetectable: nothing in `evidence.json` says which entries they are
+  (the real entry of a pair takes one of two ids, drawn at random), but a
+  reviewer who can read the spec or compare files can tell. The key,
+  `evidence-key.json`, is an artefact of its own
   (`acceptance-evidence-key-<system>`), apart from the evidence.
 
 ### The reviewer's protocol
@@ -1310,21 +1312,24 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
 The assistant or the maintainer reviews the evidence of each run, and
 records a verdict per entry in the second table of the results template.
 
-1. Open `evidence.json` and every image it names, and nothing else:
+1. Fetch the evidence alone: `gh run download <run> -n
+   acceptance-evidence-<target>`. Do not open the run's page, its summary or
+   the gate issue before every verdict is written: they carry the record.
+2. Open `evidence.json` and every image it names, and nothing else:
    `evidence.json` holds, for each entry, the pictures, the question, the
    expected text and the row's not-automated sentence, and no machine check.
-2. For each entry, write one sentence of what is visible before any verdict.
-3. For a pair, name the visible difference in your own words. If the
+3. For each entry, write one sentence of what is visible before any verdict.
+4. For a pair, name the visible difference in your own words. If the
    difference asked about cannot be seen, the verdict is not "looks right",
    whatever the number says.
-4. Where the entry lists expected text, compare the text in the image with
+5. Where the entry lists expected text, compare the text in the image with
    those strings.
-5. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
+6. The verdict is `looks right`, `looks wrong` or `cannot tell`. Never
    `pass`: this table is a reviewer's reading, not a step's result, and a
    step stays "pass, part not automated" however it reads.
-6. Only after every verdict is written, read the run's record, whose rows say
+7. Only after every verdict is written, read the run's record, whose rows say
    what was kept and what was measured ("Evidence kept: ... Measured: ...").
-7. Last, open `evidence-key.json` from its own artefact. If a control pair
+8. Last, open `evidence-key.json` from its own artefact. If a control pair
    was answered "looks right", the review is not to be trusted: say so, and
    read it again.
 
