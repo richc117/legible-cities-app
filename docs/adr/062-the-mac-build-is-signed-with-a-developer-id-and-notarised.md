@@ -249,9 +249,10 @@ are shown and a signed candidate has passed the acceptance run.
    `codesign -dvv` and fails without. If it is missing, the image is signed
    in the workflow instead, with `codesign --force --timestamp`.
 6. **Gatekeeper's assessments are enabled on the hosted runners**, so that
-   `spctl`'s verdict there means what it means on a person's Mac. The
-   `dmg` mode prints `spctl --status` and fails if they are off, and treats
-   any `override=` line in a verdict as a failure.
+   `spctl`'s verdict there means what it means on a person's Mac. Every Mac
+   build prints `spctl --status`, so a branch build says it; the `dmg` mode
+   fails if they are off, and treats any `override=` line in a verdict as a
+   failure.
 
 It is done when a dispatched build with `sign` makes an image that `spctl`
 accepts as Notarized Developer ID and the stapler validates, the acceptance

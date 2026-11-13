@@ -286,5 +286,13 @@
     "test": "tests/unit/release.test.ts",
     "title": "notarising hands the key over as a file nobody else can read, and removes it",
     "why": "The key written under the default mask: any other account on the machine can read it while the step runs."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          echo \"Gatekeeper on this runner: $(spctl --status 2>&1 || true)\"\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the verify step says whether Gatekeeper is on, and fails on neither answer",
+    "why": "The runner's Gatekeeper setting no longer said: whether spctl's verdicts mean anything on the hosted runners is first learnt in a signing run, from its failure."
   }
 ]

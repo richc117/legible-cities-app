@@ -340,6 +340,10 @@ jobs:
             darwin-arm64) app="release/mac-arm64/Legible Cities.app" ;;
             *)            app="release/mac/Legible Cities.app" ;;
           esac
+          # Said in every Mac build and judged in none but a signing run's
+          # last check, whose verdicts rest on it: whether Gatekeeper's
+          # assessments are on here (ADR-062).
+          echo "Gatekeeper on this runner: $(spctl --status 2>&1 || true)"
           codesign --verify --deep --strict --verbose=2 "$app"
           if [ "$SIGN" = true ]; then
             node scripts/verify-mac-signing.mjs developer-id "$app" --team-from electron-builder.release.yml

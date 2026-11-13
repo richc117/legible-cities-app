@@ -1807,6 +1807,26 @@ describe('build.yml, signing mode', () => {
       ).toBe(1)
     })
 
+    it('the verify step says whether Gatekeeper is on, and fails on neither answer', () => {
+      // Every Mac build prints it, so it is known before a signing run's
+      // verdicts rest on it; only the dmg mode judges it.
+      const said = (spctl: string) => {
+        const { dir, path, log } = workspace({ codesign: RECORD, node: RECORD, spctl })
+        return run(script("Verify the Mac app's signature"), dir, {
+          PATH: path,
+          STUB_LOG: log,
+          TARGET: 'darwin-arm64',
+          SIGN: 'false',
+        })
+      }
+      const on = said('echo "assessments enabled"')
+      expect(on.status).toBe(0)
+      expect(on.stdout).toContain('Gatekeeper on this runner: assessments enabled\n')
+      const off = said('echo "assessments disabled"; exit 1')
+      expect(off.status).toBe(0)
+      expect(off.stdout).toContain('Gatekeeper on this runner: assessments disabled\n')
+    })
+
     // Put together from pieces, so this file never holds a key's marker
     // whole, which bin/preflight refuses wherever it finds one.
     const DASHES = '-'.repeat(5)
