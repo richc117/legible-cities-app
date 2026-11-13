@@ -51,7 +51,11 @@ must always be able to quit. It comes before the quit gate and never
 replaces it. **Every quit the main process makes itself goes through
 `quitGuard.quit()`, never a bare `app.quit()`**: a bare one is taken for a
 person's, and held for a question while a run is going
-(`tests/unit/quit-guard.test.ts` reads `index.ts` for one).
+(`tests/unit/quit-guard.test.ts` reads `index.ts` for one). A termination
+signal on macOS and Linux is one of the app's own (`quitOnSignals`,
+installed once the app is ready, over Electron's handlers for the same
+signals). A second quit or close is an answer only once the question has
+been on the screen for a second: a held shortcut repeats.
 
 ## Uncaught failures
 

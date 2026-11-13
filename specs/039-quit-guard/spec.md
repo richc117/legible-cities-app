@@ -4,14 +4,7 @@
 
 **Created**: 2026-11-12
 
-**Status**: Implemented (pending merge). The end-to-end tests of SC-002 are written and have not been run. Where this specification is silent the build chose, and each choice is marked for the maintainer's word; two questions the build raised and did not answer follow them.
-
-- [NEEDS CLARIFICATION] *The sentence for several runs*, which User Story 2 describes and does not quote. Built as: "The runs of Paris and Lyon have not finished. Quitting stops them, and nothing of them is kept." (three or more: "Paris, Lyon and Lille"; two runs of one project: "The runs of Paris have not finished.").
-- [NEEDS CLARIFICATION] *A second close while the question is open.* FR-001 says only that an open question is not asked again. Built as an answer, as a second quit is: the window closes, and main stops the exports it holds first. A layout's request already with the engine is not cancelled by that second close, since only the page can cancel it and the page is not asked; the run goes no further.
-- [NEEDS CLARIFICATION] *A project the store cannot name.* Built as "a project". Every running project's record has been read through the store, so this is not expected to be seen.
-- [NEEDS CLARIFICATION] *Whether a redraw is a run.* Built as not: a rebuild for a day, colours, order, sizes or line options is not asked about and is not stopped by **Close anyway**, and neither is a feed being added.
-- [NEEDS CLARIFICATION] *How soon a second quit, or close, is an answer.* User Story 1 makes a second quit an answer, and the build takes it however soon it comes. A shortcut held past the keyboard's repeat delay, or a double click on the window's close button, may then be both the question and its answer before anyone has read it; whether a held shortcut repeats was not verified, since the build could not run the app. A minimum age for the question before a second quit or close counts would close this. Not built: it is a decision.
-- [NEEDS CLARIFICATION] *A termination signal on macOS and Linux.* The scenarios name the menu, the shortcut, the Dock and the taskbar. A signal (`kill`, Ctrl+C on a development run, a session ending) reaches the same `before-quit` and is asked about as a person's quit, and Electron is understood to handle only the first such signal gracefully, so a second ends the process without the engine being stopped; before this feature the first signal always stopped it. Not verified, for the same reason. Treating a signal as the app's own quit would restore that. Not built: it is a decision.
+**Status**: Implemented (pending merge). The end-to-end tests of SC-002 are written and have not been run. What this specification left open, and what the build raised, the maintainer has settled; each is recorded below as an "*As of 13 Nov 2026:*" line under the requirement it settles.
 
 **Input**: Issue 552, "Quitting or closing during an export throws it away without asking", and its decided approach (option (a), with "Keep working" as the safe button). One change from that approach, decided by the maintainer when issue 556 moved out of 1.0: the window's close asks on **every** platform, macOS included. The decided approach let macOS close the window silently during an export because issue 556 would let a reopened window see it; without 556, a window reopened from the Dock cannot see or stop an export that went on without one, so closing asks there too, and "Close anyway" stops the runs as quitting does. Each such decision is recorded below as an "*As of 12 Nov 2026:*" line under the requirement it settles.
 
@@ -31,6 +24,7 @@ As someone whose reel has been exporting for four minutes, I want a stray Cmd+Q 
 2. **Given** the dialog open, **When** the person presses **Keep working**, presses Escape, or closes the dialog any other way, **Then** the dialog closes, focus returns where it was, and the export goes on as if nothing happened.
 3. **Given** the dialog open, **When** the person presses **Quit anyway**, **Then** the app quits as it does today: the export is stopped, its frames folder is removed, the engine is stopped, and nothing of the export is kept.
 4. **Given** the dialog open, **When** the person quits again (a second Cmd+Q or Quit from the Dock), **Then** the app quits as if **Quit anyway** had been pressed. A second quit is an answer.
+   *As of 13 Nov 2026:* a second quit is an answer once the question has been on the screen for a second. One that comes sooner - the repeat of a held shortcut - is held, and the dialog stays as it is: nothing is asked again and nothing is taken back. A page that has gone or been reported unresponsive is not waited for, so a person can always quit.
 
 ---
 
@@ -43,7 +37,9 @@ As someone whose large city has been laying out for two minutes, I want the same
 **Acceptance Scenarios**:
 
 1. **Given** a layout running (the layout run in cell 02, **Run all**'s layout, or a sample city's card), **When** the person quits, **Then** the dialog opens with the title "Quit while a layout is running?" and a sentence naming the project ("The layout of Paris has not finished. Quitting stops it, and nothing of it is kept.").
+   *As of 13 Nov 2026:* a redraw is not a run. A rebuild for a day, or for colours, order, sizes or line options, is not asked about, and neither is a feed being added; **Close anyway** stops neither. (A second close, under User Story 3, cancels whatever the page had with the engine, these among it.)
 2. **Given** an export and a layout both running, or two of either, **Then** the title is "Quit while 2 runs are going?" and the sentence names each project once.
+   *As of 13 Nov 2026:* the sentence for several runs is "The runs of Paris and Lyon have not finished. Quitting stops them, and nothing of them is kept."; three or more are listed "Paris, Lyon and Lille", and two runs of one project read "The runs of Paris have not finished."
 3. **Given** nothing running, **When** the person quits, **Then** the app quits at once, as today, with no dialog.
 
 ---
@@ -57,6 +53,7 @@ As someone who closes windows by habit, I want closing the app's window during a
 1. **Given** a run going, **When** the person closes the app's window (its close button, Cmd+W, Alt+F4), **Then** the same dialog opens with "Close" in place of "Quit": "Close while an export is running?", "... Closing stops it, and nothing of it is kept.", **Keep working** and **Close anyway**.
 2. **Given** **Close anyway** pressed, **Then** every run the window started is stopped by the same path its own **Cancel** takes (an export's frames folder removed, a layout's request cancelled), and then the window closes. On Windows and Linux the app then quits as it does today when its window closes; on macOS the app stays running with no window, as today, and nothing of the stopped runs goes on.
    *As of 12 Nov 2026:* the macOS close asks and stops, rather than letting an export go on unseen; issue 556 (a reopened window that can see an export) is what would let that change.
+   *As of 13 Nov 2026:* a second close of the window while the question is open is an answer, as a second quit is, and under the same rule: once the question has been on the screen for a second, and held before that (the second click of a double click). No page is asked to stop anything then, so main does the page's part: it stops the exports it holds, and cancels every request that page has with the engine as the page's own **Cancel** cancels one - a layout's among them, and with it whatever else the page was waiting for, a redraw or a feed being added, since no page is left to hear it. So on macOS nothing of the stopped runs goes on after a second close either.
 3. **Given** nothing running, **Then** closing the window behaves exactly as today.
 
 ---
@@ -64,7 +61,9 @@ As someone who closes windows by habit, I want closing the app's window during a
 ### Edge Cases
 
 - **The renderer is gone or not answering.** If the window's renderer has crashed, or Electron has reported it unresponsive, a quit or close goes ahead without asking: the question cannot be shown, and a person must always be able to quit.
+  *As of 13 Nov 2026:* a page that says it has stopped listening counts as gone. The dialog tells main so as it is unmounted, and an uncaught error while the interface renders unmounts all of it, in a window that is still there with a renderer alive and answering; without that word a quit would be held for a dialog nobody will draw.
 - **The app's own quits do not ask**: the crash box's **Quit**, a lost single-instance lock, and any other quit the app makes itself rather than the person. They bypass the question.
+  *As of 13 Nov 2026:* a termination signal on macOS and Linux (`kill`, Ctrl+C on a development run, a session ending) is the app's own quit: whoever sent it cannot answer a question in the window. Main takes SIGINT, SIGTERM and SIGHUP itself and quits through the gate, so the engine is stopped as it was by a signal before this feature. Whether Node's handler does replace Electron's own for those signals is to be confirmed in the running app.
 - **A system shutdown or log-out** is not asked about on Windows (Electron cannot hold a session end) and the rule leaves it alone; on macOS a log-out that sends quit takes the same path as any quit, so the dialog may hold it, as other apps' unsaved-work questions do.
 - **The run ends while the dialog is open.** The dialog stays until answered; answering **Quit anyway** then quits with nothing to stop, and **Keep working** keeps working. The dialog does not close by itself, because a dialog that disappears under the pointer invites a mis-click on what is behind it.
 - **The export's capture window** is never the app's window: closing it is not a close of the app's window, and it is never counted as one (issue 537).
@@ -79,6 +78,7 @@ As someone who closes windows by habit, I want closing the app's window during a
 - **FR-003**: The renderer reports to main which layouts are running, keyed by project, whenever that changes, through a narrow typed bridge call; main never asks the page what is running at quit time. The question and its answer cross the bridge as one typed request and one typed reply.
 - **FR-004**: **Keep working** is the default and has focus when the dialog opens; Escape answers **Keep working**.
 - **FR-005**: The texts are exactly those in the scenarios above. The project's name is the one the Library shows.
+  *As of 13 Nov 2026:* a project the store cannot name is said as "a project". Every running project's record has been read through the store, so this is not expected to be seen.
 - **FR-006**: `before-quit`'s existing gate (`quitGate`, the engine stop) is unchanged once the person has answered **Quit anyway**: the question comes before it and does not replace it.
 - **FR-007**: `docs/DESIGN.md` section 8.2 describes the dialog; `docs/acceptance.md` and `docs/accessibility.md` quote it; `tests/acceptance/acceptance.spec.ts` (the step that records "Quit showed no dialog", around line 3630) changes to match: quitting idle still shows none.
 
@@ -89,6 +89,7 @@ As someone who closes windows by habit, I want closing the app's window during a
 ## Success Criteria *(mandatory)*
 
 - **SC-001**: A unit table of `quitQuestion` covers: nothing running; an export; a layout; both; two of one; the renderer gone; the renderer unresponsive; the app's own quit; a question already open (a second quit quits); quit versus close. Mutations that drop the layout term, the close-on-macOS term, the app's-own-quit bypass, the renderer-gone bypass and the second-quit rule each turn it red.
+  *As of 13 Nov 2026:* the table also covers a second quit and a second close inside the first second of the question, which are held, and at and after it, which go ahead, each with its mutation.
 - **SC-002**: End-to-end tests (written by the lane, run by the coordinator): quit during a held export, **Keep working**, the export still running; quit again, **Quit anyway**, the app gone and no frames folder left; the same for a held layout; a window close during a held export on the platform the test runs on, **Close anyway**, the export stopped and its frames folder gone; quitting idle shows no dialog.
 - **SC-003**: The acceptance spec's quit step and the gate documents agree with the dialog.
 
