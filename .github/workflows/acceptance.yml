@@ -18,10 +18,12 @@
 # gets). A runner downloads through the GitHub CLI, which sets no quarantine
 # attribute and no mark of the web, so Gatekeeper and SmartScreen never ask;
 # step 2 says so in the record. What a machine can judge of a signed Mac
-# build it does: where the tag carries electron-builder.release.yml
-# (ADR-062), step 2 holds the downloaded disk image and the app copied from
-# it to scripts/verify-mac-signing.mjs's Developer ID checks, and fails on
-# any of them.
+# build it does: where the tag carries electron-builder.release.yml and the
+# disk image is signed, which only a Developer ID build's is (ADR-062), step
+# 2 holds the downloaded image and the app copied from it to
+# scripts/verify-mac-signing.mjs's Developer ID checks, and fails on any of
+# them. A tag built while signing was switched off is recorded as the ad-hoc
+# build it is.
 #
 # Read-only: the token lists and downloads Release assets, and reads their
 # attestations (step 1), and nothing else. A draft Release is invisible to
@@ -80,8 +82,8 @@ jobs:
 
       # The pins and the version the Release was built from; and the
       # Developer ID build's config, which a tag from before ADR-062 does not
-      # have: step 2 reads from its presence how the Mac installer was signed,
-      # and from its `identity` by which team.
+      # have: step 2 reads from it, and from whether the image is signed, how
+      # the Mac installer was built, and from its `identity` by which team.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ inputs.tag }}
@@ -187,6 +189,10 @@ jobs:
 
       - name: Step 2, install on macOS
         if: runner.os == 'macOS'
+        env:
+          # Read for one thing: to say so when a tag's image is unsigned and
+          # signing is on for the repository now.
+          MAC_SIGNING: ${{ vars.MAC_SIGNING }}
         run: |
           set -euo pipefail
           cli=tests/acceptance/record-cli.mjs
@@ -209,20 +215,45 @@ jobs:
           else
             quarantine='no quarantine attribute'
           fi
-          if [ -f at-tag/electron-builder.release.yml ]; then
-            # A Developer ID build (ADR-062): build.yml packages a Mac target
-            # on a v* tag with this config or not at all. The downloaded disk
-            # image is held to its signature, its staple and Gatekeeper's
-            # verdict, and so is the app inside it; then the copy the spec
-            # will open, which has no staple of its own (only the image is
-            # stapled) and is looked up by macOS instead. Both run, so the
-            # log names everything that failed. What macOS shows a person at
-            # the first open stays not automated: nothing here is quarantined.
+          # Which build this is (ADR-062). A tag with the release config was
+          # built in signing mode only if the repository's MAC_SIGNING
+          # variable was on when it was pushed, which the tag does not say.
+          # The image does: only the Developer ID build signs the disk image
+          # itself, and build.yml refuses to hand on a signing-mode image
+          # without that signature. An image with none is an ad-hoc build.
+          developer_id=no
+          if [ -f at-tag/electron-builder.release.yml ] && codesign -dv "$DOWNLOAD/$ASSET" > /dev/null 2>&1; then
+            developer_id=yes
+          fi
+          if [ "$developer_id" = yes ]; then
+            # spctl's verdicts mean nothing where Gatekeeper's assessments
+            # are off, and a runner image can come that way: they are turned
+            # on if they are off, the status is said before and after, and
+            # only a runner where they will not come on fails the step.
+            before=$(spctl --status 2>&1 || true)
+            echo "Gatekeeper before: $before"
+            if [[ "$before" != *'assessments enabled'* ]]; then
+              sudo spctl --global-enable || sudo spctl --master-enable || true
+            fi
+            after=$(spctl --status 2>&1 || true)
+            echo "Gatekeeper after: $after"
+            if [[ "$after" != *'assessments enabled'* ]]; then
+              node "$cli" prior "$PRIOR" step 2 fail "Gatekeeper's assessments are off on this runner and could not be turned on, so the Developer ID checks, which rest on its verdicts, were not run."
+              echo "::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image"
+              exit 1
+            fi
+            # The downloaded disk image is held to its signature, its staple
+            # and Gatekeeper's verdict, and so is the app inside it; then
+            # the copy the spec will open, which has no staple of its own
+            # (only the image is stapled) and is looked up by macOS instead.
+            # Both run, so the log names everything that failed. What macOS
+            # shows a person at the first open stays not automated: nothing
+            # here is quarantined.
             refused=0
             node scripts/verify-mac-signing.mjs dmg "$DOWNLOAD/$ASSET" --team-from at-tag/electron-builder.release.yml || refused=1
             node scripts/verify-mac-signing.mjs developer-id "$apps/Legible Cities.app" --team-from at-tag/electron-builder.release.yml --notarized || refused=1
             if [ "$refused" -ne 0 ]; then
-              node "$cli" prior "$PRIOR" step 2 fail "The tag carries electron-builder.release.yml, so its Mac installer is a Developer ID build, and the disk image or the app copied from it failed a check of its signature, its notarisation or its staple. The job's log names which."
+              node "$cli" prior "$PRIOR" step 2 fail "The disk image carries a signature of its own, so this is a Developer ID build, and the image or the app copied from it failed a check of its signature, its notarisation or its staple. The job's log names which."
               echo "::error::the disk image or the app copied from it failed the Developer ID checks (scripts/verify-mac-signing.mjs); the log above names which"
               exit 1
             fi
@@ -233,7 +264,19 @@ jobs:
             else
               signature='its signature does not verify'
             fi
-            node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and the way past its warning was not exercised; $signature. The app is opened by the spec in step 3."
+            # A tag from before the release config is recorded in the words
+            # it always was. One that has the config and an unsigned image
+            # was built with signing off, and the record says so; if signing
+            # is on now, the run says that too, since somebody may have
+            # expected this one signed.
+            built=''
+            if [ -f at-tag/electron-builder.release.yml ]; then
+              built=' The disk image has no signature of its own, so this tag was built ad hoc, with signing off (the MAC_SIGNING variable).'
+              if [ "${MAC_SIGNING:-}" = on ]; then
+                echo "::warning::signing is on for this repository now, and this tag's Mac image is not signed: it was built ad hoc, while the MAC_SIGNING variable was off"
+              fi
+            fi
+            node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and the way past its warning was not exercised; $signature.$built The app is opened by the spec in step 3."
           fi
           echo "LEGIBLE_ACCEPTANCE_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
           echo "INSTALLED=$apps/Legible Cities.app" >> "$GITHUB_ENV"

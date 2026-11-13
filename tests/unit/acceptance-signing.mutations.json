@@ -9,10 +9,42 @@
   },
   {
     "file": ".github/workflows/acceptance.yml",
-    "find": "          if [ -f at-tag/electron-builder.release.yml ]; then",
+    "find": "          if [ \"$developer_id\" = yes ]; then",
     "replace": "          if false; then",
     "test": "tests/unit/acceptance-signing.test.ts",
-    "title": "holds a tag that carries the release config to the Developer ID checks, image first then the copy",
+    "title": "holds a signed image to the Developer ID checks, image first then the copy",
     "why": "The Developer ID checks never reached: a signed Release is recorded on the strength of the ad-hoc check, which any valid signature passes."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": " && codesign -dv \"$DOWNLOAD/$ASSET\" > /dev/null 2>&1; then",
+    "replace": "; then",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "records a tag built with signing off as the ad-hoc build it is",
+    "why": "The release config alone taken to mean a signed build: a candidate cut while signing was off, before there was a certificate, fails its own gate."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "            if [[ \"$after\" != *'assessments enabled'* ]]; then\n              node \"$cli\"",
+    "replace": "            if false; then\n              node \"$cli\"",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "fails the step where Gatekeeper will not come on, before any check",
+    "why": "Gatekeeper's status after not read: the checks run on a runner that accepts everything, and their verdicts are the machine's setting, not the build's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "              sudo spctl --global-enable || sudo spctl --master-enable || true\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "turns Gatekeeper on before the checks where the runner has it off",
+    "why": "A runner that comes with assessments off fails the gate for its own setting, which says nothing about the Release."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "              if [ \"${MAC_SIGNING:-}\" = on ]; then",
+    "replace": "              if false; then",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "warns when signing is on now and the tag was built without it",
+    "why": "An unsigned tag accepted in silence while signing is on: a release meant to be signed and built with the variable off is recorded as ad hoc, and nobody is told to look."
   }
 ]

@@ -69,13 +69,16 @@ describe("acceptance.yml's step 2 on macOS", () => {
     ).not.toContain('stapler')
     // The team is the tag's own, read from its config.
     expect(step).not.toMatch(/--team [A-Z0-9]/)
-    expect(step).not.toContain('|| true')
+    // And a check's refusal is never waved through on its own line.
+    expect(step).not.toMatch(/verify-mac-signing\.mjs[^\n]*\|\| true/)
   })
 
-  it('holds no secret and joins no environment', () => {
+  it('holds no secret, joins no environment, and reads one variable, for one sentence', () => {
     // The header's own "No secrets." is a sentence, not a reference.
     expect(workflow).not.toMatch(/\bsecrets\.\w/)
     expect(workflow).not.toMatch(/^\s*environment:/m)
+    expect(workflow.match(/\bvars\.\w+/g)).toEqual(['vars.MAC_SIGNING'])
+    expect(step).toContain('MAC_SIGNING: ${{ vars.MAC_SIGNING }}')
   })
 
   describe.skipIf(process.platform === 'win32')('run as a runner runs it', () => {
@@ -93,7 +96,13 @@ describe("acceptance.yml's step 2 on macOS", () => {
         'fi',
       ].join('\n'),
       ditto: `${RECORD}\nmkdir -p "$2"`,
-      codesign: `${RECORD}\nexit "\${STUB_CODESIGN:-0}"`,
+      // `-dv <image>` is whether the image carries a signature of its own;
+      // anything else is the ad-hoc check of the copied app.
+      codesign: [
+        RECORD,
+        'if [ "$1" = -dv ]; then exit "${STUB_IMAGE_UNSIGNED:-0}"; fi',
+        'exit "${STUB_CODESIGN:-0}"',
+      ].join('\n'),
       // No quarantine attribute, as on a runner.
       xattr: 'exit 1',
       node: [
@@ -103,8 +112,25 @@ describe("acceptance.yml's step 2 on macOS", () => {
         '  exit "${STUB_APP:-0}"',
         'fi',
       ].join('\n'),
+      // A Gatekeeper that is on once a file exists, and the two spellings
+      // of the option that turns it on, each of which can be made to fail.
+      spctl: [
+        RECORD,
+        'case "$1" in',
+        '  --status) if [ -f "$STUB_STATE" ]; then echo "assessments enabled"; else echo "assessments disabled"; exit 1; fi ;;',
+        '  --global-enable) if [ "${STUB_GLOBAL:-works}" = works ]; then touch "$STUB_STATE"; else exit 1; fi ;;',
+        '  --master-enable) if [ "${STUB_MASTER:-works}" = works ]; then touch "$STUB_STATE"; else exit 1; fi ;;',
+        'esac',
+      ].join('\n'),
+      sudo: `${RECORD}\nexec "$@"`,
     }
-    function run(options: { signedTag: boolean; env?: Record<string, string> }) {
+    function run(options: {
+      /** The tag carries electron-builder.release.yml. */
+      config: boolean
+      /** Gatekeeper's assessments are on when the step starts. */
+      gatekeeper?: boolean
+      env?: Record<string, string>
+    }) {
       const dir = scratch()
       mkdirSync(join(dir, 'bin'))
       for (const [name, body] of Object.entries(STUBS)) {
@@ -114,13 +140,15 @@ describe("acceptance.yml's step 2 on macOS", () => {
       }
       mkdirSync(join(dir, 'at-tag'))
       writeFileSync(join(dir, 'at-tag', 'electron-builder.yml'), 'mac:\n  identity: "-"\n')
-      if (options.signedTag) {
+      if (options.config) {
         writeFileSync(
           join(dir, 'at-tag', 'electron-builder.release.yml'),
           `mac:\n  identity: '${TEAM}'\n`,
         )
       }
       for (const folder of ['temp', 'download']) mkdirSync(join(dir, folder))
+      const state = join(dir, 'assessments-on')
+      if (options.gatekeeper ?? true) writeFileSync(state, '')
       const file = join(dir, 'step.sh')
       writeFileSync(file, script)
       const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', file], {
@@ -128,11 +156,14 @@ describe("acceptance.yml's step 2 on macOS", () => {
         env: {
           PATH: `${join(dir, 'bin')}:/usr/bin:/bin`,
           STUB_LOG: join(dir, 'stub.log'),
+          STUB_STATE: state,
           RUNNER_TEMP: join(dir, 'temp'),
           DOWNLOAD: join(dir, 'download'),
           ASSET: 'Legible-Cities-1.0.0-mac-arm64.dmg',
           PRIOR: join(dir, 'prior.json'),
           GITHUB_ENV: join(dir, 'github.env'),
+          // As GitHub gives a variable that is not set.
+          MAC_SIGNING: '',
           ...options.env,
         },
         encoding: 'utf8',
@@ -150,20 +181,26 @@ describe("acceptance.yml's step 2 on macOS", () => {
         dir,
         calls,
         handed,
+        image: join(dir, 'download', 'Legible-Cities-1.0.0-mac-arm64.dmg'),
+        copy: join(dir, 'temp', 'apps', 'Legible Cities.app'),
         records: calls.filter((call) => call[1] === 'tests/acceptance/record-cli.mjs'),
         checks: calls.filter((call) => call[1] === 'scripts/verify-mac-signing.mjs'),
+        codesign: calls.filter((call) => call[0] === 'codesign'),
+        sudo: calls.filter((call) => call[0] === 'sudo'),
       }
     }
+    const AD_HOC =
+      "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has no quarantine attribute, so Gatekeeper never asked and the way past its warning was not exercised; its ad-hoc signature verifies."
 
     it('has a script to run', () => {
       expect(script).toContain('hdiutil attach -readonly')
     })
 
-    it('holds a tag that carries the release config to the Developer ID checks, image first then the copy', () => {
-      const { result, dir, checks, records, calls, handed } = run({ signedTag: true })
+    it('holds a signed image to the Developer ID checks, image first then the copy', () => {
+      const { result, image, copy, checks, records, codesign, sudo, handed, dir } = run({
+        config: true,
+      })
       expect(result.status).toBe(0)
-      const image = join(dir, 'download', 'Legible-Cities-1.0.0-mac-arm64.dmg')
-      const copy = join(dir, 'temp', 'apps', 'Legible Cities.app')
       expect(checks).toEqual([
         [
           'node',
@@ -183,8 +220,14 @@ describe("acceptance.yml's step 2 on macOS", () => {
           '--notarized',
         ],
       ])
-      // The ad-hoc check is not what judges this build.
-      expect(calls.filter((call) => call[0] === 'codesign')).toEqual([])
+      // The image was asked whether it is signed, and the ad-hoc check is
+      // not what judges this build.
+      expect(codesign).toEqual([['codesign', '-dv', image]])
+      // Gatekeeper was on already: said, and left alone.
+      expect(result.stdout).toContain(
+        'Gatekeeper before: assessments enabled\nGatekeeper after: assessments enabled\n',
+      )
+      expect(sudo).toEqual([])
       // Checked, and still not a person's first open: never recorded as passed.
       expect(records).toHaveLength(1)
       expect(records[0].slice(2, 7)).toEqual([
@@ -210,7 +253,7 @@ describe("acceptance.yml's step 2 on macOS", () => {
         { STUB_DMG: '2', STUB_APP: '1' },
       ]
       for (const env of refusals) {
-        const { result, checks, records, handed } = run({ signedTag: true, env })
+        const { result, checks, records, handed } = run({ config: true, env })
         expect(result.status, JSON.stringify(env)).toBe(1)
         expect(checks.map((call) => call[2])).toEqual(['dmg', 'developer-id'])
         expect(records.map((call) => call.slice(4, 7))).toEqual([['step', '2', 'fail']])
@@ -222,32 +265,104 @@ describe("acceptance.yml's step 2 on macOS", () => {
       }
     })
 
-    it('records a tag from before the release config as ad hoc, in the words it always used', () => {
-      const { result, checks, records, calls, dir } = run({ signedTag: false })
+    it('turns Gatekeeper on before the checks where the runner has it off', () => {
+      const first = run({ config: true, gatekeeper: false })
+      expect(first.result.status).toBe(0)
+      expect(first.result.stdout).toContain(
+        'Gatekeeper before: assessments disabled\nGatekeeper after: assessments enabled\n',
+      )
+      expect(first.sudo).toEqual([['sudo', 'spctl', '--global-enable']])
+      expect(first.checks.map((call) => call[2])).toEqual(['dmg', 'developer-id'])
+      // On before the first check, not after it.
+      const order = first.calls.map((call) => `${call[0]} ${call[1] ?? ''} ${call[2] ?? ''}`)
+      expect(order.indexOf('sudo spctl --global-enable')).toBeLessThan(
+        order.indexOf('node scripts/verify-mac-signing.mjs dmg'),
+      )
+      // The other spelling, where the first is not taken.
+      const second = run({ config: true, gatekeeper: false, env: { STUB_GLOBAL: 'fails' } })
+      expect(second.result.status).toBe(0)
+      expect(second.sudo.map((call) => call[2])).toEqual(['--global-enable', '--master-enable'])
+    })
+
+    it('fails the step where Gatekeeper will not come on, before any check', () => {
+      // Mutation: the status after not read, so the checks run on a runner
+      // that accepts everything and their verdicts are the setting's.
+      const { result, checks, records, handed, sudo } = run({
+        config: true,
+        gatekeeper: false,
+        env: { STUB_GLOBAL: 'fails', STUB_MASTER: 'fails' },
+      })
+      expect(result.status).toBe(1)
+      expect(sudo).toHaveLength(2)
+      expect(checks).toEqual([])
+      expect(result.stdout).toContain('Gatekeeper after: assessments disabled\n')
+      expect(result.stdout).toContain(
+        "::error::Gatekeeper's assessments are off on this runner and could not be turned on",
+      )
+      expect(records.map((call) => call.slice(4, 7))).toEqual([['step', '2', 'fail']])
+      expect(records[0][7]).toContain('were not run')
+      expect(handed).toBe('')
+    })
+
+    it('records a tag built with signing off as the ad-hoc build it is', () => {
+      // Mutation: the release config alone taken to mean a signed build, so
+      // a candidate cut before there was a certificate fails its own gate.
+      const { result, checks, records, codesign, sudo, image, copy } = run({
+        config: true,
+        env: { STUB_IMAGE_UNSIGNED: '1' },
+      })
       expect(result.status).toBe(0)
       expect(checks).toEqual([])
-      expect(calls.filter((call) => call[0] === 'codesign')).toEqual([
-        [
-          'codesign',
-          '--verify',
-          '--deep',
-          '--strict',
-          join(dir, 'temp', 'apps', 'Legible Cities.app'),
-        ],
+      expect(sudo).toEqual([])
+      expect(codesign).toEqual([
+        ['codesign', '-dv', image],
+        ['codesign', '--verify', '--deep', '--strict', copy],
       ])
       expect(records).toHaveLength(1)
       expect(records[0].slice(4)).toEqual([
         'step',
         '2',
         'not automated',
-        "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has no quarantine attribute, so Gatekeeper never asked and the way past its warning was not exercised; its ad-hoc signature verifies. The app is opened by the spec in step 3.",
+        `${AD_HOC} The disk image has no signature of its own, so this tag was built ad hoc, with signing off (the MAC_SIGNING variable). The app is opened by the spec in step 3.`,
       ])
-      const broken = run({ signedTag: false, env: { STUB_CODESIGN: '1' } })
+      // Nothing more is said while signing is still off for the repository.
+      expect(result.stdout).not.toContain('::warning::')
+    })
+
+    it('warns when signing is on now and the tag was built without it', () => {
+      const { result, records } = run({
+        config: true,
+        env: { STUB_IMAGE_UNSIGNED: '1', MAC_SIGNING: 'on' },
+      })
+      expect(result.status).toBe(0)
+      expect(result.stdout).toContain(
+        "::warning::signing is on for this repository now, and this tag's Mac image is not signed",
+      )
+      expect(records[0][6]).toBe('not automated')
+      // And never for a tag that could not have been signed.
+      const older = run({ config: false, env: { MAC_SIGNING: 'on' } })
+      expect(older.result.stdout).not.toContain('::warning::')
+    })
+
+    it('records a tag from before the release config as ad hoc, in the words it always used', () => {
+      const { result, checks, records, codesign, copy } = run({ config: false })
+      expect(result.status).toBe(0)
+      expect(checks).toEqual([])
+      // The image is not even asked: there was no signing to do.
+      expect(codesign).toEqual([['codesign', '--verify', '--deep', '--strict', copy]])
+      expect(records).toHaveLength(1)
+      expect(records[0].slice(4)).toEqual([
+        'step',
+        '2',
+        'not automated',
+        `${AD_HOC} The app is opened by the spec in step 3.`,
+      ])
+      const broken = run({ config: false, env: { STUB_CODESIGN: '1' } })
       expect(broken.records[0][7]).toContain('its signature does not verify')
     })
 
     it('fails an image with no app in it, whatever the tag', () => {
-      const { result, records, checks } = run({ signedTag: true, env: { STUB_NO_APP: '1' } })
+      const { result, records, checks } = run({ config: true, env: { STUB_NO_APP: '1' } })
       expect(result.status).toBe(1)
       expect(records.map((call) => call.slice(4, 7))).toEqual([['step', '2', 'fail']])
       expect(checks).toEqual([])
