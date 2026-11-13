@@ -239,7 +239,7 @@ export const PINS_SHAPE = {
 export const UNWATCHED = [
   {
     component:
-      "The Python runtime's own libraries (OpenSSL, SQLite, libffi, xz, bzip2, mpdecimal, Expat, Tcl/Tk, libuuid)",
+      "The Python runtime's own libraries (OpenSSL, SQLite, libffi, xz, bzip2, mpdecimal, Expat, libuuid)",
     why: "vendor/pins.json records the python-build-standalone release, not their versions; the Windows build's licence records name Expat's and libmpdec's in passing, and watching them waits on a triage of their matches. Its zlib is watched at the version its licence record names.",
   },
   {
@@ -381,8 +381,12 @@ export function ffmpegConfigure(pins) {
 /**
  * The Python runtimes that link the operating system's zlib, which the
  * installers do not ship: python-build-standalone's macOS builds, whose
- * licence records say so under `named_absent`. Every other target carries
- * a zlib of its own.
+ * metadata has every zlib user link `z` with system: true (their libpython
+ * links /usr/lib/libz.1.dylib), and whose licence records list no zlib under
+ * `unlisted`. Every other target carries a zlib of its own. The vendor job
+ * and the packaging check hold the macOS builds to it: scripts/
+ * check-vendored.mjs (systemZlibProblems) refuses a macOS runtime whose
+ * metadata has a zlib link without system: true, or no system zlib at all.
  */
 const SYSTEM_ZLIB = /^darwin-/
 

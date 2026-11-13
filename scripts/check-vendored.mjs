@@ -13,8 +13,9 @@
 // runs it before a runtime is vendored, as the same check runs here later.
 // With --packages it checks only one runtime's packages against
 // vendor/python-requirements.txt and python.pip, and its vendor record
-// against engine.commit and python.requirements.sha256 (issue 434):
-// scripts/vendor-python.sh runs it once it has installed them.
+// against engine.commit and python.requirements.sha256 (issue 434), and
+// that it carries no Tcl/Tk (issue 679): scripts/vendor-python.sh runs it
+// once it has installed them and stripped the runtime.
 //
 // Targets: darwin-arm64, darwin-x64, win-x64. The tree it reads is the one
 // .github/workflows/build.yml lays out from the same run's vendor artefacts:
@@ -57,7 +58,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs'
-import { basename, dirname, join, relative, resolve } from 'node:path'
+import { basename, dirname, join, relative, resolve, sep } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
@@ -268,16 +269,25 @@ export function licencePaths(python) {
 }
 
 /**
+ * The build variant of an extension that is built into the runtime, of the
+ * ones its metadata lists: the one python-build-standalone marks `default`
+ * (and lists first), else the first. Null when it lists none.
+ */
+function shippedVariant(variants) {
+  if (!Array.isArray(variants) || variants.length === 0) return null
+  return variants.find((variant) => variant?.variant === 'default') ?? variants[0]
+}
+
+/**
  * The licence texts python-build-standalone's metadata names: the runtime's
  * own and every extension module's, as file names in `licenses/`. A path
  * outside that folder is kept as it is, so it matches no file and is
  * reported rather than skipped.
  *
  * An extension may list more than one build variant; only the one built
- * into the runtime counts, which python-build-standalone marks `default`
- * (and lists first). At release 20260901 no extension on any target has
- * more than one, so this only keeps a text for a variant that is not
- * shipped from being required.
+ * into the runtime counts (`shippedVariant`). At release 20261026, as at
+ * 20260901, no extension on any target has more than one, so this only
+ * keeps a text for a variant that is not shipped from being required.
  */
 export function namedLicences(metadata) {
   const paths = []
@@ -285,8 +295,7 @@ export function namedLicences(metadata) {
   const extensions = metadata?.build_info?.extensions
   if (extensions !== null && typeof extensions === 'object') {
     for (const variants of Object.values(extensions)) {
-      if (!Array.isArray(variants) || variants.length === 0) continue
-      const installed = variants.find((variant) => variant?.variant === 'default') ?? variants[0]
+      const installed = shippedVariant(variants)
       if (Array.isArray(installed?.license_paths)) paths.push(...installed.license_paths)
     }
   }
@@ -295,12 +304,78 @@ export function namedLicences(metadata) {
   )
 }
 
+/** A link the build metadata gives that is zlib's, under any name it has used. */
+const ZLIB_LINK = /^(?:z|zlib|zlib-?ng)$/i
+
+/** A licence text of zlib's, as the metadata names it. */
+const ZLIB_TEXT = /(?:^|\/)LICENSE\.zlib(?:-ng)?\.txt$/
+
+/**
+ * Whether a macOS build still links the operating system's zlib, and only
+ * that one. python-build-standalone's macOS builds have: every zlib link in
+ * their metadata is `z` with system: true, so the runtime carries no zlib,
+ * the pins owe no zlib text under `unlisted`, and scripts/vuln-watch.mjs
+ * (SYSTEM_ZLIB) asks OSV about no zlib for them. A build that linked a zlib
+ * of its own, or no longer named the system's, would break all three
+ * silently. Until release 20261026 a named_absent entry for zlib-ng's text
+ * stood guard here by accident; this is the guard on purpose.
+ *
+ * Only the variant built into the runtime is read, as for the licence
+ * texts. An extension that owes a zlib text must link a zlib, so one with
+ * zlib compiled in, beside others that link the system's, is refused too.
+ *
+ * @returns {string[]} the problems, each a phrase to follow "python "
+ */
+export function systemZlibProblems(metadata) {
+  const problems = []
+  let system = 0
+  /** The zlib links among `links`, each refused unless it is the system's. */
+  const visit = (where, links) => {
+    const found = Array.isArray(links)
+      ? links.filter((link) => ZLIB_LINK.test(String(link?.name ?? '')))
+      : []
+    for (const link of found) {
+      if (link.system === true) system += 1
+      else {
+        problems.push(
+          `has build metadata in which ${where} links ${link.name} without system: true, a zlib of the runtime's own; the macOS pins record none and the vulnerability watch asks about none (SYSTEM_ZLIB, scripts/vuln-watch.mjs), so record its version and teach the watch it`,
+        )
+      }
+    }
+    return found
+  }
+  visit('the interpreter', metadata?.build_info?.core?.links)
+  const extensions = metadata?.build_info?.extensions
+  if (extensions !== null && typeof extensions === 'object') {
+    for (const [extension, variants] of Object.entries(extensions)) {
+      const variant = shippedVariant(variants)
+      if (variant === null) continue
+      const found = visit(extension, variant.links)
+      const owes = Array.isArray(variant.license_paths)
+        ? variant.license_paths.filter((path) => ZLIB_TEXT.test(String(path)))
+        : []
+      if (owes.length > 0 && found.length === 0) {
+        problems.push(
+          `has build metadata in which ${extension} owes ${owes.map((path) => String(path).split('/').pop()).join(' and ')} but links no zlib, so its zlib is compiled in rather than the system's; the macOS pins record none and the vulnerability watch asks about none (SYSTEM_ZLIB, scripts/vuln-watch.mjs)`,
+        )
+      }
+    }
+  }
+  if (system === 0 && problems.length === 0) {
+    problems.push(
+      "has build metadata in which nothing links the system's zlib (`z` with system: true); the macOS pins and the vulnerability watch (SYSTEM_ZLIB, scripts/vuln-watch.mjs) rest on it, so read again where this build's zlib comes from",
+    )
+  }
+  return problems
+}
+
 /**
  * Whether the runtime's licence texts, the build metadata they came with and
  * the lists in `python.targets.<target>.licences` agree (issue 108, ADR-042).
- * The metadata alone is not enough: on macOS it names a zlib-ng text the
- * archive does not carry, and on Windows it names nothing for the zlib,
- * Expat and libmpdec compiled into the DLLs. So three reviewed lists say
+ * The metadata alone is not enough: on Windows it names nothing for the
+ * zlib, Expat and libmpdec compiled into the DLLs, and at release 20260901
+ * it named on macOS a zlib-ng text the archive did not carry (from 20261026
+ * the archive carries it). So three reviewed lists say
  * what the metadata does not, and every entry is held to still being true;
  * the strings an `unlisted` entry gives are looked for in the file it names,
  * so the reason for listing it is proved again on every check.
@@ -332,6 +407,7 @@ export function checkPythonLicences({ python, target, pins }) {
       `has build metadata for ${metadata.python_version} ${metadata.target_triple}, not ${pins.python.version} ${pin.triple}`,
     )
   }
+  if (target.startsWith('darwin-')) problems.push(...systemZlibProblems(metadata))
 
   const carried = new Set(list(folder).filter((name) => isFile(join(folder, name))))
   const named = namedLicences(metadata)
@@ -398,6 +474,79 @@ export function checkPythonLicences({ python, target, pins }) {
         `carries ${name}, which neither the build metadata nor the pins' lists account for`,
       )
     }
+  }
+  return problems
+}
+
+/**
+ * The names scripts/vendor-python.sh's strip removes outside site-packages
+ * (issue 679), its `find -name` patterns written as one expression, case and
+ * all: `_tkinter*`, `libtcl*`, `tcl`, `tcl[0-9]*`, `tk[0-9]*`, `itcl[0-9]*`,
+ * `thread[0-9]*` and `zlib1.dll`. A folder so named is the strip's whole.
+ * A unit test reads the strip's line and holds its names to these.
+ */
+export const STRIPPED =
+  /^(?:_tkinter.*|libtcl.*|tcl|tcl[0-9].*|tk[0-9].*|itcl[0-9].*|thread[0-9].*|zlib1\.dll)$/
+
+/**
+ * A Tcl/Tk binary by its file name, wherever it is: the _tkinter extension
+ * (`_tkinter.` and an extension module's suffix: .so, .pyd, .dll or .dylib,
+ * not a typeshed stub's .pyi), and a shared library of Tcl, Tk, Tix, itcl or
+ * Tcl's thread package (every one release 20261026 ships: tcl86t.dll,
+ * tclreg13.dll, libtcl9thread3.0.6.dylib, libthread3.0.6.dylib and the
+ * rest). Not zlib1.dll, nor _tkinter's .pdb and .lib: those are Tcl's or
+ * _tkinter's only in the runtime's own folders, where STRIPPED names them,
+ * and a package may carry a zlib1.dll of its own that is nothing of Tcl's.
+ */
+const TCL_TK_BINARY =
+  /^(?:_tkinter\.(?:.+\.)?(?:so|pyd|dll|dylib)|(?:lib)?(?:(?:tcl|tk|tix|itcl).*|thread[0-9].*)\.(?:dll|dylib|so))$/i
+
+/**
+ * Refuse a runtime that still carries what the strip removes of Tcl/Tk.
+ * Only tkinter loads it and the sidecar never imports tkinter, so shipped
+ * it is code the app never runs, with advisories of its own that nothing
+ * here watches. Outside site-packages, anything named as the strip names it,
+ * file or folder, zlib1.dll among them; anywhere, site-packages included, a
+ * file TCL_TK_BINARY names. Tcl's scripts or a zlib1.dll in a package's
+ * folder are not looked for. A folder it cannot read is a problem, never a
+ * pass.
+ *
+ * @param {object} options
+ * @param {string} options.python the runtime's root, the `python` folder
+ * @returns {string[]} the problems, each beginning with the component it is about
+ */
+export function checkPythonStripped({ python }) {
+  const found = []
+  const unread = []
+  const name = (path) => relative(python, path).split(sep).join('/') || python
+  const walk = (dir, packages) => {
+    let entries
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch (error) {
+      unread.push(`${name(dir)} (${error?.code ?? String(error)})`)
+      return
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name)
+      if (!packages && STRIPPED.test(entry.name)) {
+        found.push(entry.isDirectory() ? `${name(path)}/` : name(path))
+      } else if (entry.isDirectory()) {
+        walk(path, packages || entry.name === 'site-packages')
+      } else if (TCL_TK_BINARY.test(entry.name)) {
+        found.push(name(path))
+      }
+    }
+  }
+  walk(python, false)
+  const problems = []
+  if (unread.length > 0) {
+    problems.push(`python could not be read whole to look for Tcl/Tk: ${unread.sort().join(', ')}`)
+  }
+  if (found.length > 0) {
+    problems.push(
+      `python carries Tcl/Tk, which scripts/vendor-python.sh strips and nothing the sidecar runs loads: ${found.sort().join(', ')}`,
+    )
   }
   return problems
 }
@@ -865,6 +1014,9 @@ export function checkTree({ target, paths, pins, requirements, bytecode = false,
     })) {
       problems.push(`${target}: ${problem}`)
     }
+    for (const problem of checkPythonStripped({ python: paths.python })) {
+      problems.push(`${target}: ${problem}`)
+    }
     if (bytecode) {
       const { sources, missing, timestamped } = bytecodeOf(runtime.lib)
       if (sources === 0) {
@@ -1239,19 +1391,22 @@ function main(argv) {
   }
   if (options.packages !== null) {
     const pins = JSON.parse(readFileSync(options.pinsFile, 'utf8'))
-    const problems = checkPythonPackages({
-      python: options.packages,
-      target: options.target,
-      pins,
-      requirements: readRequirements(options.pinsFile),
-    })
+    const problems = [
+      ...checkPythonPackages({
+        python: options.packages,
+        target: options.target,
+        pins,
+        requirements: readRequirements(options.pinsFile),
+      }),
+      ...checkPythonStripped({ python: options.packages }),
+    ]
     if (problems.length > 0) {
       process.stderr.write(`the ${options.target} runtime is not the one the pins name:\n`)
       for (const problem of problems) process.stderr.write(`  ${problem}\n`)
       return 1
     }
     process.stdout.write(
-      `${options.target}: the runtime carries the packages ${REQUIREMENTS} and python.pip pin, at those versions and no others, and records engine.commit\n`,
+      `${options.target}: the runtime carries the packages ${REQUIREMENTS} and python.pip pin, at those versions and no others, records engine.commit, and carries no Tcl/Tk\n`,
     )
     return 0
   }
