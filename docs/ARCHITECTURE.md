@@ -2565,7 +2565,8 @@ It then runs each bundled LOOM tool with `--help` and ffmpeg and ffprobe with
 `-version` from inside the bundle, and compares every file and folder in the
 bundle with the list taken before the launch. It runs no layout or export;
 ADR-035 says what that would take. On macOS the job then verifies the app's
-signature with `codesign --verify --deep --strict`.
+signature with `codesign --verify --deep --strict`, and what it is signed
+with (below).
 
 The Windows installer keeps no copy of itself (issue 128).
 electron-builder's NSIS template copies the running installer, about
@@ -2597,10 +2598,47 @@ and say nothing about where it installs; a unit test holds
 `electron-builder.yml` to that list, because the gate runs by hand against
 a published tag and would otherwise fail after the release.
 
-The Mac app is signed ad hoc, and nothing is signed with an identity
-(ADR-037, ADR-054); `forceCodeSigning` is set but only takes effect once a real identity
-replaces the ad-hoc one, so the `codesign --verify` step is what checks the
-signature. A local `npm run dist` builds an unpacked app with whatever is
+The Mac app is signed in one of two ways, and the Windows installer in
+neither (ADR-062, Proposed; ADR-054).
+
+- **Ad hoc**, from `electron-builder.yml` (`identity: '-'`): every branch
+  and pull-request build, a local `npm run dist`, and a `v*` tag pushed
+  while the repository variable `MAC_SIGNING` is not `on`. No certificate
+  and no secret is involved. `forceCodeSigning` does nothing under the
+  ad-hoc identity.
+- **Signing mode**, from `electron-builder.release.yml`, which extends that
+  file and changes three keys (the Developer ID Team ID as the identity,
+  electron-builder's own notarisation off, a signature on the disk image):
+  a Mac target, with `MAC_SIGNING` on, on a pushed `v*` tag or a dispatch
+  with `sign` ticked. A dispatch that ticks `sign` with the variable off is
+  refused. Two jobs then each join an environment of their own, which
+  holds that job's half of the secrets and nothing of the other's, so
+  neither can be handed what it does not sign or notarise with. `package`
+  joins `release-signing` and is given the certificate, in the branch of
+  the packaging step's shell that signs, and uploads the signed image as
+  `unnotarised-<target>`. `notarize` joins `release-notarize`, on a
+  runner of its own that checks out the two scripts and the release config
+  and nothing else and runs no npm code, and is given the notary's key: it
+  downloads that image into a folder of its own, refuses the download
+  unless it is exactly the image and its target's manifest, both plain
+  files, turns Gatekeeper's assessments on if the runner
+  has them off, notarises and staples it (`scripts/notarize-dmg.mjs`),
+  checks it and the app inside it (`scripts/verify-mac-signing.mjs dmg`),
+  and uploads it as `installer-<target>`. The release job takes
+  `installer-<target>` either way, and drafts only if the notarising jobs
+  succeeded or were skipped with the variable off.
+
+In both, the packaging job's verify step runs `codesign --verify --deep
+--strict` and then `scripts/verify-mac-signing.mjs`, as `adhoc` or as
+`developer-id`: the signature is the one that mode makes, the hardened
+runtime is on, and the app and the bundled Python keep the entitlement
+ADR-043 needs. The runtime's bytecode is left out of the signer's
+file-by-file pass (`mac.signIgnore`) and sealed as a resource of the bundle.
+`acceptance.yml`'s step 2 tells the two builds apart by the image, which
+only signing mode signs, holds a signed one to the Developer ID checks, and
+fails an unsigned one whose app is not signed ad hoc.
+
+A local `npm run dist` builds an unpacked app with whatever is
 vendored: with nothing, the hook lets it through and says it is not an
 installer; with anything, it holds the build to the same check.
 
@@ -2649,7 +2687,8 @@ runs. Measured on an Apple-silicon Mac with the vendored binaries: under
 
 A pushed tag `v<version>` or `v<version>-rc.<N>` runs the same build, path
 filters or not (GitHub does not evaluate them for a tag), and after the
-vendor jobs and all three packaging jobs succeed a last job, the only one
+vendor jobs and all three packaging jobs succeed, and in signing mode the
+two notarising jobs as well ("Packaging"), a last job, the only one
 with `contents: write`, drafts a GitHub Release (A6-01,
 specs/025-release-on-a-tag, ADR-041). `scripts/release.mjs` decides and
 the workflow does: it refuses a tag that is not for `package.json`'s
@@ -2933,4 +2972,4 @@ how a new id is triaged.
 | `topo` and `octi` offered in the geographic view; they are drawn only while a run solves | Issue 282 |
 | Counts on the sample cities' cards, or any feed fetched to draw one | ADR-047: a card asks the engine for the list and nothing else |
 | LOOM's optional solvers | ADR-019: the layout passes no optimisation flags, so the binaries are built without them |
-| Installers signed with an identity, and notarised; automatic update | Not in 1.0; ADR-054 says what would reopen it |
+| A signed Windows installer; automatic update | Not in 1.0; ADR-054 says what would reopen it. The Mac's Developer ID signature and notarisation are built and switched off until the `MAC_SIGNING` variable is turned on (ADR-062, Proposed; "Packaging") |

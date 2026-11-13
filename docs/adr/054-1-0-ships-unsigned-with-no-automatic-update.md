@@ -1,11 +1,13 @@
 # ADR-054: 1.0 ships unsigned, with no automatic update
 
-- **Status:** Accepted
+- **Status:** Accepted, superseded in part by ADR-062 (the Mac's signature)
 - **Date:** 2026-10-24
 - **Decided by:** the maintainer, 24 Oct 2026 (issue 484)
 - **Revisit:** see "What would reopen it"
 - **Supersedes:** none
-- **Superseded by:** none
+- **Superseded by:** [ADR-062](062-the-mac-build-is-signed-with-a-developer-id-and-notarised.md),
+  in part: the Mac build is signed with a Developer ID and notarised. "No
+  automatic update" stands, and so does the unsigned Windows installer
 
 [ADR-037](037-the-first-release-is-unsigned.md) decided that the first
 release, v0.1.0, ships unsigned. This record decides the same for 1.0 and

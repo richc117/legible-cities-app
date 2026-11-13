@@ -157,6 +157,13 @@ engine relocked.
 
 The settings that only the host can enforce - secret scanning, push
 protection, private vulnerability reporting, Dependabot alerts and security
-updates, branch protection on `main` - are listed in
-`docs/repository-settings.md`, with the date each was applied or last
-checked. Signing material, when it exists, will live only in CI secrets.
+updates, branch protection on `main`, the two environments the Mac build
+is signed from - are listed in `docs/repository-settings.md`, with the date
+each was applied or last checked. Signing material lives only in the
+secrets of those two environments, each behind a deployment rule and a
+required reviewer, and each holding one half: `release-signing` the
+Developer ID certificate, which only the packaging job is handed, and
+`release-notarize` the notary's key, which only a separate job that runs no
+npm code is handed (ADR-062). Neither job is in the other's environment,
+so neither can be handed the other's half. None of it is a repository
+secret, and none of it is in a file here.

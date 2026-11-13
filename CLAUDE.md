@@ -102,6 +102,8 @@ npm run test:acceptance               # the acceptance checklist over the instal
 node scripts/mutations.mjs --check    # every tests/unit/*.mutations.json entry is well formed (npm test runs it)
 node scripts/mutations.mjs            # each mutation applied to a clean tree, its test run, the file restored; every test must go red
 node scripts/vuln-watch.mjs           # OSV asked about the pinned components it can name, ratings checked against the CVE records, the answer judged against vendor/vuln-triage.json (SECURITY.md); vuln-watch.yml runs it weekly
+node scripts/verify-mac-signing.mjs adhoc <app>   # what a Mac build is signed with, on a Mac, changing nothing (ADR-062); also `developer-id <app> --team <id> [--notarized]` and `dmg <dmg> --team <id>`, or `--team-from electron-builder.release.yml`
+NOTARY_KEYCHAIN_PROFILE=<name> node scripts/notarize-dmg.mjs <dmg>   # for a person: sends a signed disk image to Apple's notary with a profile `xcrun notarytool store-credentials` saved, staples and validates it; build.yml's notarize job does it for a release
 ```
 
 A second launch of the app quits at once, so `test:acceptance` never runs

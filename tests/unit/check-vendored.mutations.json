@@ -1,0 +1,26 @@
+[
+  {
+    "file": "electron-builder.yml",
+    "find": "  identity: '-'\n",
+    "replace": "  identity: 'ABCDE12345'\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "stays ad hoc, and keeps the bytecode out of the signer",
+    "why": "A team written into the base config: every branch and pull-request build asks for a certificate no branch has, and fails."
+  },
+  {
+    "file": "electron-builder.yml",
+    "find": "  signIgnore: '\\.pyc$'\n",
+    "replace": "  signIgnore: 'pyc'\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "stays ad hoc, and keeps the bytecode out of the signer",
+    "why": "A pattern that matches more than bytecode: a library whose name only contains the letters is left unsigned, and the notary refuses the bundle."
+  },
+  {
+    "file": "electron-builder.release.yml",
+    "find": "  notarize: false\n",
+    "replace": "  notarize: false\n  hardenedRuntime: false\n",
+    "test": "tests/unit/check-vendored.test.ts",
+    "title": "has a release config that extends it and changes three keys and nothing else",
+    "why": "A fourth key in the release config: the signed build is no longer the build every branch tested under another identity."
+  }
+]

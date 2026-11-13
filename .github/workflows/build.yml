@@ -20,9 +20,38 @@
 # before anything is installed, a run without the electron-ffmpeg-source
 # artefact, and no target is packaged (ADR-043).
 #
-# Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
-# not at all, until the release-readiness gate (A6-05). The ffmpeg they
-# carry is this repository's own build (issue 95, ADR-040).
+# Signing (ADR-062). Every branch and pull-request build signs the Mac app ad
+# hoc, as electron-builder.yml says, and holds no secret. So does a v tag
+# while the repository variable MAC_SIGNING is not `on`, which is how a
+# candidate is cut before there is a certificate to sign it with. Signing
+# mode needs all of: that variable on, a Mac target, and a pushed tag that
+# starts with v or a dispatch with `sign` ticked. Only then is a job in an
+# environment, whose deployment rule and required reviewer stand between a
+# run and its secrets. Two jobs are, each in an environment of its own that
+# holds its half of the secrets and nothing of the other's:
+#
+#   package    in `release-signing`, which holds the Developer ID
+#              certificate. electron-builder signs with it, from
+#              electron-builder.release.yml, so the certificate is in the
+#              step that runs the packager and its hooks, which is npm's
+#              code. The signed image is uploaded as unnotarised-<target>.
+#   notarize   in `release-notarize`, which holds the notary's key. A fresh
+#              runner that checks out the two scripts and the release config
+#              and nothing else, installs nothing and runs no npm code: it
+#              downloads the signed image, notarises and staples it, checks
+#              it the way a Mac will, and uploads it as installer-<target>.
+#
+# A later step of the packaging job would not have kept the key from that
+# job's npm code: an earlier step can leave a PATH entry, a BASH_ENV or a
+# process behind for a later one to meet. Another runner has none of them.
+# And one environment for both would have left the key within the packaging
+# job's reach, to be kept from it only by what the job happens to name: a
+# job cannot be handed a secret of an environment it is not in, so the
+# notary's key is out of the packaging job's reach by where it is kept, and
+# the certificate out of the notarising job's. The release, attest and
+# verify jobs take installer-<target> as they always did, so they see the
+# stapled bytes. The Windows installer is not signed (ADR-054). The ffmpeg
+# the installers carry is this repository's own build (issue 95, ADR-040).
 #
 # This runs on request, on a push to any branch that changes what it
 # packages or how the app finds it, src/main and the npm manifests included,
@@ -34,7 +63,8 @@
 # ref 7.
 #
 # The release job runs only for a pushed tag, and only when the vendor jobs
-# and all three packaging jobs succeeded: a Release has every installer and
+# and all three packaging jobs succeeded, and in signing mode both
+# notarising jobs too: a Release has every installer and
 # every source archive, or does not exist. It is the only job that can
 # write to the repository. scripts/release.mjs refuses a tag that is not
 # v<version> or v<version>-rc.<N> for package.json's version, that has been
@@ -54,6 +84,15 @@ name: build
 
 on:
   workflow_dispatch:
+    inputs:
+      # Signing mode for the two Mac targets (ADR-062). Off unless asked for:
+      # a plain dispatch builds what a branch push builds. It also needs the
+      # repository variable MAC_SIGNING to be `on`; while it is not, a
+      # dispatch that ticks this is refused, in its first minute.
+      sign:
+        description: 'Sign the Mac installers with the Developer ID and notarise them (needs the MAC_SIGNING variable on; waits for approval twice, to sign and to notarise)'
+        type: boolean
+        default: false
   push:
     branches: ['**']
     tags: ['v*']
@@ -61,6 +100,11 @@ on:
     paths:
       - 'vendor/pins.json'
       - 'electron-builder.yml'
+      # The Developer ID build's three keys, and the two scripts that
+      # notarise the disk image and check either signature (ADR-062).
+      - 'electron-builder.release.yml'
+      - 'scripts/notarize-dmg.mjs'
+      - 'scripts/verify-mac-signing.mjs'
       # The packager's build resources: the NSIS include that removes the
       # installer's copy of itself (issue 128).
       - 'build/**'
@@ -107,6 +151,18 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    # Signing mode (ADR-062): a Mac target, with the repository variable
+    # MAC_SIGNING on, on a pushed v* tag or on a dispatch that asked for it.
+    # Only then is the job in the release-signing environment, which holds
+    # the certificate, and nothing else, behind its deployment rule and its
+    # required reviewer. For every other run the expression is the empty
+    # string, which is no environment at all: no deployment, no approval, no
+    # secret. So a v tag pushed while the variable is off builds ad hoc, as
+    # every tag did before there was anything to sign with. The condition is
+    # written here and for SIGN below, because a job's `environment` cannot
+    # read its `env`, and again, without the target, for the notarize job;
+    # a unit test holds every copy to the same text.
+    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -116,10 +172,60 @@ jobs:
           - { os: windows-latest, target: win-x64,      builder: '--win nsis --x64',  installer: 'release/*.exe' }
     env:
       TARGET: ${{ matrix.target }}
+      # 'true' in signing mode and 'false' otherwise; the steps that sign and
+      # check a signed build read it, and so does the name the installer is
+      # uploaded under.
+      SIGN: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # A dispatch that ticks `sign` while the variable is off would build ad
+      # hoc and say nothing: the person asked for a signed build, so it is
+      # refused, at once. A v tag is different: with the variable off it
+      # builds ad hoc on purpose.
+      - name: Refuse a dispatch that asks to sign while MAC_SIGNING is not on
+        if: ${{ startsWith(matrix.target, 'darwin-') && github.event_name == 'workflow_dispatch' && inputs.sign == true && vars.MAC_SIGNING != 'on' }}
+        shell: bash
+        run: |
+          echo "::error::this dispatch asked to sign, and the repository variable MAC_SIGNING is not 'on', so nothing here would be signed. Turn it on once both environments exist, each with its rule, its reviewer and its secrets (docs/repository-settings.md), or dispatch without sign"
+          exit 1
+
+      # Signing mode only, and first, so a run that cannot sign stops before
+      # anything is installed or built. No secret is handed to this step:
+      # each line says only whether the environment gave one, worked out
+      # before the shell starts. A missing environment, or a job outside it,
+      # reads as empty secrets. The notary's key is not asked about here: it
+      # is another environment's, which this job is never in, and the
+      # notarize job refuses for itself. TEAMID_TBD is the placeholder
+      # electron-builder.release.yml holds until the Team ID is written in.
+      - name: Refuse to sign without the certificate and the Team ID
+        if: env.SIGN == 'true'
+        shell: bash
+        env:
+          HAS_MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 != '' }}
+          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}
+        run: |
+          missing=''
+          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD; do
+            has="HAS_$name"
+            if [ "${!has:-}" != true ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::signing mode, and the release-signing environment gave this job no value for:$missing"
+            exit 1
+          fi
+          team=$(sed -n "s/^  identity: '\([^']*\)'.*$/\1/p" electron-builder.release.yml)
+          if [ "$team" = TEAMID_TBD ]; then
+            echo "::error::electron-builder.release.yml still names the placeholder TEAMID_TBD as its identity: write the Developer ID Team ID there before signing"
+            exit 1
+          fi
+          if ! LC_ALL=C grep -Eq '^[A-Z0-9]{10}$' <<< "$team"; then
+            echo "::error::electron-builder.release.yml's mac.identity is not a Team ID (ten capital letters and digits, in single quotes), so there is no certificate to ask for"
+            exit 1
+          fi
+          echo "signing mode: every secret this job is given has a value, and the identity is team $team"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -218,14 +324,39 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 "$py" -m compileall -f -q -j 0 --invalidation-mode unchecked-hash "$lib"
           echo "compiled: $(find "$lib" -name '*.pyc' | wc -l | tr -d ' ') bytecode files"
 
+      # The certificate reaches electron-builder in signing mode only, and
+      # under electron-builder's own names only inside that branch of the
+      # shell. There it is, plainly, in the hands of npm's code: the
+      # packager, everything it depends on and this repository's afterPack
+      # hook run with the certificate and its password in their environment.
+      # That is what letting electron-builder sign costs, and why the
+      # notary's key is kept out of this job altogether (ADR-062). The two
+      # values below are empty in every other run, where the job is in no
+      # environment, and electron-builder does not read these names. They
+      # must never be given at the step as its own names: an empty one of
+      # those is read as a certificate to load, which fails every Mac build,
+      # the ad-hoc ones included. And no variable of electron-builder's for
+      # the notary is set anywhere in this workflow: with one it would
+      # notarise the app itself, here (electron-builder.release.yml).
       - name: Package
         shell: bash
         env:
           # Makes every component required in the afterPack hook.
           LEGIBLE_VENDOR_TARGET: ${{ matrix.target }}
           BUILDER_ARGS: ${{ matrix.builder }}
-        # Unquoted on purpose: the matrix holds three words for the packager.
-        run: npx electron-builder $BUILDER_ARGS --publish never
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        # $BUILDER_ARGS is unquoted on purpose: the matrix holds three words
+        # for the packager.
+        run: |
+          if [ "$SIGN" = true ]; then
+            export CSC_LINK="$MAC_CERT_P12_BASE64" CSC_KEY_PASSWORD="$MAC_CERT_PASSWORD"
+            unset MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD
+            npx electron-builder $BUILDER_ARGS --config electron-builder.release.yml --publish never
+          else
+            unset MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD
+            npx electron-builder $BUILDER_ARGS --publish never
+          fi
 
       - name: Launch the packaged app once
         shell: bash
@@ -237,14 +368,26 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          # Ad hoc, but whole: every nested binary sealed, nothing changed
-          # since. Run after the launch check, so a write inside the bundle
-          # the snapshot missed still fails here.
+          # Whole, whoever signed it: every nested binary sealed, nothing
+          # changed since. Run after the launch check, so a write inside the
+          # bundle the snapshot missed still fails here. Then what it is
+          # signed with: ad hoc, or in signing mode the team's Developer ID,
+          # timestamped; and in both the hardened runtime and the
+          # entitlement ADR-043 needs kept.
           case "$TARGET" in
             darwin-arm64) app="release/mac-arm64/Legible Cities.app" ;;
             *)            app="release/mac/Legible Cities.app" ;;
           esac
+          # Said in every Mac build and judged only in the notarize job,
+          # whose verdicts rest on it: whether Gatekeeper's assessments are
+          # on for these runners (ADR-062).
+          echo "Gatekeeper on this runner: $(spctl --status 2>&1 || true)"
           codesign --verify --deep --strict --verbose=2 "$app"
+          if [ "$SIGN" = true ]; then
+            node scripts/verify-mac-signing.mjs developer-id "$app" --team-from electron-builder.release.yml
+          else
+            node scripts/verify-mac-signing.mjs adhoc "$app"
+          fi
 
       # Issue 128: electron-builder's template copies the running installer
       # into %LOCALAPPDATA%\<package name>-updater, for an updater this app
@@ -320,28 +463,302 @@ jobs:
           }
           Write-Output "after the uninstall: neither $folder nor $updater, and no other new *-updater folder"
 
+      # In signing mode a Mac's image is signed and not yet notarised: it goes
+      # up under another name, for the notarize job alone, which uploads
+      # installer-<target> itself once the image is stapled. So nothing
+      # downstream can take an unnotarised image for the installer. Every
+      # other installer is final here.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: installer-${{ matrix.target }}
+          name: ${{ env.SIGN == 'true' && 'unnotarised' || 'installer' }}-${{ matrix.target }}
           path: |
             ${{ matrix.installer }}
             vendor/manifest-${{ matrix.target }}.json
           if-no-files-found: error
           retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
 
+  # Signing mode only (ADR-062): notarise each signed Mac image, staple the
+  # ticket to it, check it the way a person's Mac will, and upload it as the
+  # installer. A job of its own, on a runner of its own, because this is
+  # where the notary's key is: nothing from npm is installed or run here,
+  # and the checkout is the two scripts and the release config and nothing
+  # else, so the only code beside the key is those two files, which import
+  # nothing but Node's own modules, and the pinned actions. What it takes
+  # from the packaging job is one file, the signed image, which it never
+  # runs: it is hashed, submitted, mounted read-only and judged.
+  #
+  # Its environment is release-notarize, which holds the notary's key and
+  # nothing else, and which no other job joins. The packaging job's is
+  # release-signing, which holds the certificate and nothing else. So
+  # neither job can be handed the other's secrets, whatever either names:
+  # they are not in an environment it is in.
+  #
+  # The condition is the packaging job's, without the target: this job's
+  # matrix is the two Macs. On every other run the job is skipped, and its
+  # `environment` is the empty string besides, so a branch build never names
+  # the environment. It needs every packaging job to have succeeded: an
+  # image is not sent to Apple, nor a reviewer asked, for a run that could
+  # not be released whole.
+  notarize:
+    name: notarize (${{ matrix.target }})
+    needs: package
+    if: ${{ !cancelled() && needs.package.result == 'success' && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) }}
+    runs-on: ${{ matrix.os }}
+    # The two limited steps below, 90 and 80 minutes, and the transfers
+    # around them. A run that is going well takes a few minutes.
+    timeout-minutes: 180
+    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-notarize' || '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15,       target: darwin-arm64 }
+          - { os: macos-15-intel, target: darwin-x64 }
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      # Three files and nothing else: no package.json to install from, no
+      # other script to run by mistake.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/notarize-dmg.mjs
+            scripts/verify-mac-signing.mjs
+            electron-builder.release.yml
+          sparse-checkout-cone-mode: false
+
+      # Before anything is downloaded or sent. No secret is handed to this
+      # step either: each line says only whether the environment gave one.
+      # The Team ID is not asked about again: the packaging job refused the
+      # placeholder for this same commit, and the script that checks the
+      # image refuses it for itself.
+      - name: Refuse to notarise without the notary's key
+        shell: bash
+        env:
+          HAS_NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 != '' }}
+          HAS_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID != '' }}
+          HAS_NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID != '' }}
+        run: |
+          missing=''
+          for name in NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID; do
+            has="HAS_$name"
+            if [ "${!has:-}" != true ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::signing mode, and the release-notarize environment gave this job no value for:$missing"
+            exit 1
+          fi
+          echo "signing mode: every secret this job is given has a value"
+
+      # Node to run the two scripts with, and no package cache: nothing is
+      # installed here.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # The artefact is the one thing here that came from a runner that ran
+      # npm's code, so it is unpacked beside nothing: into a folder of its
+      # own under the runner's temporary folder, and never into the
+      # workspace, where a file of the right name would replace a script
+      # this job is about to run, or the config it trusts for the team, with
+      # the notary's key in hand. Its two folders land there as the
+      # packaging job had them: release/ with the one image, vendor/ with
+      # the target's manifest, which goes back up beside the image.
+      - name: Download the signed disk image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: unnotarised-${{ matrix.target }}
+          path: ${{ runner.temp }}/signed
+
+      # And it is held to exactly what the packaging job uploads, before
+      # anything of it is used and before the notary's key exists: one disk
+      # image in release/, the target's manifest in vendor/, both plain
+      # files, and nothing else. No link, no third file, no other folder. A
+      # name is shown quoted, so that nothing it holds is read by the runner
+      # as a command.
+      - name: Refuse a download that holds anything but the image and its manifest
+        shell: bash
+        run: |
+          export LC_ALL=C
+          root="$RUNNER_TEMP/signed"
+          if [ -L "$root" ] || [ ! -d "$root" ]; then
+            echo "::error::there is no folder where the signed image is unpacked, so there is nothing to notarise"
+            exit 1
+          fi
+          image='^release/[A-Za-z0-9 ._-]+\.dmg$'
+          images=0
+          manifests=0
+          refused=''
+          while IFS= read -r -d '' entry; do
+            name="${entry#"$root"/}"
+            printf -v quoted '%q' "$name"
+            if [ -L "$entry" ]; then
+              refused="$refused $quoted (a link)"
+            elif [ -d "$entry" ]; then
+              case "$name" in
+                release|vendor) ;;
+                *) refused="$refused $quoted (a folder)" ;;
+              esac
+            elif [ ! -f "$entry" ]; then
+              refused="$refused $quoted (neither a file nor a folder)"
+            elif [ "$name" = "vendor/manifest-$TARGET.json" ]; then
+              manifests=$((manifests + 1))
+            elif [[ "$name" =~ $image ]]; then
+              images=$((images + 1))
+            else
+              refused="$refused $quoted"
+            fi
+          done < <(find "$root" -mindepth 1 -print0)
+          if [ -n "$refused" ] || [ "$images" -ne 1 ] || [ "$manifests" -ne 1 ]; then
+            echo "::error::the download is not what the packaging job uploads, which is one disk image in release/ and vendor/manifest-$TARGET.json: it holds $images disk image(s) and $manifests manifest(s)${refused:+, and besides them:$refused}. Nothing of it was used, and the notary's key was not written"
+            exit 1
+          fi
+          echo "the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else"
+
+      # The refusal above sees only what landed in the download's own
+      # folder. This holds the workspace itself to the checkout, still
+      # before the key exists: at this run's commit, the checked-out files
+      # as that commit has them, and nothing beside them, ignored names
+      # included. A file that reached the workspace by any road, an archive
+      # unpacked outside its folder among them, stops the job here. Git is
+      # told to take nothing from the folder it is judging that would run a
+      # program: no file-system monitor, no external diff, no conversion.
+      - name: Refuse a workspace that is not this run's checkout
+        shell: bash
+        run: |
+          git() { command git -c core.fsmonitor=false "$@"; }
+          head=$(git rev-parse --verify HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::the workspace is at commit ${head:0:12} and this run is for ${GITHUB_SHA:0:12}: it is not this run's checkout. Nothing was run, and the notary's key was not written"
+            exit 1
+          fi
+          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then
+            git status --porcelain --untracked-files=all --ignored
+            echo "::error::a checked-out file is not as the commit has it: something wrote over a script or the config this job is about to use with the notary's key. Nothing was run, and the key was not written"
+            exit 1
+          fi
+          stray=$(git status --porcelain --untracked-files=all --ignored)
+          if [ -n "$stray" ]; then
+            printf '%s\n' "$stray"
+            echo "::error::the workspace holds what the checkout did not put there (listed above), beside the files this job is about to use with the notary's key. Nothing was run, and the key was not written"
+            exit 1
+          fi
+          echo "the workspace is the checkout of ${GITHUB_SHA:0:12}: its files as committed, and nothing beside them"
+
+      # spctl's verdicts mean nothing on a machine where Gatekeeper's
+      # assessments are off: everything is accepted, signed or not. A runner
+      # image can come that way, so they are turned on here if they are off,
+      # the status is said before and after, and only a runner where they
+      # will not come on fails. macOS has spelt the option two ways.
+      - name: Turn Gatekeeper's assessments on if they are off
+        shell: bash
+        run: |
+          before=$(spctl --status 2>&1 || true)
+          echo "Gatekeeper before: $before"
+          if [[ "$before" != *'assessments enabled'* ]]; then
+            sudo spctl --global-enable || sudo spctl --master-enable || true
+          fi
+          after=$(spctl --status 2>&1 || true)
+          echo "Gatekeeper after: $after"
+          if [[ "$after" != *'assessments enabled'* ]]; then
+            echo "::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image"
+            exit 1
+          fi
+
+      # The notary's key exists in this step alone: written to a file nobody
+      # else can read, handed to the script by path, and removed when the
+      # shell exits normally or fails; on a cancelled or timed-out step the
+      # hosted runner is discarded with the file. The limit is past the
+      # script's own worst case, so the script gives up first and says why:
+      # 70 minutes for the submission (notarytool's 60 of waiting and the
+      # upload before it), three tries of the log and three of the staple at
+      # 2 minutes each with a quarter of a minute between tries, and 1 for
+      # the validation, which is 84.
+      - name: Notarise and staple the disk image
+        timeout-minutes: 90
+        shell: bash
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          shopt -s nullglob
+          images=("$RUNNER_TEMP/signed/release/"*.dmg)
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "::error::expected one disk image in the download's release folder, found ${#images[@]}"
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/notary-key.p8"
+          trap 'rm -f "$key"' EXIT
+          trap 'exit 1' INT TERM HUP
+          printf '%s\n' "$NOTARY_KEY_P8" > "$key"
+          unset NOTARY_KEY_P8
+          NOTARY_KEY_PATH="$key" node scripts/notarize-dmg.mjs "${images[0]}" --log "$RUNNER_TEMP/notary-log/notary-log-$TARGET.json"
+
+      # What a person will download, checked the way their Mac will check
+      # it: the image's signature and staple, Gatekeeper's verdict on it,
+      # and the app inside, mounted read-only. The limit is past the sum of
+      # the script's own limits on its checks, 77 minutes, for the same
+      # reason as above; it takes a few.
+      - name: Verify the notarised disk image
+        timeout-minutes: 80
+        shell: bash
+        run: |
+          shopt -s nullglob
+          images=("$RUNNER_TEMP/signed/release/"*.dmg)
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "::error::expected one disk image in the download's release folder, found ${#images[@]}"
+            exit 1
+          fi
+          node scripts/verify-mac-signing.mjs dmg "${images[0]}" --team-from electron-builder.release.yml
+
+      # Whatever the outcome: the log is the only place the notary says what
+      # it found.
+      - name: Upload the notary's log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notary-log-${{ matrix.target }}
+          path: ${{ runner.temp }}/notary-log/
+          if-no-files-found: warn
+          retention-days: 30
+
+      # The installer, as the release job takes it: the stapled image and
+      # the manifest that came with it, from the folder they were unpacked
+      # into, under the name an unsigned build's packaging job uses. The
+      # artefact's two folders are what they were there: release/ and
+      # vendor/.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installer-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/signed/release/*.dmg
+            ${{ runner.temp }}/signed/vendor/manifest-${{ matrix.target }}.json
+          if-no-files-found: error
+          retention-days: ${{ github.ref == 'refs/heads/main' && 30 || 7 }}
+
   release:
     name: release (draft)
-    needs: [vendor, package]
+    # MAC_SIGNING flipped between this run's jobs fails closed: a job then
+    # looks for an installer-darwin-* or unnotarised-* artefact that the
+    # other mode never made, and nothing is drafted.
+    needs: [vendor, package, notarize]
     # A pushed tag only, never a branch, a pull request or a dispatch, and
     # only when every vendor job and all three packaging jobs succeeded.
     # !cancelled() stands in for the default success(), so the results are
-    # read here rather than implied.
+    # read here rather than implied. The notarising jobs must have succeeded
+    # too, unless they were skipped because this is not a signing run, which
+    # on a pushed v tag is exactly the variable not being on: a notarising
+    # job skipped for any other reason, or failed, drafts nothing.
     if: >-
       ${{ !cancelled()
       && github.event_name == 'push'
       && startsWith(github.ref, 'refs/tags/v')
       && needs.vendor.result == 'success'
-      && needs.package.result == 'success' }}
+      && needs.package.result == 'success'
+      && (needs.notarize.result == 'success' || (needs.notarize.result == 'skipped' && vars.MAC_SIGNING != 'on')) }}
     runs-on: ubuntu-22.04
     timeout-minutes: 45
     # The one job that can write: to create and edit the draft and upload its

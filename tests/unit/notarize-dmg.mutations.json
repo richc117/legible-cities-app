@@ -1,0 +1,106 @@
+[
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "    if (!accepted(submission.status)) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses a status that is not Accepted even when notarytool exits 0, and still asks for the log",
+    "why": "The submission's status not read: notarytool exits 0 for a submission the notary rejected, so an Invalid image would be stapled and uploaded as notarised."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  if (submission.id) {",
+    "replace": "  if (submission.id && accepted(submission.status)) {",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses a status that is not Accepted even when notarytool exits 0, and still asks for the log",
+    "why": "The log asked for only after an acceptance: a rejected submission fails with no word of what the notary found, which the log alone says."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "      if (severity === 'error') problems.push(",
+    "replace": "      if (false) problems.push(",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses an accepted submission whose log holds an error, and staples nothing",
+    "why": "An error in the notary's log passed over as a warning: an accepted submission that still carries one would ship."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "      failures.push(\n        `the notary's log could not be fetched (${lastProblem}), so what it found is unknown`,\n      )\n",
+    "replace": "",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses an accepted submission whose log cannot be fetched, after three tries",
+    "why": "A log that could not be read taken as a log with no issues: the run would call clean what it never saw."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "const given = (env, name) => typeof env[name] === 'string' && env[name].trim() !== ''",
+    "replace": "const given = (env, name) => typeof env[name] === 'string'",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "submits nothing without credentials, naming what is empty",
+    "why": "An empty secret taken as a value: the image is submitted with an empty issuer, and the failure is the notary's authentication error, which names nothing."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  if (set.length > 0) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "are refused in part, naming each empty variable, even beside a profile",
+    "why": "A key given in part passed over for the keychain profile: a run with one secret missing would notarise as whoever the machine's profile is."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "    const problem = keyProblem(text)\n",
+    "replace": "    const problem = null\n",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "submits nothing with a key file that is missing, empty or not a key",
+    "why": "An empty key file handed to notarytool: the secret that was never set surfaces as an authentication error that names no cause."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  if (submitProblem !== null) failures.push(submitProblem)",
+    "replace": "",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses when notarytool fails, times out or prints nothing it can read",
+    "why": "notarytool's own failure not counted: a run that exited non-zero is judged only by whatever it managed to print."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "    stapled = stapleProblem === null",
+    "replace": "    stapled = true",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses when the ticket cannot be stapled in three tries, or the staple does not validate",
+    "why": "The stapler's exit status not read: an image with no ticket attached is uploaded as stapled, and opens only where Apple can be reached."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  if (validateProblem !== null) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "refuses when the ticket cannot be stapled in three tries, or the staple does not validate",
+    "why": "The staple never validated: the run ends green on the stapler's word that it wrote something, not on a ticket that checks."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  say(`notarize: ${shown(submitArgs(dmg, []))}`)",
+    "replace": "  say(`notarize: ${shown(submitArgs(dmg, auth.args))}`)",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "never prints a credential",
+    "why": "The command shown as it is run: the key's path, its id and the issuer id are printed into a public job log."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  2 * (TRIES - 1) * PAUSE_MS +\n",
+    "replace": "",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "adds up to a worst case that is a run at its slowest",
+    "why": "The pauses left out of the worst case: a step limit set just past it can stop the script while it is still waiting for a try it would have made."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "import process from 'node:process'",
+    "replace": "import process from 'process'",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "imports nothing but Node's own modules",
+    "why": "An import that is not node: let through: the next one can be a package, on the runner that holds the notary's key and installs none."
+  }
+]
