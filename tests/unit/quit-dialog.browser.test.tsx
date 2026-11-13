@@ -14,16 +14,28 @@
 // a `.mutations.json`, which runs the Node project only):
 // - `cancelLabel={words.keep}` taken off `ConfirmDialog` in `QuitDialog.tsx`:
 //   the first test finds no button named "Keep working".
-// - `cancelRef.current?.focus()` taken out of `ConfirmDialog.tsx`: the first
-//   test finds focus on the dialog and not on Keep working.
-// - `awaiting.current = null` taken out of `answer` in `QuitDialog.tsx`: the
-//   Escape test reads two answers for one question.
+// - `ref={cancelRef}` moved from the safe button to the other one in
+//   `ConfirmDialog.tsx`: the first test finds focus on Quit anyway. (Taking
+//   the `focus()` call out is not enough to fail it: the safe button is the
+//   dialog's first, which is where the platform puts focus by itself.)
+// - `onCancel={() => answer('keep')}` made to do nothing in `QuitDialog.tsx`:
+//   the Keep working, Escape and closed-another-way tests read no answer.
+// - `if (openRef.current) onCancel()` taken out of `ConfirmDialog.tsx`: the
+//   closed-another-way test reads no answer.
 // - the `runsToStop` loop taken out of `answer`: the Close anyway test reads
 //   an answer with nothing stopped before it.
-// - `question.kind === 'close'` made `true` in that loop: the Quit anyway
-//   test reads two runs stopped.
+// - `question.kind === 'close'` taken out of that loop's condition: the Quit
+//   anyway test reads two runs stopped.
 // - `if (question === null) { setOpen(false); return }` made a bare
 //   `return`: the last test finds the dialog still open.
+// - `key={asked.id}` taken off the dialog in `QuitDialog.tsx`: the asks-again
+//   test finds the second question closed and answered "keep" by the first
+//   dialog's closing.
+//
+// Not held here: that the page sends one answer however many times the
+// dialog tells it that it closed (`awaiting` in `QuitDialog.tsx`). Nothing
+// in a browser makes the dialog tell twice. A second answer would be
+// main's to ignore, which `quit-guard.test.ts` holds.
 
 import { act } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -124,7 +136,16 @@ function mounted(jobs: Job[] = []) {
       await Promise.resolve()
     })
   }
-  return { did, reports, ask, dialog, press }
+  /**
+   * A press and the next question with no turn of the event loop between
+   * them: each drawn before the next begins, and the first dialog's `close`
+   * event, which the element sends a task later, still to come.
+   */
+  const pressThenAskAtOnce = (pressed: HTMLElement, question: AskedQuit): void => {
+    act(() => pressed.click())
+    act(() => listener?.(question))
+  }
+  return { did, reports, ask, dialog, press, pressThenAskAtOnce }
 }
 
 describe('the quit’s question, in a browser, with the kit', () => {
@@ -174,6 +195,19 @@ describe('the quit’s question, in a browser, with the kit', () => {
     // The element is cancelled and then closes, and tells the page both
     // times: one answer.
     expect(did).toEqual(['answer 1 keep'])
+  })
+
+  it('answers keep when the dialog is closed any other way', async () => {
+    const { ask, dialog, did } = mounted()
+    await ask(EXPORT_OF_PARIS)
+    // The element closed without a press or a key the page was told of, as
+    // the platform closes one on a second Escape.
+    await act(async () => {
+      dialog()!.close()
+      await Promise.resolve()
+    })
+    await expect.poll(() => did).toEqual(['answer 1 keep'])
+    expect(dialog()!.open).toBe(false)
   })
 
   it('answers anyway on Quit anyway, and stops no run itself: the quit stops everything', async () => {
@@ -231,12 +265,27 @@ describe('the quit’s question, in a browser, with the kit', () => {
   })
 
   it('asks again, with the new question’s words and focus on Keep working again', async () => {
-    const { ask, dialog, press, did } = mounted()
+    const { ask, dialog, press, pressThenAskAtOnce, did } = mounted()
     await ask(EXPORT_OF_PARIS)
-    await press('Keep working')
-    await ask({ id: 2, kind: 'close', exports: 0, layouts: 1, names: ['Lyon'] })
+    // The next question arrives before the first dialog has said it closed:
+    // that closing is the first question's, and answers nothing of the next.
+    const first = dialog()!
+    const firstClosed = new Promise((resolve) =>
+      first.addEventListener('close', resolve, { once: true }),
+    )
+    pressThenAskAtOnce(await button('Keep working'), {
+      id: 2,
+      kind: 'close',
+      exports: 0,
+      layouts: 1,
+      names: ['Lyon'],
+    })
+    await act(async () => {
+      await firstClosed
+    })
     const shown = dialog()!
-    expect(shown.open).toBe(true)
+    expect(shown.open, 'the second question is still open').toBe(true)
+    expect(did, 'and only the first has been answered').toEqual(['answer 1 keep'])
     expect(textOf(shown.getAttribute('aria-labelledby'))).toBe('Close while a layout is running?')
     const keep = await button('Keep working')
     expect(document.activeElement).toBe(hostOf(keep))

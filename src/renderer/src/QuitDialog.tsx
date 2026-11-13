@@ -51,8 +51,9 @@ export default function QuitDialog({ runs = SESSION_RUNS }: Props): JSX.Element 
   // whether it is still open.
   const [asked, setAsked] = useState<AskedQuit | null>(null)
   const [open, setOpen] = useState(false)
-  // The question awaiting its answer, or null once it has one: Escape tells
-  // the dialog twice, as it is cancelled and as it closes.
+  // The question awaiting its answer, or null once it has one. A question
+  // is answered once: the dialog tells the page when it is cancelled and
+  // again if its element closed by itself, and main is sent one answer.
   const awaiting = useRef<AskedQuit | null>(null)
 
   useEffect(() => {
@@ -93,6 +94,10 @@ export default function QuitDialog({ runs = SESSION_RUNS }: Props): JSX.Element 
   const words = quitWords(asked)
   return (
     <ConfirmDialog
+      // A dialog of its own for each question. An element says it has closed
+      // a moment after it closes, and one dialog used again would hear the
+      // last question's closing as the next one's answer.
+      key={asked.id}
       open={open}
       title={words.title}
       description={words.description}
