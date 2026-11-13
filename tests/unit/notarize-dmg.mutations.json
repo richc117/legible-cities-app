@@ -86,5 +86,21 @@
     "test": "tests/unit/notarize-dmg.test.ts",
     "title": "never prints a credential",
     "why": "The command shown as it is run: the key's path, its id and the issuer id are printed into a public job log."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "  2 * (TRIES - 1) * PAUSE_MS +\n",
+    "replace": "",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "adds up to a worst case that is a run at its slowest",
+    "why": "The pauses left out of the worst case: a step limit set just past it can stop the script while it is still waiting for a try it would have made."
+  },
+  {
+    "file": "scripts/notarize-dmg.mjs",
+    "find": "import process from 'node:process'",
+    "replace": "import process from 'process'",
+    "test": "tests/unit/notarize-dmg.test.ts",
+    "title": "imports nothing but Node's own modules",
+    "why": "An import that is not node: let through: the next one can be a package, on the runner that holds the notary's key and installs none."
   }
 ]

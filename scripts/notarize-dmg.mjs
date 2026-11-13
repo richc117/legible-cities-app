@@ -1,8 +1,8 @@
 // Notarise a signed disk image, staple the ticket to it, and check the
-// staple (issue 686, ADR-062). The packaging jobs in
-// .github/workflows/build.yml run it in signing mode, after the image is
-// built and signed and before it is uploaded, so every later job sees the
-// stapled bytes.
+// staple (issue 686, ADR-062). The notarize job in
+// .github/workflows/build.yml runs it in signing mode, over the image a
+// packaging job signed and before it is uploaded as the installer, so every
+// later job sees the stapled bytes.
 //
 //   node scripts/notarize-dmg.mjs <dmg> [--log <file>]
 //
@@ -44,13 +44,16 @@
 // for anything the notary or the stapler refused or that could not be
 // read; 2 for a call that could not start (usage, credentials).
 //
-// This file imports nothing but Node's own modules, on purpose: the step
-// that runs it holds the notary's key, and no package from npm runs there
-// (tests/unit/notarize-dmg.test.ts holds it to that). Every child process
-// is given an argument array and a time limit, and its standard error is
-// kept and printed. The decisions are functions the unit test calls, with
-// `xcrun` played by a stand-in; `main` runs only when this is the entry
-// point.
+// This file imports nothing but Node's own modules, on purpose: the job
+// that runs it holds the notary's key, checks out this file, the verifier
+// and the release config and nothing else, and installs nothing from npm
+// (tests/unit/notarize-dmg.test.ts holds the file to that, and
+// tests/unit/release.test.ts the job). Every child process is given an
+// argument array and a time limit, and its standard error is kept and
+// printed; `WORST_CASE_MS` is what those limits add up to, and the step
+// that runs this is given longer. The decisions are functions the unit
+// test calls, with `xcrun` played by a stand-in; `main` runs only when this
+// is the entry point.
 
 import { spawnSync } from 'node:child_process'
 import {
@@ -82,6 +85,18 @@ export const VALIDATE_TIMEOUT_MS = 60_000
 /** Tries of the log and of the staple, each a moment after the last. */
 export const TRIES = 3
 export const PAUSE_MS = 15_000
+/**
+ * The longest a run can take before this script itself gives up: the
+ * submission, every try of the log and of the staple with the pauses
+ * between them, and the validation. A step that runs the script needs a
+ * limit past this, or the runner stops it before it can say what happened.
+ */
+export const WORST_CASE_MS =
+  SUBMIT_TIMEOUT_MS +
+  TRIES * LOG_TIMEOUT_MS +
+  TRIES * STAPLE_TIMEOUT_MS +
+  2 * (TRIES - 1) * PAUSE_MS +
+  VALIDATE_TIMEOUT_MS
 
 export const KEY_VARIABLES = ['NOTARY_KEY_PATH', 'NOTARY_KEY_ID', 'NOTARY_ISSUER_ID']
 export const PROFILE_VARIABLE = 'NOTARY_KEYCHAIN_PROFILE'

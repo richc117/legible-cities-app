@@ -79,6 +79,7 @@ interface Module {
     options: { mode: string; path: string; team?: string | null; notarized?: boolean },
     io: Io,
   ): number
+  worstCaseMs(mode: string, options?: { notarized?: boolean }): number
   parseArgs(argv: string[]): Parsed | null
   main(
     argv: string[],
@@ -842,5 +843,41 @@ describe('the child processes', () => {
         check.what,
       ).toEqual([expect.stringContaining('did not finish within')])
     }
+  })
+
+  it('adds up to a worst case that is the sum of what each mode runs', async () => {
+    // Mutation: a check left out of the sum, so a step given "longer than
+    // the script's worst case" is stopped by the runner before the script
+    // can say which check hung.
+    const { verify, worstCaseMs } = await load()
+    const spent = (s: Session): number => s.calls.reduce((total, call) => total + call.timeoutMs, 0)
+    const adhoc = session('adhoc')
+    verify({ mode: 'adhoc', path: APP }, adhoc.io)
+    expect(worstCaseMs('adhoc')).toBe(spent(adhoc))
+    const signed = session('developer-id')
+    verify({ mode: 'developer-id', path: APP, team: TEAM }, signed.io)
+    expect(worstCaseMs('developer-id')).toBe(spent(signed))
+    const lookedUp = session('developer-id')
+    verify({ mode: 'developer-id', path: APP, team: TEAM, notarized: true }, lookedUp.io)
+    expect(worstCaseMs('developer-id', { notarized: true })).toBe(spent(lookedUp))
+    // An image at its worst is detached twice: once refused, once by force.
+    const image = session('developer-id', (command, args) =>
+      command === 'hdiutil' && args[0] === 'detach' && args[1] !== '-force'
+        ? exited(16, 'Resource busy')
+        : undefined,
+    )
+    verify({ mode: 'dmg', path: DMG, team: TEAM }, image.io)
+    expect(worstCaseMs('dmg')).toBe(spent(image))
+    // The figure build.yml's comment gives for the step that runs it.
+    expect(worstCaseMs('dmg') / 60_000).toBe(76.5)
+  })
+
+  it("imports nothing but Node's own modules: it runs on the runner that holds the notary's key", () => {
+    const source = readFileSync(SCRIPT, 'utf8')
+    const specifiers = [...source.matchAll(/^import\s[^'"]*['"]([^'"]+)['"]/gm)].map((m) => m[1])
+    expect(specifiers.length).toBeGreaterThan(3)
+    for (const specifier of specifiers) expect(specifier).toMatch(/^node:/)
+    expect(source).not.toMatch(/\brequire\s*\(/)
+    expect(source).not.toMatch(/\bimport\s*\(/)
   })
 })

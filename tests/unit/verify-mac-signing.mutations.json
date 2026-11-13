@@ -78,5 +78,21 @@
     "test": "tests/unit/verify-mac-signing.test.ts",
     "title": "fails when Gatekeeper is turned off, overridden, or names another team",
     "why": "Assessments turned off read as on: every verdict after it is a setting of the machine's, not a judgement of the build."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "    2 * DETACH_TIMEOUT_MS\n",
+    "replace": "    DETACH_TIMEOUT_MS\n",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "adds up to a worst case that is the sum of what each mode runs",
+    "why": "A call left out of the worst case: a step limit set just past it stops the script before it can say which check hung."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "import process from 'node:process'",
+    "replace": "import process from 'process'",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "imports nothing but Node's own modules: it runs on the runner that holds the notary's key",
+    "why": "An import that is not node: let through: the next one can be a package, on the runner that holds the notary's key and installs none."
   }
 ]

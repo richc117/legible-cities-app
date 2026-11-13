@@ -48,6 +48,7 @@ interface Module {
   VALIDATE_TIMEOUT_MS: number
   TRIES: number
   PAUSE_MS: number
+  WORST_CASE_MS: number
   KEY_VARIABLES: string[]
   PROFILE_VARIABLE: string
   notaryAuth(env: Record<string, string | undefined>): Auth
@@ -530,6 +531,24 @@ describe('a run', () => {
     expect(await notarize({ dmg: DMG }, s.io)).toBe(EXIT.done)
     expect(s.kinds()).toEqual(['submit', 'log', 'staple', 'staple', 'staple', 'validate'])
     expect(s.pauses).toEqual([PAUSE_MS, PAUSE_MS])
+  })
+
+  it('adds up to a worst case that is a run at its slowest', async () => {
+    // Mutation: the pauses left out of the sum, so a step given "longer
+    // than the script's worst case" can still be stopped by the runner
+    // before the script has said what happened.
+    const { notarize, EXIT, WORST_CASE_MS } = await load()
+    // The log and the staple each arrive on the last try.
+    const s = session({
+      log: [exited(1, 'not yet'), exited(1, 'not yet'), ok(notaryLog())],
+      staple: [exited(65, 'not yet'), exited(65, 'not yet'), ok('worked')],
+    })
+    expect(await notarize({ dmg: DMG }, s.io)).toBe(EXIT.done)
+    const limits = s.calls.reduce((total, call) => total + call.timeoutMs, 0)
+    const pauses = s.pauses.reduce((total, ms) => total + ms, 0)
+    expect(WORST_CASE_MS).toBe(limits + pauses)
+    // The figure build.yml's comment gives for the step that runs it.
+    expect(WORST_CASE_MS / 60_000).toBe(84)
   })
 
   it('refuses when the ticket cannot be stapled in three tries, or the staple does not validate', async () => {

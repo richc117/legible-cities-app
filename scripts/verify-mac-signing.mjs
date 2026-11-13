@@ -40,10 +40,18 @@
 // said, and the exit status is 0 only where every one passed; 1 where any
 // failed; 2 for a call that could not start. A check that could not run is
 // a failure, never a pass. Every child process is given an argument array
-// and a time limit, and both its outputs are kept and printed. The
-// judgements are functions the unit test calls, with codesign, spctl and
-// the rest played by a stand-in (tests/unit/verify-mac-signing.test.ts);
-// `main` runs only when this is the entry point.
+// and a time limit, and both its outputs are kept and printed;
+// `worstCaseMs` is what a mode's limits add up to, and a step that runs one
+// is given longer. A `spctl --status` that says assessments are off is a
+// failure here and nothing this script changes: turning them on is the
+// workflow's, before it calls this.
+//
+// Like scripts/notarize-dmg.mjs, this file imports nothing but Node's own
+// modules: build.yml's notarize job runs it on the runner that holds the
+// notary's key. The judgements are functions the unit test calls, with
+// codesign, spctl and the rest played by a stand-in
+// (tests/unit/verify-mac-signing.test.ts); `main` runs only when this is
+// the entry point.
 
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmdirSync } from 'node:fs'
@@ -382,6 +390,26 @@ export function imageChecks(dmg, team) {
       judge: afterExit((text) => judgeAssessment(text, team)),
     },
   ]
+}
+
+/**
+ * The longest a mode can take before this script gives up on its own: the
+ * sum of its checks' limits, and for an image the mount and both tries of
+ * the detach as well. `verify` runs exactly these checks.
+ */
+export function worstCaseMs(mode, { notarized = false } = {}) {
+  const sum = (checks) => checks.reduce((total, check) => total + check.timeoutMs, 0)
+  const app = sum(signatureChecks('', { mode, team: '' }))
+  const lookedUp = sum(notarizedChecks('', ''))
+  if (mode === 'adhoc') return app
+  if (mode === 'developer-id') return app + (notarized ? sum([statusCheck()]) + lookedUp : 0)
+  return (
+    sum([statusCheck(), ...imageChecks('', '')]) +
+    ATTACH_TIMEOUT_MS +
+    app +
+    lookedUp +
+    2 * DETACH_TIMEOUT_MS
+  )
 }
 
 // ---- the run -------------------------------------------------------------
