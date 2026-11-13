@@ -25,8 +25,9 @@
 //                             without it nothing is refused
 //
 // Steps 1, 2 and 21 (download, install, uninstall) are the workflow's
-// (.github/workflows/acceptance.yml), and step 22, the update over 0.1.0, is
-// a person's. What a machine cannot judge - a drag's feel, whether a window
+// (.github/workflows/acceptance.yml), and so is step 22, the update over
+// 0.1.0, which it runs after step 21 with tests/acceptance/upgrade.spec.ts
+// and writes into this record. What a machine cannot judge - a drag's feel, whether a window
 // came to the front, whether a picture is the map - is written as not
 // automated, never as passed.
 //
@@ -288,6 +289,12 @@ if (APP === '' && process.env.CI) {
 test.skip(
   APP === '',
   'set LEGIBLE_ACCEPTANCE_APP to an installed Legible Cities to run the checklist',
+)
+// The workflow's environment still names the app when it runs the update's
+// phases, so a phase is never taken for a second run of the checklist.
+test.skip(
+  (process.env.LEGIBLE_UPGRADE_PHASE ?? '') !== '',
+  'a phase of the update over 0.1.0 is running (tests/acceptance/upgrade.spec.ts)',
 )
 
 // ---------------------------------------------------------------- the machine
@@ -719,7 +726,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
   )
   record.field('Date', started.toISOString().slice(0, 10))
   record.field('Run by', 'the automated acceptance run (tests/acceptance/acceptance.spec.ts)')
-  for (const n of [1, 2, 21]) {
+  for (const n of [1, 2, 21, 22]) {
     if (record.result(n) === 'not run') {
       record.step(
         n,
@@ -728,13 +735,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
       )
     }
   }
-  // The update over 0.1.0 installs two versions, one over the other, and the
-  // workflow installs one; it stays a person's (docs/acceptance.md, step 22).
-  record.fieldUnlessSet('Previous version installed', "not automated: step 22 is a person's")
-  record.step(
-    22,
-    'not automated',
-    "A person's: it installs 0.1.0, makes a project and an export, and installs this release over them.",
+  // The update over 0.1.0 installs two versions, one over the other, after
+  // step 21 (tests/acceptance/upgrade.spec.ts); the workflow writes its row
+  // and the version it installed first.
+  record.fieldUnlessSet(
+    'Previous version installed',
+    'set by the acceptance workflow, with step 22; not known to a local run',
   )
   record.anythingElse(
     "Automated: a Playwright driver launched the installed app with a temporary profile (--user-data-dir) and LEGIBLE_EXPORT_FOLDER set to a temporary folder. The stranger's timed run, the screen-reader walkthrough and the Gatekeeper or SmartScreen clicks are a person's.",

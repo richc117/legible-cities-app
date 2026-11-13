@@ -125,7 +125,12 @@ export async function until<T>(
 export interface LaunchSession {
   exe: string
   install: string
-  profile: string
+  /**
+   * The profile given with `--user-data-dir`; null for none, so the app
+   * resolves its own default as a person's launch does (the update over
+   * 0.1.0, tests/acceptance/upgrade.spec.ts).
+   */
+  profile: string | null
   exportFolder: string
   app: ElectronApplication | null
   page: Page | null
@@ -136,13 +141,13 @@ export interface LaunchSession {
 /**
  * Launch the installed app into `session`'s profile and export folder: the
  * recorder installed and the window in front, and what the app says about
- * itself checked (packaged, and honouring the profile). `afterWindow` runs
+ * itself checked (packaged, and honouring the profile where one is given). `afterWindow` runs
  * once the first window exists, before anything is installed in it.
  */
 export async function launchApp(session: LaunchSession, afterWindow: () => void): Promise<Page> {
   const app = await electron.launch({
     executablePath: session.exe,
-    args: [`--user-data-dir=${session.profile}`],
+    args: session.profile === null ? [] : [`--user-data-dir=${session.profile}`],
     cwd: session.install,
     env: launchEnvironment(session.exportFolder),
     timeout: LAUNCH_MS,
@@ -162,7 +167,7 @@ export async function launchApp(session: LaunchSession, afterWindow: () => void)
   session.resources = where.resources
   session.userData = where.userData
   if (!where.packaged) throw new Error('the app launched does not know itself as packaged')
-  if (!inside(where.userData, session.profile)) {
+  if (session.profile !== null && !inside(where.userData, session.profile)) {
     throw new Error(`--user-data-dir was not honoured: the profile is ${where.userData}`)
   }
   return window

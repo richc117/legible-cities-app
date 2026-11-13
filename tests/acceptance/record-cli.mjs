@@ -9,10 +9,17 @@
 //   node tests/acceptance/record-cli.mjs prior <prior.json> step <n> <result> <notes>
 //   node tests/acceptance/record-cli.mjs fill <record.md> <n> <result> <notes>
 //   node tests/acceptance/record-cli.mjs leftovers <made.json> <record.md> [<install folder>]
+//   node tests/acceptance/record-cli.mjs step 22 <record.md> <upgrade.json> <name=outcome>...
 //
 // `leftovers` is step 21 after the uninstall: every place install.md's
 // tables name for this system, the folders the spec made, and a shallow
 // search for anything else named for the app, each written into the record.
+//
+// `step 22` is the update over 0.1.0, after its phases
+// (tests/acceptance/upgrade.spec.ts): its row from what upgrade.json says
+// each phase found and from the workflow's outcome of each of its steps,
+// given as `name=outcome` with GitHub's words (success, failure, cancelled,
+// skipped), and the run table's Previous version installed.
 
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -20,7 +27,8 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import { fillStep, parseSums, redact, RESULTS } from './pure.mjs'
+import { fillField, fillStep, parseSums, redact, RESULTS } from './pure.mjs'
+import { readUpgrade, upgradeRow } from './upgrade.mjs'
 
 function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex')
@@ -173,6 +181,33 @@ function leftovers(madePath, recordPath, installFolder) {
   return problems.length === 0 ? 0 : 1
 }
 
+/** Step 22's row and the previous version, written into the record the spec wrote. */
+function upgradeStep(recordPath, upgradePath, pairs) {
+  const outcomes = pairs.map((pair) => {
+    const at = pair.lastIndexOf('=')
+    if (at <= 0) throw new Error(`${pair} is not name=outcome`)
+    return [pair.slice(0, at), pair.slice(at + 1)]
+  })
+  if (outcomes.length === 0)
+    throw new Error("step 22 needs the outcome of each of the workflow's steps")
+  let upgrade
+  try {
+    upgrade = readUpgrade(readFileSync(upgradePath, 'utf8'))
+  } catch (error) {
+    upgrade =
+      error?.code === 'ENOENT'
+        ? 'there is no upgrade.json: no phase ran'
+        : error instanceof Error
+          ? error.message
+          : String(error)
+  }
+  const { result, notes, previous } = upgradeRow(upgrade, outcomes)
+  const record = fillField(readRecord(recordPath), 'Previous version installed', previous)
+  writeFileSync(recordPath, fillStep(record, 22, result, notes))
+  process.stdout.write(`step 22: ${result}: ${redact(notes)}\n`)
+  return result === 'fail' ? 1 : 0
+}
+
 function main(args) {
   const [command, ...rest] = args
   switch (command) {
@@ -211,9 +246,14 @@ function main(args) {
     }
     case 'leftovers':
       return leftovers(rest[0], rest[1], rest[2])
+    case 'step': {
+      const [n, recordPath, upgradePath, ...pairs] = rest
+      if (n !== '22') throw new Error(`step takes 22, the update over 0.1.0, not ${n}`)
+      return upgradeStep(recordPath, upgradePath, pairs)
+    }
     default:
       process.stderr.write(
-        'usage: record-cli.mjs sha256 | sums | prior | fill | leftovers (see the head of the file)\n',
+        'usage: record-cli.mjs sha256 | sums | prior | fill | leftovers | step (see the head of the file)\n',
       )
       return 2
   }

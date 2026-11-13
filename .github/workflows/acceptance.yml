@@ -1,9 +1,12 @@
 # The acceptance checklist (docs/acceptance.md, A6-04) over a published
 # Release's own installers, on GitHub's macOS and Windows runners: download
 # and check the installer (step 1), install it (step 2), drive the installed
-# app through steps 3 to 20 with tests/acceptance/acceptance.spec.ts, and
-# uninstall it and look for what is left (step 21). The record, in the shape
-# of the checklist's results template, is the job's summary and an artefact,
+# app through steps 3 to 20 with tests/acceptance/acceptance.spec.ts,
+# uninstall it and look for what is left (step 21), and then make the update
+# over 0.1.0 (step 22) with tests/acceptance/upgrade.spec.ts: 0.1.0 from its
+# own Release, a project and an export made in it, the release under test
+# installed over it, and 0.1.0 installed again. The record, in the shape of
+# the checklist's results template, is the job's summary and an artefact,
 # for pasting into the run's issue.
 #
 # On request only, with the Release's tag. The spec and its tooling come from
@@ -45,8 +48,9 @@ jobs:
     name: acceptance (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     # The spec's own limit is five hours; this leaves room for the install,
-    # the uninstall and the upload.
-    timeout-minutes: 330
+    # the uninstall, the update over 0.1.0 (each of its steps has a limit of
+    # its own) and the upload. Six hours is a hosted runner's most.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -60,6 +64,8 @@ jobs:
       TAG: ${{ inputs.tag }}
       SUFFIX: ${{ matrix.suffix }}
       PLATFORM: ${{ matrix.platform }}
+      # Step 22's earlier version: the first release, from its own Release.
+      UPGRADE_FROM: v0.1.0
     steps:
       - name: Refuse a tag that names no Release
         run: |
@@ -104,6 +110,8 @@ jobs:
             echo "PRIOR=$out/prior.json"
             echo "DOWNLOAD=$RUNNER_TEMP/download"
             echo "ASSET=Legible-Cities-${TAG#v}-$SUFFIX"
+            echo "UPGRADE=$RUNNER_TEMP/upgrade"
+            echo "OLD_ASSET=Legible-Cities-${UPGRADE_FROM#v}-$SUFFIX"
           } >> "$GITHUB_ENV"
 
       # ATTESTED_SINCE is the commit that brought the attest job (pull request
@@ -295,6 +303,202 @@ jobs:
           }
           node tests/acceptance/record-cli.mjs leftovers "$env:OUT/made.json" "$env:OUT/acceptance-$env:PLATFORM.md" $env:INSTALLED
           exit $LASTEXITCODE
+
+      # Step 22, the update over 0.1.0 (docs/acceptance.md). Each version is
+      # installed the way a person installs it - on a Mac copied into
+      # Applications, the old bundle removed first as the Finder's Replace
+      # does; on Windows the installer, run silently - and each phase runs on
+      # the version's own default profile, with no --user-data-dir, so each
+      # version's own path resolution is what links them. Step 21 has left
+      # the runner without the app. upgrade.json, which the phases write and
+      # read, holds absolute paths and is not uploaded.
+      - name: Step 22, install 0.1.0 on macOS
+        id: old_mac
+        if: ${{ !cancelled() && runner.os == 'macOS' && env.INSTALLED != '' }}
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          mkdir -p "$UPGRADE/download" "$UPGRADE/dmg"
+          gh release download "$UPGRADE_FROM" --repo "$GITHUB_REPOSITORY" --dir "$UPGRADE/download" \
+            --pattern "$OLD_ASSET" --pattern SHA256SUMS.txt
+          actual=$(node "$cli" sha256 "$UPGRADE/download/$OLD_ASSET")
+          expected=$(node "$cli" sums "$UPGRADE/download/SHA256SUMS.txt" "$OLD_ASSET")
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::$OLD_ASSET does not match its Release's SHA256SUMS.txt"
+            exit 1
+          fi
+          app="/Applications/Legible Cities.app"
+          if [ -e "$app" ]; then
+            echo "::error::$app is already there, so this is not the machine step 21 left"
+            exit 1
+          fi
+          hdiutil attach -readonly -nobrowse -mountpoint "$UPGRADE/dmg" "$UPGRADE/download/$OLD_ASSET"
+          ditto "$UPGRADE/dmg/Legible Cities.app" "$app"
+          hdiutil detach "$UPGRADE/dmg"
+          echo "UPGRADE_APP=$app" >> "$GITHUB_ENV"
+
+      - name: Step 22, install 0.1.0 on Windows
+        id: old_win
+        if: ${{ !cancelled() && runner.os == 'Windows' && env.INSTALLED != '' }}
+        timeout-minutes: 10
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = 'tests/acceptance/record-cli.mjs'
+          $download = Join-Path $env:UPGRADE 'download'
+          New-Item -ItemType Directory -Force -Path $download | Out-Null
+          gh release download $env:UPGRADE_FROM --repo $env:GITHUB_REPOSITORY --dir $download --pattern $env:OLD_ASSET --pattern SHA256SUMS.txt
+          if ($LASTEXITCODE -ne 0) { throw "could not download $env:OLD_ASSET" }
+          $installer = Join-Path $download $env:OLD_ASSET
+          $actual = node $cli sha256 $installer
+          $expected = node $cli sums (Join-Path $download 'SHA256SUMS.txt') $env:OLD_ASSET
+          if ($actual -ne $expected) { throw "$env:OLD_ASSET does not match its Release's SHA256SUMS.txt" }
+          # The folder a per-user one-click installer uses is the package's
+          # name at that tag; step 2 has refused an nsis section that would
+          # move it for the release under test, and 0.1.0's is fixed history.
+          # The exe is checked for, so a folder that moved is caught.
+          $name = (git show "refs/tags/$($env:UPGRADE_FROM):package.json" | Out-String | ConvertFrom-Json).name
+          $folder = Join-Path $env:LOCALAPPDATA "Programs\$name"
+          $exe = Join-Path $folder 'Legible Cities.exe'
+          if (Test-Path $exe) { throw "$exe is already there, so this is not the machine step 21 left" }
+          $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $exe)) {
+            throw "the 0.1.0 installer exited $($process.ExitCode); no $exe"
+          }
+          "UPGRADE_APP=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "UPGRADE_FOLDER=$folder" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Step 22, the seed, on 0.1.0
+        id: seed
+        if: ${{ !cancelled() && (steps.old_mac.outcome == 'success' || steps.old_win.outcome == 'success') }}
+        timeout-minutes: 60
+        env:
+          CI: 'true'
+          LEGIBLE_UPGRADE_PHASE: seed
+        run: |
+          export LEGIBLE_UPGRADE_APP="$UPGRADE_APP"
+          export LEGIBLE_ACCEPTANCE_OUT="$OUT"
+          npm run test:acceptance -- tests/acceptance/upgrade.spec.ts
+
+      # Over the 0.1.0 the seed quit, once nothing of it is still running.
+      - name: Step 22, install the release over 0.1.0 on macOS
+        id: over_mac
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.seed.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          for _ in $(seq 60); do pgrep -f "$UPGRADE_APP/" > /dev/null || break; sleep 2; done
+          if pgrep -fl "$UPGRADE_APP/"; then echo "::error::0.1.0 is still running"; exit 1; fi
+          rm -rf "$UPGRADE_APP"
+          hdiutil attach -readonly -nobrowse -mountpoint "$UPGRADE/dmg" "$DOWNLOAD/$ASSET"
+          ditto "$UPGRADE/dmg/Legible Cities.app" "$UPGRADE_APP"
+          hdiutil detach "$UPGRADE/dmg"
+
+      - name: Step 22, install the release over 0.1.0 on Windows
+        id: over_win
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.seed.outcome == 'success' }}
+        timeout-minutes: 10
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = $env:UPGRADE_FOLDER
+          $running = { @(Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($folder, [System.StringComparison]::OrdinalIgnoreCase) }) }
+          $deadline = (Get-Date).AddMinutes(2)
+          while ((& $running).Count -gt 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if ((& $running).Count -gt 0) { throw "0.1.0 is still running: $((& $running).Name -join ', ')" }
+          $process = Start-Process -FilePath (Join-Path $env:DOWNLOAD $env:ASSET) -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $env:UPGRADE_APP)) {
+            throw "the installer exited $($process.ExitCode); no $env:UPGRADE_APP"
+          }
+
+      - name: Step 22, after the update
+        id: after
+        if: ${{ !cancelled() && (steps.over_mac.outcome == 'success' || steps.over_win.outcome == 'success') }}
+        timeout-minutes: 60
+        env:
+          CI: 'true'
+          LEGIBLE_UPGRADE_PHASE: after
+        run: |
+          export LEGIBLE_UPGRADE_APP="$UPGRADE_APP"
+          export LEGIBLE_ACCEPTANCE_OUT="$OUT"
+          export LEGIBLE_UPGRADE_VERSION="$(node -p "require('./at-tag/package.json').version")"
+          npm run test:acceptance -- tests/acceptance/upgrade.spec.ts
+
+      # Going back as install.md's "Updating from an earlier release" says:
+      # the new version removed (removing the app leaves its data), then
+      # 0.1.0 installed.
+      - name: Step 22, install 0.1.0 again on macOS
+        id: again_mac
+        if: ${{ !cancelled() && runner.os == 'macOS' && steps.after.outcome == 'success' }}
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          for _ in $(seq 60); do pgrep -f "$UPGRADE_APP/" > /dev/null || break; sleep 2; done
+          if pgrep -fl "$UPGRADE_APP/"; then echo "::error::the release is still running"; exit 1; fi
+          rm -rf "$UPGRADE_APP"
+          hdiutil attach -readonly -nobrowse -mountpoint "$UPGRADE/dmg" "$UPGRADE/download/$OLD_ASSET"
+          ditto "$UPGRADE/dmg/Legible Cities.app" "$UPGRADE_APP"
+          hdiutil detach "$UPGRADE/dmg"
+
+      - name: Step 22, install 0.1.0 again on Windows
+        id: again_win
+        if: ${{ !cancelled() && runner.os == 'Windows' && steps.after.outcome == 'success' }}
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = $env:UPGRADE_FOLDER
+          $running = { @(Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($folder, [System.StringComparison]::OrdinalIgnoreCase) }) }
+          $deadline = (Get-Date).AddMinutes(2)
+          while ((& $running).Count -gt 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+          if ((& $running).Count -gt 0) { throw "the release is still running: $((& $running).Name -join ', ')" }
+          # An NSIS uninstaller copies itself out of the folder and goes on
+          # from there, so its end is the folder going, within a deadline.
+          $uninstaller = Join-Path $folder 'Uninstall Legible Cities.exe'
+          if (-not (Test-Path $uninstaller)) { throw "no uninstaller at $uninstaller" }
+          Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait | Out-Null
+          $deadline = (Get-Date).AddMinutes(3)
+          while ((Test-Path $env:UPGRADE_APP) -and ((Get-Date) -lt $deadline)) { Start-Sleep -Seconds 2 }
+          if (Test-Path $env:UPGRADE_APP) { throw "the uninstaller left $env:UPGRADE_APP" }
+          $installer = Join-Path (Join-Path $env:UPGRADE 'download') $env:OLD_ASSET
+          $process = Start-Process -FilePath $installer -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0 -or -not (Test-Path $env:UPGRADE_APP)) {
+            throw "the 0.1.0 installer exited $($process.ExitCode); no $env:UPGRADE_APP"
+          }
+
+      - name: Step 22, back on 0.1.0
+        id: back
+        if: ${{ !cancelled() && (steps.again_mac.outcome == 'success' || steps.again_win.outcome == 'success') }}
+        timeout-minutes: 20
+        env:
+          CI: 'true'
+          LEGIBLE_UPGRADE_PHASE: back
+        run: |
+          export LEGIBLE_UPGRADE_APP="$UPGRADE_APP"
+          export LEGIBLE_ACCEPTANCE_OUT="$OUT"
+          npm run test:acceptance -- tests/acceptance/upgrade.spec.ts
+
+      # Every step's outcome, so a step that failed or never ran is named in
+      # the row; a phase's own findings are in upgrade.json.
+      - name: Step 22, the record
+        if: ${{ !cancelled() && env.INSTALLED != '' }}
+        timeout-minutes: 5
+        env:
+          OLD: ${{ runner.os == 'macOS' && steps.old_mac.outcome || steps.old_win.outcome }}
+          SEED: ${{ steps.seed.outcome }}
+          OVER: ${{ runner.os == 'macOS' && steps.over_mac.outcome || steps.over_win.outcome }}
+          AFTER: ${{ steps.after.outcome }}
+          AGAIN: ${{ runner.os == 'macOS' && steps.again_mac.outcome || steps.again_win.outcome }}
+          BACK: ${{ steps.back.outcome }}
+        run: |
+          node tests/acceptance/record-cli.mjs step 22 "$OUT/acceptance-$PLATFORM.md" "$OUT/upgrade.json" \
+            "install 0.1.0=$OLD" "the seed on 0.1.0=$SEED" "install the release over it=$OVER" \
+            "after the update=$AFTER" "install 0.1.0 again=$AGAIN" "back on 0.1.0=$BACK"
 
       - name: The record, as the job's summary
         if: ${{ !cancelled() }}
