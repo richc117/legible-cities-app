@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type Page } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { cell, createProject, layOut, openCell, openProject, panel } from '../support/project'
+import { quitApp } from '../support/quit'
 import { STAGE_KEYS, STAGE_SANDBOX } from '../../src/renderer/src/engine/stages'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -43,7 +44,7 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
     })
     await run(page)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 
@@ -279,7 +280,7 @@ test('without the engine the view says so, and the rest of the screen works', as
     await expect(view.getByRole('status')).toContainText('not ready')
     await expect(page.getByRole('button', { name: 'Rename', exact: true })).toBeEnabled()
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 })
 

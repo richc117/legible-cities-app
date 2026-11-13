@@ -39,6 +39,7 @@ import {
   panel,
   withoutOpened,
 } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 
@@ -89,7 +90,7 @@ async function withApp(
     })
     await run(page, app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 
@@ -392,8 +393,10 @@ test('quitting during a run leaves no process and an unchanged record', async ()
   await page.getByRole('button', { name: /^lay out( again)?$/i }).click()
   await expect(cell(page, 'process')).toBeVisible()
 
-  // Quit with the run still going.
-  await app.close()
+  // Quit with the run still going. The quit is asked about first (issue
+  // 552), and a second quit is the answer: `quitApp` asks twice. What the
+  // question says is quit-guard.spec.ts's.
+  await quitApp(app)
   await expect.poll(() => driver.exitCode, { timeout: 10_000 }).not.toBeNull()
   expect(JSON.stringify(readRecord(engineHome)), 'a run that never finished wrote nothing').toBe(
     before,

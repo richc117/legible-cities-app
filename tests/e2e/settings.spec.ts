@@ -30,6 +30,7 @@ import {
 import { DESTINATION_REFUSALS } from '../../src/main/export'
 import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -87,7 +88,7 @@ async function withApp(
   try {
     await run(await app.firstWindow(), app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
   // A relaunch on the same profile must never meet the lock of a process
   // still quitting.

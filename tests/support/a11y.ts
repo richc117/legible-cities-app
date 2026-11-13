@@ -74,6 +74,7 @@ import {
   type LapseFacts,
   type StepAnswer,
 } from './tab-walk'
+import { quitApp } from './quit'
 
 export const repoRoot = resolve(__dirname, '../..')
 export const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -166,7 +167,7 @@ export async function withApp(
       })
     await run(page, app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
   await expect.poll(() => child.exitCode, { timeout: 10_000 }).not.toBeNull()
 }

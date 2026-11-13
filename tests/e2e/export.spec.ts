@@ -30,6 +30,7 @@ import {
 import { KEEP_BOTH } from '../../src/renderer/src/notebook/outputWords'
 import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -101,7 +102,7 @@ async function withApp(
   try {
     await run(await ready(app), app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 
@@ -506,7 +507,10 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
   await laidOutProject(page, h)
   await exportButton(page).click()
   await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
-  await app.close()
+  // A quit with the export still going is asked about first (issue 552), and
+  // a second quit is the answer: `quitApp` asks twice. What the question
+  // says, and that "Quit anyway" does the same, is quit-guard.spec.ts's.
+  await quitApp(app)
   expect(existsSync(deliverable(h))).toBe(false)
 
   // What a crash would leave: a frames folder nobody will ask for again.
@@ -526,6 +530,19 @@ test('a quit mid-export leaves nothing, and a start clears what a crash would ha
 // with nothing said; on macOS no window came back from the Dock until then.
 // The app's own window decides now. Both tests close the app's window with
 // the capture running, and tell it from the capture window by its address.
+//
+// Since issue 552 that close is asked about first, on every platform, and
+// both tests answer "Close anyway": what is held here is what follows it -
+// the quit on Windows and Linux, the app left running on macOS with the
+// export stopped and a window to be had from the Dock. The question itself
+// is quit-guard.spec.ts's.
+
+/** Answer the question a close during an export asks: go ahead. */
+async function closeAnyway(page: Page): Promise<void> {
+  const asked = page.getByRole('dialog', { name: 'Close while an export is running?', exact: true })
+  await expect(asked).toBeVisible()
+  await asked.getByRole('button', { name: 'Close anyway', exact: true }).click()
+}
 
 /** Close the app's own window, not the capture's. */
 function closeAppWindow(app: ElectronApplication): Promise<void> {
@@ -535,7 +552,7 @@ function closeAppWindow(app: ElectronApplication): Promise<void> {
   })
 }
 
-test('closing the window during an export quits at once, on Windows and Linux, and leaves nothing', async () => {
+test('closing the window during an export quits once the person says so, on Windows and Linux, and leaves nothing', async () => {
   test.skip(process.platform === 'darwin', 'macOS keeps running with no window')
   // Long enough that the export is certainly still running when the window
   // closes, whatever the machine.
@@ -559,8 +576,10 @@ test('closing the window during an export quits at once, on Windows and Linux, a
     ).toBeGreaterThan(1)
 
     await closeAppWindow(app)
+    await closeAnyway(page)
     // Well inside the capture's 120 seconds: the quit is the window's, not
-    // the capture's end. A deadline, and the process's own exit.
+    // the capture's end, and it is not asked about a second time on its way
+    // out. A deadline, and the process's own exit.
     await expect
       .poll(() => child.exitCode !== null || child.signalCode !== null, {
         timeout: 15_000,
@@ -577,19 +596,23 @@ test('closing the window during an export quits at once, on Windows and Linux, a
     expect(existsSync(engineLog), 'the engine log was written').toBe(true)
     expect(readFileSync(engineLog, 'utf8')).toMatch(/ended on (request \(quit\)|terminate)/)
   } finally {
-    await app.close().catch(() => undefined)
+    await quitApp(app).catch(() => undefined)
   }
 })
 
-test('closing the window during an export on macOS keeps the export going, and the Dock brings a window back', async () => {
+test('closing the window during an export on macOS stops it once the person says so, and the Dock brings a window back', async () => {
   test.skip(process.platform !== 'darwin', 'Windows and Linux quit with their window')
-  const h = home({ export_seconds: 6 })
+  // Long enough that the export is certainly still running when the window
+  // closes: it is the close that stops it, not its own end.
+  const h = home({ export_seconds: 120 })
   await withApp(h, async (page, app) => {
+    const child = app.process()
     await laidOutProject(page, h)
     await exportButton(page).click()
     await expect(exportLine(page, /^Captur/)).toBeVisible({ timeout: 20_000 })
 
     await closeAppWindow(app)
+    await closeAnyway(page)
     await expect
       .poll(() =>
         app.evaluate(({ BrowserWindow }) =>
@@ -599,8 +622,19 @@ test('closing the window during an export on macOS keeps the export going, and t
         ),
       )
       .toBe(false)
+    // The app is still running, as its apps are with no window, and nothing
+    // of the export goes on behind it (issue 552): its frames are removed,
+    // and no file arrives. Until a window brought back from the Dock can see
+    // an export that went on without one (issue 556), going on unseen was
+    // the alternative.
+    await expect
+      .poll(() => framesLeft(h), { timeout: 20_000, message: 'the export was stopped' })
+      .toEqual([])
+    expect(existsSync(deliverable(h))).toBe(false)
+    expect(existsSync(deliverable(h) + '.part')).toBe(false)
+    expect(child.exitCode, 'the app did not quit with its window').toBeNull()
 
-    // The Dock icon, while the capture window is still open.
+    // The Dock icon.
     const reopened = app.waitForEvent('window', { timeout: 15_000 })
     await app.evaluate(({ app: electron }) => {
       electron.emit('activate')
@@ -620,15 +654,5 @@ test('closing the window during an export on macOS keeps the export going, and t
         { timeout: 15_000, message: 'one window of the interface came back' },
       )
       .toBe(1)
-
-    // And the export, which nothing cancelled, finishes into its folder.
-    await expect
-      .poll(() => existsSync(deliverable(h)), {
-        timeout: 60_000,
-        message: 'the export finished with no window of the app open for a while',
-      })
-      .toBe(true)
-    // The frames go in the exporter's finally, after the encode has answered.
-    await expect.poll(() => framesLeft(h)).toEqual([])
   })
 })

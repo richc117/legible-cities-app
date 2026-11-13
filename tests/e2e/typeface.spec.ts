@@ -25,6 +25,7 @@ import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test'
 import { PROJECT_ID, PROJECT_NAME, prepareProject, seedHome } from '../support/determinism'
 import { openCell, panel } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = process.env.LEGIBLE_ENGINE_PYTHON ?? ''
@@ -128,7 +129,7 @@ test('Inter, chosen in cell 04, is loaded in the map’s frame and in cell 06’
       })
       .toContain('Inter:loaded')
   } finally {
-    await app.close()
+    await quitApp(app)
   }
   // Kept when the test fails, for a person to look at; gone when it passed.
   rmSync(dir, { recursive: true, force: true })

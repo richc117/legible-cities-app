@@ -21,6 +21,7 @@ import { openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { VIEWER_SANDBOX } from '../../src/shared/viewer'
 import { EVERY_SEAM } from '../support/standInPage'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -58,7 +59,7 @@ async function withApp(
     })
     await run(page, app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 

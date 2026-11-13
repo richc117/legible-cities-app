@@ -40,6 +40,7 @@ import {
 import { OPENING_SENTENCE, PREVIEW_NOTE, SECONDS_FIELDS } from '../../src/renderer/src/opening'
 import { cell, openCell, withoutOpened } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -88,7 +89,7 @@ async function withApp(
     })
     await run(page, app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 

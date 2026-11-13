@@ -59,6 +59,7 @@ import {
 } from '../support/project'
 import { stillHolds } from '../support/holds'
 import { everySeamBut } from '../support/standInPage'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -115,7 +116,7 @@ async function withApp(
   try {
     await run(await app.firstWindow(), app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 

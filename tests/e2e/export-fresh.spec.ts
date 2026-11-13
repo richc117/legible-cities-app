@@ -28,6 +28,7 @@ import { readPng, stripOf } from '../../src/main/capture-strip'
 import { exportLine, openCell } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { capturedStandInSource, type CapturedStandInOptions } from '../support/standInPage'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -88,7 +89,7 @@ async function withApp(h: Home, run: (page: Page, app: ElectronApplication) => P
     })
     await run(page, app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 
