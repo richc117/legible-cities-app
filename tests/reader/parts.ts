@@ -194,8 +194,10 @@ export const PARTS: readonly Part[] = [
   {
     row: 'Engine status line',
     table: 'Engine status line',
-    scripted: 'full',
+    scripted: 'part',
     phase: 'library',
+    notScripted:
+      'the sentences before the engine is ready (Checking the engine… and Starting the engine.), only the last of which is listened for',
     run: async (c) => {
       const status = c.page.getByRole('status', { name: 'Engine' })
       // Said by itself as the app starts: VoiceOver is started before it.
@@ -245,13 +247,10 @@ export const PARTS: readonly Part[] = [
       const library = c.page.locator('main.library')
       const introduction = library.locator('p[role="status"].prose')
       const quiet = library.locator('.projects-none > p.hint')
+      const projectsHeading = library.getByRole('heading', { level: 2 }).first()
       await c.walk(
         introduction,
-        [
-          await c.text(introduction),
-          await c.text(library.getByRole('heading', { level: 2 }).first()),
-          await c.text(quiet),
-        ],
+        [await c.text(introduction), await c.text(projectsHeading), await c.text(quiet)],
         12,
       )
     },
@@ -641,8 +640,10 @@ export const PARTS: readonly Part[] = [
   {
     row: 'The engine log',
     table: 'Engine log: a closed disclosure',
-    scripted: 'full',
+    scripted: 'part',
     phase: 'project',
+    notScripted:
+      'the box scrolled with the arrow keys, and that the box’s name and the disclosure’s are not heard nested in each other',
     run: async (c) => {
       await c.openCell('process')
       const toggle = c.cellSection('process').getByRole('button', { name: /^Engine log\b/ })
@@ -696,8 +697,9 @@ export const PARTS: readonly Part[] = [
   {
     row: 'Revert',
     table: 'Revert, while a chosen day is not drawn',
-    scripted: 'full',
+    scripted: 'part',
     phase: 'project',
+    notScripted: 'that the button goes with its own press',
     run: async (c) => {
       await c.openCell('frame')
       const field = serviceDay(c).getByLabel('Draw for another day')
@@ -996,12 +998,10 @@ export const PARTS: readonly Part[] = [
     scripted: 'part',
     phase: 'project',
     notScripted:
-      'the platform’s folder chooser, Use the app’s folder, and the refusal of a folder inside the app',
+      'the sentence Choose folder is described by, which may name a folder’s path, the platform’s folder chooser, Use the app’s folder, and the refusal of a folder inside the app',
     run: async (c) => {
       await c.openCell('export')
-      await c.tab(c.cellGroup('export').getByRole('button', { name: 'Choose folder' }), {
-        description: true,
-      })
+      await c.tab(c.cellGroup('export').getByRole('button', { name: 'Choose folder' }))
     },
   },
   {
@@ -1044,7 +1044,8 @@ export const PARTS: readonly Part[] = [
     run: async (c) => {
       await c.openCell('export')
       const frame = c.cellGroup('export').locator('iframe')
-      await c.walk(frame, [(await frame.getAttribute('title')) ?? ''], 8)
+      const title = (await frame.getAttribute('title')) ?? ''
+      await c.walk(frame, [title], 8)
       await c.tab(c.cellHeading('export'))
       await c.press('Tab', {
         focus: c.cellGroup('export').getByRole('combobox', { name: 'Preset', exact: true }),
@@ -1110,15 +1111,13 @@ export const PARTS: readonly Part[] = [
     scripted: 'part',
     phase: 'settings',
     notScripted:
-      'another folder chosen in the platform’s dialog, and the engine folder’s size as it is measured',
+      'each button’s folder read as its description, since a path is a machine’s and never written into the record, Choose the export folder, which LEGIBLE_EXPORT_FOLDER fixes for this run so it is not offered, another folder chosen in the platform’s dialog, and the engine folder’s size as it is measured',
     run: async (c) => {
       const settings = c.page.getByRole('button', { name: 'Settings', exact: true })
       await c.tab(settings)
       await c.press('Enter', { focus: heading(c) })
       const folders = c.page.getByRole('region', { name: 'Folders' })
-      for (const name of ['Choose the engine data folder', 'Choose the export folder']) {
-        await c.tab(folders.getByRole('button', { name }), { description: true })
-      }
+      await c.tab(folders.getByRole('button', { name: 'Choose the engine data folder' }))
     },
   },
   {

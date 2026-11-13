@@ -7,12 +7,17 @@ import {
   SYNONYMS,
   appendClauses,
   clauseOf,
+  clauseText,
   clausesByTable,
+  containerWants,
+  freshPhrase,
   missing,
   normalise,
   outcomeOf,
   parseSnapshotLine,
   roleWant,
+  stateWant,
+  wantText,
   screenRows,
   voiceOverCell,
   walkthroughRows,
@@ -143,6 +148,32 @@ describe('the parts and the walkthrough', () => {
     const sentences = literals.filter((t) => /\.$/.test(t) && t.trim().split(/\s+/).length >= 4)
     expect(sentences).toEqual([])
   })
+
+  it('types no word into what a row is to hear', () => {
+    // What is in a `words:` array, or the texts a walk listens for, is
+    // what must be heard: a string written there, of any length, is a
+    // word retyped rather than read from the page or imported.
+    const bracketed = (from: number): string => {
+      let depth = 0
+      for (let at = from; at < partsSource.length; at += 1) {
+        if (partsSource[at] === '[') depth += 1
+        if (partsSource[at] === ']') depth -= 1
+        if (depth === 0) return partsSource.slice(from, at + 1)
+      }
+      return partsSource.slice(from)
+    }
+    const arrays: string[] = []
+    for (const m of partsSource.matchAll(/words:\s*(?:async\s*\(\)\s*=>\s*)?\[/g)) {
+      arrays.push(bracketed((m.index ?? 0) + m[0].length - 1))
+    }
+    for (const m of partsSource.matchAll(/\.walk(?:Back)?\(/g)) {
+      const open = partsSource.indexOf('[', m.index ?? 0)
+      const close = partsSource.indexOf(')', m.index ?? 0)
+      if (open >= 0 && open < close) arrays.push(bracketed(open))
+    }
+    expect(arrays.length).toBeGreaterThan(8)
+    expect(arrays.filter((a) => /['"`]/.test(a))).toEqual([])
+  })
 })
 
 describe('what counts as heard', () => {
@@ -153,13 +184,11 @@ describe('what counts as heard', () => {
     expect(
       missing(
         ['LA Metro Rail, Los Angeles · Metro Rail, not downloaded yet button'],
-        [{ said: 'name', any: ['LA Metro Rail, Los Angeles · Metro Rail, not downloaded yet'] }],
+        [wantText('LA Metro Rail, Los Angeles · Metro Rail, not downloaded yet')],
       ),
     ).toEqual([])
     // "checked" is not heard in "unchecked".
-    expect(
-      missing(['Station names unchecked checkbox'], [{ said: 'checked', any: ['checked'] }]),
-    ).toHaveLength(1)
+    expect(missing(['Station names unchecked checkbox'], [stateWant('checked')])).toHaveLength(1)
   })
 
   it('wants the name, a word of the role and of each state, and the level', () => {
@@ -235,6 +264,81 @@ describe('what counts as heard', () => {
   })
 })
 
+describe('what is not heard', () => {
+  it('does not hear checked or pressed in a negation, nor pressed in "on"', () => {
+    expect(missing(['Station names, not checked, checkbox'], [stateWant('checked')])).toHaveLength(
+      1,
+    )
+    expect(
+      missing(['gtfs2graph, not selected, toggle button'], [stateWant('pressed')]),
+    ).toHaveLength(1)
+    expect(missing(['gtfs2graph, on, toggle button'], [stateWant('pressed')])).toHaveLength(1)
+    expect(missing(['gtfs2graph, selected, toggle button'], [stateWant('pressed')])).toEqual([])
+    expect(missing(['Station names, checked, checkbox'], [stateWant('checked')])).toEqual([])
+  })
+
+  it('does not take a role or a state word from inside a name, a value or a description', () => {
+    const wants = wantsOf({
+      role: 'button',
+      name: 'Copy log button',
+      states: [],
+      level: null,
+      value: null,
+      description: null,
+    })
+    expect(missing(['Copy log button'], wants).map((w) => w.said)).toEqual(['button'])
+    expect(missing(['Copy log button, button'], wants)).toEqual([])
+    const select = wantsOf(
+      {
+        role: 'combobox',
+        name: 'Look',
+        states: [],
+        level: null,
+        value: null,
+        description: 'Collapsed into a pop-up button.',
+      },
+      { description: true },
+    )
+    expect(missing(['Look, Collapsed into a pop-up button.'], select).map((w) => w.said)).toEqual([
+      'combobox',
+    ])
+  })
+
+  it('refuses to want nothing: an empty text, a nameless control', () => {
+    for (const empty of ['', '   ', '·', '…'])
+      expect(() => wantText(empty)).toThrow(/nothing to hear/)
+    expect(() =>
+      wantsOf({
+        role: 'button',
+        name: '',
+        states: [],
+        level: null,
+        value: null,
+        description: null,
+      }),
+    ).toThrow(/no name to hear/)
+    // A container may be nameless: it is heard by its role.
+    expect(containerWants('group', '').map((w) => w.said)).toEqual(['group'])
+    expect(containerWants('list', 'Presets').map((w) => w.said)).toEqual(['Presets', 'list'])
+  })
+
+  it('does not credit an action with the phrase said before it', () => {
+    const before = ['New project button list Projects 1 item']
+    // Guidepup reports the last phrase again, alone or ahead of the new one.
+    expect(freshPhrase('New project button list Projects 1 item', before)).toBe('')
+    expect(freshPhrase('Projects 1 item', before)).toBe('')
+    expect(
+      freshPhrase('New project button list Projects 1 item. Sample cities heading level 2', before),
+    ).toBe('Sample cities heading level 2')
+    // Its own phrase is kept, and so is everything after an empty snapshot.
+    expect(freshPhrase('Settings button', before)).toBe('Settings button')
+    expect(freshPhrase('Settings button', ['', ''])).toBe('Settings button')
+    expect(freshPhrase('', before)).toBe('')
+    // A joined snapshot's last phrase is stale on its own.
+    expect(freshPhrase('Laid out.', ['Running: read. Laid out.'])).toBe('')
+  })
+})
+
 describe('what is written in the VoiceOver cell', () => {
   it('words each outcome as the Reader legend does', () => {
     expect(legendForm(clauseOf([result({})], FACTS) ?? '')).toBe(0)
@@ -305,6 +409,27 @@ describe('what is written in the VoiceOver cell', () => {
         FACTS,
       ) ?? ''
     expect(legendForm(clause)).toBe(2)
+  })
+
+  it('writes no path into a clause', () => {
+    // Built from their parts, so this file holds no machine's path itself.
+    const home = ['', 'Users', 'someone'].join('/')
+    for (const path of [
+      `${home}/Library/Application Support/Legible Cities`,
+      ['', 'private', 'var', 'folders', 'ab', 'T', 'legible-reader-1', 'exports'].join('/'),
+      ['~', 'Desktop', 'Legible Cities'].join('/'),
+      ['C:', 'Users', 'someone', 'Desktop'].join('\\'),
+    ]) {
+      const said = clauseText(`the folder ${path} is chosen`)
+      expect(said, path).toContain('<path>')
+      expect(said, path).not.toMatch(/someone|private|Desktop\/|folders/)
+    }
+    expect(clauseText('Station marker / Tick, 1/2 of it')).toBe('Station marker / Tick, 1/2 of it')
+    const clause = clauseOf(
+      [result({ hearings: [{ ...hearing([`${home}/x`]), action: `Tab to ${home}` }] })],
+      FACTS,
+    )
+    expect(clause).not.toContain('someone')
   })
 
   it('refuses versions that would not read back', () => {

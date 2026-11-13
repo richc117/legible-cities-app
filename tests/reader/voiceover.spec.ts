@@ -41,6 +41,7 @@ import {
   expect,
   test,
   type ElectronApplication,
+  type ElementHandle,
   type Locator,
   type Page,
 } from '@playwright/test'
@@ -58,6 +59,8 @@ import {
 import {
   appendClauses,
   clausesByTable,
+  containerWants,
+  freshPhrase,
   missing,
   outcomeOf,
   parseSnapshotLine,
@@ -118,7 +121,13 @@ function firstLine(command: string, args: string[]): string | null {
     timeout: 10 * SECOND,
     windowsHide: true,
   })
-  if (run.status !== 0) return null
+  if (run.status !== 0) {
+    // Said, so a version missing from the transcript has its reason in the log.
+    console.error(
+      `${command} ${args.join(' ')}: exit ${String(run.status)}${run.error ? `, ${run.error.message}` : ''}${run.stderr ? `, ${run.stderr.trim()}` : ''}`,
+    )
+    return null
+  }
   return (run.stdout ?? '').split('\n')[0]?.trim() || null
 }
 
@@ -170,32 +179,43 @@ async function bringToFront(app: ElectronApplication): Promise<void> {
   })
 }
 
+/** One sentence a status, an alert or a live region came to hold, and every element it was inside then. */
+interface SaidEntry {
+  text: string
+  within: Element[]
+}
+
 /**
  * Every sentence a status, an alert or a live region has held, in order,
- * with the element that held it: a sentence that is gone from the screen
- * by the time it is listened for is still known. Each such element gets a
- * `data-reader-id`, which nothing in the app reads.
+ * with the element that held it and each element it was inside when it was
+ * scanned: a sentence that is gone from the screen, or whose sheet has
+ * closed, by the time it is listened for is still known, and still known
+ * to have been inside that sheet.
  */
 async function installRecorder(page: Page): Promise<void> {
   await page.waitForLoadState('domcontentloaded')
   await page.evaluate(() => {
-    const holder = window as unknown as {
-      __readerSaid?: { id: string; text: string }[]
-    }
+    const holder = window as unknown as { __readerSaid?: SaidEntry[] }
     if (holder.__readerSaid !== undefined) return
-    const said: { id: string; text: string }[] = []
+    const said: SaidEntry[] = []
     holder.__readerSaid = said
     const last = new WeakMap<Element, string>()
-    let next = 0
+    const chain = (element: Element): Element[] => {
+      const within: Element[] = []
+      let node: Node | null = element
+      while (node !== null) {
+        if (node instanceof Element) within.push(node)
+        node = node instanceof ShadowRoot ? node.host : node.parentNode
+      }
+      return within
+    }
     const scan = (): void => {
       for (const element of document.querySelectorAll(
         '[role="status"], [role="alert"], [aria-live]',
       )) {
-        const html = element as HTMLElement
-        if (html.dataset.readerId === undefined) html.dataset.readerId = String((next += 1))
         const text = (element.textContent ?? '').replace(/\s+/g, ' ').trim()
         if (text !== '' && last.get(element) !== text) {
-          said.push({ id: html.dataset.readerId, text })
+          said.push({ text, within: chain(element) })
         }
         last.set(element, text)
       }
@@ -218,9 +238,12 @@ interface Mark {
 
 /**
  * The session: the app's page, everything VoiceOver said in order, and the
- * hearings of the row being run. Every action goes through `capture`, so
- * Guidepup's idea of the last phrase is always current and a phrase from a
- * quiet action is never taken for the next one's.
+ * hearings of the row being run. Guidepup reports VoiceOver's last phrase,
+ * and reports it again as new after some 650 ms of polling or after an
+ * empty capture, so what one action captured can be the phrase said before
+ * it. Every capture is therefore taken against a snapshot of what was last
+ * heard just before the action (`freshPhrase`), and a phrase that is that
+ * one is not credited to the action. When in doubt a row is not heard.
  */
 class Session implements Ctx {
   readonly log: string[] = []
@@ -236,9 +259,21 @@ class Session implements Ctx {
     return this.page.locator('[data-announces="jobs"]')
   }
 
+  /** What was last heard: the session's last phrase and Guidepup's. */
+  private async heardLast(): Promise<string[]> {
+    return [this.log.at(-1) ?? '', await voiceOver.lastSpokenPhrase().catch(() => '')]
+  }
+
+  /** A phrase VoiceOver said, kept only where it is not what was heard before. */
+  private keep(phrase: string, before: readonly string[]): void {
+    const fresh = freshPhrase(phrase, before)
+    if (fresh !== '') this.log.push(fresh)
+  }
+
   async capture(action: () => Promise<unknown>, full = true): Promise<void> {
+    const before = await this.heardLast()
     const got = await voiceOver.capture(action, { capture: full ? true : 'initial' })
-    if (got.spokenPhrase !== '') this.log.push(got.spokenPhrase)
+    this.keep(got.spokenPhrase, before)
     if (got.itemText !== '') this.item = got.itemText
   }
 
@@ -253,37 +288,46 @@ class Session implements Ctx {
     )
   }
 
-  /** The sentences said inside `scope` since the recorder's entry `from`. */
-  private async saidIn(scope: Locator, from: number): Promise<string[]> {
+  /**
+   * The sentences said inside `scope` since the recorder's entry `from`, by
+   * the elements each was inside when it was said. `scope` is the element
+   * itself where it was found before the action, so a sheet the action
+   * closed still answers for what was said in it.
+   */
+  private async saidIn(scope: Locator | ElementHandle, from: number): Promise<string[]> {
+    const inScope = (root: Element, since: number): string[] =>
+      ((window as unknown as { __readerSaid?: SaidEntry[] }).__readerSaid ?? [])
+        .slice(since)
+        .filter((entry) => entry.within.includes(root))
+        .map((entry) => entry.text)
     try {
-      return await scope.evaluate(
-        (root, since) => {
-          const said =
-            (window as unknown as { __readerSaid?: { id: string; text: string }[] }).__readerSaid ??
-            []
-          return said
-            .slice(since)
-            .filter((entry) => {
-              const element = document.querySelector(`[data-reader-id="${entry.id}"]`)
-              return element !== null && (root === element || root.contains(element))
-            })
-            .map((entry) => entry.text)
-        },
-        from,
-        { timeout: 2 * SECOND },
-      )
+      if ('elementHandle' in scope) {
+        return await scope.evaluate(inScope, from, { timeout: 2 * SECOND })
+      }
+      return await scope.evaluate(inScope, from)
     } catch {
       return []
     }
   }
 
+  /** Each scope's element as it is now, where it is there, for `saidIn` after the action. */
+  private async held(saids: readonly Said[]): Promise<(ElementHandle | null)[]> {
+    return Promise.all(
+      saids.map((said) => said.scope.elementHandle({ timeout: 500 }).catch(() => null)),
+    )
+  }
+
   /** What `said` came to hold since `from`, once it has ended and held still; listening meanwhile. */
-  private async sentencesOf(said: Said, from: number): Promise<string[]> {
+  private async sentencesOf(
+    said: Said,
+    from: number,
+    held: ElementHandle | null = null,
+  ): Promise<string[]> {
     const deadline = Date.now() + (said.deadlineMs ?? SAID_MS)
     let seen: string[] = []
     let stillSince = Date.now()
     for (;;) {
-      const now = await this.saidIn(said.scope, from)
+      const now = await this.saidIn(held ?? said.scope, from)
       if (now.join('\n') !== seen.join('\n')) {
         seen = now
         stillSince = Date.now()
@@ -392,10 +436,10 @@ class Session implements Ctx {
     }
   }
 
-  /** The words a container is to be heard by: its name and its role. */
+  /** The words a container is to be heard by: its role, and its name where it has one. */
   private async containerWants(within: Locator): Promise<Want[]> {
     const { role, name } = parseSnapshotLine(await within.ariaSnapshot({ timeout: 5 * SECOND }))
-    return wantsOf({ role, name, states: [], level: null, value: null, description: null })
+    return containerWants(role, name)
   }
 
   private async wantsOfFocus(also: Also = {}): Promise<{ wants: Want[]; on: string }> {
@@ -431,6 +475,8 @@ class Session implements Ctx {
     from: number,
     deadlineMs = HEAR_MS,
   ): Promise<void> {
+    // A hearing that wants nothing is heard whatever was said.
+    if (wants.length === 0) throw new Error(`${action}: nothing to listen for`)
     const end = Date.now() + deadlineMs
     let left = missing(this.log.slice(from), wants)
     while (left.length > 0 && Date.now() < end) {
@@ -496,6 +542,9 @@ class Session implements Ctx {
     const action = `${key} on ${await this.onNow()}`
     const from = this.log.length
     const saidFrom = await this.saidCount()
+    const saids: readonly Said[] =
+      after.said === undefined ? [] : Array.isArray(after.said) ? after.said : [after.said as Said]
+    const held = await this.held(saids)
     await this.capture(() => this.page.keyboard.press(key))
     const wants: Want[] = []
     if (after.focus !== undefined) {
@@ -508,10 +557,8 @@ class Session implements Ctx {
       wants.push(...(await this.wantsOfFocus(after.also)).wants)
     }
     if (after.words !== undefined) wants.push(...(await after.words()).map(wantText))
-    const saids =
-      after.said === undefined ? [] : Array.isArray(after.said) ? after.said : [after.said]
-    for (const said of saids as Said[]) {
-      wants.push(...(await this.sentencesOf(said, saidFrom)).map(wantText))
+    for (const [at, said] of saids.entries()) {
+      wants.push(...(await this.sentencesOf(said, saidFrom, held[at] ?? null)).map(wantText))
     }
     await this.hear(action, wants, from)
   }
@@ -522,13 +569,14 @@ class Session implements Ctx {
     steps: number,
     move: () => Promise<void>,
   ): Promise<void> {
-    const wants = texts.filter((t) => t.trim() !== '').map(wantText)
+    // An empty term or value would be heard in anything: refused, not skipped.
+    const wants = texts.map(wantText)
     if (wants.length === 0) throw new Error(`${action}: nothing to listen for`)
     const from = this.log.length
     for (let step = 0; step < steps; step += 1) {
+      const before = await this.heardLast()
       await move()
-      const phrase = await voiceOver.lastSpokenPhrase()
-      if (phrase !== '') this.log.push(phrase)
+      this.keep(await voiceOver.lastSpokenPhrase(), before)
       this.item = (await voiceOver.itemText()) || this.item
       if (missing(this.log.slice(from), wants).length === 0) break
     }
@@ -634,7 +682,8 @@ class Session implements Ctx {
   }
 
   async texts(target: Locator): Promise<string[]> {
-    return (await target.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean)
+    // Empty ones kept: a definition with no value is a finding, not nothing.
+    return (await target.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim())
   }
 
   async description(target: Locator): Promise<string> {

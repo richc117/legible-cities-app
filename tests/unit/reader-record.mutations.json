@@ -41,8 +41,8 @@
   },
   {
     "file": "tests/reader/transcript.ts",
-    "find": "  return text.replace(/[;|]/g, ',')",
-    "replace": "  return text.replace(/[|]/g, ',')",
+    "find": "withoutPaths(text).replace(/[;|]/g, ',')",
+    "replace": "withoutPaths(text).replace(/[|]/g, ',')",
     "test": "tests/unit/reader-record.test.ts",
     "title": "keeps the clause in one cell",
     "why": "A semicolon in a phrase would end the clause early and the record test would read a stray one."
@@ -78,5 +78,77 @@
     "test": "tests/unit/reader-record.test.ts",
     "title": "reads the walkthrough",
     "why": "A bold name broken over two lines would be lost, and its row unwalked."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "    pressed: ['selected', 'pressed'],\n",
+    "replace": "    pressed: ['selected', 'pressed', 'on'],\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "does not hear checked or pressed",
+    "why": "\"on\" would be heard as a toggle pressed, which VoiceOver also says of a switch that is on."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  const affirmed = heard.replace(/ not (?=(checked|selected) )\\S+/g, ' ')\n",
+    "replace": "  const affirmed = heard\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "does not hear checked or pressed",
+    "why": "\"not checked\" would be heard as checked."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "    else heard = without(heard, found)\n",
+    "replace": "    else heard = heard\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "does not take a role or a state word",
+    "why": "A role word inside a control's name would stand for its role."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (normalise(text).trim() === '') {\n",
+    "replace": "  if (normalise(text).trim() === 'never') {\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "refuses to want nothing",
+    "why": "An empty text is found in anything, so a row wanting it is heard whatever was said."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (reading.name.trim() === '') {\n",
+    "replace": "  if (reading.name.trim() === 'never') {\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "refuses to want nothing",
+    "why": "A control with no name would be heard by its role word alone."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "b === phrase || b.endsWith(phrase)",
+    "replace": "b === phrase",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "does not credit an action",
+    "why": "The tail of the phrase before an action, reported again by Guidepup, would be credited to the action."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  return withoutPaths(text).replace",
+    "replace": "  return text.replace",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "writes no path into a clause",
+    "why": "A machine's folder path would be written into the public record."
+  },
+  {
+    "file": "tests/reader/parts.ts",
+    "find": "      await c.walk(exportOne, [NOTHING_YET], 6)\n",
+    "replace": "      await c.walk(exportOne, [NOTHING_YET, 'Outputs'], 6)\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "types no word into what a row is to hear",
+    "why": "A word typed into a walk is heard against itself, not against the app."
+  },
+  {
+    "file": "tests/reader/parts.ts",
+    "find": "        words: async () => [SIZES_RESET_SAID],\n",
+    "replace": "        words: async () => [SIZES_RESET_SAID, 'Sizes'],\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "types no word into what a row is to hear",
+    "why": "A word typed into what a press is to be heard with is heard against itself."
   }
 ]

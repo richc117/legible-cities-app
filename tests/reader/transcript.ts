@@ -69,7 +69,7 @@ export const SYNONYMS: {
   states: {
     expanded: ['expanded'],
     collapsed: ['collapsed'],
-    pressed: ['selected', 'pressed', 'on'],
+    pressed: ['selected', 'pressed'],
     checked: ['checked', 'selected'],
     unchecked: ['unchecked', 'not checked', 'not selected'],
     on: ['on'],
@@ -96,10 +96,19 @@ export interface Reading {
   description: string | null
 }
 
-/** One thing a row expects to hear: shown as `said`, heard when any of `any` is. */
+/**
+ * One thing a row expects to hear: shown as `said`, heard when any of `any`
+ * is. A `text` is the page's own words (a name, a value, a description, a
+ * sentence); a `word` is a role's, a state's or a level's, looked for only
+ * in what is left once the texts heard have been taken out, so a role word
+ * inside a name cannot stand for the role. A `positive` word (checked,
+ * pressed) is not heard in "not checked" or "not selected".
+ */
 export interface Want {
   said: string
   any: readonly string[]
+  kind: 'text' | 'word'
+  positive?: boolean
 }
 
 /**
@@ -119,8 +128,16 @@ export function normalise(text: string): string {
   return ` ${words} `
 }
 
-/** A sentence or a name, wanted as the page has it. */
-export const wantText = (text: string): Want => ({ said: text, any: [text] })
+/**
+ * A sentence or a name, wanted as the page has it. Text with no letter or
+ * digit in it would be heard in anything, so it is refused.
+ */
+export function wantText(text: string): Want {
+  if (normalise(text).trim() === '') {
+    throw new Error(`nothing to hear in ${JSON.stringify(text)}`)
+  }
+  return { said: text, any: [text], kind: 'text' }
+}
 
 /** A role's words from the table; a role the table does not know is an error, never a pass. */
 export function roleWant(role: string): Want {
@@ -128,10 +145,18 @@ export function roleWant(role: string): Want {
   if (words === undefined) {
     throw new Error(`the synonyms table has no words for the role "${role}"`)
   }
-  return { said: role, any: words }
+  return { said: role, any: words, kind: 'word' }
 }
 
-export const stateWant = (state: State): Want => ({ said: state, any: SYNONYMS.states[state] })
+/** States a negation can hide: "not checked" and "not selected" are neither. */
+const POSITIVE: readonly State[] = ['checked', 'pressed']
+
+export const stateWant = (state: State): Want => ({
+  said: state,
+  any: SYNONYMS.states[state],
+  kind: 'word',
+  positive: POSITIVE.includes(state),
+})
 
 /**
  * The role and the name in the first line of Playwright's accessibility
@@ -171,11 +196,15 @@ export interface Also {
  * the row says they are read with it.
  */
 export function wantsOf(reading: Reading, also: Also = {}): Want[] {
-  const wants: Want[] = []
-  if (reading.name.trim() !== '') wants.push(wantText(reading.name))
+  if (reading.name.trim() === '') {
+    throw new Error(`the ${reading.role} focus is on has no name to hear`)
+  }
+  const wants: Want[] = [wantText(reading.name)]
   wants.push(roleWant(reading.role))
   for (const state of reading.states) wants.push(stateWant(state))
-  if (reading.level !== null) wants.push(wantText(`level ${reading.level}`))
+  if (reading.level !== null) {
+    wants.push({ said: `level ${reading.level}`, any: [`level ${reading.level}`], kind: 'word' })
+  }
   if (also.value === true && reading.value !== null && reading.value.trim() !== '') {
     wants.push(wantText(reading.value))
   }
@@ -188,10 +217,61 @@ export function wantsOf(reading: Reading, also: Also = {}): Want[] {
   return wants
 }
 
-/** The wants none of the phrases holds. */
+/**
+ * The words a container is heard by, its name where it has one and its
+ * role: a group or a landmark may be nameless, which a control may not be.
+ */
+export function containerWants(role: string, name: string): Want[] {
+  return name.trim() === '' ? [roleWant(role)] : [wantText(name), roleWant(role)]
+}
+
+/** `text` with its first `part` taken out; both normalised. */
+const without = (text: string, part: string): string => {
+  const at = text.indexOf(part)
+  return at < 0 ? text : `${text.slice(0, at)} ${text.slice(at + part.length)}`
+}
+
+/**
+ * The wants the phrases do not hold. Texts first, each taken out of what
+ * was heard once found; then the role, state and level words, in what is
+ * left, with "not checked" and "not selected" taken out too before a
+ * positive state is looked for.
+ */
 export function missing(spoken: readonly string[], wants: readonly Want[]): Want[] {
-  const heard = normalise(spoken.join(' '))
-  return wants.filter((want) => !want.any.some((word) => heard.includes(normalise(word))))
+  let heard = normalise(spoken.join(' '))
+  const left: Want[] = []
+  for (const want of wants.filter((w) => w.kind === 'text')) {
+    const found = want.any.map(normalise).find((word) => heard.includes(word))
+    if (found === undefined) left.push(want)
+    else heard = without(heard, found)
+  }
+  const affirmed = heard.replace(/ not (?=(checked|selected) )\S+/g, ' ')
+  for (const want of wants.filter((w) => w.kind === 'word')) {
+    const inText = want.positive === true ? affirmed : heard
+    if (!want.any.some((word) => inText.includes(normalise(word)))) left.push(want)
+  }
+  return wants.filter((want) => left.includes(want))
+}
+
+/**
+ * What VoiceOver said for one action, without what it had said before it.
+ * Guidepup polls for the last phrase and, after some 650 ms of seeing the
+ * same one or after an empty capture, reports that phrase as new: so a
+ * quiet action can come back with the phrase before it. `before` is what
+ * was last heard just before the action; a phrase (Guidepup joins several
+ * with ". ") that is one of them, or that one of them ends with, is not
+ * this action's and is dropped.
+ */
+export function freshPhrase(captured: string, before: readonly string[]): string {
+  const earlier = before.map((b) => b.trim()).filter((b) => b !== '')
+  const stale = (phrase: string): boolean => earlier.some((b) => b === phrase || b.endsWith(phrase))
+  const whole = captured.trim()
+  if (whole === '' || stale(whole)) return ''
+  return whole
+    .split('. ')
+    .map((p) => p.trim())
+    .filter((p) => p !== '' && !stale(p) && !stale(`${p}.`))
+    .join('. ')
 }
 
 /** One action of a row and what VoiceOver said for it. */
@@ -281,12 +361,23 @@ export function runBracket(facts: RunFacts): string {
 }
 
 /**
- * Free text made safe for a clause: no `;`, which ends a clause, no `|`,
- * which ends a table cell, no line break, and no straight double quote,
- * which closes the not-heard clause's phrase.
+ * An absolute path in a sentence written as `<path>`: the record and the
+ * transcript are public, and a folder's path is a machine's, not the app's
+ * words. POSIX (`/Users/…`, `/private/…`, `~/…`) and Windows (`C:\…`).
+ */
+export function withoutPaths(text: string): string {
+  return text
+    .replace(/(^|[\s("'“‘])(?:~|\/)\/?[^\s"'”’;|,)]*[^\s"'”’;|,).]/g, '$1<path>')
+    .replace(/\b[A-Za-z]:\\[^\s"'”’;|,)]*[^\s"'”’;|,).]?/g, '<path>')
+}
+
+/**
+ * Free text made safe for a clause: no path, no `;`, which ends a clause,
+ * no `|`, which ends a table cell, no line break, and no straight double
+ * quote, which closes the not-heard clause's phrase.
  */
 export function clauseText(text: string): string {
-  return text.replace(/[;|]/g, ',').replace(/"/g, "'").replace(/\s+/g, ' ').trim()
+  return withoutPaths(text).replace(/[;|]/g, ',').replace(/"/g, "'").replace(/\s+/g, ' ').trim()
 }
 
 /** Where a person writes the issue a not-heard clause needs; the record refuses the cell until they do. */
@@ -444,7 +535,7 @@ export function voiceOverCell(markdown: string, table: string): string {
 
 // --------------------------------------------------------- the transcript
 
-const quoted = (text: string): string => `"${text.replace(/\s+/g, ' ')}"`
+const quoted = (text: string): string => `"${withoutPaths(text).replace(/\s+/g, ' ')}"`
 
 /**
  * The run as a person reads it: each row, its outcome, and for each action
@@ -461,6 +552,8 @@ export function renderTranscript(results: readonly PartResult[], facts: RunFacts
   out.push(
     '',
     'Heard is not a pass: no one listened. Each phrase below is what VoiceOver said.',
+    '',
+    `Before any clause is committed to docs/accessibility.md, each ${ISSUE_TO_FILE} in a not-heard clause must be replaced with the number of an issue filed for what was not heard: the record's test refuses the cell until it is.`,
     '',
   )
   const counts = { heard: 0, 'heard in part': 0, 'not heard': 0, 'not scripted': 0, error: 0 }
@@ -481,17 +574,19 @@ export function renderTranscript(results: readonly PartResult[], facts: RunFacts
         out.push(`Outcome: heard in part; not scripted: ${outcome.notScripted}`)
         break
       case 'not heard':
-        out.push(`Outcome: not heard: ${quoted(outcome.phrase)} expected after ${outcome.action}`)
+        out.push(
+          `Outcome: not heard: ${quoted(outcome.phrase)} expected after ${withoutPaths(outcome.action)}`,
+        )
         break
       case 'not scripted':
         out.push(`Outcome: not scripted: ${result.notScripted ?? ''}`)
         break
       case 'error':
-        out.push(`Outcome: stopped: ${outcome.message}`)
+        out.push(`Outcome: stopped: ${withoutPaths(outcome.message)}`)
         break
     }
     for (const hearing of result.hearings) {
-      out.push('', `- ${hearing.action}`)
+      out.push('', `- ${withoutPaths(hearing.action)}`)
       out.push(`  - wanted: ${hearing.wants.map(quoted).join(', ')}`)
       out.push(
         `  - spoken: ${hearing.spoken.length === 0 ? '(nothing)' : hearing.spoken.map(quoted).join(' / ')}`,
