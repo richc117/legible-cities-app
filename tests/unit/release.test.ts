@@ -1561,12 +1561,13 @@ describe('build.yml, signing mode', () => {
     expect(key(notarize, 'if')).toBe(
       `\${{ !cancelled() && needs.package.result == 'success' && ${MODE} }}`,
     )
-    expect(key(notarize, 'environment')).toBe(`\${{ ${MODE} && 'release-signing' || '' }}`)
-    // Two jobs, and the two places the environment is named as a value: a
-    // job that named it outright would have GitHub make it, with no rule
-    // and no reviewer, on a branch run.
+    expect(key(notarize, 'environment')).toBe(`\${{ ${MODE} && 'release-notarize' || '' }}`)
+    // Two jobs, each naming its own environment once, as a value: a job
+    // that named one outright would have GitHub make it, with no rule and
+    // no reviewer, on a branch run.
     expect(code.match(/^\s*environment:/gm)).toHaveLength(2)
-    expect(code.match(/'release-signing'/g)).toHaveLength(2)
+    expect(code.match(/'release-signing'/g)).toHaveLength(1)
+    expect(code.match(/'release-notarize'/g)).toHaveLength(1)
     // Packaging takes minutes with or without a certificate: main's limit.
     expect(key(pkg, 'timeout-minutes')).toBe('60')
   })
@@ -1630,7 +1631,7 @@ describe('build.yml, signing mode', () => {
     }
     // The environment follows the run, not the packaging jobs' result: it
     // is the empty string on every run that is not a signing run.
-    expect(evaluate(environment, { github: tag, vars: ON })).toBe('release-signing')
+    expect(evaluate(environment, { github: tag, vars: ON })).toBe('release-notarize')
     expect(evaluate(environment, { github: tag, vars: {} })).toBe('')
     expect(evaluate(environment, { github: branch, vars: ON })).toBe('')
     expect(evaluate(environment, { github: dispatch, inputs: {}, vars: ON })).toBe('')
@@ -1707,9 +1708,10 @@ describe('build.yml, signing mode', () => {
     }
   })
 
-  it('names ten secrets in all, in four steps of two jobs, and in no job-level key', () => {
-    // Mutation: the notary's key in the packaging job's own env, where
-    // every step of the job that runs npm's code would be handed it.
+  it('names ten secrets in all, each half in the one job that joins its environment', () => {
+    // Mutation: the notary's key named in the packaging job, in its own env
+    // or in a step, or the two jobs put in one environment: either way the
+    // key is back within reach of the job that runs npm's code.
     const named: { job: string; where: string; line: string }[] = []
     for (const name of jobNames) {
       const job = jobOf(name)
@@ -1741,6 +1743,29 @@ describe('build.yml, signing mode', () => {
     // of its own shape, or by another road to every secret at once.
     expect(code.match(/secrets\./g)).toHaveLength(10)
     expect(code).not.toMatch(/\bsecrets\s*[:[]|toJSON\(\s*secrets|secrets\s*\)/)
+    // Each half is an environment's of its own, and one job joins each: a
+    // job cannot be handed a secret of an environment it is not in, so the
+    // packaging job, which runs npm's code, is out of the key's reach by
+    // where the key is kept, not by what the job happens to name.
+    const joins = (job: Job): string[] =>
+      [...job.head.matchAll(/^ {4}environment: .*$/gm)].flatMap((line) =>
+        [...line[0].matchAll(/'(release-[a-z-]+)'/g)].map((match) => match[1]),
+      )
+    const half = (job: string): string[] => [
+      ...new Set(
+        named
+          .filter((entry) => entry.job === job)
+          .map((entry) => (/secrets\.([A-Z0-9_]+)/.exec(entry.line) as RegExpExecArray)[1]),
+      ),
+    ]
+    expect(joins(pkg)).toEqual(['release-signing'])
+    expect(half('package')).toEqual(certificate)
+    expect(joins(notarize)).toEqual(['release-notarize'])
+    expect(half('notarize')).toEqual(notary)
+    for (const name of jobNames.filter((other) => !['package', 'notarize'].includes(other))) {
+      expect(joins(jobOf(name)), name).toEqual([])
+      expect(jobOf(name).head, name).not.toMatch(/^ {4}environment:/m)
+    }
   })
 
   it('never gives electron-builder a certificate or a notary variable under its own name at a step', () => {
@@ -1906,10 +1931,17 @@ describe('build.yml, signing mode', () => {
     const config = (identity: string): string =>
       `extends: ./electron-builder.yml\nmac:\n  # the team\n  identity: '${identity}'\n  notarize: false\ndmg:\n  sign: true\n`
     /** The two refusals, each with the secrets its job is asked about. */
-    const REFUSALS: { job: Job; name: string; secrets: string[]; passes: string }[] = [
+    const REFUSALS: {
+      job: Job
+      name: string
+      environment: string
+      secrets: string[]
+      passes: string
+    }[] = [
       {
         job: pkg,
         name: REFUSE_SIGN,
+        environment: 'release-signing',
         secrets: ['MAC_CERT_P12_BASE64', 'MAC_CERT_PASSWORD'],
         passes:
           'signing mode: every secret this job is given has a value, and the identity is team ABCDE12345\n',
@@ -1917,6 +1949,7 @@ describe('build.yml, signing mode', () => {
       {
         job: notarize,
         name: REFUSE_NOTARISE,
+        environment: 'release-notarize',
         secrets: ['NOTARY_KEY_P8', 'NOTARY_KEY_ID', 'NOTARY_ISSUER_ID'],
         passes: 'signing mode: every secret this job is given has a value\n',
       },
@@ -1950,7 +1983,7 @@ describe('build.yml, signing mode', () => {
         })
         expect(one.status, refusal.name).toBe(1)
         expect(one.stdout, refusal.name).toBe(
-          `::error::signing mode, and the release-signing environment gave this job no value for: ${last}\n`,
+          `::error::signing mode, and the ${refusal.environment} environment gave this job no value for: ${last}\n`,
         )
         // A job outside the environment is told nothing at all.
         const none = run(script(refusal.job, refusal.name), dir, { PATH: path })

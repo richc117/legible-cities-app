@@ -25,29 +25,33 @@
 # while the repository variable MAC_SIGNING is not `on`, which is how a
 # candidate is cut before there is a certificate to sign it with. Signing
 # mode needs all of: that variable on, a Mac target, and a pushed tag that
-# starts with v or a dispatch with `sign` ticked. Only then is a job in the
-# `release-signing` environment, whose deployment rule and required reviewer
-# stand between a run and the secrets. Two jobs are, and each is handed its
-# half and no more:
+# starts with v or a dispatch with `sign` ticked. Only then is a job in an
+# environment, whose deployment rule and required reviewer stand between a
+# run and its secrets. Two jobs are, each in an environment of its own that
+# holds its half of the secrets and nothing of the other's:
 #
-#   package    the Developer ID certificate. electron-builder signs with it,
-#              from electron-builder.release.yml, so the certificate is in
-#              the step that runs the packager and its hooks, which is npm's
+#   package    in `release-signing`, which holds the Developer ID
+#              certificate. electron-builder signs with it, from
+#              electron-builder.release.yml, so the certificate is in the
+#              step that runs the packager and its hooks, which is npm's
 #              code. The signed image is uploaded as unnotarised-<target>.
-#   notarize   the notary's key. A fresh runner that checks out the two
-#              scripts and the release config and nothing else, installs
-#              nothing and runs no npm code: it downloads the signed image,
-#              notarises and staples it, checks it the way a Mac will, and
-#              uploads it as installer-<target>.
+#   notarize   in `release-notarize`, which holds the notary's key. A fresh
+#              runner that checks out the two scripts and the release config
+#              and nothing else, installs nothing and runs no npm code: it
+#              downloads the signed image, notarises and staples it, checks
+#              it the way a Mac will, and uploads it as installer-<target>.
 #
 # A later step of the packaging job would not have kept the key from that
 # job's npm code: an earlier step can leave a PATH entry, a BASH_ENV or a
-# process behind for a later one to meet. Another runner has none of them,
-# and the packaging job names no secret of the notary's anywhere. The
-# release, attest and verify jobs take installer-<target> as they always
-# did, so they see the stapled bytes. The Windows installer is not signed
-# (ADR-054). The ffmpeg the installers carry is this repository's own build
-# (issue 95, ADR-040).
+# process behind for a later one to meet. Another runner has none of them.
+# And one environment for both would have left the key within the packaging
+# job's reach, to be kept from it only by what the job happens to name: a
+# job cannot be handed a secret of an environment it is not in, so the
+# notary's key is out of the packaging job's reach by where it is kept, and
+# the certificate out of the notarising job's. The release, attest and
+# verify jobs take installer-<target> as they always did, so they see the
+# stapled bytes. The Windows installer is not signed (ADR-054). The ffmpeg
+# the installers carry is this repository's own build (issue 95, ADR-040).
 #
 # This runs on request, on a push to any branch that changes what it
 # packages or how the app finds it, src/main and the npm manifests included,
@@ -86,7 +90,7 @@ on:
       # repository variable MAC_SIGNING to be `on`; while it is not, a
       # dispatch that ticks this is refused, in its first minute.
       sign:
-        description: 'Sign the Mac installers with the Developer ID and notarise them (needs the MAC_SIGNING variable on; waits for the release-signing environment)'
+        description: 'Sign the Mac installers with the Developer ID and notarise them (needs the MAC_SIGNING variable on; waits for approval twice, to sign and to notarise)'
         type: boolean
         default: false
   push:
@@ -150,14 +154,14 @@ jobs:
     # Signing mode (ADR-062): a Mac target, with the repository variable
     # MAC_SIGNING on, on a pushed v* tag or on a dispatch that asked for it.
     # Only then is the job in the release-signing environment, which holds
-    # the certificate behind its deployment rule and its required reviewer.
-    # For every other run the expression is the empty string, which is no
-    # environment at all: no deployment, no approval, no secret. So a v tag
-    # pushed while the variable is off builds ad hoc, as every tag did before
-    # there was anything to sign with. The condition is written here and for
-    # SIGN below, because a job's `environment` cannot read its `env`, and
-    # again, without the target, for the notarize job; a unit test holds
-    # every copy to the same text.
+    # the certificate, and nothing else, behind its deployment rule and its
+    # required reviewer. For every other run the expression is the empty
+    # string, which is no environment at all: no deployment, no approval, no
+    # secret. So a v tag pushed while the variable is off builds ad hoc, as
+    # every tag did before there was anything to sign with. The condition is
+    # written here and for SIGN below, because a job's `environment` cannot
+    # read its `env`, and again, without the target, for the notarize job;
+    # a unit test holds every copy to the same text.
     environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}
     strategy:
       fail-fast: false
@@ -185,17 +189,17 @@ jobs:
         if: ${{ startsWith(matrix.target, 'darwin-') && github.event_name == 'workflow_dispatch' && inputs.sign == true && vars.MAC_SIGNING != 'on' }}
         shell: bash
         run: |
-          echo "::error::this dispatch asked to sign, and the repository variable MAC_SIGNING is not 'on', so nothing here would be signed. Turn it on once the release-signing environment, its rule, its reviewer and its secrets exist (docs/repository-settings.md), or dispatch without sign"
+          echo "::error::this dispatch asked to sign, and the repository variable MAC_SIGNING is not 'on', so nothing here would be signed. Turn it on once both environments exist, each with its rule, its reviewer and its secrets (docs/repository-settings.md), or dispatch without sign"
           exit 1
 
       # Signing mode only, and first, so a run that cannot sign stops before
       # anything is installed or built. No secret is handed to this step:
       # each line says only whether the environment gave one, worked out
       # before the shell starts. A missing environment, or a job outside it,
-      # reads as empty secrets. The notary's key is not asked about here:
-      # this job never names it, and the notarize job refuses for itself.
-      # TEAMID_TBD is the placeholder electron-builder.release.yml holds
-      # until the Team ID is written in.
+      # reads as empty secrets. The notary's key is not asked about here: it
+      # is another environment's, which this job is never in, and the
+      # notarize job refuses for itself. TEAMID_TBD is the placeholder
+      # electron-builder.release.yml holds until the Team ID is written in.
       - name: Refuse to sign without the certificate and the Team ID
         if: env.SIGN == 'true'
         shell: bash
@@ -483,6 +487,12 @@ jobs:
   # from the packaging job is one file, the signed image, which it never
   # runs: it is hashed, submitted, mounted read-only and judged.
   #
+  # Its environment is release-notarize, which holds the notary's key and
+  # nothing else, and which no other job joins. The packaging job's is
+  # release-signing, which holds the certificate and nothing else. So
+  # neither job can be handed the other's secrets, whatever either names:
+  # they are not in an environment it is in.
+  #
   # The condition is the packaging job's, without the target: this job's
   # matrix is the two Macs. On every other run the job is skipped, and its
   # `environment` is the empty string besides, so a branch build never names
@@ -497,7 +507,7 @@ jobs:
     # The two limited steps below, 90 and 80 minutes, and the transfers
     # around them. A run that is going well takes a few minutes.
     timeout-minutes: 180
-    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}
+    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-notarize' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -536,7 +546,7 @@ jobs:
             if [ "${!has:-}" != true ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
-            echo "::error::signing mode, and the release-signing environment gave this job no value for:$missing"
+            echo "::error::signing mode, and the release-notarize environment gave this job no value for:$missing"
             exit 1
           fi
           echo "signing mode: every secret this job is given has a value"

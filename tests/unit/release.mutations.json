@@ -193,8 +193,8 @@
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}",
-    "replace": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || 'release-signing' }}",
+    "find": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-notarize' || '' }}",
+    "replace": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-notarize' || 'release-notarize' }}",
     "test": "tests/unit/release.test.ts",
     "title": "notarises only in a signing run whose every packaging job succeeded",
     "why": "The notarising job naming the environment on every run: a branch build has GitHub make it, with no rule and no reviewer, before the maintainer does."
@@ -244,15 +244,15 @@
     "find": "      TARGET: ${{ matrix.target }}\n      # 'true' in signing mode",
     "replace": "      TARGET: ${{ matrix.target }}\n      NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n      # 'true' in signing mode",
     "test": "tests/unit/release.test.ts",
-    "title": "names ten secrets in all, in four steps of two jobs, and in no job-level key",
-    "why": "The notary's key in the packaging job's own env: every step of the job that runs npm's code is handed it, which is what the separate job exists to prevent."
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The notary's key named in the packaging job's own env: the job that runs npm's code, in the certificate's environment, asks for a secret of the other one. Where a secret of that name exists within its reach, every step is handed it."
   },
   {
     "file": ".github/workflows/build.yml",
     "find": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n",
     "replace": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n",
     "test": "tests/unit/release.test.ts",
-    "title": "names ten secrets in all, in four steps of two jobs, and in no job-level key",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
     "why": "The notary's key in the packaging step: it sits in the environment of the one step that runs the packager and its hooks."
   },
   {
@@ -260,7 +260,7 @@
     "find": "          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}\n",
     "replace": "          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}\n          HAS_NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 != '' }}\n",
     "test": "tests/unit/release.test.ts",
-    "title": "names ten secrets in all, in four steps of two jobs, and in no job-level key",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
     "why": "The packaging job asking whether the notary's key exists: a secret a job names at all is a secret its runner is sent."
   },
   {
@@ -462,5 +462,21 @@
     "test": "tests/unit/release.test.ts",
     "title": "notarising leaves a Gatekeeper that is on alone, and says so twice",
     "why": "A setting of the machine's changed with sudo on every signing run, needed or not: the one use of root in the job would run where nothing asked for it."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && 'release-notarize' || '' }}",
+    "replace": " && 'release-signing' || '' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The notarising job put in the certificate's environment: with one environment for both halves, the notary's key is within the packaging job's reach again, kept from it only by what that job names."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "inputs.sign == true)) && 'release-signing' || '' }}",
+    "replace": "inputs.sign == true)) && 'release-notarize' || '' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The packaging job put in the notary's environment: the job that runs npm's code is in reach of the notary's key, and finds no certificate there to sign with."
   }
 ]
