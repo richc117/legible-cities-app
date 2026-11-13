@@ -158,5 +158,37 @@
     "test": "tests/unit/quit-guard.test.ts",
     "title": "takes the report through its shape, and refuses one that is not a report",
     "why": "A report of the wrong shape dropped in silence: the page is never told that main is not hearing what it runs."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    // The app's own quit, never asked about: the page that would ask is gone.\n    () => quitGuard.quit(),\n",
+    "replace": "    // The app's own quit, never asked about: the page that would ask is gone.\n    () => app.quit(),\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "quits through the guard everywhere but in the guard’s own quit",
+    "why": "The crash box's Quit made a quit of a person's: with an export running and the page reloaded it is held for a question, behind a box that offered to quit."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    quit: () => {\n      if (!quit.quitting) quitGuard.quit()\n    },\n",
+    "replace": "    quit: () => {\n      if (!quit.quitting) app.quit()\n    },\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "quits through the guard everywhere but in the guard’s own quit",
+    "why": "The quit that follows the window made a quit of a person's: with nothing left to ask, a run the page never reported ended could hold it."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  window.on(\n    'close',\n    onAppWindowClose({\n      guard: quitGuard,\n      gate: quit,\n      closing: () => {\n        windowKept = keeper.closing()\n      },\n    }),\n  )\n",
+    "replace": "  window.on('close', () => {\n    windowKept = keeper.closing()\n  })\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hands before-quit and the window’s close to the composed handlers, over the one guard",
+    "why": "The window's close no longer asks: a window closed during an export closes, and the export is thrown away or left running unseen."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  window.webContents.on('render-process-gone', () => {\n    menuCommands.crashed()\n    quitGuard.gone()\n  })\n",
+    "replace": "  window.webContents.on('render-process-gone', () => {\n    menuCommands.crashed()\n  })\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hands before-quit and the window’s close to the composed handlers, over the one guard",
+    "why": "A renderer that died still counted as listening: a quit is held for a question sent to a dead page."
   }
 ]

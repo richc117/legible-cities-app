@@ -14,6 +14,8 @@
 // frame's word and refuse a wrong shape. Each was watched failing under its
 // mutation in `quit-guard.mutations.json`.
 
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import type { IpcMain, IpcMainInvokeEvent } from 'electron'
 import { describe, expect, it, vi } from 'vitest'
 import {
@@ -593,5 +595,58 @@ describe('the page’s three words', () => {
     expect(did, 'the question is still open, and nothing was done').toEqual(['ask quit'])
     await call(CHANNELS.quitAnswer, PAGE, 1, 'keep')
     expect(guard.beforeQuit(event(), false), 'answered: a later quit asks afresh').toBe(true)
+  })
+})
+
+// `index.ts` imports Electron and cannot be run here, so what it does with
+// the guard is read from its text, as `ipc.test.ts` reads the handlers: the
+// two handlers are the composed ones tested above, and every quit the main
+// process makes itself goes through the guard, or the crash box's Quit and
+// the quit that follows the window would be held for a question. The built
+// app is quit-guard.spec.ts's.
+describe('the guard in index.ts', () => {
+  const main = join(__dirname, '..', '..', 'src', 'main')
+  const index = readFileSync(join(main, 'index.ts'), 'utf8')
+  /** A file's code without its comment lines: the gate's own notes speak of `app.quit()`. */
+  const code = (text: string): string =>
+    text
+      .split('\n')
+      .filter((line) => !/^\s*(?:\/\/|\/\*|\*)/.test(line))
+      .join('\n')
+
+  it('quits through the guard everywhere but in the guard’s own quit', () => {
+    const direct = [...code(index).matchAll(/\bapp\.(?:quit|exit)\(/g)]
+    expect(direct, 'one direct quit: the one the guard is handed').toHaveLength(1)
+    expect(index).toContain('  quit: () => app.quit(),\n})')
+    // The quits that must never be asked about, each by the guard.
+    for (const through of [
+      // The crash box's Quit.
+      /crashBox\([^\n]*\),\n(?:\s*\/\/[^\n]*\n)*\s*\(\) => quitGuard\.quit\(\),/,
+      // A second instance.
+      /if \(!hasLock\) \{\n\s*quitGuard\.quit\(\)/,
+      // An uncaught exception.
+      /registerProcessHandlers\(process, \(\) => quitGuard\.quit\(\)\)/,
+      // The quit that follows the window on Windows and Linux, twice over.
+      /if \(!quit\.quitting\) quitGuard\.quit\(\)/,
+      /if \(process\.platform !== 'darwin'\) quitGuard\.quit\(\)/,
+    ])
+      expect(index).toMatch(through)
+    // And no other file of the main process quits the app at all.
+    for (const file of readdirSync(main).filter((name) => name.endsWith('.ts'))) {
+      if (file === 'index.ts') continue
+      expect(code(readFileSync(join(main, file), 'utf8')), file).not.toMatch(
+        /\bapp\.(?:quit|exit)\(/,
+      )
+    }
+  })
+
+  it('hands before-quit and the window’s close to the composed handlers, over the one guard', () => {
+    expect(index).toMatch(/app\.on\(\s*'before-quit',\s*onBeforeQuit\(\{\s*guard: quitGuard,/)
+    expect(index).toMatch(/window\.on\(\s*'close',\s*onAppWindowClose\(\{\s*guard: quitGuard,/)
+    // Electron's word that the page is, or is no longer, answering.
+    expect(index).toContain("window.on('unresponsive', () => quitGuard.unresponsive())")
+    expect(index).toContain("window.on('responsive', () => quitGuard.responsive())")
+    // The page going, each way it can go.
+    expect(index.match(/quitGuard\.gone\(\)/g), 'closed, navigated, died').toHaveLength(3)
   })
 })
