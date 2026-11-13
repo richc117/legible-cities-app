@@ -616,6 +616,36 @@ jobs:
           fi
           echo "the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else"
 
+      # The refusal above sees only what landed in the download's own
+      # folder. This holds the workspace itself to the checkout, still
+      # before the key exists: at this run's commit, the checked-out files
+      # as that commit has them, and nothing beside them, ignored names
+      # included. A file that reached the workspace by any road, an archive
+      # unpacked outside its folder among them, stops the job here. Git is
+      # told to take nothing from the folder it is judging that would run a
+      # program: no file-system monitor, no external diff, no conversion.
+      - name: Refuse a workspace that is not this run's checkout
+        shell: bash
+        run: |
+          git() { command git -c core.fsmonitor=false "$@"; }
+          head=$(git rev-parse --verify HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::the workspace is at commit ${head:0:12} and this run is for ${GITHUB_SHA:0:12}: it is not this run's checkout. Nothing was run, and the notary's key was not written"
+            exit 1
+          fi
+          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then
+            git status --porcelain --untracked-files=all --ignored
+            echo "::error::a checked-out file is not as the commit has it: something wrote over a script or the config this job is about to use with the notary's key. Nothing was run, and the key was not written"
+            exit 1
+          fi
+          stray=$(git status --porcelain --untracked-files=all --ignored)
+          if [ -n "$stray" ]; then
+            printf '%s\n' "$stray"
+            echo "::error::the workspace holds what the checkout did not put there (listed above), beside the files this job is about to use with the notary's key. Nothing was run, and the key was not written"
+            exit 1
+          fi
+          echo "the workspace is the checkout of ${GITHUB_SHA:0:12}: its files as committed, and nothing beside them"
+
       # spctl's verdicts mean nothing on a machine where Gatekeeper's
       # assessments are off: everything is accepted, signed or not. A runner
       # image can come that way, so they are turned on here if they are off,

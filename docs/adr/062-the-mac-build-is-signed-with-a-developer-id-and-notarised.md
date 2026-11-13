@@ -277,12 +277,14 @@ packaging job to the notarising job, the artefact, cannot carry code into
 it: it is unpacked into a folder of its own, not over the checkout, and
 is refused before the key is written unless it holds exactly one disk
 image and its target's manifest, both plain files, with no link and no
-third file. Without that second half the first would not hold: a
-packaging step that had turned hostile could ship a file named like one of
-the notarising job's scripts, or like the config it reads the team from,
-and have it run, or trusted, with the key in hand. The reverse of the
-first half holds as well: the notarising job is never in
-`release-signing`, and cannot sign.
+third file; and the workspace is then held to the checkout, at this
+run's commit with its files as committed and nothing beside them, in case
+anything landed outside that folder. Without that second half the first
+would not hold: a packaging step that had turned hostile could ship a file
+named like one of the notarising job's scripts, or like the config it
+reads the team from, and have it run, or trusted, with the key in hand.
+The reverse of the first half holds as well: the notarising job is never
+in `release-signing`, and cannot sign.
 
 **What is not stopped, and is accepted.** A packaging step that has turned
 hostile decides which bytes go into `unnotarised-<target>`, and the

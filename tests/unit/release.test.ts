@@ -1478,6 +1478,7 @@ describe('build.yml, signing mode', () => {
   const REFUSE_NOTARISE = "Refuse to notarise without the notary's key"
   const DOWNLOAD = 'Download the signed disk image'
   const REFUSE_DOWNLOAD = 'Refuse a download that holds anything but the image and its manifest'
+  const REFUSE_WORKSPACE = "Refuse a workspace that is not this run's checkout"
   const GATEKEEPER = "Turn Gatekeeper's assessments on if they are off"
   const NOTARISE = 'Notarise and staple the disk image'
   const VERIFY_IMAGE = 'Verify the notarised disk image'
@@ -1818,6 +1819,7 @@ describe('build.yml, signing mode', () => {
       '- uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
       DOWNLOAD,
       REFUSE_DOWNLOAD,
+      REFUSE_WORKSPACE,
       GATEKEEPER,
       NOTARISE,
       VERIFY_IMAGE,
@@ -1870,6 +1872,11 @@ describe('build.yml, signing mode', () => {
       .filter((candidate) => candidate.text.includes('notary-key.p8'))
       .map((candidate) => candidate.name)
     expect(writesKey).toEqual([NOTARISE])
+    // Then the workspace itself is held to the checkout, still before the
+    // key: what the refusal of the download cannot see is a file that landed
+    // outside the download's folder.
+    expect(at(notarize, REFUSE_WORKSPACE)).toBe(at(notarize, REFUSE_DOWNLOAD) + 1)
+    expect(at(notarize, REFUSE_WORKSPACE)).toBeLessThan(at(notarize, NOTARISE))
     // And every later step takes the image from where it was unpacked.
     for (const name of [NOTARISE, VERIFY_IMAGE]) {
       expect(script(notarize, name), name).toContain('images=("$RUNNER_TEMP/signed/release/"*.dmg)')
@@ -1895,8 +1902,8 @@ describe('build.yml, signing mode', () => {
     )
     expect(upload).toContain('if-no-files-found: error')
     // Stapled and checked before it is the installer.
-    const order = [REFUSE_DOWNLOAD, GATEKEEPER, NOTARISE, VERIFY_IMAGE].map((name) =>
-      at(notarize, name),
+    const order = [REFUSE_DOWNLOAD, REFUSE_WORKSPACE, GATEKEEPER, NOTARISE, VERIFY_IMAGE].map(
+      (name) => at(notarize, name),
     )
     expect([...order].sort((a, b) => a - b)).toEqual(order)
     expect(notarize.steps.length - 1).toBeGreaterThan(at(notarize, VERIFY_IMAGE))
@@ -2440,6 +2447,118 @@ describe('build.yml, signing mode', () => {
       // One line, the refusal's own, begins with `::`.
       expect(result.stdout.split('\n').filter((line) => line.startsWith('::'))).toHaveLength(1)
       expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
+    })
+
+    /**
+     * A workspace as the notarize job's checkout leaves it: a repository at
+     * one commit, holding the two scripts and the release config, with the
+     * run's commit in GITHUB_SHA. Git reads no configuration but its own.
+     */
+    const checkedOut = () => {
+      const { dir, path } = workspace({})
+      const env: Record<string, string> = {
+        PATH: path,
+        HOME: dir,
+        GIT_CONFIG_GLOBAL: '/dev/null',
+        GIT_CONFIG_NOSYSTEM: '1',
+      }
+      const git = (...args: string[]): string => {
+        const result = spawnSync('git', ['-C', dir, ...args], {
+          env,
+          encoding: 'utf8',
+          timeout: 30_000,
+        })
+        expect(result.status, `git ${args.join(' ')}: ${result.stderr}`).toBe(0)
+        return result.stdout.trim()
+      }
+      git('init', '--quiet')
+      git('config', 'user.name', 'Test')
+      git('config', 'user.email', 'test@example.invalid')
+      put(join(dir, '.gitignore'), 'node_modules/\n')
+      put(join(dir, 'scripts', 'notarize-dmg.mjs'), '// the script\n')
+      put(join(dir, 'scripts', 'verify-mac-signing.mjs'), '// the verifier\n')
+      put(join(dir, 'electron-builder.release.yml'), config('ABCDE12345'))
+      git('add', '.')
+      git('commit', '--quiet', '-m', 'the checkout')
+      const sha = git('rev-parse', 'HEAD')
+      const check = (over: Record<string, string> = {}) =>
+        run(script(notarize, REFUSE_WORKSPACE), dir, { ...env, GITHUB_SHA: sha, ...over })
+      return { dir, sha, git, check }
+    }
+    const NOT_WRITTEN = /Nothing was run, and the (notary's )?key was not written/
+
+    it("the workspace passes when it is this run's checkout and nothing more", () => {
+      const { sha, check } = checkedOut()
+      const result = check()
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(result.stdout).toBe(
+        `the workspace is the checkout of ${sha.slice(0, 12)}: its files as committed, and nothing beside them\n`,
+      )
+    })
+
+    it('the workspace is refused when a file has been planted in it, ignored names included', () => {
+      // Mutation: the workspace not looked at, so a file that reached it
+      // from outside the download's folder is run with the key.
+      const planted = checkedOut()
+      put(join(planted.dir, 'scripts', 'helper.mjs'), 'planted\n')
+      const stray = planted.check()
+      expect(stray.status).toBe(1)
+      expect(stray.stdout).toContain('?? scripts/helper.mjs\n')
+      expect(stray.stdout).toContain(
+        '::error::the workspace holds what the checkout did not put there',
+      )
+      expect(stray.stdout).toMatch(NOT_WRITTEN)
+      // A name the repository ignores is not a name the job may hold.
+      const ignored = checkedOut()
+      put(join(ignored.dir, 'node_modules', 'left-pad', 'index.js'), 'planted\n')
+      const hidden = ignored.check()
+      expect(hidden.status).toBe(1)
+      expect(hidden.stdout).toContain('!! node_modules/')
+      expect(hidden.stdout).toMatch(NOT_WRITTEN)
+    })
+
+    it('the workspace is refused when a checked-out file is not as the commit has it', () => {
+      // Mutation: only new files looked for, so a script written over in
+      // place, the very file about to be run with the key, passes.
+      const written = checkedOut()
+      put(join(written.dir, 'scripts', 'notarize-dmg.mjs'), '// another script\n')
+      const changed = written.check()
+      expect(changed.status).toBe(1)
+      expect(changed.stdout).toContain(' M scripts/notarize-dmg.mjs\n')
+      expect(changed.stdout).toContain('::error::a checked-out file is not as the commit has it')
+      expect(changed.stdout).toMatch(NOT_WRITTEN)
+      // The config the team is read from, and a file taken away.
+      const config2 = checkedOut()
+      put(join(config2.dir, 'electron-builder.release.yml'), config('ZYXWV98765'))
+      expect(config2.check().status).toBe(1)
+      const gone = checkedOut()
+      rmSync(join(gone.dir, 'scripts', 'verify-mac-signing.mjs'))
+      expect(gone.check().status).toBe(1)
+    })
+
+    it("the workspace is refused when it is at another commit than the run's", () => {
+      const { check } = checkedOut()
+      const result = check({ GITHUB_SHA: 'f'.repeat(40) })
+      expect(result.status).toBe(1)
+      expect(result.stdout).toContain("it is not this run's checkout")
+      expect(result.stdout).toMatch(NOT_WRITTEN)
+    })
+
+    it('judging the workspace runs no program the workspace names', () => {
+      // Mutation: git left to read a file-system monitor from the folder it
+      // is judging, so a planted .git/config runs a program of its choosing
+      // in the step before the key is written.
+      const { dir, git, check } = checkedOut()
+      const ran = join(scratch(), 'ran')
+      const program = join(scratch(), 'monitor.sh')
+      writeFileSync(program, `#!/bin/bash\ntouch "${ran}"\nprintf "\\0"\n`)
+      chmodSync(program, 0o755)
+      git('config', 'core.fsmonitor', program)
+      git('config', 'diff.external', program)
+      put(join(dir, 'scripts', 'notarize-dmg.mjs'), '// another script\n')
+      expect(check().status).toBe(1)
+      expect(existsSync(ran)).toBe(false)
     })
   })
 })
