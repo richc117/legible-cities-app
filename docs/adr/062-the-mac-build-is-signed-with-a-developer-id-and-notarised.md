@@ -90,8 +90,9 @@ Mach-O in a script of our own. Full control of every flag. It replaces a
 signer that every branch build already exercises with one that would run
 only in a release, where a mistake is found last.
 
-**electron-builder signs; one script notarises the disk image; the secrets
-sit behind a protected environment.** Chosen, below.
+**electron-builder signs; one script notarises the disk image, in a job of
+its own; the secrets sit behind a protected environment; a repository
+variable switches it all on.** Chosen, below.
 
 **Sign Windows as well.** Not available: there is no certificate, and
 ADR-037's note on the signing service's eligibility is unanswered.
@@ -143,37 +144,77 @@ its own, and stapling it would change the bundle after the image was built
 from it. electron-builder's notarisation is off because it does none of
 this for an image and has no time limit.
 
-**Signing mode, and where the secrets are.** A packaging job signs when its
-target is a Mac and the run is a pushed `v*` tag or a dispatch with `sign`
-ticked. Only then is the job in the `release-signing` environment; for
-every other run the job's `environment` expression is the empty string.
-The five secrets (the certificate and its password, the notary's key, its
-id and its issuer) are the environment's, not the repository's, for three
-reasons: a deployment rule limits which refs can reach them at all (tags
-that start with `v`, and `main`); a required reviewer has to approve each
-job that asks, so a workflow changed on a branch cannot take them by
-running; and a job outside the environment is handed nothing, where a
-repository secret would be handed to every job of every branch. Inside the
-job, the certificate is given to electron-builder under its own variable
-names only in the signing branch of the packaging step's shell, never at
-the step, because an empty `CSC_LINK` fails every Mac build. The notary's
-key is written to a file readable by the runner's user alone, in the
-notarising step alone, after every step that runs npm's code or the app
-has finished, and removed when that step's shell ends. The script it is
-handed to imports nothing but Node's own modules.
+**Signing mode is switched by a repository variable.** A run signs when
+the variable `MAC_SIGNING` is `on` and the run is a pushed `v*` tag or a
+dispatch with `sign` ticked; within it, the Mac targets sign. With the
+variable off or unset a `v*` tag builds ad hoc exactly as it did before,
+and its Release is drafted from those installers, so a candidate can be cut
+before the certificate, the environment or the notary's key exists, and
+tagging is never coupled to Apple by the tag alone. A dispatch that ticks
+`sign` while the variable is off is refused in its first minute, since it
+asked for something that would not happen. The condition is one
+expression, written wherever a job needs it and held to the same text by a
+unit test.
 
-**The stapled image is what every later job sees.** Notarising and stapling
-happen in the packaging job, before the installer is uploaded, so the
-release job checksums, and the attest and verify jobs attest and verify,
-the final bytes; none of the three changes.
+**Two jobs, each handed its half of the secrets.** Both are in the
+`release-signing` environment in signing mode, and in no environment
+otherwise: for every other run their `environment` expression is the empty
+string.
+
+- **`package` holds the certificate.** electron-builder signs, so the
+  certificate and its password are given to electron-builder, under its own
+  variable names, inside the signing branch of the packaging step's shell
+  and nowhere else (never at the step: an empty `CSC_LINK` fails every Mac
+  build). Plainly: that step runs npm's code, the packager, everything it
+  depends on and this repository's `afterPack` hook, and all of it runs
+  with the certificate in its environment. That exposure is what "signing
+  stays electron-builder's" costs, and it is accepted. The job uploads the
+  signed image as `unnotarised-<target>`, never as the installer.
+- **`notarize` holds the notary's key, and the packaging job no longer
+  does.** It runs on a fresh runner, checks out the two scripts and the
+  release config and nothing else, installs nothing and runs no npm code;
+  the scripts import nothing but Node's own modules. It downloads the
+  signed image, which it never runs, turns Gatekeeper's assessments on if
+  the runner came with them off, notarises and staples, checks the result
+  with the `dmg` mode, and uploads it as `installer-<target>`. The key is
+  written to a file readable by the runner's user alone, in the notarising
+  step alone, and removed when that step's shell exits normally or fails;
+  on a cancelled or timed-out step the hosted runner is discarded with the
+  file.
+
+A later step of the packaging job would not have done: being later in a job
+is not isolation. An earlier step can leave a `PATH` entry or a `BASH_ENV`
+behind through the runner's own files, or a process that waits, and a later
+step meets them. Another runner has none of them. The packaging job names
+no secret of the notary's at all, not even to ask whether one is set.
+
+**Why an environment.** The five secrets (the certificate and its password;
+the notary's key, its id and its issuer) are the environment's, not the
+repository's, for three reasons: a deployment rule limits which refs can
+reach them at all (tags that start with `v`, and `main`); a required
+reviewer has to approve each job that asks, so a workflow changed on a
+branch cannot take them by running; and a job outside the environment is
+handed nothing, where a repository secret would be handed to any job of any
+branch that named it.
+
+**The stapled image is what every later job sees.** The release job needs
+the notarising jobs and takes `installer-<target>` as it always did, which
+in signing mode only the notarising job uploads, so it checksums, and the
+attest and verify jobs attest and verify, the final bytes. It drafts only
+if the notarising jobs succeeded, or were skipped because the variable is
+off; skipped for any other reason, or failed, it drafts nothing.
 
 **What checks it.** `scripts/verify-mac-signing.mjs` has three modes:
 `adhoc`, which every unsigned build passes through; `developer-id`, for the
 signed app before it is notarised; and `dmg`, for the notarised image and
 the app inside it. `acceptance.yml`'s step 2 runs the Developer ID checks
-on a Release's own download when the tag carries the release config, and
-fails on any of them. What macOS shows a person at the first open stays
-"not automated": a runner's download is not quarantined.
+on a Release's own download, and fails on any of them, when the tag carries
+the release config and the image is signed. The tag cannot say whether the
+variable was on when it was pushed; the image can, because only the
+Developer ID build signs the disk image itself and the notarising job
+refuses to hand on one that is not. An unsigned image is recorded as the
+ad-hoc build it is. What macOS shows a person at the first open stays "not
+automated": a runner's download is not quarantined.
 
 **No automatic update, still.** ADR-054's decision on updates is not
 touched, and the constitution's principle IV (no update pings) would have
@@ -196,17 +237,44 @@ after a rehearsal has shown this works, and not before.
 
 **CI holds secrets for the first time.** ADR-037 and ADR-054 counted "no
 secrets in CI" among what staying unsigned bought. What stands in for it is
-the environment's rule and reviewer, the two-step separation above, and the
-unit tests that hold `build.yml` to it: `secrets.` in three steps only, no
-variable of electron-builder's set at a step, one condition for the
-environment and for signing, the notarising step after everything npm
-runs. The Team ID is public and committed; nothing else about the account
-is in the repository.
+the environment's rule and reviewer, the two jobs above, and the unit tests
+that hold `build.yml` to them: ten references to a secret in all, in four
+named steps of two jobs and in no job's own `env`; no variable of
+electron-builder's set at a step; one condition wherever signing is
+decided; and a notarising job with three files, no install and no npm. The
+Team ID is public and committed; nothing else about the account is in the
+repository.
 
-**A release now depends on Apple's notary.** An outage or a slow day holds
-a release where nothing did. The script waits 60 minutes, its step 75 and
-the job 120; past that the run fails and is run again. The notary's log is
-uploaded as an artefact whatever the outcome.
+**The certificate is within reach of npm's code, in one step of signing
+runs.** A dependency of the packager that turned hostile could read it
+there. The notary's key it could not: no step of that job is handed it.
+Both jobs are in one environment, so that last sentence rests on GitHub
+sending a runner only the secrets its job names; its documentation says
+that secrets "not referenced in the workflow" are scrubbed from a runner's
+memory, which is said of the workflow, not of the job. If that turns out
+to matter, the notary's key moves to an environment of its own, which the
+packaging job never joins, and nothing else here changes.
+
+**The variable is turned on last.** `MAC_SIGNING` goes to `on` only once
+the environment exists with its deployment rule (`v*` tags and `main`) and
+its required reviewer, and holds its five secrets, and the Team ID is in
+`electron-builder.release.yml`. Turned on earlier, the first signing run
+would have GitHub create the environment itself, with no rule and no
+reviewer, and then fail for want of secrets. `docs/repository-settings.md`
+has the list. Until then every tag is what it was, and the release
+procedure does not change.
+
+**A signing run asks the reviewer twice**: once for the two packaging
+jobs, and once more, when they are done, for the two notarising jobs.
+
+**A release depends on Apple's notary only while the variable is on.** An
+outage or a slow day then holds a release where nothing did. The script's
+worst case is 84 minutes (70 for the submission, of which notarytool waits
+60; three tries each of the log and the staple; the validation), its step
+is given 90, the check after it 80 against its own 77, and the job 180;
+past that the run fails and is run again. The notary's log is uploaded as
+an artefact whatever the outcome. Turning the variable off is the way to
+cut a release without Apple, ad hoc, and say so.
 
 **The signing path runs only in signing mode.** A dependency bump that
 breaks signing is green on its own branch and red at the next tag. A
@@ -232,8 +300,9 @@ Each is named with what shows it; this record stays Proposed until all six
 are shown and a signed candidate has passed the acceptance run.
 
 1. **A job whose `environment` evaluates to the empty string is in no
-   environment**: no deployment is recorded and no approval asked. Shown by
-   a branch build with no secrets. If it is not so, signing moves to a
+   environment**: no deployment is recorded and no approval asked, for a
+   packaging job that runs and for a notarising job that is skipped. Shown
+   by a branch build with no secrets. If it is not so, signing moves to a
    second packaging job that names the environment outright.
 2. **A bundle whose `.pyc` files are not signed one by one passes
    `codesign --verify --deep --strict` and launches.** Shown by the same
@@ -248,13 +317,18 @@ are shown and a signed candidate has passed the acceptance run.
    `dmg.sign` passes no `--timestamp`. The `dmg` mode reads it from
    `codesign -dvv` and fails without. If it is missing, the image is signed
    in the workflow instead, with `codesign --force --timestamp`.
-6. **Gatekeeper's assessments are enabled on the hosted runners**, so that
-   `spctl`'s verdict there means what it means on a person's Mac. Every Mac
-   build prints `spctl --status`, so a branch build says it; the `dmg` mode
-   fails if they are off, and treats any `override=` line in a verdict as a
+6. **Gatekeeper's assessments are on for the checks**, so that `spctl`'s
+   verdict means what it means on a person's Mac. Every Mac build prints
+   `spctl --status`, so a branch build says how the hosted runners come. A
+   runner that comes with them off does not fail for that alone: the
+   notarising job, and `acceptance.yml`'s step 2, turn them on with `sudo
+   spctl --global-enable` (or `--master-enable`, as older systems spell
+   it), print the status before and after, and fail only if they are still
+   off. The `dmg` mode then treats any `override=` line in a verdict as a
    failure.
 
-It is done when a dispatched build with `sign` makes an image that `spctl`
-accepts as Notarized Developer ID and the stapler validates, the acceptance
-run passes against a candidate built that way, and a branch build with no
-secret is still ad hoc and green.
+It is done when a dispatched build with `sign`, the variable on, makes an
+image that `spctl` accepts as Notarized Developer ID and the stapler
+validates, the acceptance run passes against a candidate built that way,
+and a branch build with no secret, and a tag with the variable off, are
+still ad hoc and green.

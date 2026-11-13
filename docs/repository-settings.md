@@ -87,6 +87,53 @@ access.
       pushes release tags by hand; nothing in a workflow creates, moves or
       deletes one, so the Actions token needs no bypass.
 
+## The `release-signing` environment
+
+Not created yet; each box is ticked, with its date, when it is done.
+ADR-062 says why the Mac's signing material is an environment's and not
+the repository's. `build.yml` reaches the environment from two jobs and
+only in signing mode: `package` for the Mac targets, which is handed the
+certificate, and `notarize`, which is handed the notary's key and runs no
+npm code. Everything here exists **before** the variable at the end is
+turned on: a job that names an environment GitHub does not have makes it,
+with no rule and no reviewer.
+
+- [ ] An environment named **release-signing** (Settings, Environments).
+      To be recorded when created.
+- [ ] **Deployment branches and tags: selected**, with two rules: the tag
+      pattern `v*` and the branch `main`. A run from any other ref is
+      refused the environment, whatever its workflow file says. To be
+      recorded when created.
+- [ ] **Required reviewers**: the maintainer. Every job that asks for the
+      environment waits for an approval, and a signing run asks twice: for
+      the two packaging jobs, and then for the two notarising jobs.
+      "Prevent self-review" stays off, since the maintainer is the one who
+      pushes the tag and the only reviewer. To be recorded when created.
+- [ ] **Whether administrators may bypass the rules** ("Allow
+      administrators to bypass configured protection rules"). To be
+      recorded when created, with the choice and why.
+- [ ] **Five environment secrets**, each set from a file so that no value
+      is typed or shown: `MAC_CERT_P12_BASE64` (the Developer ID
+      Application certificate, exported as a .p12 and base64-encoded),
+      `MAC_CERT_PASSWORD` (the .p12's password), `NOTARY_KEY_P8` (the App
+      Store Connect API key, the .p8 file's text), `NOTARY_KEY_ID` and
+      `NOTARY_ISSUER_ID`. To be recorded when created.
+- [ ] **No repository secret of any of those five names** (Settings,
+      Secrets and variables, Actions, Repository secrets). A repository
+      secret is handed to any job that names it, on any branch, with no
+      rule and no reviewer in front of it; an environment's is not. To be
+      checked when the environment is created, and again when this page is
+      re-read.
+- [ ] The Team ID written into `electron-builder.release.yml` in place of
+      `TEAMID_TBD`, by a pull request. It is public, and it is not a
+      setting, but nothing signs without it.
+- [ ] **The repository variable `MAC_SIGNING`** (Settings, Secrets and
+      variables, Actions, Variables), set to `on`, **last**: only once
+      every box above is ticked. While it is unset, or anything but `on`,
+      a `v*` tag builds ad hoc as it always did and a dispatch that ticks
+      `sign` is refused. Setting it back to anything else is how a release
+      is cut without Apple. To be recorded when set.
+
 ## Discussions
 
 - [x] **Discussions** off (checked 29 Oct 2026). ADR-030 keeps one board, and

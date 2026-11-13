@@ -157,6 +157,11 @@ engine relocked.
 
 The settings that only the host can enforce - secret scanning, push
 protection, private vulnerability reporting, Dependabot alerts and security
-updates, branch protection on `main` - are listed in
-`docs/repository-settings.md`, with the date each was applied or last
-checked. Signing material, when it exists, will live only in CI secrets.
+updates, branch protection on `main`, the `release-signing` environment -
+are listed in `docs/repository-settings.md`, with the date each was applied
+or last checked. Signing material lives only in the secrets of that
+environment, behind its deployment rule and its required reviewer: the
+Developer ID certificate, which the packaging job is handed, and the
+notary's key, which a separate job that runs no npm code is handed
+(ADR-062). None of it is a repository secret, and none of it is in a file
+here.
