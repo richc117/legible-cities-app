@@ -38,5 +38,21 @@
     "test": "tests/unit/a11y-axe.test.ts",
     "title": "lists incomplete results and never drops them",
     "why": "Dropping incomplete results makes what axe could not decide read as a pass."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "if (found.length !== 1) return []",
+    "replace": "if (found.length < 1) return []",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "gives nothing when the selector names several elements",
+    "why": "Answering for the first of several elements excuses a node on the strength of a different element."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "return selectors.filter((selector) => element.matches(selector))",
+    "replace": "return selectors",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "gives nothing for an element that is not a sample card",
+    "why": "Not asking the element lets every node match every excuse."
   }
 ]

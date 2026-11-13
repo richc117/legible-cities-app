@@ -88,28 +88,10 @@ person's, recorded in [Reader runs](#reader-runs).
    `tests/support/a11y-names.ts` (none today), each one name under two
    roles, decided with a run of the sweep in hand and naming the issue that
    decided it.
-   **axe, a second net** (issue 692). Inside each theme of every sweep, after
-   the names, `expectAxeClean` runs axe (`@axe-core/playwright` 4.14.0)
-   over the screen with the WCAG 2.0, 2.1 and 2.2 A and AA rule tags, in
-   legacy mode, the only one that runs against Electron, and with
-   `iframes: false`, which leaves the engine's page alone. It checks what
-   nobody thought to write a check for. A violation fails the sweep, softly
-   as the names' check does. `incomplete` results, which axe could not
-   decide, are attached to the test and listed as annotations, never read
-   as a pass. A known-findings list (`tests/support/a11y-axe.ts`) holds
-   what is decided, by rule and a selector the element itself matches, with
-   its issue: today one entry, `label-content-name-mismatch` on the sample
-   cities' cards (issue 707), which axe reads with their lines run
-   together. An entry excuses nothing else, so the same rule on another
-   element still fails, and one that matches nothing on the Library
-   sweeps, where it is expected, fails them, so the list cannot go stale.
-   The rule is a function of the findings and is tested without the app
-   (`tests/unit/a11y-axe.test.ts`, with mutations). Only CI's `e2e` job
-   runs axe on the real screens.
    The rule is a function of the snapshot's text and is tested without the
    app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
-   read fails the sweep rather than being stepped over. It is the sweep's
-   one soft check: a repeated name stops nothing after it, so the test
+   read fails the sweep rather than being stepped over. It is one of the
+   sweep's two soft checks (axe's is the other, below): a repeated name stops nothing after it, so the test
    carries on and one run lists every screen's pairs, with the snapshot
    they were read from attached to the test as a file. A sweep with
    nothing excused is green just the same when the rule has stopped
@@ -124,6 +106,34 @@ person's, recorded in [Reader runs](#reader-runs).
    "Export". It was a real duplicate and not a false positive, and it is
    mended (D13, issue 258): the region is named "Export run", and the list
    of known pairs is empty.
+   **axe, a second net** (issue 692). Inside each theme of every sweep, after
+   the names, `expectAxeClean` runs axe over the screen: it checks what
+   nobody thought to write a check for. It is the sweep's second soft
+   check, so a finding stops nothing after it. What runs where: axe-core
+   4.14.0's source is injected into the interface's main frame alone, with
+   `page.evaluate`, and `axe.run(document, ...)` is run there with the
+   WCAG 2.0, 2.1 and 2.2 A and AA rule tags and `iframes: false`. No other
+   frame is entered: the engine's sandboxed page in the viewer is never
+   given axe's code and is not analysed, so `frame-title` judges each
+   frame's title from the main frame's side only. The run has a deadline of
+   30 seconds; an error it throws, or the deadline, is a finding. A
+   violation fails the sweep. `incomplete` results, which axe could not
+   decide, are never read as a pass: each is an annotation on the test and
+   the listing is written to a file under `test-results/`, attached to the
+   test. A green CI run does not keep that folder (`ci.yml` uploads
+   `test-results/` only on failure), so the listing of a green run is
+   read in the run's log or is lost. A known-findings list
+   (`tests/support/a11y-axe.ts`) holds what is decided, by rule and a
+   selector the element itself matches (and only when exactly one element
+   matches it), with its issue: today one entry,
+   `label-content-name-mismatch` on the sample cities' cards (issue 707),
+   which axe reads with their lines run together. An entry excuses nothing
+   else, so the same rule on another element still fails, and one that
+   matches nothing on the sweeps it is expected on, which a unit test holds
+   to be sweeps that exist, fails them, so the list cannot go stale. The
+   rule is a function of the findings and is tested without the app
+   (`tests/unit/a11y-axe.test.ts`, with mutations). Only CI's `e2e` job
+   runs axe on the real screens.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the

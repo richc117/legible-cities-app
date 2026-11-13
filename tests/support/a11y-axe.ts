@@ -108,3 +108,22 @@ export function judgeAxe(
   const open = incomplete.flatMap((r) => r.nodes.map((n) => describeNode(r.id, n)))
   return { failures, stale, excused, incomplete: open }
 }
+
+/**
+ * Which of `selectors` the one element `css` names matches. It is run in the
+ * page, as source (`.toString()`), so it holds no reference to anything
+ * outside itself. `css` is axe's selector for a node: it is an answer only
+ * when exactly one element matches it, and an empty one is given when none
+ * does, several do, or the selector will not parse, so a node is never
+ * excused on the strength of a different element.
+ */
+export function selectorsMatching(root: ParentNode, css: string, selectors: string[]): string[] {
+  try {
+    const found = root.querySelectorAll(css)
+    if (found.length !== 1) return []
+    const element = found[0]
+    return selectors.filter((selector) => element.matches(selector))
+  } catch {
+    return []
+  }
+}
