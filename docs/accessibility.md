@@ -90,8 +90,8 @@ person's, recorded in [Reader runs](#reader-runs).
    decided it.
    The rule is a function of the snapshot's text and is tested without the
    app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
-   read fails the sweep rather than being stepped over. It is the sweep's
-   one soft check: a repeated name stops nothing after it, so the test
+   read fails the sweep rather than being stepped over. It is one of the
+   sweep's two soft checks (axe's is the other, below): a repeated name stops nothing after it, so the test
    carries on and one run lists every screen's pairs, with the snapshot
    they were read from attached to the test as a file. A sweep with
    nothing excused is green just the same when the rule has stopped
@@ -106,6 +106,50 @@ person's, recorded in [Reader runs](#reader-runs).
    "Export". It was a real duplicate and not a false positive, and it is
    mended (D13, issue 258): the region is named "Export run", and the list
    of known pairs is empty.
+   **axe, a second net** (issue 692). Inside each theme of every sweep, after
+   the names, `expectAxeClean` runs axe over the screen: it checks what
+   nobody thought to write a check for. It is the sweep's second soft
+   check, so a finding stops nothing after it. What runs where: axe-core
+   4.14.0's source is injected into the interface's main frame alone, with
+   `page.evaluate`, and `axe.run(document, ...)` is run there with the
+   WCAG 2.0, 2.1 and 2.2 A and AA rule tags and `iframes: false`. No other
+   frame is entered: the engine's sandboxed page in the viewer is never
+   given axe's code and is not analysed, so `frame-title` judges each
+   frame's title from the main frame's side only. The run has a deadline of
+   30 seconds; an error it throws, or the deadline, is a finding. A
+   violation fails the sweep. `incomplete` results, which axe could not
+   decide, are never read as a pass: each is an annotation on the test and
+   the listing is written to a file under `test-results/`, attached to the
+   test. A green CI run does not keep that folder (`ci.yml` uploads
+   `test-results/` only on failure), so the listing of a green run is
+   read in the run's log or is lost. A known-findings list
+   (`tests/support/a11y-axe.ts`) holds what is decided, by rule and a
+   selector the element itself matches (and only when exactly one element
+   matches it), with its issue, and with the sweeps it is expected on and,
+   where it holds in one theme only, that theme. **The first run found
+   these**, on macOS and on Windows alike, and they are the list:
+   `label-content-name-mismatch` (WCAG 2.5.3, issue 707) on the sample
+   cities' cards, the project cards, the rail's step buttons (each given
+   an `aria-label` of its number, name and state), each of Settings' two
+   folder buttons and the Jobs toggle while a job runs, each named by an
+   `aria-label` that does not hold the words the control shows in the
+   order axe reads them (the kit's buttons keep the real `button` in a
+   shadow root, so those entries name the inner element, and a path into
+   shadow roots is printed `host >>> inner`); and `color-contrast` (issue 710), in Night
+   only, on a line's options' and the network in words' disclosures and
+   the engine log's toggle. **The list must shrink
+   to empty** as those issues are fixed: an entry excuses nothing else, so
+   the same rule on another element still fails, and one that matches
+   nothing on the sweeps (and in the themes) it is expected on, which a
+   unit test holds to be sweeps that exist, fails them, so a fixed defect
+   cannot leave its entry behind. The Jobs toggle's entry is the one
+   exception: it names no sweep, since the download holds the job for
+   about twenty seconds and the toggle may read "Jobs" again by the time a
+   sweep looks, so the stale check cannot judge it, and its removal is
+   tracked by issue 707. The
+   rule is a function of the findings and is tested without the app
+   (`tests/unit/a11y-axe.test.ts`, with mutations). Only CI's `e2e` job
+   runs axe on the real screens.
 3. **Contrast** is arithmetic, not a screenshot: `tests/unit/contrast.test.ts`
    recomputes every text and control pair the stylesheets use, in both
    themes, now including the kit's filled buttons at rest, under the
@@ -448,7 +492,10 @@ which it is.
   that is named by what it holds, which the rule allows by role. Two more
   are Playwright's. **A frame's title**: its snapshot gives every `iframe`
   an empty name, so a region around a frame of the same title is never
-  seen as a pair. And **the roles it refuses a name** - `caption`, `code`,
+  seen as a pair. axe's `frame-title` rule now judges each frame's title from outside
+  (the sweeps run it with `iframes: false`, which leaves what is inside the
+  frame alone), so a frame with no title fails; whether its title repeats a
+  region's is still not seen. And **the roles it refuses a name** - `caption`, `code`,
   `definition`, `deletion`, `emphasis`, `generic`, `insertion`, `mark`,
   `paragraph`, `presentation`, `strong`, `subscript`, `suggestion`,
   `superscript`, `term` and `time` - so an `aria-label` on a `<p>`, a

@@ -48,6 +48,8 @@ import {
 } from '@playwright/test'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { READY_DEADLINE_MS } from './ready'
+import axeCore from 'axe-core'
+import { KNOWN_FINDINGS, judgeAxe, selectorsMatching, type AxeResult } from './a11y-axe'
 import { describePair, describeReading, duplicatedNames } from './a11y-names'
 import { coveredStops, type StopCover } from './obscured'
 import {
@@ -1409,6 +1411,119 @@ export async function expectEdgesInForcedColours(
   }
 }
 
+/** The most one run of axe may take, ask included. */
+const AXE_DEADLINE_MS = 30_000
+
+/** axe's tags: WCAG 2.0, 2.1 and 2.2, A and AA. */
+const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
+
+interface AxeRaw {
+  id: string
+  impact?: string | null
+  nodes: { target: unknown[] }[]
+}
+
+/**
+ * axe's rules over the screen, the sweep's second net (issue 692): they check
+ * what nobody thought to write a check for.
+ *
+ * **What runs where.** axe-core's source is injected into the page's main
+ * frame only, with `page.evaluate`, and `axe.run(document, ...)` is run
+ * there with `iframes: false`. `@axe-core/playwright`'s legacy mode would
+ * evaluate axe in every frame, the engine's sandboxed viewer included,
+ * which the project keeps contained; so it is not used. `frame-title` still
+ * judges each frame's title, from the main frame's side.
+ *
+ * A violation the known list does not excuse fails, a known entry that
+ * matched nothing on a sweep it is expected on fails (`a11y-axe.ts`), and an
+ * error or the deadline fails too. `incomplete` results are never passed as
+ * clean: they are annotations, and a file under the test's output folder
+ * (`test-results/`, which CI keeps only when a run fails). The expectations
+ * are soft, like the names': the rest of the sweep still runs.
+ */
+export async function expectAxeClean(page: Page, where: string, theme: string): Promise<void> {
+  const here = `${where} (${theme})`
+  const info = test.info()
+  let raw: { violations: AxeRaw[]; incomplete: AxeRaw[] }
+  try {
+    let timer: NodeJS.Timeout | undefined
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`axe did not finish in ${AXE_DEADLINE_MS / 1000} s`)),
+        AXE_DEADLINE_MS,
+      )
+    })
+    try {
+      raw = await Promise.race([
+        (async () => {
+          // Once per page: a run the deadline gave up on is still going, and a
+          // second injection would start axe afresh beside it.
+          if (!(await page.evaluate(`'axe' in window`))) await page.evaluate(axeCore.source)
+          return page.evaluate(
+            (options) =>
+              (
+                window as unknown as {
+                  axe: { run: (c: Document, o: unknown) => Promise<typeof raw> }
+                }
+              ).axe.run(document, options),
+            { iframes: false, restoreScroll: true, runOnly: { type: 'tag', values: AXE_TAGS } },
+          )
+        })(),
+        deadline,
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+  } catch (error) {
+    expect.soft(String(error), `${here}: axe did not run`).toBe('')
+    return
+  }
+  // Which excuses an element matches is asked of the element in the page:
+  // axe's selector for it is a path, and moves with the markup.
+  const selectors = [...new Set(KNOWN_FINDINGS.map((k) => k.selector))]
+  const resolve = async (found: AxeRaw[]): Promise<AxeResult[]> =>
+    Promise.all(
+      found.map(async (rule) => ({
+        id: rule.id,
+        impact: rule.impact ?? null,
+        nodes: await Promise.all(
+          rule.nodes.map(async (node) => {
+            // A path into shadow roots reads `host >>> inner`.
+            const target = node.target.map((t) => (Array.isArray(t) ? t.join(' >>> ') : String(t)))
+            const matches =
+              node.target.length === 1
+                ? await page.evaluate(
+                    `(${selectorsMatching.toString()})(document, ${JSON.stringify(node.target[0])}, ${JSON.stringify(selectors)})`,
+                  )
+                : []
+            return { target, matches: matches as string[] }
+          }),
+        ),
+      })),
+    )
+  const judged = judgeAxe(await resolve(raw.violations), await resolve(raw.incomplete), {
+    where,
+    theme,
+  })
+  const listing = [
+    `excused by the known list: ${judged.excused.length}`,
+    ...judged.excused.map((line) => `  ${line}`),
+    `incomplete: ${judged.incomplete.length}`,
+    ...judged.incomplete.map((line) => `  ${line}`),
+  ].join('\n')
+  const name = here.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const file = info.outputPath(`axe-${name}.txt`)
+  writeFileSync(file, listing)
+  await info.attach(`${here}: axe`, { path: file, contentType: 'text/plain' })
+  expect.soft(judged.failures, `${here}: axe violations the known list does not excuse`).toEqual([])
+  expect.soft(judged.stale, `${here}: known axe findings that matched nothing`).toEqual([])
+  // Never counted as a pass: each is an annotation on the test, which the
+  // report lists, beside the file above.
+  for (const line of judged.incomplete) {
+    info.annotations.push({ type: 'axe incomplete', description: `${here}: ${line}` })
+  }
+}
+
 /**
  * Names, each said once, the Tab walk and motion, in both of the interface's
  * themes (A5.6-09):
@@ -1440,6 +1555,7 @@ export async function sweep(
       const snapshot = await (scope ?? page.locator('body')).ariaSnapshot()
       await expectNamed(snapshot, here)
       await expectNoDuplicatedNames(snapshot, here)
+      await expectAxeClean(page, where, theme.name)
       await expectButtonsHoldTheirBox(page, here)
       await expectTabWalk(page, here, { judges })
       await expectStill(page, here)

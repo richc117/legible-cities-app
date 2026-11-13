@@ -1,0 +1,82 @@
+[
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "(k) => k.rule === result.id && node.matches.includes(k.selector)",
+    "replace": "(k) => k.rule === result.id && true",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "still fails the same rule on an element that is not a sample card",
+    "why": "An excuse that no longer asks the element for its selector excuses the rule everywhere, so a new instance elsewhere passes."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "(k) => k.rule === result.id && node.matches.includes(k.selector)",
+    "replace": "(k) => node.matches.includes(k.selector)",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "still fails another rule on a sample card",
+    "why": "An excuse that ignores its rule lets any new rule through on the cards."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": ".filter((k) => k.expectedOn.includes(where) && !used.has(k))",
+    "replace": ".filter(() => false)",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "fails an entry that matched nothing on a sweep it is expected on",
+    "why": "With staleness unchecked, the list outlives the defect it was written for."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": ".filter((k) => k.expectedOn.includes(where) && !used.has(k))",
+    "replace": ".filter((k) => !used.has(k))",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "does not ask for an entry on a sweep it is not expected on",
+    "why": "Asking every sweep for the entry fails the screens that have no cards."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "const open = incomplete.flatMap(",
+    "replace": "const open = ([] as AxeResult[]).flatMap(",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "lists incomplete results and never drops them",
+    "why": "Dropping incomplete results makes what axe could not decide read as a pass."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "if (found.length !== 1) return []",
+    "replace": "if (found.length < 1) return []",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "gives nothing when the selector names several elements",
+    "why": "Answering for the first of several elements excuses a node on the strength of a different element."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "return selectors.filter((selector) => target.matches(selector))",
+    "replace": "return selectors",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "gives nothing for an element that is not a sample card",
+    "why": "Not asking the element lets every node match every excuse."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "k.themes === undefined || k.themes.includes(theme)",
+    "replace": "true",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "judges an entry in its themes alone, for excuses and for staleness",
+    "why": "An entry that ignores its themes excuses Night's contrast in Parchment too, and is called stale where it was never due."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "if (element.shadowRoot === null) return []\n        scope = element.shadowRoot",
+    "replace": "scope = element.shadowRoot ?? element",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "walks a path into open shadow roots, one element at each step",
+    "why": "Stepping into a host that has no shadow root walks the light tree instead, and a node is read as an element it is not."
+  },
+  {
+    "file": "tests/support/a11y-axe.ts",
+    "find": "      const found = scope.querySelectorAll(steps[i])\n      if (found.length !== 1) return []",
+    "replace": "      const found = scope.querySelectorAll(steps[i])\n      if (found.length < 1) return []",
+    "test": "tests/unit/a11y-axe.test.ts",
+    "title": "walks a path into open shadow roots, one element at each step",
+    "why": "Taking the first of several matches inside a root excuses a node on the strength of another element."
+  }
+]
