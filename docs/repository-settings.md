@@ -87,16 +87,27 @@ access.
       pushes release tags by hand; nothing in a workflow creates, moves or
       deletes one, so the Actions token needs no bypass.
 
-## The `release-signing` environment
+## Signing the Mac build: two environments and a variable
 
-Not created yet; each box is ticked, with its date, when it is done.
-ADR-062 says why the Mac's signing material is an environment's and not
-the repository's. `build.yml` reaches the environment from two jobs and
-only in signing mode: `package` for the Mac targets, which is handed the
-certificate, and `notarize`, which is handed the notary's key and runs no
-npm code. Everything here exists **before** the variable at the end is
-turned on: a job that names an environment GitHub does not have makes it,
-with no rule and no reviewer.
+Not made yet; each box is ticked, with its date, when it is done. ADR-062
+says why the Mac's signing material is kept in environments and not in the
+repository's own secrets, and why in two. `build.yml` reaches each from one
+job, and only in signing mode: `package`, for the Mac targets, joins
+`release-signing` and is handed the certificate; `notarize` joins
+`release-notarize` and is handed the notary's key, on a runner that runs
+no npm code. A job cannot be handed a secret of an environment it is not
+in, so neither job can reach the other's half.
+
+The order below is the order to do it in: the two environments, the
+certificate's two secrets in one, the notary's three in the other, the
+Team ID, and the variable **last**. A job that names an environment GitHub
+does not have makes it, with no rule and no reviewer, which is what
+turning the variable on early would do.
+
+### The `release-signing` environment
+
+Holds the Developer ID certificate and nothing else. Only the `package`
+job joins it.
 
 - [ ] An environment named **release-signing** (Settings, Environments).
       To be recorded when created.
@@ -104,26 +115,48 @@ with no rule and no reviewer.
       pattern `v*` and the branch `main`. A run from any other ref is
       refused the environment, whatever its workflow file says. To be
       recorded when created.
-- [ ] **Required reviewers**: the maintainer. Every job that asks for the
-      environment waits for an approval, and a signing run asks twice: for
-      the two packaging jobs, and then for the two notarising jobs.
-      "Prevent self-review" stays off, since the maintainer is the one who
-      pushes the tag and the only reviewer. To be recorded when created.
+- [ ] **Required reviewers**: the maintainer. "Prevent self-review" stays
+      off, since the maintainer is the one who pushes the tag and the only
+      reviewer. To be recorded when created.
 - [ ] **Whether administrators may bypass the rules** ("Allow
       administrators to bypass configured protection rules"). To be
       recorded when created, with the choice and why.
-- [ ] **Five environment secrets**, each set from a file so that no value
+- [ ] **Two environment secrets**, each set from a file so that no value
       is typed or shown: `MAC_CERT_P12_BASE64` (the Developer ID
-      Application certificate, exported as a .p12 and base64-encoded),
-      `MAC_CERT_PASSWORD` (the .p12's password), `NOTARY_KEY_P8` (the App
-      Store Connect API key, the .p8 file's text), `NOTARY_KEY_ID` and
-      `NOTARY_ISSUER_ID`. To be recorded when created.
-- [ ] **No repository secret of any of those five names** (Settings,
-      Secrets and variables, Actions, Repository secrets). A repository
-      secret is handed to any job that names it, on any branch, with no
-      rule and no reviewer in front of it; an environment's is not. To be
-      checked when the environment is created, and again when this page is
+      Application certificate, exported as a .p12 and base64-encoded) and
+      `MAC_CERT_PASSWORD` (the .p12's password). To be recorded when
+      created.
+- [ ] **None of the notary's three secrets here.** To be checked when the
+      environment is created, and again when this page is re-read.
+
+### The `release-notarize` environment
+
+Holds the notary's key and nothing else. Only the `notarize` job joins it.
+
+- [ ] An environment named **release-notarize** (Settings, Environments).
+      To be recorded when created.
+- [ ] **Deployment branches and tags: selected**, with the same two rules:
+      the tag pattern `v*` and the branch `main`. To be recorded when
+      created.
+- [ ] **Required reviewers**: the maintainer, with "Prevent self-review"
+      off, as above. To be recorded when created.
+- [ ] **Whether administrators may bypass the rules.** To be recorded when
+      created, with the choice and why.
+- [ ] **Three environment secrets**, each set from a file: `NOTARY_KEY_P8`
+      (the App Store Connect API key, the .p8 file's text), `NOTARY_KEY_ID`
+      and `NOTARY_ISSUER_ID`. To be recorded when created.
+- [ ] **Neither of the certificate's two secrets here.** To be checked
+      when the environment is created, and again when this page is
       re-read.
+
+### For both, and the switch
+
+- [ ] **No repository secret of any of the five names** (Settings, Secrets
+      and variables, Actions, Repository secrets). A repository secret is
+      handed to any job that names it, on any branch, with no rule and no
+      reviewer in front of it, and to both jobs here, which is what the
+      two environments are for. To be checked when the environments are
+      created, and again when this page is re-read.
 - [ ] The Team ID written into `electron-builder.release.yml` in place of
       `TEAMID_TBD`, by a pull request. It is public, and it is not a
       setting, but nothing signs without it.
@@ -131,8 +164,10 @@ with no rule and no reviewer.
       variables, Actions, Variables), set to `on`, **last**: only once
       every box above is ticked. While it is unset, or anything but `on`,
       a `v*` tag builds ad hoc as it always did and a dispatch that ticks
-      `sign` is refused. Setting it back to anything else is how a release
-      is cut without Apple. To be recorded when set.
+      `sign` is refused. Once it is on, a signing run waits for the
+      maintainer's approval twice, once for each environment
+      (`docs/releasing.md`). Setting it back to anything else is how a
+      release is cut without Apple. To be recorded when set.
 
 ## Discussions
 

@@ -2611,12 +2611,14 @@ neither (ADR-062, Proposed; ADR-054).
   electron-builder's own notarisation off, a signature on the disk image):
   a Mac target, with `MAC_SIGNING` on, on a pushed `v*` tag or a dispatch
   with `sign` ticked. A dispatch that ticks `sign` with the variable off is
-  refused. Two jobs then join the `release-signing` environment, each
-  handed its half of the secrets and no more. `package` is given the
-  certificate, in the branch of the packaging step's shell that signs, and
-  uploads the signed image as `unnotarised-<target>`. `notarize`, on a
+  refused. Two jobs then each join an environment of their own, which
+  holds that job's half of the secrets and nothing of the other's, so
+  neither can be handed what it does not sign or notarise with. `package`
+  joins `release-signing` and is given the certificate, in the branch of
+  the packaging step's shell that signs, and uploads the signed image as
+  `unnotarised-<target>`. `notarize` joins `release-notarize`, on a
   runner of its own that checks out the two scripts and the release config
-  and nothing else and runs no npm code, is given the notary's key: it
+  and nothing else and runs no npm code, and is given the notary's key: it
   downloads that image, turns Gatekeeper's assessments on if the runner
   has them off, notarises and staples it (`scripts/notarize-dmg.mjs`),
   checks it and the app inside it (`scripts/verify-mac-signing.mjs dmg`),

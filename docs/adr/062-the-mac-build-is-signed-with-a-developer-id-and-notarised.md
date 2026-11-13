@@ -91,8 +91,8 @@ signer that every branch build already exercises with one that would run
 only in a release, where a mistake is found last.
 
 **electron-builder signs; one script notarises the disk image, in a job of
-its own; the secrets sit behind a protected environment; a repository
-variable switches it all on.** Chosen, below.
+its own; each job's secrets sit behind a protected environment of its own;
+a repository variable switches it all on.** Chosen, below.
 
 **Sign Windows as well.** Not available: there is no certificate, and
 ADR-037's note on the signing service's eligibility is unanswered.
@@ -149,53 +149,63 @@ the variable `MAC_SIGNING` is `on` and the run is a pushed `v*` tag or a
 dispatch with `sign` ticked; within it, the Mac targets sign. With the
 variable off or unset a `v*` tag builds ad hoc exactly as it did before,
 and its Release is drafted from those installers, so a candidate can be cut
-before the certificate, the environment or the notary's key exists, and
+before the certificate, the environments or the notary's key exist, and
 tagging is never coupled to Apple by the tag alone. A dispatch that ticks
 `sign` while the variable is off is refused in its first minute, since it
 asked for something that would not happen. The condition is one
 expression, written wherever a job needs it and held to the same text by a
 unit test.
 
-**Two jobs, each handed its half of the secrets.** Both are in the
-`release-signing` environment in signing mode, and in no environment
-otherwise: for every other run their `environment` expression is the empty
-string.
+**Two jobs, two environments, each holding one half of the secrets.** In
+signing mode each job is in an environment of its own, and in no
+environment otherwise: for every other run their `environment` expression
+is the empty string.
 
-- **`package` holds the certificate.** electron-builder signs, so the
-  certificate and its password are given to electron-builder, under its own
-  variable names, inside the signing branch of the packaging step's shell
-  and nowhere else (never at the step: an empty `CSC_LINK` fails every Mac
-  build). Plainly: that step runs npm's code, the packager, everything it
-  depends on and this repository's `afterPack` hook, and all of it runs
-  with the certificate in its environment. That exposure is what "signing
-  stays electron-builder's" costs, and it is accepted. The job uploads the
-  signed image as `unnotarised-<target>`, never as the installer.
-- **`notarize` holds the notary's key, and the packaging job no longer
-  does.** It runs on a fresh runner, checks out the two scripts and the
-  release config and nothing else, installs nothing and runs no npm code;
-  the scripts import nothing but Node's own modules. It downloads the
-  signed image, which it never runs, turns Gatekeeper's assessments on if
-  the runner came with them off, notarises and staples, checks the result
-  with the `dmg` mode, and uploads it as `installer-<target>`. The key is
-  written to a file readable by the runner's user alone, in the notarising
-  step alone, and removed when that step's shell exits normally or fails;
-  on a cancelled or timed-out step the hosted runner is discarded with the
-  file.
+- **`package` is in `release-signing`, which holds the certificate and
+  nothing else.** electron-builder signs, so the certificate and its
+  password are given to electron-builder, under its own variable names,
+  inside the signing branch of the packaging step's shell and nowhere else
+  (never at the step: an empty `CSC_LINK` fails every Mac build). Plainly:
+  that step runs npm's code, the packager, everything it depends on and
+  this repository's `afterPack` hook, and all of it runs with the
+  certificate in its environment. That exposure is what "signing stays
+  electron-builder's" costs, and it is accepted. The job uploads the signed
+  image as `unnotarised-<target>`, never as the installer.
+- **`notarize` is in `release-notarize`, which holds the notary's key and
+  nothing else, and which no other job joins.** It runs on a fresh runner,
+  checks out the two scripts and the release config and nothing else,
+  installs nothing and runs no npm code; the scripts import nothing but
+  Node's own modules. It downloads the signed image, which it never runs,
+  turns Gatekeeper's assessments on if the runner came with them off,
+  notarises and staples, checks the result with the `dmg` mode, and uploads
+  it as `installer-<target>`. The key is written to a file readable by the
+  runner's user alone, in the notarising step alone, and removed when that
+  step's shell exits normally or fails; on a cancelled or timed-out step
+  the hosted runner is discarded with the file.
 
 A later step of the packaging job would not have done: being later in a job
 is not isolation. An earlier step can leave a `PATH` entry or a `BASH_ENV`
 behind through the runner's own files, or a process that waits, and a later
-step meets them. Another runner has none of them. The packaging job names
-no secret of the notary's at all, not even to ask whether one is set.
+step meets them. Another runner has none of them.
 
-**Why an environment.** The five secrets (the certificate and its password;
-the notary's key, its id and its issuer) are the environment's, not the
-repository's, for three reasons: a deployment rule limits which refs can
-reach them at all (tags that start with `v`, and `main`); a required
-reviewer has to approve each job that asks, so a workflow changed on a
-branch cannot take them by running; and a job outside the environment is
-handed nothing, where a repository secret would be handed to any job of any
-branch that named it.
+One environment for both jobs would not have done either. A job in an
+environment is entitled to every secret in it, and what keeps one from the
+job is then only that the job does not name it. GitHub's documentation
+says secrets "not referenced in the workflow" are scrubbed from a runner's
+memory, which is said of the workflow and not of the job, and a hosted
+runner's own user has root. With two environments the question does not
+arise: a job cannot be handed a secret of an environment it is not in. The
+notary's key is out of the packaging job's reach, and the certificate out
+of the notarising job's, by where each is kept.
+
+**Why environments.** The five secrets (the certificate and its password
+in one; the notary's key, its id and its issuer in the other) are
+environments', not the repository's, for three reasons: a deployment rule
+limits which refs can reach them at all (tags that start with `v`, and
+`main`), the same rule on both; a required reviewer has to approve each
+job that asks, so a workflow changed on a branch cannot take them by
+running; and a job outside an environment is handed nothing of it, where a
+repository secret would be handed to any job of any branch that named it.
 
 **The stapled image is what every later job sees.** The release job needs
 the notarising jobs and takes `installer-<target>` as it always did, which
@@ -237,35 +247,42 @@ after a rehearsal has shown this works, and not before.
 
 **CI holds secrets for the first time.** ADR-037 and ADR-054 counted "no
 secrets in CI" among what staying unsigned bought. What stands in for it is
-the environment's rule and reviewer, the two jobs above, and the unit tests
-that hold `build.yml` to them: ten references to a secret in all, in four
-named steps of two jobs and in no job's own `env`; no variable of
-electron-builder's set at a step; one condition wherever signing is
-decided; and a notarising job with three files, no install and no npm. The
-Team ID is public and committed; nothing else about the account is in the
-repository.
+the two environments, each with its rule and its reviewer, the two jobs
+above, and the unit tests that hold `build.yml` to them: ten references to
+a secret in all, in four named steps of two jobs and in no job's own `env`;
+each half named only by the one job that joins its environment; no
+variable of electron-builder's set at a step; one condition wherever
+signing is decided; and a notarising job with three files, no install and
+no npm. The Team ID is public and committed; nothing else about the
+account is in the repository.
 
 **The certificate is within reach of npm's code, in one step of signing
-runs.** A dependency of the packager that turned hostile could read it
-there. The notary's key it could not: no step of that job is handed it.
-Both jobs are in one environment, so that last sentence rests on GitHub
-sending a runner only the secrets its job names; its documentation says
-that secrets "not referenced in the workflow" are scrubbed from a runner's
-memory, which is said of the workflow, not of the job. If that turns out
-to matter, the notary's key moves to an environment of its own, which the
-packaging job never joins, and nothing else here changes.
+runs, and the notary's key is not, by construction.** A dependency of the
+packager that turned hostile could read the certificate where the packager
+is given it; that is the accepted cost of the first decision. It could not
+reach the notary's key by any means the workflow offers: the packaging job
+is never in `release-notarize`, so GitHub has nothing of that environment
+to hand its runner, in a step's environment or in the runner's memory,
+whatever the job names and whatever the runner's user can read. A
+certificate taken that way signs; it does not notarise, which takes the
+notary's key, and macOS stops a downloaded app that is signed and not
+notarised. The reverse holds as well: the notarising job is never in
+`release-signing`, and cannot sign.
 
 **The variable is turned on last.** `MAC_SIGNING` goes to `on` only once
-the environment exists with its deployment rule (`v*` tags and `main`) and
-its required reviewer, and holds its five secrets, and the Team ID is in
-`electron-builder.release.yml`. Turned on earlier, the first signing run
-would have GitHub create the environment itself, with no rule and no
-reviewer, and then fail for want of secrets. `docs/repository-settings.md`
-has the list. Until then every tag is what it was, and the release
-procedure does not change.
+both environments exist, each with the deployment rule (`v*` tags and
+`main`) and its required reviewer; `release-signing` holds the two
+certificate secrets and `release-notarize` the three of the notary; and
+the Team ID is in `electron-builder.release.yml`. Turned on earlier, the
+first signing run would have GitHub create an environment itself, with no
+rule and no reviewer, and then fail for want of secrets.
+`docs/repository-settings.md` has the list, in that order. Until then
+every tag is what it was, and the release procedure does not change.
 
 **A signing run asks the reviewer twice**: once for the two packaging
-jobs, and once more, when they are done, for the two notarising jobs.
+jobs, to enter `release-signing`, and once more, when they are done, for
+the two notarising jobs, to enter `release-notarize`. `docs/releasing.md`
+says where in a release that falls.
 
 **A release depends on Apple's notary only while the variable is on.** An
 outage or a slow day then holds a release where nothing did. The script's
@@ -290,7 +307,7 @@ is still unchecked, as ADR-043 says.
 
 **The certificate will expire.** A signature with a secure timestamp
 outlives its certificate, which is one reason the timestamp is checked. A
-new certificate is a new pair of secrets in the environment; nothing in
+new certificate is a new pair of secrets in `release-signing`; nothing in
 the repository changes unless the team does.
 
 ## What must be shown first
