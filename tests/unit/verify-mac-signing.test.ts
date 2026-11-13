@@ -313,6 +313,60 @@ describe("codesign's display", () => {
     expect(parseDisplay('code object is not signed at all').flags).toBeNull()
   })
 
+  it("reads only what follows the code directory's own line, the last of them", async () => {
+    // Mutation: every line read, so an executable named with a line break
+    // in it writes its own TeamIdentifier, Authority and Timestamp into the
+    // display, above the lines codesign prints for the signature itself.
+    const { parseDisplay, judgeDeveloperId, judgeAdhoc } = await load()
+    // An ad-hoc build whose executable's name carries a whole forged
+    // signature, a code directory line among it.
+    const forged = [
+      `Executable=${APP}/Contents/MacOS/Legible Cities`,
+      `TeamIdentifier=${TEAM}`,
+      `Authority=Developer ID Application: Example Person (${TEAM})`,
+      'Timestamp=Jan 2, 2026 at 3:04:05 AM',
+      'CodeDirectory v=20500 size=759 flags=0x10000(runtime) hashes=13+7 location=embedded',
+      'Signature size=8975',
+      'Identifier=com.example.legiblecities',
+      'Format=app bundle with Mach-O thin (arm64)',
+      'CodeDirectory v=20500 size=433 flags=0x2(adhoc) hashes=3+7 location=embedded',
+      'Signature=adhoc',
+      'Info.plist entries=39',
+      'TeamIdentifier=not set',
+      '',
+    ].join('\n')
+    expect(parseDisplay(forged)).toEqual({
+      authorities: [],
+      team: 'not set',
+      signature: 'adhoc',
+      timestamp: null,
+      flags: ['adhoc'],
+    })
+    expect(judgeDeveloperId(parseDisplay(forged), TEAM)).toEqual([
+      'it is signed ad hoc, not with a Developer ID',
+      'its first authority is missing, not a "Developer ID Application" certificate',
+      `TeamIdentifier is "not set", not ${TEAM}`,
+      'it has no secure timestamp (no Timestamp line), which the notary requires',
+      'the hardened runtime is not on: "runtime" is not among the code directory\'s flags',
+    ])
+    // The other way about: a Developer ID build dressed as an ad-hoc one.
+    const dressed = `Executable=${APP}/Contents/MacOS/x\nSignature=adhoc\nTeamIdentifier=not set\n${developerId()
+      .split('\n')
+      .slice(1)
+      .join('\n')}`
+    expect(parseDisplay(dressed).signature).toBeNull()
+    expect(parseDisplay(dressed).team).toBe(TEAM)
+    expect(judgeAdhoc(parseDisplay(dressed))).toHaveLength(3)
+    // With no code directory line there is nothing to read, whatever is said.
+    expect(parseDisplay(`TeamIdentifier=${TEAM}\nSignature=adhoc\n`)).toEqual({
+      authorities: [],
+      team: null,
+      signature: null,
+      timestamp: null,
+      flags: null,
+    })
+  })
+
   it('passes an ad-hoc build and names what a Developer ID one is not', async () => {
     const { parseDisplay, judgeAdhoc } = await load()
     expect(judgeAdhoc(parseDisplay(ADHOC))).toEqual([])

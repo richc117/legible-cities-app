@@ -279,12 +279,14 @@ is refused before the key is written unless it holds exactly one disk
 image and its target's manifest, both plain files, with no link and no
 third file; and the workspace is then held to the checkout, at this
 run's commit with its files as committed and nothing beside them, in case
-anything landed outside that folder. Without that second half the first
-would not hold: a packaging step that had turned hostile could ship a file
-named like one of the notarising job's scripts, or like the config it
-reads the team from, and have it run, or trusted, with the key in hand.
-The reverse of the first half holds as well: the notarising job is never
-in `release-signing`, and cannot sign.
+anything landed outside that folder and inside the workspace. The rest of
+the runner, outside both, rests on the download action's own guard against
+an archive that names a path outside the folder it is unpacked into.
+Without that second half the first would not hold: a packaging step that
+had turned hostile could ship a file named like one of the notarising
+job's scripts, or like the config it reads the team from, and have it run,
+or trusted, with the key in hand. The reverse of the first half holds as
+well: the notarising job is never in `release-signing`, and cannot sign.
 
 **What is not stopped, and is accepted.** A packaging step that has turned
 hostile decides which bytes go into `unnotarised-<target>`, and the

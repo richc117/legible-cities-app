@@ -120,14 +120,26 @@ export function teamFromConfig(text) {
  * flags are the names in the code directory's parentheses: `runtime`,
  * `adhoc`, `none`. `Signature=adhoc` is the ad-hoc mark; a signature made
  * with a certificate prints `Signature size=...` instead, which is not it.
+ *
+ * Only what follows the last `CodeDirectory v=` line is read, and the flags
+ * from that line itself. codesign prints the executable's path and the
+ * identifier above it, and both are the signer's to choose: a name with a
+ * line break in it can put a `TeamIdentifier=` or an `Authority=` line of
+ * its own into the display, but only above the code directory's line, which
+ * is codesign's. A display with no such line reads as nothing at all.
  */
 export function parseDisplay(text) {
-  const lines = String(text ?? '').split(/\r?\n/)
+  const printed = String(text ?? '').split(/\r?\n/)
+  let at = -1
+  printed.forEach((line, index) => {
+    if (line.startsWith('CodeDirectory v=')) at = index
+  })
+  const lines = at === -1 ? [] : printed.slice(at + 1)
   const value = (key) => {
     const line = lines.find((candidate) => candidate.startsWith(`${key}=`))
     return line === undefined ? null : line.slice(key.length + 1).trim()
   }
-  const directory = /^CodeDirectory .*\bflags=0x[0-9a-fA-F]+\(([^)]*)\)/m.exec(String(text ?? ''))
+  const directory = at === -1 ? null : /\bflags=0x[0-9a-fA-F]+\(([^)]*)\)/.exec(printed[at])
   return {
     authorities: lines
       .filter((line) => line.startsWith('Authority='))

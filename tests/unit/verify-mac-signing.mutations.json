@@ -94,5 +94,21 @@
     "test": "tests/unit/verify-mac-signing.test.ts",
     "title": "imports nothing but Node's own modules: it runs on the runner that holds the notary's key",
     "why": "An import that is not node: let through: the next one can be a package, on the runner that holds the notary's key and installs none."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "  const lines = at === -1 ? [] : printed.slice(at + 1)",
+    "replace": "  const lines = printed",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "reads only what follows the code directory's own line, the last of them",
+    "why": "Every line of the display read: an executable named with a line break in it writes its own TeamIdentifier, Authority and Timestamp above the lines codesign prints for the signature."
+  },
+  {
+    "file": "scripts/verify-mac-signing.mjs",
+    "find": "    if (line.startsWith('CodeDirectory v=')) at = index",
+    "replace": "    if (at === -1 && line.startsWith('CodeDirectory v=')) at = index",
+    "test": "tests/unit/verify-mac-signing.test.ts",
+    "title": "reads only what follows the code directory's own line, the last of them",
+    "why": "The first code directory line taken for codesign's: a name that carries one of its own moves the reading up to the forged lines after it."
   }
 ]

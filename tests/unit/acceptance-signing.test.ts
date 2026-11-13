@@ -121,6 +121,8 @@ describe("acceptance.yml's step 2 on macOS", () => {
         '    adhoc) printf "Executable=x\\nSignature=adhoc\\nTeamIdentifier=not set\\n" >&2 ;;',
         `    developer) printf "Executable=x\\nAuthority=Developer ID Application: Example Person (${TEAM})\\nTeamIdentifier=${TEAM}\\n" >&2 ;;`,
         '    almost) printf "Executable=x\\nNot Signature=adhoc really\\n" >&2 ;;',
+        // A certificate's signature whose executable's name has a line of its own in it.
+        `    both) printf "Executable=x\\nSignature=adhoc\\nCodeDirectory v=20500 flags=0x10000(runtime)\\nSignature size=8975\\nAuthority=Developer ID Application: Example Person (${TEAM})\\nTeamIdentifier=${TEAM}\\n" >&2 ;;`,
         '    none) echo "code object is not signed at all" >&2; exit 1 ;;',
         '  esac',
         '  exit 0',
@@ -398,6 +400,9 @@ describe("acceptance.yml's step 2 on macOS", () => {
         { config: true, signature: 'none' },
         // The words alone, inside another line, are not the mark.
         { config: true, signature: 'almost' },
+        // And the mark on a line of its own is not enough beside an
+        // authority: a name can add the one and cannot take the other away.
+        { config: true, signature: 'both' },
         { config: false, signature: 'developer' },
       ]
       for (const { config, signature } of cases) {

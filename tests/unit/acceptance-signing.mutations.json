@@ -57,10 +57,18 @@
   },
   {
     "file": ".github/workflows/acceptance.yml",
-    "find": "            if ! grep -qx 'Signature=adhoc' <<< \"$display\"; then",
+    "find": "            if ! grep -qx 'Signature=adhoc' <<< \"$display\" || grep -q '^Authority=' <<< \"$display\"; then",
     "replace": "            if false; then",
     "test": "tests/unit/acceptance-signing.test.ts",
     "title": "fails an unsigned image whose app is not signed ad hoc, whatever the tag",
     "why": "The app in an unsigned image taken for ad hoc unread: one signed with a certificate, or not signed at all, is held to no Developer ID check and recorded as an ad-hoc build."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": " || grep -q '^Authority=' <<< \"$display\"; then",
+    "replace": "; then",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "fails an unsigned image whose app is not signed ad hoc, whatever the tag",
+    "why": "The ad-hoc mark taken on its own: an app signed with a certificate, whose executable's name puts a Signature=adhoc line into the display, is recorded as an ad-hoc build."
   }
 ]

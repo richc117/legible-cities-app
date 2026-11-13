@@ -263,11 +263,16 @@ jobs:
             # an ad-hoc build's app is signed ad hoc. An app that is not, in
             # an unsigned image, is neither build this repository makes, and
             # would otherwise go on from here held to no Developer ID check
-            # and recorded as ad hoc.
+            # and recorded as ad hoc. The mark alone is not enough: the
+            # executable's name and the identifier are printed too and are
+            # the signer's to choose, so one with a line break in it can add
+            # a line that reads Signature=adhoc. It cannot take a line away,
+            # and a signature made with a certificate names its authority,
+            # so any Authority line is not an ad-hoc build either.
             display=$(codesign -dvv "$apps/Legible Cities.app" 2>&1 || true)
-            if ! grep -qx 'Signature=adhoc' <<< "$display"; then
+            if ! grep -qx 'Signature=adhoc' <<< "$display" || grep -q '^Authority=' <<< "$display"; then
               node "$cli" prior "$PRIOR" step 2 fail "The disk image has no signature of its own, which is an ad-hoc build's, and the app copied from it is not signed ad hoc: it is neither build this repository makes."
-              echo "::error::the disk image is unsigned and the app inside is not signed ad hoc (codesign shows no Signature=adhoc): it is neither build this repository makes"
+              echo "::error::the disk image is unsigned and the app inside is not signed ad hoc (codesign shows no Signature=adhoc line, or names an authority): it is neither build this repository makes"
               exit 1
             fi
             if codesign --verify --deep --strict "$apps/Legible Cities.app" > /dev/null 2>&1; then
