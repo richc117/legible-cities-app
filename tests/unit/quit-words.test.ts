@@ -184,9 +184,12 @@ describe('the page’s subscription to the question', () => {
     expect(handlers.size).toBe(0)
     send(asked)
     expect(heard).toEqual([])
-    // Once: stopping twice says nothing more.
+    // Once: stopping twice says nothing more, and counts nothing twice, so
+    // the next listener's going is still said.
     off()
     expect(told).toEqual([true, false])
+    subscribe(() => undefined)()
+    expect(told).toEqual([true, false, true, false])
   })
 
   it('says the page has stopped only when its last listener has gone', () => {
