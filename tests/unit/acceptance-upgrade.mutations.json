@@ -1,0 +1,210 @@
+[
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  return (hour % 12) + (pm ? 12 : 0)\n",
+    "replace": "  return hour + (pm ? 12 : 0)\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "turns the 12-hour clock into the 24-hour one at both ends of the day",
+    "why": "12 AM read as 12 and 12 PM as 24: a Made written just after midnight or noon would name another hour, and the comparison with the record would fail on a moment that is the same."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "const plain = (text) => String(text).replace(/\\s+/g, ' ').trim()",
+    "replace": "const plain = (text) => String(text).replace(/ +/g, ' ').trim()",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "reads the narrow no-break space ICU puts before AM",
+    "why": "Only the plain space read: the narrow no-break space Chromium's ICU puts before AM would make every 0.1.0 Made unreadable, and step 22 would fail on a runner whose strip is right."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    const [, month, day, year, hour, minute, second, meridiem] = numeric\n",
+    "replace": "    const [, day, month, year, hour, minute, second, meridiem] = numeric\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "reads 0.1.0's toLocaleString, with its seconds",
+    "why": "0.1.0's en-US date read day first: the thirteenth of November would be refused as a thirteenth month, and an earlier day misread as another."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    const month = MONTHS.indexOf(monthName.toLowerCase()) + 1\n",
+    "replace": "    const month = MONTHS.indexOf(monthName.toLowerCase())\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "reads the later versions' words, with no seconds, in either hour cycle",
+    "why": "The month in words read one short: November would be October, and Made after the update would never be the moment 0.1.0 wrote."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    a.minute === b.minute &&\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "is false for another minute, another day, another second, or words it cannot read",
+    "why": "Minutes not compared: a Made a minute or an hour's part away would pass as unchanged."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    (a.second === null || b.second === null || a.second === b.second)",
+    "replace": "    true",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "to the second where the words give one, and to the minute always",
+    "why": "Seconds never compared where both texts give them: 0.1.0's strip could disagree with its own record by seconds and the seed would not say."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  if (value.record !== UPGRADE_RECORD) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses what is not JSON, another record, and phases it does not know",
+    "why": "An upgrade.json of another shape read as this one: a later phase would compare with fields that mean something else."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (phase.ok && phase.problems.length > 0) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses a phase that does not say whether it passed, or passed with problems",
+    "why": "A phase that says it passed while listing problems would be taken at its word."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  exportSha256: (v) => typeof v === 'string' && SHA256.test(v),",
+    "replace": "  exportSha256: (v) => typeof v === 'string',",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses a seed with a field missing or of the wrong kind",
+    "why": "A seed whose export hash is not one: after's \"the post is unchanged\" would compare a hash with anything and fail for the wrong reason, or a blank would be kept."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (outcome !== 'success') problems.push(",
+    "replace": "    if (outcome === 'failure') problems.push(",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "fails on a step of the workflow that did not succeed, whatever its word",
+    "why": "A skipped or cancelled install read as fine: step 22 could pass with the release never installed over 0.1.0."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "        problems.push(`the ${phase} phase wrote nothing`)\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "fails on a phase that wrote nothing, or did not pass",
+    "why": "A phase that never wrote its verdict - back never ran - passes the row."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "      if (!ran.ok && ran.problems.length === 0) problems.push(`${phase}: did not pass`)\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "fails on a phase that wrote nothing, or did not pass",
+    "why": "A phase written as failed with no problem named would pass the row."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  return markdown.replace(row, () => `| ${name} | ${cell(value, redactText)} |`)",
+    "replace": "  return markdown.replace(row, () => `| ${name} | ${value} |`)",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "replaces one field's value, redacted, and leaves the others",
+    "why": "A field written unredacted: a path in it would reach the public issue the record is pasted into."
+  },
+  {
+    "file": "tests/acceptance/record-cli.mjs",
+    "find": "  const record = fillField(readRecord(recordPath), 'Previous version installed', previous)\n",
+    "replace": "  const record = readRecord(recordPath)\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "writes the row and the previous version into the record the spec wrote",
+    "why": "The run table would go on saying the previous version is not known after the workflow installed 0.1.0 under the release."
+  },
+  {
+    "file": "tests/acceptance/record-cli.mjs",
+    "find": "  return row.result === 'fail' ? 1 : 0",
+    "replace": "  return 0",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "writes a failure, and exits 1, where a phase failed or nothing was written down",
+    "why": "A failed step 22 written into the record with a green workflow step."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (answer !== quiet) return { ok: false, seen }\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "fails on the first answer that is not, even one sample long between quiet ones",
+    "why": "A job running at one sample and gone by the next would pass as nothing running."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (now() >= end) return { ok: true, seen }\n",
+    "replace": "    return { ok: true, seen }\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "samples for the whole duration while every answer is the quiet one",
+    "why": "One sample taken for the whole quiet time: \"nothing runs\" would be said of a single moment."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "    if (sequence[i] === value && (i === 0 || sequence[i - 1] !== value)) count += 1",
+    "replace": "    if (sequence[i] === value) count += 1",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "counts each entry into a state, not how long it was held",
+    "why": "A redraw seen in running twice in a row would count as two, and \"cell 03 ran once\" would fail on a run that happened once."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  if (env.LEGIBLE_UPGRADE_ON_THIS_MACHINE === '1') return null",
+    "replace": "  if (env.LEGIBLE_UPGRADE_ON_THIS_MACHINE) return null",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses anywhere else, and says how to say yes",
+    "why": "Any value of the variable, a stray \"yes\" or \"0\", would let a phase drive the app on a person's own profile."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  if (env.CI === 'true' || env.CI === '1') return null",
+    "replace": "  if (env.CI !== undefined) return null",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "refuses anywhere else, and says how to say yes",
+    "why": "CI=false or an empty CI would count as a runner, and a phase would run on a person's machine."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "  const join = (...parts) => parts.join(platform === 'win32' ? '\\\\' : '/')",
+    "replace": "  const join = (...parts) => parts.join('/')",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "is the platform's application-data folder and the product's name",
+    "why": "The Windows default profile spelt with forward slashes: the seed's check before launch would look in the right folder only by luck of Node's path handling, and the later comparison with 0.1.0's own would be of two spellings."
+  },
+  {
+    "file": "tests/acceptance/upgrade.mjs",
+    "find": "      : outcomes[0]?.[1] === 'success'\n",
+    "replace": "      : true\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "names 0.1.0 as installed where its install succeeded and the seed wrote nothing down",
+    "why": "A run whose 0.1.0 install failed would still name 0.1.0 as the previous version installed."
+  },
+  {
+    "file": "tests/acceptance/record-cli.mjs",
+    "find": "  if (upgradePath === '--not-run') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "writes step 22 as not run, with why, where the workflow did not start it",
+    "why": "The time check's row would read the reason as upgrade.json's path and fail, rather than say the step was not run and why."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      UPGRADE_MINUTES: 195\n",
+    "replace": "      UPGRADE_MINUTES: 150\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "gives every step of it a limit, and starts it only with time for all of them",
+    "why": "Step 22 could start with less time left than its steps may take, and be cut off by the job's limit with nothing written."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      JOB_MINUTES: 360\n",
+    "replace": "      JOB_MINUTES: 330\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "says the job's own limit",
+    "why": "The time check would count from a limit the job does not have."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        id: back\n        if: ${{ !cancelled() && (steps.again_mac.outcome == 'success' || steps.again_win.outcome == 'success') }}\n        timeout-minutes: 20\n",
+    "replace": "        id: back\n        if: ${{ !cancelled() && (steps.again_mac.outcome == 'success' || steps.again_win.outcome == 'success') }}\n",
+    "test": "tests/unit/acceptance-upgrade.test.ts",
+    "title": "gives every step of it a limit, and starts it only with time for all of them",
+    "why": "A step 22 step with no limit of its own would take the job's whole remaining time when it hangs."
+  }
+]

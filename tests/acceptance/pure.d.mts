@@ -31,6 +31,13 @@ export function fillStep(
   redactText?: (text: string) => string,
 ): string
 
+export function fillField(
+  markdown: string,
+  name: string,
+  value: string,
+  redactText?: (text: string) => string,
+): string
+
 export function parseSums(text: string): Map<string, string>
 
 export function writtenSince(path: string, since: number): boolean

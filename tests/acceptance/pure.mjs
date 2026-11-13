@@ -79,6 +79,17 @@ export function fillStep(markdown, n, result, notes, redactText = redact) {
   )
 }
 
+/**
+ * The run table's row `name` in a rendered record, with a new value. The
+ * workflow writes a field the spec could not know, after the spec has
+ * written the record: step 22's previous version.
+ */
+export function fillField(markdown, name, value, redactText = redact) {
+  const row = new RegExp(`^\\| ${escapeRegExp(name)} \\| .*\\|$`, 'm')
+  if (!row.test(markdown)) throw new Error(`the record has no row for ${name}`)
+  return markdown.replace(row, () => `| ${name} | ${cell(value, redactText)} |`)
+}
+
 /** SHA256SUMS.txt read back: name to lower-case hex, in the form `shasum -c` reads. */
 export function parseSums(text) {
   const sums = new Map()

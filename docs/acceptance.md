@@ -7,8 +7,8 @@ it. For a release it is run by a machine, on a macOS and a Windows runner
 way, on a clean Mac or a Windows PC that has never had Legible Cities on
 it, and record it with the [results template](#results-template).
 [Step 22](#22-update-over-010), the update over 0.1.0, satisfies the gate
-only as the automated run makes it, once issue 690 lands; a person's step
-22 does not. What else the
+only as the automated run makes it, on both systems; a person's step 22
+does not. What else the
 gate asks is in [`releasing.md`](releasing.md#the-gate) (ADR-063): the
 person's part is one sitting, [`acceptance-sitting.md`](acceptance-sitting.md);
 the stranger's timed run, [`acceptance-stranger.md`](acceptance-stranger.md),
@@ -63,7 +63,9 @@ Release's tag (the Release must be published, a prerelease for an `-rc`
 tag, since the run's token cannot see a draft), does step 1 on a macOS and
 a Windows runner, installs the app, runs
 `tests/acceptance/acceptance.spec.ts` over steps 3 to 20 against the
-installed app, and uninstalls it for step 21. Its record is this
+installed app, uninstalls it for step 21, and then makes step 22's update
+over 0.1.0 with `tests/acceptance/upgrade.spec.ts`, in three phases with an
+install between each (see [step 22](#22-update-over-010)). Its record is this
 checklist's [results template](#results-template), filled in, as the job's
 summary and an artefact with a screenshot of each failed step, ready to
 paste into the run's issue. On a machine with the app already installed,
@@ -135,10 +137,14 @@ person:
   its control pairs are the sitting's
   [item 6](acceptance-sitting.md#6-the-assistants-visual-review), the drags
   its item 7, and the Finder its item 8.
-- **Step 22**: until issue 690 lands, the run installs the one version
-  under test on a runner that has never had another, so the update over
-  0.1.0 is recorded as not automated, and so is **Previous version
-  installed**; the gate is not passed without it (ADR-063).
+- **Step 22**: the run makes the update over 0.1.0 and records it as
+  "pass, part not automated" at best, with **Previous version installed**
+  0.1.0; the gate is not passed without it (ADR-063). Not automated:
+  whether the stations are where 0.1.0 drew them (the map after the update
+  is kept as `upgrade-after-map.png` beside the record, for the
+  assistant's visual review), whether **Reveal** brought the Finder or
+  File Explorer forward, and the Finder's **Replace** and the warnings,
+  since the workflow installs each version itself.
 - **Places**: the profile and export folder are temporary, so the folders
   in `install.md`'s tables are checked only in step 21.
 - **Older than the checklist**: a release tagged before the front door and
@@ -1208,10 +1214,47 @@ Result: ____
 
 ### 22. Update over 0.1.0
 
-For the gate, only the automated run's step 22 counts, once issue 690
-lands (ADR-063); a person's step 22, as below, does not satisfy it. A run
-that does not make it writes "not run" in this step's row. Step 21 has
-left the machine without the app, as it was before the run.
+For the gate, only the automated run's step 22 counts (ADR-063); a
+person's step 22 does not satisfy it. The **Do** and **See** below are
+kept for reference: they are what the run does and checks, in a person's
+terms.
+
+**The automated run makes this step** on both systems, after step 21, with
+`tests/acceptance/upgrade.spec.ts` in three phases, each on its version's
+own default profile so that each version's own idea of where its data
+lives is what links them:
+
+- **seed**, on 0.1.0 installed from its own Release: steps 3 and 4 below,
+  then the post exported and the app quit. It writes down the profile,
+  Layout and Made, and the SHA-256 of the project's `project.json` and of
+  the post.
+- The workflow installs this release over it, as a person does: on a Mac
+  the old app removed and the new one copied into Applications, as
+  **Replace** does; on Windows the installer, run silently.
+- **after**, on this release: every line under **See** below but the
+  **check:** and the Finder or File Explorer coming forward. "Redrawn
+  once" is cell 03 entering its running state once and cell 02's sentence
+  said once, as the page recorded them, and nothing running for five
+  seconds after; "nothing runs" is the Jobs button read every tenth of a
+  second for five seconds. **Made** is compared as the moment it names, as
+  **See** says. It also checks that the post's bytes have not changed,
+  that `project.json` is now version 2 and that a new still
+  (`instagram-square`) exports beside the post, and keeps the map as
+  `upgrade-after-map.png`.
+- The workflow removes this release and installs 0.1.0 again, as
+  [Updating from an earlier release](install.md#updating-from-an-earlier-release)
+  says to go back.
+- **back**, on 0.1.0: the Library marks the project read-only, and its
+  `project.json` is byte for byte what this release left.
+
+Its row reads "pass, part not automated" where all three pass, with
+**Previous version installed** 0.1.0; the part left is the **check:**
+below, which the assistant's visual review reads on `upgrade-after-map.png`
+beside the record. Where too little of the job's time is left after step
+21 for all of the step's limits, it is not started, and its row reads "not
+run" with that reason; any other run that does not make the step writes
+"not run" in its row, with why. Step 21 has left the machine without the
+app, as it was before the run.
 
 **Do.**
 1. Move the export folder's `LA Metro Rail` folder, which step 21 left

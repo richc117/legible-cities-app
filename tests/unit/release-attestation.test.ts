@@ -550,8 +550,9 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
       git(dir, 'tag', '-a', 'v1.0.0-rc.1', '-m', 'new')
       const afterCommit = git(dir, 'rev-parse', 'v1.0.0-rc.1^{commit}')
       // The record CLI is the real one: its output is what the step records.
+      // With every module it imports, as the workflow's checkout has them.
       mkdirSync(join(dir, 'tests', 'acceptance'), { recursive: true })
-      for (const name of ['record-cli.mjs', 'pure.mjs']) {
+      for (const name of ['record-cli.mjs', 'pure.mjs', 'upgrade.mjs']) {
         copyFileSync(
           join(repo, 'tests', 'acceptance', name),
           join(dir, 'tests', 'acceptance', name),
