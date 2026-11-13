@@ -88,6 +88,24 @@ person's, recorded in [Reader runs](#reader-runs).
    `tests/support/a11y-names.ts` (none today), each one name under two
    roles, decided with a run of the sweep in hand and naming the issue that
    decided it.
+   **axe, a second net** (issue 692). Inside each theme of every sweep, after
+   the names, `expectAxeClean` runs axe (`@axe-core/playwright` 4.14.0)
+   over the screen with the WCAG 2.0, 2.1 and 2.2 A and AA rule tags, in
+   legacy mode, the only one that runs against Electron, and with
+   `iframes: false`, which leaves the engine's page alone. It checks what
+   nobody thought to write a check for. A violation fails the sweep, softly
+   as the names' check does. `incomplete` results, which axe could not
+   decide, are attached to the test and listed as annotations, never read
+   as a pass. A known-findings list (`tests/support/a11y-axe.ts`) holds
+   what is decided, by rule and a selector the element itself matches, with
+   its issue: today one entry, `label-content-name-mismatch` on the sample
+   cities' cards (issue 707), which axe reads with their lines run
+   together. An entry excuses nothing else, so the same rule on another
+   element still fails, and one that matches nothing on the Library
+   sweeps, where it is expected, fails them, so the list cannot go stale.
+   The rule is a function of the findings and is tested without the app
+   (`tests/unit/a11y-axe.test.ts`, with mutations). Only CI's `e2e` job
+   runs axe on the real screens.
    The rule is a function of the snapshot's text and is tested without the
    app (`tests/unit/a11y-names.test.ts`); a line of the snapshot it cannot
    read fails the sweep rather than being stepped over. It is the sweep's
@@ -448,7 +466,10 @@ which it is.
   that is named by what it holds, which the rule allows by role. Two more
   are Playwright's. **A frame's title**: its snapshot gives every `iframe`
   an empty name, so a region around a frame of the same title is never
-  seen as a pair. And **the roles it refuses a name** - `caption`, `code`,
+  seen as a pair. axe's `frame-title` rule now judges each frame's title from outside
+  (the sweeps run it with `iframes: false`, which leaves what is inside the
+  frame alone), so a frame with no title fails; whether its title repeats a
+  region's is still not seen. And **the roles it refuses a name** - `caption`, `code`,
   `definition`, `deletion`, `emphasis`, `generic`, `insertion`, `mark`,
   `paragraph`, `presentation`, `strong`, `subscript`, `suggestion`,
   `superscript`, `term` and `time` - so an `aria-label` on a `<p>`, a
