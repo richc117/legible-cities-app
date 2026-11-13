@@ -5,7 +5,13 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { logFolders, logLines, RETRY_LINES, STORE_LINES } from '../support/store-lines'
+import {
+  logFolders,
+  logLines,
+  receivedFiles,
+  RETRY_LINES,
+  STORE_LINES,
+} from '../support/store-lines'
 
 let dir: string
 
@@ -82,4 +88,21 @@ describe('logFolders', () => {
       }
     },
   )
+})
+
+describe('receivedFiles', () => {
+  it('finds a record two levels down, not four, and follows no link', async () => {
+    await mkdir(join(dir, 'a', 'engine'), { recursive: true })
+    await writeFile(join(dir, 'a', 'engine', 'fake-engine.received'), 'x')
+    await mkdir(join(dir, 'b', 'c', 'd', 'e'), { recursive: true })
+    await writeFile(join(dir, 'b', 'c', 'd', 'e', 'fake-engine.received'), 'x')
+    const elsewhere = await mkdtemp(join(tmpdir(), 'legible-cities-received-elsewhere-'))
+    try {
+      await writeFile(join(elsewhere, 'fake-engine.received'), 'x')
+      await symlink(elsewhere, join(dir, 'link'), 'dir')
+      expect(receivedFiles(dir)).toEqual([join(dir, 'a', 'engine', 'fake-engine.received')])
+    } finally {
+      await rm(elsewhere, { recursive: true, force: true })
+    }
+  })
 })

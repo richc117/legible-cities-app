@@ -2860,11 +2860,16 @@ which is how a cold first launch is told from a warm one, and the helpers'
 wait for "ready" is `READY_DEADLINE_MS` (`tests/support/ready.ts`), a
 handshake, the failed engine's ending (`shutdownMs`), the first restart
 delay and a second handshake from the supervisor's own bounds. With
-`LEGIBLE_KEEP_LOGS` set, which the loop workflow does, or on CI (issue 671),
-the teardown copies the run's logs, and every `fake-engine.received` the
-specs' temporary folders still hold, into `test-results/logs/`, which
-`ci.yml` uploads when the run failed; a spec that removes its own folders
-(`smoke`, `rail`, `preview`, `notebook`, `typeface`) leaves nothing there.
+`LEGIBLE_KEEP_LOGS` set, which the loop workflow does, or on CI (any non-empty
+`CI`: `ci.yml`'s two e2e jobs and `determinism.yml`; issue 671), the teardown
+copies the run's logs, and every `fake-engine.received` the specs' temporary
+folders still hold, into `test-results/logs/`, which the workflows upload when
+the run failed. A spec that removes its folders loses what they held: `rail`
+and `preview` remove only their engine home and export folder, in `finally`,
+so they lose the request record even on a failure but keep `main.log`;
+`smoke` (one of its three tests), `typeface` and `determinism` remove theirs
+only after a pass, so a failing one keeps everything; `notebook` and
+`typeface` never run the stand-in, so have no record.
 
 The unit suite is two Vitest projects, and `npm test` runs both (ADR-059).
 `unit` runs in Node; a test that renders a component starts with
