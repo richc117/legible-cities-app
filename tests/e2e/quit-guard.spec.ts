@@ -36,7 +36,13 @@ import {
 } from '@playwright/test'
 import { exportLine, openCell, openProject } from '../support/project'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
-import { askToQuit, hasExited, pressAndLetTheWindowGo, quitApp } from '../support/quit'
+import {
+  askToQuit,
+  hasExited,
+  pressAndLetTheWindowGo,
+  quitApp,
+  untilAnswerable,
+} from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -277,10 +283,12 @@ test('a quit during an export asks first: Keep working keeps it, Quit anyway qui
   })
 })
 
-// Mutation: `if (facts.open) return GO_AHEAD` taken out of `quitQuestion`
-// (src/main/window-lifecycle.ts) - the second quit is held too, and the
-// process is still there at the deadline.
-test('a second quit while the question is open is an answer, and quits', async () => {
+// Mutation: `if (facts.open !== null) return …` taken out of `quitQuestion`
+// (src/main/window-lifecycle.ts) - the second quit is asked about again, and
+// the process is still there at the deadline. That a second quit which comes
+// sooner than a second is held is the unit table's: in the built app "sooner"
+// is a race with the machine.
+test('a second quit, once the question has been open a second, is an answer, and quits', async () => {
   const h = home(HELD_EXPORT)
   await withApp(h, async (page, app) => {
     const child = app.process()
@@ -290,6 +298,9 @@ test('a second quit while the question is open is an answer, and quits', async (
     await expect(
       page.getByRole('dialog', { name: 'Quit while an export is running?', exact: true }),
     ).toBeVisible()
+    // Seen now, so asked no later than now: old enough once this has passed.
+    await untilAnswerable(Date.now())
+    expect(hasExited(child), 'the app waited for an answer meanwhile').toBe(false)
     await askToQuit(app).catch(() => undefined)
 
     await exits(child, 'the app quit at the second quit, with the question unanswered')
