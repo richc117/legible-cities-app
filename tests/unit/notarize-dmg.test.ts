@@ -621,18 +621,36 @@ describe('the command line', () => {
   it('exits 2 without an image that is a file, before anything runs', async () => {
     const { main, EXIT } = await load()
     const s = session()
-    const out: string[] = []
-    const io = {
-      out: { write: (text: string) => void out.push(text) },
-      env: KEY_ENV,
-      run: s.io.run,
+    // Credentials that are all there, with a key file that is one: nothing
+    // but the image itself stands between each call and a submission.
+    const key = join(scratch(), 'key.p8')
+    writeFileSync(key, KEY_TEXT)
+    const call = async (argv: string[]): Promise<{ code: number; out: string }> => {
+      const out: string[] = []
+      const code = await main(argv, {
+        out: { write: (text: string) => void out.push(text) },
+        env: { ...KEY_ENV, NOTARY_KEY_PATH: key },
+        run: s.io.run,
+        pause: s.io.pause,
+      })
+      return { code, out: out.join('') }
     }
-    expect(await main([], io)).toBe(EXIT.usage)
-    expect(await main([join(scratch(), 'none.dmg')], io)).toBe(EXIT.usage)
-    expect(await main([scratch()], io)).toBe(EXIT.usage)
+    expect(await call([])).toEqual({
+      code: EXIT.usage,
+      out: 'usage: notarize-dmg.mjs <dmg> [--log <file>]\n',
+    })
+    const missing = join(scratch(), 'none.dmg')
+    expect(await call([missing])).toEqual({
+      code: EXIT.usage,
+      out: `notarize: ${missing} is not a file\n`,
+    })
+    // A folder exists and is still not an image to submit.
+    const folder = scratch()
+    expect(await call([folder])).toEqual({
+      code: EXIT.usage,
+      out: `notarize: ${folder} is not a file\n`,
+    })
     expect(s.calls).toEqual([])
-    expect(out.join('')).toContain('usage: notarize-dmg.mjs <dmg> [--log <file>]')
-    expect(out.join('')).toContain('is not a file')
   })
 })
 
@@ -654,12 +672,19 @@ describe('the child processes', () => {
     expect(childProblem('it', loud, 30_000)).toBe('it exited 3')
 
     // A child that reads its input sees the end at once: nothing can prompt.
-    const asks = runChild(
-      process.execPath,
-      ['-e', 'process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("eof"))'],
-      30_000,
-    )
-    expect([asks.status, asks.stdout]).toEqual([0, 'eof'])
+    // Held where the script runs; a Windows child's view of an ignored
+    // input is not what is being tested.
+    if (process.platform !== 'win32') {
+      const asks = runChild(
+        process.execPath,
+        [
+          '-e',
+          'process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("eof"))',
+        ],
+        30_000,
+      )
+      expect([asks.status, asks.stdout]).toEqual([0, 'eof'])
+    }
 
     const absent = runChild('lc-no-such-command-686', [], 30_000)
     expect(absent.error).toContain('ENOENT')

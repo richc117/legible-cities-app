@@ -729,7 +729,8 @@ describe('the command line', () => {
     }
     const good = run(['developer-id', APP, '--team-from', config(TEAM)])
     expect(good.code).toBe(EXIT.passed)
-    expect(good.s.lines()).toEqual(signatureLines(APP))
+    // The path is made absolute for this machine before anything is run.
+    expect(good.s.lines()).toEqual(signatureLines(resolve(APP)))
 
     const placeholder = run(['dmg', DMG, '--team-from', config('TEAMID_TBD')])
     expect(placeholder.code).toBe(EXIT.usage)
@@ -799,12 +800,20 @@ describe('the child processes', () => {
       30_000,
     )
     expect([loud.status, loud.stdout, loud.stderr, loud.timedOut]).toEqual([3, 'out', 'err', false])
-    const asks = runChild(
-      process.execPath,
-      ['-e', 'process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("eof"))'],
-      30_000,
-    )
-    expect([asks.status, asks.stdout]).toEqual([0, 'eof'])
+    // A child that reads its input sees the end at once: nothing can prompt.
+    // Held where the script runs; a Windows child's view of an ignored
+    // input is not what is being tested.
+    if (process.platform !== 'win32') {
+      const asks = runChild(
+        process.execPath,
+        [
+          '-e',
+          'process.stdin.resume(); process.stdin.on("end", () => process.stdout.write("eof"))',
+        ],
+        30_000,
+      )
+      expect([asks.status, asks.stdout]).toEqual([0, 'eof'])
+    }
   })
 
   it('all start through the one function that sets a limit, each check with its own', async () => {

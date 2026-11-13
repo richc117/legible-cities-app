@@ -48,7 +48,7 @@
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, realpathSync, rmdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join, posix, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 
@@ -283,7 +283,8 @@ export function signatureChecks(app, { mode, team = null }) {
           ],
     ),
   })
-  const python = join(app, ...PYTHON)
+  // A path inside a Mac bundle, whatever machine this is read on.
+  const python = posix.join(app, ...PYTHON)
   const signed = (what, code) => ({
     what:
       mode === 'adhoc'
@@ -475,7 +476,7 @@ export function verify({ mode, path, team = null, notarized = false }, io) {
           )
           failed += 1
         } else {
-          const app = join(mount, apps[0])
+          const app = posix.join(mount, apps[0])
           failed += runChecks(
             [
               ...signatureChecks(app, { mode: 'developer-id', team }),
