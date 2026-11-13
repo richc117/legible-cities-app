@@ -417,7 +417,7 @@
   },
   {
     "file": ".github/workflows/build.yml",
-    "find": "          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in release, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "find": "          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
     "replace": "          umask 077\n",
     "test": "tests/unit/release.test.ts",
     "title": "notarising refuses no image, or two, before the key is written",
@@ -478,5 +478,101 @@
     "test": "tests/unit/release.test.ts",
     "title": "names ten secrets in all, each half in the one job that joins its environment",
     "why": "The packaging job put in the notary's environment: the job that runs npm's code is in reach of the notary's key, and finds no certificate there to sign with."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          name: unnotarised-${{ matrix.target }}\n          path: ${{ runner.temp }}/signed\n",
+    "replace": "          name: unnotarised-${{ matrix.target }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The download left to land in the workspace: a file named like one of this job's scripts, shipped by a packaging step that has turned hostile, replaces the script and is run with the notary's key."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      # And it is held to exactly what the packaging job uploads, before\n      # anything of it is used and before the notary's key exists: one disk\n      # image in release/, the target's manifest in vendor/, both plain\n      # files, and nothing else. No link, no third file, no other folder. A\n      # name is shown quoted, so that nothing it holds is read by the runner\n      # as a command.\n      - name: Refuse a download that holds anything but the image and its manifest\n        shell: bash\n        run: |\n          export LC_ALL=C\n          root=\"$RUNNER_TEMP/signed\"\n          if [ -L \"$root\" ] || [ ! -d \"$root\" ]; then\n            echo \"::error::there is no folder where the signed image is unpacked, so there is nothing to notarise\"\n            exit 1\n          fi\n          image='^release/[A-Za-z0-9 ._-]+\\.dmg$'\n          images=0\n          manifests=0\n          refused=''\n          while IFS= read -r -d '' entry; do\n            name=\"${entry#\"$root\"/}\"\n            printf -v quoted '%q' \"$name\"\n            if [ -L \"$entry\" ]; then\n              refused=\"$refused $quoted (a link)\"\n            elif [ -d \"$entry\" ]; then\n              case \"$name\" in\n                release|vendor) ;;\n                *) refused=\"$refused $quoted (a folder)\" ;;\n              esac\n            elif [ ! -f \"$entry\" ]; then\n              refused=\"$refused $quoted (neither a file nor a folder)\"\n            elif [ \"$name\" = \"vendor/manifest-$TARGET.json\" ]; then\n              manifests=$((manifests + 1))\n            elif [[ \"$name\" =~ $image ]]; then\n              images=$((images + 1))\n            else\n              refused=\"$refused $quoted\"\n            fi\n          done < <(find \"$root\" -mindepth 1 -print0)\n          if [ -n \"$refused\" ] || [ \"$images\" -ne 1 ] || [ \"$manifests\" -ne 1 ]; then\n            echo \"::error::the download is not what the packaging job uploads, which is one disk image in release/ and vendor/manifest-$TARGET.json: it holds $images disk image(s) and $manifests manifest(s)${refused:+, and besides them:$refused}. Nothing of it was used, and the notary's key was not written\"\n            exit 1\n          fi\n          echo \"the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else\"\n\n      # spctl's verdicts mean nothing on a machine where Gatekeeper's\n      # assessments are off: everything is accepted, signed or not. A runner\n      # image can come that way, so they are turned on here if they are off,\n      # the status is said before and after, and only a runner where they\n      # will not come on fails. macOS has spelt the option two ways.\n      - name: Turn Gatekeeper's assessments on if they are off\n        shell: bash\n        run: |\n          before=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper before: $before\"\n          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable || sudo spctl --master-enable || true\n          fi\n          after=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper after: $after\"\n          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image\"\n            exit 1\n          fi\n\n      # The notary's key exists in this step alone: written to a file nobody\n      # else can read, handed to the script by path, and removed when the\n      # shell exits normally or fails; on a cancelled or timed-out step the\n      # hosted runner is discarded with the file. The limit is past the\n      # script's own worst case, so the script gives up first and says why:\n      # 70 minutes for the submission (notarytool's 60 of waiting and the\n      # upload before it), three tries of the log and three of the staple at\n      # 2 minutes each with a quarter of a minute between tries, and 1 for\n      # the validation, which is 84.\n      - name: Notarise and staple the disk image\n        timeout-minutes: 90\n        shell: bash\n        env:\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}\n          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}\n        run: |\n          shopt -s nullglob\n          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n          key=\"$RUNNER_TEMP/notary-key.p8\"\n          trap 'rm -f \"$key\"' EXIT\n          trap 'exit 1' INT TERM HUP\n          printf '%s\\n' \"$NOTARY_KEY_P8\" > \"$key\"\n          unset NOTARY_KEY_P8\n          NOTARY_KEY_PATH=\"$key\" node scripts/notarize-dmg.mjs \"${images[0]}\" --log \"$RUNNER_TEMP/notary-log/notary-log-$TARGET.json\"\n\n",
+    "replace": "      # The notary's key exists in this step alone: written to a file nobody\n      # else can read, handed to the script by path, and removed when the\n      # shell exits normally or fails; on a cancelled or timed-out step the\n      # hosted runner is discarded with the file. The limit is past the\n      # script's own worst case, so the script gives up first and says why:\n      # 70 minutes for the submission (notarytool's 60 of waiting and the\n      # upload before it), three tries of the log and three of the staple at\n      # 2 minutes each with a quarter of a minute between tries, and 1 for\n      # the validation, which is 84.\n      - name: Notarise and staple the disk image\n        timeout-minutes: 90\n        shell: bash\n        env:\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}\n          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}\n        run: |\n          shopt -s nullglob\n          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n          key=\"$RUNNER_TEMP/notary-key.p8\"\n          trap 'rm -f \"$key\"' EXIT\n          trap 'exit 1' INT TERM HUP\n          printf '%s\\n' \"$NOTARY_KEY_P8\" > \"$key\"\n          unset NOTARY_KEY_P8\n          NOTARY_KEY_PATH=\"$key\" node scripts/notarize-dmg.mjs \"${images[0]}\" --log \"$RUNNER_TEMP/notary-log/notary-log-$TARGET.json\"\n\n      # And it is held to exactly what the packaging job uploads, before\n      # anything of it is used and before the notary's key exists: one disk\n      # image in release/, the target's manifest in vendor/, both plain\n      # files, and nothing else. No link, no third file, no other folder. A\n      # name is shown quoted, so that nothing it holds is read by the runner\n      # as a command.\n      - name: Refuse a download that holds anything but the image and its manifest\n        shell: bash\n        run: |\n          export LC_ALL=C\n          root=\"$RUNNER_TEMP/signed\"\n          if [ -L \"$root\" ] || [ ! -d \"$root\" ]; then\n            echo \"::error::there is no folder where the signed image is unpacked, so there is nothing to notarise\"\n            exit 1\n          fi\n          image='^release/[A-Za-z0-9 ._-]+\\.dmg$'\n          images=0\n          manifests=0\n          refused=''\n          while IFS= read -r -d '' entry; do\n            name=\"${entry#\"$root\"/}\"\n            printf -v quoted '%q' \"$name\"\n            if [ -L \"$entry\" ]; then\n              refused=\"$refused $quoted (a link)\"\n            elif [ -d \"$entry\" ]; then\n              case \"$name\" in\n                release|vendor) ;;\n                *) refused=\"$refused $quoted (a folder)\" ;;\n              esac\n            elif [ ! -f \"$entry\" ]; then\n              refused=\"$refused $quoted (neither a file nor a folder)\"\n            elif [ \"$name\" = \"vendor/manifest-$TARGET.json\" ]; then\n              manifests=$((manifests + 1))\n            elif [[ \"$name\" =~ $image ]]; then\n              images=$((images + 1))\n            else\n              refused=\"$refused $quoted\"\n            fi\n          done < <(find \"$root\" -mindepth 1 -print0)\n          if [ -n \"$refused\" ] || [ \"$images\" -ne 1 ] || [ \"$manifests\" -ne 1 ]; then\n            echo \"::error::the download is not what the packaging job uploads, which is one disk image in release/ and vendor/manifest-$TARGET.json: it holds $images disk image(s) and $manifests manifest(s)${refused:+, and besides them:$refused}. Nothing of it was used, and the notary's key was not written\"\n            exit 1\n          fi\n          echo \"the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else\"\n\n      # spctl's verdicts mean nothing on a machine where Gatekeeper's\n      # assessments are off: everything is accepted, signed or not. A runner\n      # image can come that way, so they are turned on here if they are off,\n      # the status is said before and after, and only a runner where they\n      # will not come on fails. macOS has spelt the option two ways.\n      - name: Turn Gatekeeper's assessments on if they are off\n        shell: bash\n        run: |\n          before=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper before: $before\"\n          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable || sudo spctl --master-enable || true\n          fi\n          after=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper after: $after\"\n          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image\"\n            exit 1\n          fi\n\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The refusal moved to after the step that writes the key: whatever the download holds has already been handed to the script, with the key, by the time it is looked at."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "replace": "          images=(release/*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The notarising step looking in the workspace for its image: it finds none, or one that was never held to what the packaging job uploads."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            ${{ runner.temp }}/signed/release/*.dmg\n",
+    "replace": "            release/*.dmg\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "takes the signed image from the packaging job and gives the release job the installer",
+    "why": "The installer uploaded from the workspace, where the image no longer is: the job notarises one file and uploads nothing, or another."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            else\n              refused=\"$refused $quoted\"\n            fi\n          done",
+    "replace": "            fi\n          done",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused when it holds a file this job would run or trust",
+    "why": "A file that is neither the image nor the manifest let through: a planted script or config rides along with the download, one move away from being used."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            if [ -L \"$entry\" ]; then\n              refused=\"$refused $quoted (a link)\"\n            elif [ -d \"$entry\" ]; then",
+    "replace": "            if [ -d \"$entry\" ]; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "Links followed: an image that is a link is taken for a file, and what is notarised, or read, is whatever it points at on the runner."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "                *) refused=\"$refused $quoted (a folder)\" ;;",
+    "replace": "                *) ;;",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "A folder the packaging job does not make let through: the download is no longer held to exactly its two."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "[ \"$images\" -ne 1 ] || ",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "The count of images not held to one: with two, one is notarised and the other uploaded beside it as the installer."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            elif [ \"$name\" = \"vendor/manifest-$TARGET.json\" ]; then",
+    "replace": "            elif [[ \"$name\" == vendor/manifest-*.json ]]; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "Any target's manifest taken for this one's: the installer goes up with a manifest that describes another build."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          image='^release/[A-Za-z0-9 ._-]+\\.dmg$'\n",
+    "replace": "          image='\\.dmg$'\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for a name that is not a plain one, shown so that it is not read as a command",
+    "why": "Any name ending in .dmg taken for the image: one with a line break in it reaches the steps that print it, where its second line is a workflow command."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            printf -v quoted '%q' \"$name\"\n",
+    "replace": "            quoted=\"$name\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for a name that is not a plain one, shown so that it is not read as a command",
+    "why": "A refused name printed as it is: one with a line break in it puts a line of its own choosing into the job's log, where the runner reads commands."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          echo \"the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else\"\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download passes when it is one image and the manifest of its target",
+    "why": "A download that passed says nothing: the log of a signing run does not show that it was held to anything."
   }
 ]

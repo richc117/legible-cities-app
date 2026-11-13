@@ -17,6 +17,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -1475,6 +1476,8 @@ describe('build.yml, signing mode', () => {
   const REFUSE_DISPATCH = 'Refuse a dispatch that asks to sign while MAC_SIGNING is not on'
   const REFUSE_SIGN = 'Refuse to sign without the certificate and the Team ID'
   const REFUSE_NOTARISE = "Refuse to notarise without the notary's key"
+  const DOWNLOAD = 'Download the signed disk image'
+  const REFUSE_DOWNLOAD = 'Refuse a download that holds anything but the image and its manifest'
   const GATEKEEPER = "Turn Gatekeeper's assessments on if they are off"
   const NOTARISE = 'Notarise and staple the disk image'
   const VERIFY_IMAGE = 'Verify the notarised disk image'
@@ -1813,7 +1816,8 @@ describe('build.yml, signing mode', () => {
       '- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
       REFUSE_NOTARISE,
       '- uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0',
-      'Download the signed disk image',
+      DOWNLOAD,
+      REFUSE_DOWNLOAD,
       GATEKEEPER,
       NOTARISE,
       VERIFY_IMAGE,
@@ -1848,18 +1852,44 @@ describe('build.yml, signing mode', () => {
     for (const line of uses) expect(line).toMatch(/^uses: actions\/[a-z-]+@[0-9a-f]{40} # v\d/)
   })
 
+  it('unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest', () => {
+    // Mutation: the download left to land in the workspace, where a file
+    // named like a script of this job's, shipped by a packaging step that
+    // has turned hostile, replaces the script and is run with the key.
+    const download = step(notarize, DOWNLOAD)
+    expect(download).toContain('name: unnotarised-${{ matrix.target }}')
+    expect(download).toMatch(/\n {10}path: \$\{\{ runner\.temp \}\}\/signed(\n|$)/)
+    // Not the workspace, by any spelling of it.
+    expect(download).not.toMatch(/github\.workspace|GITHUB_WORKSPACE|path: \.\/?(\n|$)/)
+    // The refusal is the very next step, and the key is written two steps
+    // later, in the one step that names it: nothing of the download is used
+    // in between.
+    expect(at(notarize, REFUSE_DOWNLOAD)).toBe(at(notarize, DOWNLOAD) + 1)
+    expect(at(notarize, REFUSE_DOWNLOAD)).toBeLessThan(at(notarize, NOTARISE))
+    const writesKey = notarize.steps
+      .filter((candidate) => candidate.text.includes('notary-key.p8'))
+      .map((candidate) => candidate.name)
+    expect(writesKey).toEqual([NOTARISE])
+    // And every later step takes the image from where it was unpacked.
+    for (const name of [NOTARISE, VERIFY_IMAGE]) {
+      expect(script(notarize, name), name).toContain('images=("$RUNNER_TEMP/signed/release/"*.dmg)')
+      expect(script(notarize, name), name).not.toMatch(/\(release\/\*\.dmg\)/)
+    }
+  })
+
   it('takes the signed image from the packaging job and gives the release job the installer', () => {
-    expect(step(notarize, 'Download the signed disk image')).toContain(
-      'name: unnotarised-${{ matrix.target }}',
-    )
     const upload = notarize.steps[notarize.steps.length - 1].text
     expect(upload).toContain('name: installer-${{ matrix.target }}')
+    // From the folder the download was unpacked into, so the artefact's own
+    // two folders are release/ and vendor/, as an unsigned build's are.
     expect(upload).toMatch(
-      /path: \|\n {12}release\/\*\.dmg\n {12}vendor\/manifest-\$\{\{ matrix\.target \}\}\.json\n/,
+      /path: \|\n {12}\$\{\{ runner\.temp \}\}\/signed\/release\/\*\.dmg\n {12}\$\{\{ runner\.temp \}\}\/signed\/vendor\/manifest-\$\{\{ matrix\.target \}\}\.json\n/,
     )
     expect(upload).toContain('if-no-files-found: error')
     // Stapled and checked before it is the installer.
-    const order = [GATEKEEPER, NOTARISE, VERIFY_IMAGE].map((name) => at(notarize, name))
+    const order = [REFUSE_DOWNLOAD, GATEKEEPER, NOTARISE, VERIFY_IMAGE].map((name) =>
+      at(notarize, name),
+    )
     expect([...order].sort((a, b) => a - b)).toEqual(order)
     expect(notarize.steps.length - 1).toBeGreaterThan(at(notarize, VERIFY_IMAGE))
     // The release job's downloads are what they were.
@@ -2216,7 +2246,7 @@ describe('build.yml, signing mode', () => {
       const { dir, path, log } = workspace({ node: NODE })
       const temp = join(dir, 'runner-temp')
       mkdirSync(temp)
-      for (const image of images) put(join(dir, 'release', image), 'image')
+      for (const image of images) put(join(temp, 'signed', 'release', image), 'image')
       const result = run(script(notarize, NOTARISE), dir, {
         PATH: path,
         STUB_LOG: log,
@@ -2235,7 +2265,7 @@ describe('build.yml, signing mode', () => {
       expect(result.stderr).toBe('')
       expect(result.status).toBe(0)
       expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
-        `args\tscripts/notarize-dmg.mjs\trelease/Legible Cities-1.0.0-arm64.dmg\t--log\t${temp}/notary-log/notary-log-darwin-arm64.json`,
+        `args\tscripts/notarize-dmg.mjs\t${temp}/signed/release/Legible Cities-1.0.0-arm64.dmg\t--log\t${temp}/notary-log/notary-log-darwin-arm64.json`,
         `NOTARY_KEY_PATH=${file}`,
         // The key's text is not in the script's environment, only its path.
         'NOTARY_KEY_P8=unset',
@@ -2260,7 +2290,7 @@ describe('build.yml, signing mode', () => {
         const { result, log, key: file } = notarise(images)
         expect(result.status).toBe(1)
         expect(result.stdout).toBe(
-          `::error::expected one disk image in release, found ${images.length}\n`,
+          `::error::expected one disk image in the download's release folder, found ${images.length}\n`,
         )
         expect(existsSync(log)).toBe(false)
         expect(existsSync(file)).toBe(false)
@@ -2269,14 +2299,139 @@ describe('build.yml, signing mode', () => {
 
     it("the last check is the dmg mode over the one image, by the config's team", () => {
       const { dir, path, log } = workspace({ node: RECORD })
-      put(join(dir, 'release', 'Legible Cities-1.0.0.dmg'), 'image')
-      const result = run(script(notarize, VERIFY_IMAGE), dir, { PATH: path, STUB_LOG: log })
+      const temp = join(dir, 'runner-temp')
+      const image = join(temp, 'signed', 'release', 'Legible Cities-1.0.0.dmg')
+      put(image, 'image')
+      // A file of the same name in the workspace is not what is checked.
+      put(join(dir, 'release', 'Another.dmg'), 'not this one')
+      const env = { PATH: path, STUB_LOG: log, RUNNER_TEMP: temp }
+      const result = run(script(notarize, VERIFY_IMAGE), dir, env)
       expect(result.status).toBe(0)
       expect(readFileSync(log, 'utf8')).toBe(
-        'node\tscripts/verify-mac-signing.mjs\tdmg\trelease/Legible Cities-1.0.0.dmg\t--team-from\telectron-builder.release.yml\n',
+        `node\tscripts/verify-mac-signing.mjs\tdmg\t${image}\t--team-from\telectron-builder.release.yml\n`,
       )
-      rmSync(join(dir, 'release'), { recursive: true })
-      expect(run(script(notarize, VERIFY_IMAGE), dir, { PATH: path, STUB_LOG: log }).status).toBe(1)
+      rmSync(join(temp, 'signed'), { recursive: true })
+      expect(run(script(notarize, VERIFY_IMAGE), dir, env).status).toBe(1)
+    })
+
+    /** A download as the packaging job uploads it, then changed by `spoil`. */
+    const downloaded = (spoil: (root: string) => void = () => undefined) => {
+      const { dir, path } = workspace({})
+      const temp = join(dir, 'runner-temp')
+      const root = join(temp, 'signed')
+      put(join(root, 'release', 'Legible Cities-1.0.0-arm64.dmg'), 'image')
+      put(join(root, 'vendor', 'manifest-darwin-arm64.json'), '{}')
+      spoil(root)
+      return run(script(notarize, REFUSE_DOWNLOAD), dir, {
+        PATH: path,
+        RUNNER_TEMP: temp,
+        TARGET: 'darwin-arm64',
+      })
+    }
+
+    it('the download passes when it is one image and the manifest of its target', () => {
+      const result = downloaded()
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(result.stdout).toBe(
+        'the download holds one disk image and vendor/manifest-darwin-arm64.json, and nothing else\n',
+      )
+    })
+
+    it('the download is refused when it holds a file this job would run or trust', () => {
+      // What a hostile packaging step would ship: the script, or the config
+      // the team is read from, under the name the checkout gives it.
+      for (const planted of [
+        'scripts/notarize-dmg.mjs',
+        'scripts/verify-mac-signing.mjs',
+        'electron-builder.release.yml',
+      ]) {
+        const result = downloaded((root) => put(join(root, planted), 'planted'))
+        expect(result.status, planted).toBe(1)
+        expect(result.stdout, planted).toContain(planted)
+        expect(result.stdout, planted).toContain(
+          "Nothing of it was used, and the notary's key was not written",
+        )
+        expect(result.stdout.match(/^::error::/gm), planted).toHaveLength(1)
+      }
+    })
+
+    it('the download is refused for any third file, folder or link, and for a count that is not one', () => {
+      const spoilt: [string, (root: string) => void, string][] = [
+        [
+          'a third file beside the image',
+          (root) => put(join(root, 'release', 'notes.txt'), 'x'),
+          'release/notes.txt',
+        ],
+        ['a hidden file', (root) => put(join(root, '.DS_Store'), 'x'), '.DS_Store'],
+        ['an empty folder', (root) => mkdirSync(join(root, 'extra')), 'extra (a folder)'],
+        [
+          'an image in a folder of its own',
+          (root) => put(join(root, 'release', 'more', 'b.dmg'), 'x'),
+          'release/more (a folder)',
+        ],
+        [
+          'a second image',
+          (root) => put(join(root, 'release', 'b.dmg'), 'x'),
+          'it holds 2 disk image(s)',
+        ],
+        [
+          'no image',
+          (root) => rmSync(join(root, 'release'), { recursive: true }),
+          'it holds 0 disk image(s)',
+        ],
+        [
+          'no manifest',
+          (root) => rmSync(join(root, 'vendor', 'manifest-darwin-arm64.json')),
+          '0 manifest(s)',
+        ],
+        [
+          "another target's manifest",
+          (root) => put(join(root, 'vendor', 'manifest-darwin-x64.json'), '{}'),
+          'vendor/manifest-darwin-x64.json',
+        ],
+        [
+          'a link in place of the image',
+          (root) => {
+            rmSync(join(root, 'release', 'Legible Cities-1.0.0-arm64.dmg'))
+            symlinkSync('/etc/hosts', join(root, 'release', 'a.dmg'))
+          },
+          'release/a.dmg (a link)',
+        ],
+        [
+          'a link beside the image',
+          (root) => symlinkSync(join(root, 'vendor'), join(root, 'more')),
+          'more (a link)',
+        ],
+      ]
+      for (const [what, spoil, names] of spoilt) {
+        const result = downloaded(spoil)
+        expect(result.status, what).toBe(1)
+        expect(result.stdout, what).toContain(names)
+        expect(result.stdout, what).toContain("the notary's key was not written")
+      }
+      // And nothing at all where the download should be.
+      const { dir, path } = workspace({})
+      const absent = run(script(notarize, REFUSE_DOWNLOAD), dir, {
+        PATH: path,
+        RUNNER_TEMP: join(dir, 'runner-temp'),
+        TARGET: 'darwin-arm64',
+      })
+      expect(absent.status).toBe(1)
+      expect(absent.stdout).toContain('there is no folder where the signed image is unpacked')
+    })
+
+    it('the download is refused for a name that is not a plain one, shown so that it is not read as a command', () => {
+      // A name with a line break in it, the second line a workflow command.
+      const result = downloaded((root) => {
+        rmSync(join(root, 'release', 'Legible Cities-1.0.0-arm64.dmg'))
+        put(join(root, 'release', 'a\n::add-mask::x.dmg'), 'image')
+      })
+      expect(result.status).toBe(1)
+      expect(result.stdout).toContain('it holds 0 disk image(s)')
+      // One line, the refusal's own, begins with `::`.
+      expect(result.stdout.split('\n').filter((line) => line.startsWith('::'))).toHaveLength(1)
+      expect(result.stdout.trimEnd().split('\n')).toHaveLength(1)
     })
   })
 })
