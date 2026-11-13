@@ -37,8 +37,7 @@ mostly the automated run again, with eyes. Four things change that:
   runner has never had 0.1.0. The published 0.1.0 can be installed on a
   runner and driven by the role-and-name locators of its own acceptance
   spec, and the candidate then opens the project it made (issue 690; the
-  spike record (`docs/adr/spikes/gate-tools-on-hosted-macos.md`), landing
-  in its own pull request before this one).
+  spike record, `docs/adr/spikes/gate-tools-on-hosted-macos.md`).
 - **The visual rows**, the checklist's questions of whether a map, a
   colour, a theme or a GIF looks right, can be kept as images with the
   machine checks a picture allows: two shots that should differ do, an
