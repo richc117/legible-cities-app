@@ -49,18 +49,32 @@ cd "$root"
 quote() { printf '%q ' "$@"; }
 # Run a command, killing it when it outlives <seconds>; 124 says it did.
 deadline_run() {
-  local secs=$1 pid watcher rc=0; shift
-  "$@" & pid=$!
+  local secs=$1 rc=0; shift
+  "$@" & wpid=$!
   # The watcher's output goes nowhere, or an orphaned sleep would hold open
   # the pipe of whoever captures this tool's output.
-  ( sleep "$secs"; kill "$pid" 2>/dev/null ) >/dev/null 2>&1 & watcher=$!
-  wait "$pid" || rc=$?
-  pkill -P "$watcher" 2>/dev/null || true
-  kill "$watcher" 2>/dev/null || true
-  wait "$watcher" 2>/dev/null || true
+  ( sleep "$secs"; kill "$wpid" 2>/dev/null ) >/dev/null 2>&1 & wwatcher=$!
+  wait "$wpid" || rc=$?
+  # The watched command has exited and is reaped; stop the watcher at once,
+  # before its subshell can kill a process number that has been reused.
+  pkill -P "$wwatcher" 2>/dev/null || true
+  kill "$wwatcher" 2>/dev/null || true
+  wait "$wwatcher" 2>/dev/null || true
+  wpid='' wwatcher=''
   [ "$rc" -ne 143 ] || rc=124
   return "$rc"
 }
+# One trap for every way out, an interrupt included: the watched command
+# and the watcher do not outlive this script, and the scratch files go.
+wpid='' wwatcher='' tmp=''
+cleanup() {
+  [ -z "$wwatcher" ] || { pkill -P "$wwatcher" 2>/dev/null || true; kill "$wwatcher" 2>/dev/null || true; }
+  [ -z "$wpid" ] || kill "$wpid" 2>/dev/null || true
+  [ -z "$tmp" ] || rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 act() {
   if [ "$dry" = 1 ]; then printf 'would run: %s\n' "$(quote "$@")"
   else printf 'running: %s\n' "$(quote "$@")"; "$@"; fi
@@ -92,8 +106,8 @@ if [ "$cmd" = tag ]; then
     die "open flaky issues name an acceptance spec (above); fix them, or accept each in writing on the issue and pass --flaky-accepted <N,...>."
   fi
   echo "candidate: open flaky issues: $(printf '%s' "$flaky" | jq -r '[.[] | "#\(.number)"] | join(" ") | if . == "" then "none" else . end')"
-  notes=$(mktemp); trap 'rm -f "$notes"' EXIT
-  node scripts/release.mjs notes "$tag" "$notes" || die "the release notes for $tag would be refused; fix the changelog first."
+  tmp=$(mktemp -d)
+  node scripts/release.mjs notes "$tag" "$tmp/notes.md" || die "the release notes for $tag would be refused; fix the changelog first."
   echo "candidate: main is green on $sha and the notes for $tag draft"
   started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   act gh workflow run vendor.yml --ref main
@@ -107,11 +121,12 @@ if [ "$cmd" = tag ]; then
       [ "$run" != 0 ] && break
       sleep "${CANDIDATE_POLL:-3}"
     done
-    [ "$run" != 0 ] || die "the vendor run for this dispatch did not appear."
+    [ "$run" != 0 ] || die "the vendor run for this dispatch did not appear (it is matched on $sha; main may have moved since the check)."
     rc=0
     deadline_run "${CANDIDATE_DEADLINE:-7200}" gh run watch "$run" --exit-status || rc=$?
     [ "$rc" -ne 124 ] || die "the vendor run $run did not finish before the deadline (CANDIDATE_DEADLINE)."
     [ "$rc" -eq 0 ] || die "the vendor run $run failed."
+    [ "$(gh run view "$run" --json conclusion --jq .conclusion)" = success ] || die "the vendor run $run did not conclude in success."
   fi
   act git -c tag.gpgSign=false tag "$tag" "$sha"
   act git push --no-follow-tags origin "refs/tags/$tag"
@@ -126,6 +141,9 @@ else
   [ "$(printf '%s' "$built" | jq -r .headSha)" = "$tagged" ] || die "the build run $run was not made on $tag's commit $tagged."
   bad=$(printf '%s' "$built" | jq -r '.jobs[] | select(.conclusion != "success") | "  \(.name): \(.conclusion)"')
   if [ -n "$bad" ]; then echo "$bad" >&2; die "jobs of build run $run did not succeed."; fi
+  local_sha=$(git rev-parse "refs/tags/$tag") || die "tag $tag is not here; git fetch origin tag $tag first."
+  remote_sha=$(git ls-remote origin "refs/tags/$tag" | cut -f1)
+  [ "$remote_sha" = "$local_sha" ] || die "tag $tag on origin (${remote_sha:-absent}) is not the local tag ($local_sha)."
   [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ] || die "the Release for $tag is not a draft."
   echo "candidate: every job of build run $run succeeded; the Release is a draft"
   act gh release edit "$tag" --draft=false --prerelease --latest=false

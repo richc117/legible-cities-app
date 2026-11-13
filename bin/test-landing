@@ -71,6 +71,9 @@ git)
   "worktree remove "*) exit "${WT_REMOVE_RC:-0}" ;;
   "status --short") echo " M leftover.txt" ;;
   "rev-parse -q --verify refs/tags/"*) all="$*"; grep -qx "${all##*/}" "$f/localtags" ;;
+  "ls-remote origin refs/tags/"*) all="$*"; sha=${REMOTE_TAG_SHA-$(cat "$f/originmain")}
+    [ -z "$sha" ] || printf '%s\t%s\n' "$sha" "${all#ls-remote origin }" ;;
+  "rev-parse refs/tags/"*) cat "$f/originmain" ;;
   "ls-remote --tags origin refs/tags/"*) all="$*"; grep -x "${all##*/}" "$f/remotetags" ;;
   *) : ;;
   esac ;;
@@ -79,7 +82,8 @@ gh)
   "api user --jq .login") echo "${GH_USER:-me}" ;;
   "pr view 42 --json headRefOid --jq .headRefOid") jq -r .headRefOid "$f/pr.json" ;;
   "pr view "*) jq -c . "$f/pr.json" ;;
-  "pr checks 42 --required --watch --fail-fast") [ -z "${WATCH_HANG:-}" ] || sleep 20; exit "${CHECKS_RC:-0}" ;;
+  "pr checks 42 --required --watch --fail-fast") [ -z "${WATCH_HANG:-}" ] || { echo $$ > "$f/hang.pid"; exec sleep 20; }; exit "${CHECKS_RC:-0}" ;;
+  "pr checks 42 --required --json name --jq length") echo "${CHECKS_LENGTH:-7}" ;;
   "pr checks 42 --required --json name,state")
     [ -z "${HEAD_MOVES:-}" ] || { jq '.headRefOid = "moved0000"' "$f/pr.json" > "$f/pr.tmp" && mv "$f/pr.tmp" "$f/pr.json"; }
     cat "$f/checks.json" ;;
@@ -98,7 +102,8 @@ gh)
     if [ -e "$f/dispatched" ]; then echo 2; else echo 0; fi ;;
   "issue list --label flaky --state open --limit 100 --json number,title,body") cat "$f/flaky.json" ;;
   "workflow run vendor.yml --ref main") touch "$f/dispatched" ;;
-  "run watch 2 --exit-status") [ -z "${VENDOR_HANG:-}" ] || sleep 20; exit "${VENDOR_RC:-0}" ;;
+  "run view 2 --json conclusion --jq .conclusion") echo "${VENDOR_CONCLUSION:-success}" ;;
+  "run watch 2 --exit-status") [ -z "${VENDOR_HANG:-}" ] || { echo $$ > "$f/hang.pid"; exec sleep 20; }; exit "${VENDOR_RC:-0}" ;;
   "run list --workflow build.yml --branch "*) echo 7 ;;
   "run view 7 --json status,conclusion,headSha,jobs") cat "$f/build.json" ;;
   "release view "*" --json isDraft --jq .isDraft") cat "$f/draft" ;;
@@ -123,7 +128,7 @@ reset() {
   jq -n '[range(7) | {name:"c\(.)",state:"SUCCESS"}]' > "$fix/checks.json"
   echo 'success mainsha1' > "$fix/ci"; echo true > "$fix/draft"
   jq -n '{status:"completed",conclusion:"success",headSha:"mainsha1",jobs:[{name:"package",conclusion:"success"},{name:"release (draft)",conclusion:"success"}]}' > "$fix/build.json"
-  unset PUSH_NOUPDATE HEAD_MOVES WT_MOVES WATCH_HANG VENDOR_HANG GREP_FAIL LAND_HEAD_DEADLINE LAND_CHECKS_DEADLINE CANDIDATE_DEADLINE MERGE_HEAD DIFFCHECK_RC WT_REMOVE_RC CHECKS_RC MERGE_NOOP GH_USER UNAME SESSION LOCK_BUSY NOTES_RC VENDOR_RC MAIN_BRANCH COMMON
+  unset CHECKS_LENGTH VENDOR_CONCLUSION REMOTE_TAG_SHA PUSH_NOUPDATE HEAD_MOVES WT_MOVES WATCH_HANG VENDOR_HANG GREP_FAIL LAND_HEAD_DEADLINE LAND_CHECKS_DEADLINE CANDIDATE_DEADLINE MERGE_HEAD DIFFCHECK_RC WT_REMOVE_RC CHECKS_RC MERGE_NOOP GH_USER UNAME SESSION LOCK_BUSY NOTES_RC VENDOR_RC MAIN_BRANCH COMMON
 }
 
 # Run a tool in the sandbox; its output in $out, its status in $rc.
@@ -207,12 +212,19 @@ notlogged "an expired deadline stops before the merge" '^gh pr merge'
 reset; touch "$fix/behind"; PUSH_NOUPDATE=1 LAND_HEAD_DEADLINE=1; export PUSH_NOUPDATE LAND_HEAD_DEADLINE; run bin/land 42
 refuses "land when GitHub never reports the pushed head" "still does not report"
 notlogged "no checks are watched on an unreported head" '^gh pr checks .*--watch'
+reset; touch "$fix/behind"; CHECKS_LENGTH=3 LAND_HEAD_DEADLINE=1; export CHECKS_LENGTH LAND_HEAD_DEADLINE; run bin/land 42
+refuses "land when the required checks have not appeared" "have not appeared"
+notlogged "no watch before the checks exist" '^gh pr checks .*--watch'
+reset; touch "$fix/behind"; run bin/land 42; succeeds "land after a rebase, checks present"
+logged "land polls for the seven checks before watching" '^gh pr checks 42 --required --json name --jq length$'
 reset; GREP_FAIL=1; export GREP_FAIL; run bin/land 42
 refuses "land when grep itself fails" "grep failed filtering"
 notlogged "a grep failure stops before the merge" '^gh pr merge'
 reset; jq '.body = "a\u0000b\nCloses #7\nkeep me\n"' "$fix/pr.json" > "$fix/p" && mv "$fix/p" "$fix/pr.json"; run bin/land 42
 succeeds "land with a NUL in the body"
 if grep -q 'keep me' "$fix/merged-body" && ! grep -aq 'Closes #7' "$fix/merged-body"; then ok; else bad "a body with a NUL is filtered as text"; fi
+equal "no NUL reaches the merge body" "$(tr -cd '\000' < "$fix/merged-body" | wc -c | tr -d ' ')" 0
+equal "no NUL reaches the scanned file" "$(tr -cd '\000' < "$fix/scanned" | wc -c | tr -d ' ')" 0
 reset; WT_REMOVE_RC=1; export WT_REMOVE_RC; run bin/land 42
 refuses "land when worktree remove refuses" "never --force"
 said "land shows what is left" "leftover.txt"
@@ -319,6 +331,9 @@ said "candidate dry run prints the tag" "tag v1.0.0-rc.4 mainsha1"
 notlogged "candidate dry run tags nothing" '^git (-c [^ ]+ )?tag |^git push'
 notlogged "candidate dry run dispatches nothing" 'workflow run'
 
+reset; VENDOR_CONCLUSION=failure; export VENDOR_CONCLUSION; run bin/candidate tag 4
+refuses "candidate tag refuses a vendor run whose own conclusion is not success" "did not conclude in success"
+notlogged "a vendor run that did not conclude well stops before the tag" '^git .*tag v'
 reset; VENDOR_HANG=1 CANDIDATE_DEADLINE=1; export VENDOR_HANG CANDIDATE_DEADLINE; run bin/candidate tag 4
 refuses "candidate tag refuses a vendor run that outlives the deadline" "before the deadline"
 notlogged "an expired vendor deadline stops before the tag" '^git .*tag v'
@@ -350,11 +365,36 @@ said "candidate publish names the job that failed" "release (draft): failure"
 notlogged "red build stops before the release edit" 'release edit'
 reset; echo false > "$fix/draft"; run bin/candidate publish 4
 refuses "candidate publish refuses a Release that is not a draft" "not a draft"
+reset; REMOTE_TAG_SHA=othersha; export REMOTE_TAG_SHA; run bin/candidate publish 4
+refuses "candidate publish refuses a tag on origin that is not the local tag" "is not the local tag"
+notlogged "a differing remote tag is never published" 'release edit'
+reset; REMOTE_TAG_SHA=; export REMOTE_TAG_SHA; run bin/candidate publish 4
+refuses "candidate publish refuses a tag absent from origin" "absent"
 reset; run bin/candidate publish 4; succeeds "candidate publish"
 logged "candidate publishes as a pre-release, never Latest" '^gh release edit v1.0.0-rc.4 --draft=false --prerelease --latest=false$'
 logged "candidate dispatches acceptance with the tag" '^gh workflow run acceptance.yml --ref main -f tag=v1.0.0-rc.4$'
 reset; run bin/candidate publish 4 --dry-run; succeeds "candidate publish --dry-run"
 notlogged "candidate publish dry run edits nothing" 'release edit|workflow run'
+
+# --- an interrupt during a hanging watch leaves nothing behind -------------
+# $1 label, $2 the distinctive deadline the watcher sleeps for, the rest an
+# environment and a command. SIGTERM goes to the tool; the stand-in gh it
+# was watching, and the watcher's sleep, must be gone.
+interrupt_row() {
+  local label=$1 marker=$2 lp hp; shift 2
+  reset; rm -f "$fix/hang.pid"
+  ( cd "$main" && exec env PATH="$stubs:$PATH" FIX="$fix" LAND_POLL=0 CANDIDATE_POLL=0 REAL_GREP="$real_grep" "$@" ) >/dev/null 2>&1 &
+  lp=$!
+  for _ in $(seq 1 100); do [ -e "$fix/hang.pid" ] && break; sleep 0.2; done
+  if [ ! -e "$fix/hang.pid" ]; then bad "$label" "the watch never started"; kill "$lp" 2>/dev/null; return; fi
+  hp=$(cat "$fix/hang.pid")
+  kill -TERM "$lp"; wait "$lp" 2>/dev/null
+  sleep 1
+  if kill -0 "$hp" 2>/dev/null; then bad "$label: the watched command survives" "pid $hp"; kill "$hp" 2>/dev/null; else ok; fi
+  if pgrep -f "sleep $marker" >/dev/null; then bad "$label: the watcher's sleep survives"; pkill -f "sleep $marker"; else ok; fi
+}
+interrupt_row "land interrupted during the checks watch" 7777 WATCH_HANG=1 LAND_CHECKS_DEADLINE=7777 bin/land 42
+interrupt_row "candidate interrupted during the vendor watch" 7778 VENDOR_HANG=1 CANDIDATE_DEADLINE=7778 bin/candidate tag 4
 
 # --- bin/e2e-serial ---------------------------------------------------------
 reset; run bin/e2e-serial --help; succeeds "e2e-serial --help"; said "e2e-serial --help usage" "usage: bin/e2e-serial"
