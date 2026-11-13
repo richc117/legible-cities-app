@@ -20,9 +20,19 @@
 # before anything is installed, a run without the electron-ffmpeg-source
 # artefact, and no target is packaged (ADR-043).
 #
-# Unsigned (FR-005): the Mac app is signed ad hoc and the Windows installer
-# not at all, until the release-readiness gate (A6-05). The ffmpeg they
-# carry is this repository's own build (issue 95, ADR-040).
+# Signing (ADR-062). Every branch and pull-request build signs the Mac app ad
+# hoc, as electron-builder.yml says, and holds no secret. Signing mode is a
+# Mac target on a pushed tag that starts with v, or on a dispatch with `sign`
+# ticked. Only then does a packaging job join the `release-signing`
+# environment, whose deployment rule and required reviewer stand between a
+# run and the secrets; package with electron-builder.release.yml under the
+# Developer ID certificate; and notarise and staple the disk image before it
+# is uploaded, so the release, attest and verify jobs see the final bytes and
+# are as they were. The certificate is in the packaging step alone and the
+# notary's key in the notarising step alone, which comes after every step
+# that runs npm's code or the app's. The Windows installer is not signed
+# (ADR-054). The ffmpeg the installers carry is this repository's own build
+# (issue 95, ADR-040).
 #
 # This runs on request, on a push to any branch that changes what it
 # packages or how the app finds it, src/main and the npm manifests included,
@@ -54,6 +64,13 @@ name: build
 
 on:
   workflow_dispatch:
+    inputs:
+      # Signing mode for the two Mac targets (ADR-062). Off unless asked for:
+      # a plain dispatch builds what a branch push builds.
+      sign:
+        description: 'Sign the Mac installers with the Developer ID and notarise them (waits for the release-signing environment)'
+        type: boolean
+        default: false
   push:
     branches: ['**']
     tags: ['v*']
@@ -61,6 +78,11 @@ on:
     paths:
       - 'vendor/pins.json'
       - 'electron-builder.yml'
+      # The Developer ID build's three keys, and the two scripts that
+      # notarise the disk image and check either signature (ADR-062).
+      - 'electron-builder.release.yml'
+      - 'scripts/notarize-dmg.mjs'
+      - 'scripts/verify-mac-signing.mjs'
       # The packager's build resources: the NSIS include that removes the
       # installer's copy of itself (issue 128).
       - 'build/**'
@@ -106,7 +128,18 @@ jobs:
     # without it no target is packaged (the first steps below).
     if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    # Room for signing mode, which adds the notary's wait to a job that
+    # otherwise takes well under an hour; that step has its own limit below.
+    timeout-minutes: 120
+    # Signing mode (ADR-062): a Mac target, on a pushed v* tag or on a
+    # dispatch that asked for it. Only then is the job in the release-signing
+    # environment, which holds the certificate and the notary's key behind
+    # its deployment rule and its required reviewer. For every other run the
+    # expression is the empty string, which is no environment at all: no
+    # deployment, no approval, no secret. The condition is written twice,
+    # here and for SIGN below, because a job's `environment` cannot read its
+    # `env`; a unit test holds the two to the same text.
+    environment: ${{ startsWith(matrix.target, 'darwin-') && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -116,10 +149,49 @@ jobs:
           - { os: windows-latest, target: win-x64,      builder: '--win nsis --x64',  installer: 'release/*.exe' }
     env:
       TARGET: ${{ matrix.target }}
+      # 'true' in signing mode and 'false' otherwise; the steps that sign,
+      # notarise and check a signed build read it.
+      SIGN: ${{ startsWith(matrix.target, 'darwin-') && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # Signing mode only, and first, so a run that cannot sign stops before
+      # anything is installed or built. No secret is handed to this step:
+      # each line says only whether the environment gave one, worked out
+      # before the shell starts. A missing environment, or a job outside it,
+      # reads as five empty secrets. TEAMID_TBD is the placeholder
+      # electron-builder.release.yml holds until the Team ID is written in.
+      - name: Refuse to sign without every secret and the Team ID
+        if: env.SIGN == 'true'
+        shell: bash
+        env:
+          HAS_MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 != '' }}
+          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}
+          HAS_NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 != '' }}
+          HAS_NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID != '' }}
+          HAS_NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID != '' }}
+        run: |
+          missing=''
+          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID; do
+            has="HAS_$name"
+            if [ "${!has:-}" != true ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::signing was asked for, and the release-signing environment gave this job no value for:$missing"
+            exit 1
+          fi
+          team=$(sed -n "s/^  identity: '\([^']*\)'.*$/\1/p" electron-builder.release.yml)
+          if [ "$team" = TEAMID_TBD ]; then
+            echo "::error::electron-builder.release.yml still names the placeholder TEAMID_TBD as its identity: write the Developer ID Team ID there before signing"
+            exit 1
+          fi
+          if ! LC_ALL=C grep -Eq '^[A-Z0-9]{10}$' <<< "$team"; then
+            echo "::error::electron-builder.release.yml's mac.identity is not a Team ID (ten capital letters and digits, in single quotes), so there is no certificate to ask for"
+            exit 1
+          fi
+          echo "signing mode: every secret has a value, and the identity is team $team"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -218,14 +290,35 @@ jobs:
           PYTHONDONTWRITEBYTECODE=1 "$py" -m compileall -f -q -j 0 --invalidation-mode unchecked-hash "$lib"
           echo "compiled: $(find "$lib" -name '*.pyc' | wc -l | tr -d ' ') bytecode files"
 
+      # The certificate reaches electron-builder in signing mode only, and
+      # under electron-builder's own names only inside that branch of the
+      # shell. The two values below are empty in every other run, where the
+      # job is in no environment, and electron-builder does not read these
+      # names. They must never be given at the step as its own names: an
+      # empty one of those is read as a certificate to load, which fails
+      # every Mac build, the ad-hoc ones included. And no variable of
+      # electron-builder's for the notary is set anywhere in this workflow:
+      # with one it would notarise the app itself, in the step that runs
+      # npm's code (electron-builder.release.yml, scripts/notarize-dmg.mjs).
       - name: Package
         shell: bash
         env:
           # Makes every component required in the afterPack hook.
           LEGIBLE_VENDOR_TARGET: ${{ matrix.target }}
           BUILDER_ARGS: ${{ matrix.builder }}
-        # Unquoted on purpose: the matrix holds three words for the packager.
-        run: npx electron-builder $BUILDER_ARGS --publish never
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        # $BUILDER_ARGS is unquoted on purpose: the matrix holds three words
+        # for the packager.
+        run: |
+          if [ "$SIGN" = true ]; then
+            export CSC_LINK="$MAC_CERT_P12_BASE64" CSC_KEY_PASSWORD="$MAC_CERT_PASSWORD"
+            unset MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD
+            npx electron-builder $BUILDER_ARGS --config electron-builder.release.yml --publish never
+          else
+            unset MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD
+            npx electron-builder $BUILDER_ARGS --publish never
+          fi
 
       - name: Launch the packaged app once
         shell: bash
@@ -237,14 +330,79 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          # Ad hoc, but whole: every nested binary sealed, nothing changed
-          # since. Run after the launch check, so a write inside the bundle
-          # the snapshot missed still fails here.
+          # Whole, whoever signed it: every nested binary sealed, nothing
+          # changed since. Run after the launch check, so a write inside the
+          # bundle the snapshot missed still fails here. Then what it is
+          # signed with: ad hoc, or in signing mode the team's Developer ID,
+          # timestamped; and in both the hardened runtime and the
+          # entitlement ADR-043 needs kept.
           case "$TARGET" in
             darwin-arm64) app="release/mac-arm64/Legible Cities.app" ;;
             *)            app="release/mac/Legible Cities.app" ;;
           esac
           codesign --verify --deep --strict --verbose=2 "$app"
+          if [ "$SIGN" = true ]; then
+            node scripts/verify-mac-signing.mjs developer-id "$app" --team-from electron-builder.release.yml
+          else
+            node scripts/verify-mac-signing.mjs adhoc "$app"
+          fi
+
+      # Signing mode only. The notary's key exists in this step alone: it is
+      # written to a file nobody else can read, handed to the script by
+      # path, and removed when the shell ends, however it ends. Every step
+      # that runs npm's code or the app's own has finished by now, and the
+      # script imports nothing but Node's own modules. The script's wait for
+      # the notary is 60 minutes; the step's limit leaves room for the
+      # upload before it and the stapling after.
+      - name: Notarise and staple the disk image
+        if: env.SIGN == 'true'
+        timeout-minutes: 75
+        shell: bash
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          shopt -s nullglob
+          images=(release/*.dmg)
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "::error::expected one disk image in release, found ${#images[@]}"
+            exit 1
+          fi
+          umask 077
+          key="$RUNNER_TEMP/notary-key.p8"
+          trap 'rm -f "$key"' EXIT
+          trap 'exit 1' INT TERM HUP
+          printf '%s\n' "$NOTARY_KEY_P8" > "$key"
+          unset NOTARY_KEY_P8
+          NOTARY_KEY_PATH="$key" node scripts/notarize-dmg.mjs "${images[0]}" --log "$RUNNER_TEMP/notary-log/notary-log-$TARGET.json"
+
+      # What a person will download, checked the way their Mac will check
+      # it: the image's signature and staple, Gatekeeper's verdict on it,
+      # and the app inside, mounted read-only.
+      - name: Verify the notarised disk image
+        if: env.SIGN == 'true'
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          shopt -s nullglob
+          images=(release/*.dmg)
+          if [ "${#images[@]}" -ne 1 ]; then
+            echo "::error::expected one disk image in release, found ${#images[@]}"
+            exit 1
+          fi
+          node scripts/verify-mac-signing.mjs dmg "${images[0]}" --team-from electron-builder.release.yml
+
+      # Whatever the outcome, once signing was attempted: the log is the
+      # only place the notary says what it found.
+      - name: Upload the notary's log
+        if: ${{ always() && env.SIGN == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notary-log-${{ matrix.target }}
+          path: ${{ runner.temp }}/notary-log/
+          if-no-files-found: warn
+          retention-days: 30
 
       # Issue 128: electron-builder's template copies the running installer
       # into %LOCALAPPDATA%\<package name>-updater, for an updater this app

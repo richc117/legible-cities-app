@@ -150,5 +150,141 @@
     "test": "tests/unit/release.test.ts",
     "title": "builds a branch that changes what the app reports as its version",
     "why": "A branch that changes only how the version label is built packages no installer, so nothing shows what the change makes the app report."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        type: boolean\n        default: false\n",
+    "replace": "        type: boolean\n        default: true\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "is asked for on a dispatch by a boolean input that is off unless ticked",
+    "why": "Signing on by default: every plain dispatch from a branch asks for the environment's secrets and waits on a reviewer."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      - 'electron-builder.release.yml'\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "builds a branch that changes the release config or either script",
+    "why": "The release config left out of the path filter: a branch that changes only how the signed build is made packages nothing to show it still builds."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && inputs.sign == true)) }}\n",
+    "replace": " && inputs.sign)) }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "joins the environment by one condition, written the same for the environment and for SIGN",
+    "why": "The two conditions drifting apart: a job signs outside the environment and finds no secret, or sits in it, approved, without signing."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && 'release-signing' || '' }}",
+    "replace": " && 'release-signing' || 'release-signing' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "makes that condition true for a Mac target on a v tag or a dispatch that asked, and for nothing else",
+    "why": "Every run in the environment: each branch build becomes a deployment that waits for a reviewer, and the Windows job is handed the secrets."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n",
+    "replace": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "hands secrets to three steps only: none to the first, the certificate to packaging, the key to notarising",
+    "why": "The notary's key in the packaging step: it sits in the environment of the one step that runs npm's code and the packager's hooks."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          BUILDER_ARGS: ${{ matrix.builder }}\n          MAC_CERT_P12_BASE64:",
+    "replace": "          BUILDER_ARGS: ${{ matrix.builder }}\n          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}\n          MAC_CERT_P12_BASE64:",
+    "test": "tests/unit/release.test.ts",
+    "title": "never gives electron-builder a certificate or a notary variable under its own name at a step",
+    "why": "CSC_LINK set at the step: outside signing mode it is empty, which electron-builder reads as a certificate to load, and every ad-hoc Mac build fails."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        timeout-minutes: 75\n",
+    "replace": "        timeout-minutes: 45\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses before anything is installed, and notarises after everything npm runs and before the upload",
+    "why": "A step limit shorter than the script's own wait: the runner kills the step before notarytool gives up, and the submission's id is never printed."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        if: ${{ always() && env.SIGN == 'true' }}\n",
+    "replace": "        if: env.SIGN == 'true'\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "uploads the notary's log whatever happened, once signing was attempted",
+    "why": "The log uploaded only on success: when the notary refuses the image, the one record of why is lost with the runner."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            if [ \"${!has:-}\" != true ]; then missing=\"$missing $name\"; fi\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the first step names every secret that is empty, and only those",
+    "why": "Empty secrets not refused up front: the run builds for twenty minutes and fails inside electron-builder or notarytool on an error that names no secret."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"$team\" = TEAMID_TBD ]; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the first step refuses the placeholder, and an identity that is not a Team ID",
+    "why": "The placeholder with no sentence of its own: it is refused as a malformed Team ID, which does not say what to do."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if ! LC_ALL=C grep -Eq '^[A-Z0-9]{10}$' <<< \"$team\"; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the first step refuses the placeholder, and an identity that is not a Team ID",
+    "why": "Any identity let through: a mistyped team matches no certificate, and the build fails late, in electron-builder, after everything was built."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"$SIGN\" = true ]; then\n            export CSC_LINK=\"$MAC_CERT_P12_BASE64\" CSC_KEY_PASSWORD=\"$MAC_CERT_PASSWORD\"\n",
+    "replace": "          export CSC_LINK=\"$MAC_CERT_P12_BASE64\" CSC_KEY_PASSWORD=\"$MAC_CERT_PASSWORD\"\n          if [ \"$SIGN\" = true ]; then\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "packaging sets no certificate variable at all outside signing mode, not even an empty one",
+    "why": "The certificate's variables exported before the branch: an ad-hoc build hands electron-builder an empty CSC_LINK and fails."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            npx electron-builder $BUILDER_ARGS --config electron-builder.release.yml --publish never\n",
+    "replace": "            npx electron-builder $BUILDER_ARGS --publish never\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "packaging gives electron-builder the certificate and the release config in signing mode",
+    "why": "Signing mode packaged with the base config: the certificate is loaded and the app is signed ad hoc all the same."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            node scripts/verify-mac-signing.mjs developer-id \"$app\" --team-from electron-builder.release.yml\n",
+    "replace": "            node scripts/verify-mac-signing.mjs adhoc \"$app\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the verify step checks the seal, then ad hoc or the Developer ID by the mode",
+    "why": "A signed build checked as an ad-hoc one: the wrong check fails a good build, or with the modes swapped passes an unsigned one into notarisation."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          trap 'rm -f \"$key\"' EXIT\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising removes the key when the script fails too, and fails the step",
+    "why": "The trap taken out: the notary's key outlives the step that needs it, readable by every step after."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          unset NOTARY_KEY_P8\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising hands the key over as a file nobody else can read, and removes it",
+    "why": "The key's text left in the script's environment as well as on disk: a second copy, which the script's own children inherit."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          umask 077\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising hands the key over as a file nobody else can read, and removes it",
+    "why": "The key written under the default mask: any other account on the machine can read it while the step runs."
   }
 ]

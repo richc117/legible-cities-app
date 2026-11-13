@@ -1,0 +1,18 @@
+[
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": " --notarized || refused=1",
+    "replace": " --notarized || true",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "fails the step when the image or the copy is refused, after running both, and hands the spec no app",
+    "why": "The check's exit status dropped: a Release whose app is not notarised is recorded as one that is, and the gate goes on to test it."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          if [ -f at-tag/electron-builder.release.yml ]; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "holds a tag that carries the release config to the Developer ID checks, image first then the copy",
+    "why": "The Developer ID checks never reached: a signed Release is recorded on the strength of the ad-hoc check, which any valid signature passes."
+  }
+]

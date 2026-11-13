@@ -13,9 +13,15 @@
 # the tag itself.
 #
 # What stays a person's: the stranger's timed run, the screen-reader
-# walkthrough, and the unsigned-app warnings. A runner downloads through the
-# GitHub CLI, which sets no quarantine attribute and no mark of the web, so
-# Gatekeeper and SmartScreen never ask; step 2 says so in the record.
+# walkthrough, and what macOS and Windows show when the app is first opened
+# (the unsigned-app warnings, or the one confirmation a notarised Mac build
+# gets). A runner downloads through the GitHub CLI, which sets no quarantine
+# attribute and no mark of the web, so Gatekeeper and SmartScreen never ask;
+# step 2 says so in the record. What a machine can judge of a signed Mac
+# build it does: where the tag carries electron-builder.release.yml
+# (ADR-062), step 2 holds the downloaded disk image and the app copied from
+# it to scripts/verify-mac-signing.mjs's Developer ID checks, and fails on
+# any of them.
 #
 # Read-only: the token lists and downloads Release assets, and reads their
 # attestations (step 1), and nothing else. A draft Release is invisible to
@@ -72,7 +78,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The pins and the version the Release was built from.
+      # The pins and the version the Release was built from; and the
+      # Developer ID build's config, which a tag from before ADR-062 does not
+      # have: step 2 reads from its presence how the Mac installer was signed,
+      # and from its `identity` by which team.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ inputs.tag }}
@@ -82,6 +91,7 @@ jobs:
             vendor/pins.json
             package.json
             electron-builder.yml
+            electron-builder.release.yml
           sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -194,17 +204,37 @@ jobs:
           fi
           ditto "$app" "$apps/Legible Cities.app"
           hdiutil detach "$mount"
-          if codesign --verify --deep --strict "$apps/Legible Cities.app" > /dev/null 2>&1; then
-            signature='its ad-hoc signature verifies'
-          else
-            signature='its signature does not verify'
-          fi
           if xattr -p com.apple.quarantine "$DOWNLOAD/$ASSET" > /dev/null 2>&1; then
             quarantine='a quarantine attribute'
           else
             quarantine='no quarantine attribute'
           fi
-          node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and the way past its warning was not exercised; $signature. The app is opened by the spec in step 3."
+          if [ -f at-tag/electron-builder.release.yml ]; then
+            # A Developer ID build (ADR-062): build.yml packages a Mac target
+            # on a v* tag with this config or not at all. The downloaded disk
+            # image is held to its signature, its staple and Gatekeeper's
+            # verdict, and so is the app inside it; then the copy the spec
+            # will open, which has no staple of its own (only the image is
+            # stapled) and is looked up by macOS instead. Both run, so the
+            # log names everything that failed. What macOS shows a person at
+            # the first open stays not automated: nothing here is quarantined.
+            refused=0
+            node scripts/verify-mac-signing.mjs dmg "$DOWNLOAD/$ASSET" --team-from at-tag/electron-builder.release.yml || refused=1
+            node scripts/verify-mac-signing.mjs developer-id "$apps/Legible Cities.app" --team-from at-tag/electron-builder.release.yml --notarized || refused=1
+            if [ "$refused" -ne 0 ]; then
+              node "$cli" prior "$PRIOR" step 2 fail "The tag carries electron-builder.release.yml, so its Mac installer is a Developer ID build, and the disk image or the app copied from it failed a check of its signature, its notarisation or its staple. The job's log names which."
+              echo "::error::the disk image or the app copied from it failed the Developer ID checks (scripts/verify-mac-signing.mjs); the log above names which"
+              exit 1
+            fi
+            node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and what it shows at the first open was not seen. Checked instead: the disk image is signed with the Developer ID, notarised and stapled, and Gatekeeper's assessment accepts the image, the app inside it and the copy as Notarized Developer ID. The app is opened by the spec in step 3."
+          else
+            if codesign --verify --deep --strict "$apps/Legible Cities.app" > /dev/null 2>&1; then
+              signature='its ad-hoc signature verifies'
+            else
+              signature='its signature does not verify'
+            fi
+            node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and the way past its warning was not exercised; $signature. The app is opened by the spec in step 3."
+          fi
           echo "LEGIBLE_ACCEPTANCE_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
           echo "INSTALLED=$apps/Legible Cities.app" >> "$GITHUB_ENV"
 

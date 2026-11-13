@@ -1410,6 +1410,486 @@ describe('build.yml', () => {
   })
 })
 
+// Signing mode (issue 686, ADR-062). It cannot be run without the
+// certificate, the notary's key and an environment only the maintainer can
+// make, so its shape is held here, and each of its shell steps is run as a
+// runner runs it, with electron-builder, node and codesign played by
+// stand-ins that write down what they were given.
+describe('build.yml, signing mode', () => {
+  const workflow = readFileSync(join(repo, '.github', 'workflows', 'build.yml'), 'utf8')
+  /** What GitHub reads: the workflow without its comment lines. */
+  const code = workflow
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n')
+  const jobs = code.slice(code.indexOf('\njobs:\n'))
+  const pkg = jobs.slice(jobs.indexOf('\n  package:\n'), jobs.indexOf('\n  release:\n'))
+  /** The package job's steps, in order, each from its `- ` line to the next one's. */
+  const steps = pkg
+    .slice(pkg.indexOf('\n    steps:\n') + '\n    steps:\n'.length)
+    .split(/\n(?= {6}- )/)
+    .map((text) => ({ name: /^ {6}- name: (.+)$/m.exec(text)?.[1] ?? null, text }))
+  const step = (name: string): string => {
+    const found = steps.filter((candidate) => candidate.name === name)
+    expect(found, `one step named ${name}`).toHaveLength(1)
+    return found[0].text
+  }
+  const at = (name: string): number => steps.findIndex((candidate) => candidate.name === name)
+  /** A step's `run: |` block, dedented. */
+  const script = (name: string): string => {
+    const block = /\n {8}run: \|\n((?: {10}[^\n]*(?:\n|$)|\n)+)/.exec(step(name))
+    expect(block, `${name} runs a script`).not.toBeNull()
+    return (block as RegExpExecArray)[1].replace(/^ {10}/gm, '')
+  }
+
+  const REFUSE = 'Refuse to sign without every secret and the Team ID'
+  const NOTARISE = 'Notarise and staple the disk image'
+  const VERIFY_IMAGE = 'Verify the notarised disk image'
+  const CONDITION =
+    "startsWith(matrix.target, 'darwin-') && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true))"
+
+  it('is asked for on a dispatch by a boolean input that is off unless ticked', () => {
+    expect(code).toMatch(
+      /\non:\n {2}workflow_dispatch:\n {4}inputs:\n {6}sign:\n {8}description: '[^'\n]+'\n {8}type: boolean\n {8}default: false\n {2}push:\n/,
+    )
+  })
+
+  it('builds a branch that changes the release config or either script', () => {
+    const on = workflow.slice(workflow.indexOf('\non:\n'), workflow.indexOf('\npermissions:\n'))
+    const paths = [...on.matchAll(/^ {6}- '([^']+)'$/gm)].map((match) => match[1])
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'electron-builder.yml',
+        'electron-builder.release.yml',
+        'scripts/notarize-dmg.mjs',
+        'scripts/verify-mac-signing.mjs',
+      ]),
+    )
+    for (const path of paths.filter((entry) => !entry.includes('*'))) {
+      expect(existsSync(join(repo, path)), path).toBe(true)
+    }
+  })
+
+  it('joins the environment by one condition, written the same for the environment and for SIGN', () => {
+    // Mutation: the two conditions drifting apart, so a job signs outside
+    // the environment (and finds no secret) or sits in it without signing.
+    const environment = /^ {4}environment: (.+)$/m.exec(pkg)
+    const sign = /^ {6}SIGN: (.+)$/m.exec(pkg)
+    expect(environment?.[1]).toBe(`\${{ ${CONDITION} && 'release-signing' || '' }}`)
+    expect(sign?.[1]).toBe(`\${{ ${CONDITION} }}`)
+    // The one job, and the one place the environment is named as a value: a
+    // job that named it outright would have GitHub make it, with no rule
+    // and no reviewer, on a branch run.
+    expect(code.match(/^\s*environment:/gm)).toHaveLength(1)
+    expect(code.match(/'release-signing'/g)).toHaveLength(1)
+    expect(pkg).toMatch(/\n {4}timeout-minutes: 120\n/)
+  })
+
+  it('makes that condition true for a Mac target on a v tag or a dispatch that asked, and for nothing else', () => {
+    // The expression uses only what JavaScript reads the same way: a
+    // function call, ==, && and ||, each of the last two giving back the
+    // operand it stopped on. So it is evaluated here as written. What GitHub
+    // does with an `environment` of '' is not something a test here can
+    // show: a branch build shows it (ADR-062).
+    const evaluate = (
+      expression: string,
+      target: string,
+      github: { event_name: string; ref: string },
+      inputs: { sign?: boolean | null },
+    ): unknown =>
+      new Function('startsWith', 'matrix', 'github', 'inputs', `return (${expression})`)(
+        (text: string, prefix: string) => text.startsWith(prefix),
+        { target },
+        github,
+        inputs,
+      )
+    const environment = (/^ {4}environment: \$\{\{ (.+) \}\}$/m.exec(pkg) as RegExpExecArray)[1]
+    const sign = (/^ {6}SIGN: \$\{\{ (.+) \}\}$/m.exec(pkg) as RegExpExecArray)[1]
+    const branch = { event_name: 'push', ref: 'refs/heads/686-developer-id' }
+    const main = { event_name: 'push', ref: 'refs/heads/main' }
+    const tag = { event_name: 'push', ref: 'refs/tags/v1.0.0-rc.4' }
+    const dispatch = { event_name: 'workflow_dispatch', ref: 'refs/heads/main' }
+    const cases: [string, typeof branch, { sign?: boolean | null }, boolean][] = [
+      ['darwin-arm64', branch, {}, false],
+      ['darwin-x64', main, {}, false],
+      ['win-x64', main, {}, false],
+      ['darwin-arm64', tag, {}, true],
+      ['darwin-x64', tag, {}, true],
+      ['win-x64', tag, {}, false],
+      ['darwin-arm64', dispatch, { sign: true }, true],
+      ['darwin-x64', dispatch, { sign: true }, true],
+      ['win-x64', dispatch, { sign: true }, false],
+      ['darwin-arm64', dispatch, { sign: false }, false],
+      ['darwin-arm64', dispatch, {}, false],
+      // A dispatch from a tag signs only if it asks; a tag that is not a
+      // v tag, and a branch named like one, never do.
+      ['darwin-arm64', { event_name: 'workflow_dispatch', ref: 'refs/tags/v1.0.0' }, {}, false],
+      ['darwin-arm64', { event_name: 'push', ref: 'refs/tags/nightly' }, {}, false],
+      ['darwin-arm64', { event_name: 'push', ref: 'refs/heads/v1' }, {}, false],
+      // `sign` belongs to a dispatch: on any other event it changes nothing.
+      ['darwin-arm64', { event_name: 'push', ref: 'refs/heads/main' }, { sign: true }, false],
+    ]
+    for (const [target, github, inputs, signing] of cases) {
+      const label = `${target} ${github.event_name} ${github.ref} ${JSON.stringify(inputs)}`
+      expect(evaluate(environment, target, github, inputs), label).toBe(
+        signing ? 'release-signing' : '',
+      )
+      expect(evaluate(sign, target, github, inputs), label).toBe(signing)
+    }
+  })
+
+  it('hands secrets to three steps only: none to the first, the certificate to packaging, the key to notarising', () => {
+    // Mutation: the notary's key added to the Package step's env, where
+    // npm's code runs.
+    const handed = new Map<string, string[]>()
+    for (const candidate of steps) {
+      const lines = candidate.text.split('\n').filter((line) => line.includes('secrets.'))
+      if (lines.length > 0)
+        handed.set(
+          candidate.name ?? '(unnamed)',
+          lines.map((line) => line.trim()),
+        )
+    }
+    expect([...handed.keys()]).toEqual([REFUSE, 'Package', NOTARISE])
+    // The first is told only whether each has a value, never the value.
+    expect(handed.get(REFUSE)).toEqual(
+      [
+        'MAC_CERT_P12_BASE64',
+        'MAC_CERT_PASSWORD',
+        'NOTARY_KEY_P8',
+        'NOTARY_KEY_ID',
+        'NOTARY_ISSUER_ID',
+      ].map((name) => `HAS_${name}: \${{ secrets.${name} != '' }}`),
+    )
+    expect(handed.get('Package')).toEqual([
+      'MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}',
+      'MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}',
+    ])
+    expect(handed.get(NOTARISE)).toEqual([
+      'NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}',
+      'NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}',
+      'NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}',
+    ])
+    // And no other job is handed any: every mention is in the package job.
+    expect(code.match(/secrets\./g)).toHaveLength(pkg.match(/secrets\./g)?.length ?? -1)
+    for (const name of [REFUSE, NOTARISE, VERIFY_IMAGE]) {
+      expect(step(name), name).toMatch(/\n {8}if: env\.SIGN == 'true'\n/)
+    }
+  })
+
+  it('never gives electron-builder a certificate or a notary variable under its own name at a step', () => {
+    // An empty CSC_LINK at the step is read as a certificate to load and
+    // fails every Mac build, the ad-hoc ones included; any APPLE_ variable
+    // and electron-builder notarises the app itself.
+    expect(code).not.toMatch(/^\s*(WIN_)?CSC_[A-Z_]+:/m)
+    expect(workflow).not.toContain('APPLE_')
+    expect(code).not.toMatch(/-c\.(mac|dmg)\./)
+  })
+
+  it('refuses before anything is installed, and notarises after everything npm runs and before the upload', () => {
+    // Mutation: the installer uploaded before it is stapled, so the release
+    // job checksums and attests bytes the stapler then changes.
+    const install = steps.findIndex((candidate) => candidate.text.includes('run: npm ci'))
+    const upload = steps.findIndex((candidate) =>
+      candidate.text.includes('name: installer-${{ matrix.target }}'),
+    )
+    expect(at(REFUSE)).toBeGreaterThan(0)
+    expect(at(REFUSE)).toBeLessThan(install)
+    expect(
+      steps.slice(0, at(REFUSE)).map((candidate) => candidate.text.trim().split('\n')[0]),
+    ).toEqual(['- uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1'])
+    const order = [
+      'Build the app',
+      'Package',
+      'Launch the packaged app once',
+      "Verify the Mac app's signature",
+      NOTARISE,
+      VERIFY_IMAGE,
+    ].map(at)
+    expect(order.every((index) => index > 0)).toBe(true)
+    expect([...order].sort((a, b) => a - b)).toEqual(order)
+    expect(upload).toBeGreaterThan(at(VERIFY_IMAGE))
+    // Nothing that runs npm's code, or the app, comes after the key exists.
+    for (const later of steps.slice(at(NOTARISE) + 1)) {
+      expect(later.text, later.name ?? '').not.toMatch(/\bnpm |\bnpx |launch-packaged/)
+    }
+    expect(step(NOTARISE)).toMatch(/\n {8}timeout-minutes: 75\n/)
+  })
+
+  it("uploads the notary's log whatever happened, once signing was attempted", () => {
+    const log = steps.find((candidate) => candidate.text.includes('name: notary-log-'))
+    expect(log?.text).toContain("if: ${{ always() && env.SIGN == 'true' }}")
+    expect(log?.text).toContain('name: notary-log-${{ matrix.target }}')
+    expect(log?.text).toContain('path: ${{ runner.temp }}/notary-log/')
+    expect(log?.text).toMatch(/uses: actions\/upload-artifact@[0-9a-f]{40} # v\d/)
+    expect(script(NOTARISE)).toContain('--log "$RUNNER_TEMP/notary-log/notary-log-$TARGET.json"')
+  })
+
+  describe.skipIf(process.platform === 'win32')('its steps, run as a runner runs them', () => {
+    const SYSTEM = '/usr/bin:/bin'
+    /** A folder standing in for the checkout, with stand-ins for the named commands first on PATH. */
+    function workspace(stubs: Record<string, string>): { dir: string; path: string; log: string } {
+      const dir = scratch()
+      for (const [name, body] of Object.entries(stubs)) {
+        const file = join(dir, 'bin', name)
+        put(file, `#!/bin/bash\n${body}\n`)
+        chmodSync(file, 0o755)
+      }
+      return { dir, path: `${join(dir, 'bin')}:${SYSTEM}`, log: join(dir, 'stub.log') }
+    }
+    /** As a `shell: bash` step: `-e` and pipefail on before the first line. */
+    function run(text: string, cwd: string, env: Record<string, string>) {
+      const file = join(scratch(), 'step.sh')
+      writeFileSync(file, text)
+      return spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', file], {
+        cwd,
+        env,
+        encoding: 'utf8',
+        timeout: 30_000,
+      })
+    }
+    /** What a stand-in was called with, one call a line, its arguments tab-separated. */
+    const RECORD =
+      'printf "%s" "$(basename "$0")" >> "$STUB_LOG"; for a in "$@"; do printf "\\t%s" "$a" >> "$STUB_LOG"; done; printf "\\n" >> "$STUB_LOG"'
+    const config = (identity: string): string =>
+      `extends: ./electron-builder.yml\nmac:\n  # the team\n  identity: '${identity}'\n  notarize: false\ndmg:\n  sign: true\n`
+    const EVERY = {
+      HAS_MAC_CERT_P12_BASE64: 'true',
+      HAS_MAC_CERT_PASSWORD: 'true',
+      HAS_NOTARY_KEY_P8: 'true',
+      HAS_NOTARY_KEY_ID: 'true',
+      HAS_NOTARY_ISSUER_ID: 'true',
+    }
+
+    it('the first step passes with every secret and a Team ID', () => {
+      const { dir, path } = workspace({})
+      put(join(dir, 'electron-builder.release.yml'), config('ABCDE12345'))
+      const result = run(script(REFUSE), dir, { PATH: path, ...EVERY })
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(result.stdout).toBe(
+        'signing mode: every secret has a value, and the identity is team ABCDE12345\n',
+      )
+    })
+
+    it('the first step names every secret that is empty, and only those', () => {
+      const { dir, path } = workspace({})
+      put(join(dir, 'electron-builder.release.yml'), config('ABCDE12345'))
+      const one = run(script(REFUSE), dir, { PATH: path, ...EVERY, HAS_NOTARY_KEY_ID: 'false' })
+      expect(one.status).toBe(1)
+      expect(one.stdout).toBe(
+        '::error::signing was asked for, and the release-signing environment gave this job no value for: NOTARY_KEY_ID\n',
+      )
+      const two = run(script(REFUSE), dir, {
+        PATH: path,
+        ...EVERY,
+        HAS_MAC_CERT_P12_BASE64: 'false',
+        HAS_NOTARY_KEY_P8: 'false',
+      })
+      expect(two.status).toBe(1)
+      expect(two.stdout).toContain('no value for: MAC_CERT_P12_BASE64 NOTARY_KEY_P8\n')
+      // A job outside the environment is told nothing at all.
+      const none = run(script(REFUSE), dir, { PATH: path })
+      expect(none.status).toBe(1)
+      expect(none.stdout).toContain(
+        'no value for: MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID\n',
+      )
+    })
+
+    it('the first step refuses the placeholder, and an identity that is not a Team ID', () => {
+      const { dir, path } = workspace({})
+      const refused = (text: string) => {
+        put(join(dir, 'electron-builder.release.yml'), text)
+        return run(script(REFUSE), dir, { PATH: path, ...EVERY })
+      }
+      const placeholder = refused(config('TEAMID_TBD'))
+      expect(placeholder.status).toBe(1)
+      expect(placeholder.stdout).toBe(
+        '::error::electron-builder.release.yml still names the placeholder TEAMID_TBD as its identity: write the Developer ID Team ID there before signing\n',
+      )
+      for (const identity of ['abcde12345', 'ABCDE1234', 'ABCDE123456', '-', '']) {
+        const result = refused(config(identity))
+        expect(result.status, identity).toBe(1)
+        expect(result.stdout, identity).toContain('mac.identity is not a Team ID')
+      }
+      // Unquoted, an all-digit team would reach electron-builder as a number.
+      expect(refused(config('ABCDE12345').replace(/'/g, '')).status).toBe(1)
+      // The committed config: refused while it holds the placeholder, let
+      // through once a Team ID stands there.
+      const committed = readFileSync(join(repo, 'electron-builder.release.yml'), 'utf8')
+      expect(refused(committed).status).toBe(committed.includes("identity: 'TEAMID_TBD'") ? 1 : 0)
+    })
+
+    const NPX = [
+      '{ printf "args"; for a in "$@"; do printf "\\t%s" "$a"; done; printf "\\n"',
+      '  for name in CSC_LINK CSC_KEY_PASSWORD MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD; do',
+      '    if [ -n "${!name+set}" ]; then printf "%s=%s\\n" "$name" "${!name}"; else printf "%s is unset\\n" "$name"; fi',
+      '  done; } > "$STUB_LOG"',
+    ].join('\n')
+
+    it('packaging gives electron-builder the certificate and the release config in signing mode', () => {
+      const { dir, path, log } = workspace({ npx: NPX })
+      const result = run(script('Package'), dir, {
+        PATH: path,
+        STUB_LOG: log,
+        SIGN: 'true',
+        BUILDER_ARGS: '--mac dmg --arm64',
+        MAC_CERT_P12_BASE64: 'cDEyLWJ5dGVz',
+        MAC_CERT_PASSWORD: 'a password',
+      })
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
+        'args\telectron-builder\t--mac\tdmg\t--arm64\t--config\telectron-builder.release.yml\t--publish\tnever',
+        'CSC_LINK=cDEyLWJ5dGVz',
+        'CSC_KEY_PASSWORD=a password',
+        'MAC_CERT_P12_BASE64 is unset',
+        'MAC_CERT_PASSWORD is unset',
+      ])
+    })
+
+    it('packaging sets no certificate variable at all outside signing mode, not even an empty one', () => {
+      // Mutation: CSC_LINK exported before the branch, so an ad-hoc build
+      // hands electron-builder an empty certificate and fails.
+      const { dir, path, log } = workspace({ npx: NPX })
+      // As GitHub gives a job outside the environment: the names, empty.
+      for (const values of [
+        { MAC_CERT_P12_BASE64: '', MAC_CERT_PASSWORD: '' },
+        { MAC_CERT_P12_BASE64: 'cDEyLWJ5dGVz', MAC_CERT_PASSWORD: 'a password' },
+      ]) {
+        const result = run(script('Package'), dir, {
+          PATH: path,
+          STUB_LOG: log,
+          SIGN: 'false',
+          BUILDER_ARGS: '--win nsis --x64',
+          ...values,
+        })
+        expect(result.status).toBe(0)
+        expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
+          'args\telectron-builder\t--win\tnsis\t--x64\t--publish\tnever',
+          'CSC_LINK is unset',
+          'CSC_KEY_PASSWORD is unset',
+          'MAC_CERT_P12_BASE64 is unset',
+          'MAC_CERT_PASSWORD is unset',
+        ])
+      }
+    })
+
+    it('the verify step checks the seal, then ad hoc or the Developer ID by the mode', () => {
+      const { dir, path, log } = workspace({ codesign: RECORD, node: RECORD })
+      const calls = (env: Record<string, string>): string[] => {
+        rmSync(log, { force: true })
+        const result = run(script("Verify the Mac app's signature"), dir, {
+          PATH: path,
+          STUB_LOG: log,
+          ...env,
+        })
+        expect(result.status).toBe(0)
+        return readFileSync(log, 'utf8').trim().split('\n')
+      }
+      expect(calls({ TARGET: 'darwin-arm64', SIGN: 'false' })).toEqual([
+        'codesign\t--verify\t--deep\t--strict\t--verbose=2\trelease/mac-arm64/Legible Cities.app',
+        'node\tscripts/verify-mac-signing.mjs\tadhoc\trelease/mac-arm64/Legible Cities.app',
+      ])
+      expect(calls({ TARGET: 'darwin-x64', SIGN: 'true' })).toEqual([
+        'codesign\t--verify\t--deep\t--strict\t--verbose=2\trelease/mac/Legible Cities.app',
+        'node\tscripts/verify-mac-signing.mjs\tdeveloper-id\trelease/mac/Legible Cities.app\t--team-from\telectron-builder.release.yml',
+      ])
+      // And a check that refuses fails the step.
+      const refusing = workspace({ codesign: RECORD, node: `${RECORD}\nexit 1` })
+      expect(
+        run(script("Verify the Mac app's signature"), refusing.dir, {
+          PATH: refusing.path,
+          STUB_LOG: refusing.log,
+          TARGET: 'darwin-arm64',
+          SIGN: 'false',
+        }).status,
+      ).toBe(1)
+    })
+
+    // Put together from pieces, so this file never holds a key's marker
+    // whole, which bin/preflight refuses wherever it finds one.
+    const DASHES = '-'.repeat(5)
+    const KEY = `${DASHES}BEGIN PRIVATE KEY${DASHES}\nnot-a-key\n${DASHES}END PRIVATE KEY${DASHES}`
+    const NODE = [
+      '{ printf "args"; for a in "$@"; do printf "\\t%s" "$a"; done; printf "\\n"',
+      '  printf "NOTARY_KEY_PATH=%s\\n" "${NOTARY_KEY_PATH-unset}"',
+      '  printf "NOTARY_KEY_P8=%s\\n" "${NOTARY_KEY_P8-unset}"',
+      '  printf "NOTARY_KEY_ID=%s\\n" "${NOTARY_KEY_ID-unset}"',
+      '  printf "NOTARY_ISSUER_ID=%s\\n" "${NOTARY_ISSUER_ID-unset}"',
+      '  printf "mode=%s\\n" "$(ls -l "$NOTARY_KEY_PATH" | cut -c1-10)"',
+      '  printf "key=%s\\n" "$(tr "\\n" "|" < "$NOTARY_KEY_PATH")"; } > "$STUB_LOG"',
+      'exit "${STUB_EXIT:-0}"',
+    ].join('\n')
+    const notarise = (images: string[], exit = '0') => {
+      const { dir, path, log } = workspace({ node: NODE })
+      const temp = join(dir, 'runner-temp')
+      mkdirSync(temp)
+      for (const image of images) put(join(dir, 'release', image), 'image')
+      const result = run(script(NOTARISE), dir, {
+        PATH: path,
+        STUB_LOG: log,
+        STUB_EXIT: exit,
+        RUNNER_TEMP: temp,
+        TARGET: 'darwin-arm64',
+        NOTARY_KEY_P8: KEY,
+        NOTARY_KEY_ID: 'KEYID12345',
+        NOTARY_ISSUER_ID: '11111111-2222-3333-4444-555555555555',
+      })
+      return { result, temp, log, key: join(temp, 'notary-key.p8') }
+    }
+
+    it('notarising hands the key over as a file nobody else can read, and removes it', () => {
+      const { result, temp, log, key } = notarise(['Legible Cities-1.0.0-arm64.dmg'])
+      expect(result.stderr).toBe('')
+      expect(result.status).toBe(0)
+      expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
+        `args\tscripts/notarize-dmg.mjs\trelease/Legible Cities-1.0.0-arm64.dmg\t--log\t${temp}/notary-log/notary-log-darwin-arm64.json`,
+        `NOTARY_KEY_PATH=${key}`,
+        // The key's text is not in the script's environment, only its path.
+        'NOTARY_KEY_P8=unset',
+        'NOTARY_KEY_ID=KEYID12345',
+        'NOTARY_ISSUER_ID=11111111-2222-3333-4444-555555555555',
+        'mode=-rw-------',
+        `key=${KEY.replaceAll('\n', '|')}|`,
+      ])
+      expect(existsSync(key)).toBe(false)
+    })
+
+    it('notarising removes the key when the script fails too, and fails the step', () => {
+      // Mutation: the trap taken out, so the key outlives the step.
+      const { result, log, key } = notarise(['a.dmg'], '1')
+      expect(result.status).toBe(1)
+      expect(readFileSync(log, 'utf8')).toContain('mode=-rw-------')
+      expect(existsSync(key)).toBe(false)
+    })
+
+    it('notarising refuses no image, or two, before the key is written', () => {
+      for (const images of [[], ['a.dmg', 'b.dmg']]) {
+        const { result, log, key } = notarise(images)
+        expect(result.status).toBe(1)
+        expect(result.stdout).toBe(
+          `::error::expected one disk image in release, found ${images.length}\n`,
+        )
+        expect(existsSync(log)).toBe(false)
+        expect(existsSync(key)).toBe(false)
+      }
+    })
+
+    it("the last check is the dmg mode over the one image, by the config's team", () => {
+      const { dir, path, log } = workspace({ node: RECORD })
+      put(join(dir, 'release', 'Legible Cities-1.0.0.dmg'), 'image')
+      const result = run(script(VERIFY_IMAGE), dir, { PATH: path, STUB_LOG: log })
+      expect(result.status).toBe(0)
+      expect(readFileSync(log, 'utf8')).toBe(
+        'node\tscripts/verify-mac-signing.mjs\tdmg\trelease/Legible Cities-1.0.0.dmg\t--team-from\telectron-builder.release.yml\n',
+      )
+      rmSync(join(dir, 'release'), { recursive: true })
+      expect(run(script(VERIFY_IMAGE), dir, { PATH: path, STUB_LOG: log }).status).toBe(1)
+    })
+  })
+})
+
 // The source of Electron's FFmpeg library (issue 109, ADR-043): the vendor
 // workflow's job, the pins it verifies against, and the refusal that needs
 // no network.
