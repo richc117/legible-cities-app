@@ -36,7 +36,7 @@
     "find": "  if (ends.pixels === 0)\n",
     "replace": "  if (ends.pixels < 0)\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "wants an export with no blank frame and a first frame unlike the last",
+    "title": "wants an export with nothing-drawn frames failed",
     "why": "An export whose first and last frames are the same, a motionless reel, would pass."
   },
   {
@@ -60,7 +60,7 @@
     "find": "if (widthBefore === widthAfter)",
     "replace": "if (false)",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "wants the face loaded and the label measured differently",
+    "title": "wants the face loaded, and only notes",
     "why": "A typeface that was chosen but did not change a label's measured width would pass."
   },
   {
