@@ -99,6 +99,7 @@ npm run typegen                       # the protocol, its fingerprint and the ty
 npm run dist                          # electron-builder --dir; installers come from build.yml
 npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
 npm run test:acceptance               # the acceptance checklist over the installed app LEGIBLE_ACCEPTANCE_APP names
+npm run test:reader                   # the screen-reader walkthrough heard with VoiceOver over the installed app LEGIBLE_READER_APP names; starts VoiceOver, so a hosted runner's (acceptance.yml's reader job)
 node scripts/mutations.mjs --check    # every tests/unit/*.mutations.json entry is well formed (npm test runs it)
 node scripts/mutations.mjs            # each mutation applied to a clean tree, its test run, the file restored; every test must go red
 node scripts/vuln-watch.mjs           # OSV asked about the pinned components it can name, ratings checked against the CVE records, the answer judged against vendor/vuln-triage.json (SECURITY.md); vuln-watch.yml runs it weekly

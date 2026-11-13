@@ -639,3 +639,101 @@ jobs:
           path: ${{ runner.temp }}/acceptance/evidence-key/
           if-no-files-found: warn
           retention-days: 30
+
+  # The screen-reader walkthrough's VoiceOver column, heard by a script
+  # (issue 691, tests/reader/voiceover.spec.ts): VoiceOver driven by
+  # Guidepup over the same Release's Mac app, one step per walkthrough row.
+  # What it writes is what was spoken, never a pass: the transcript, and the
+  # record with a clause appended to each row's VoiceOver cell, for a person
+  # to read and commit. Hosted macOS only: on a person's Mac the setup asks
+  # for a checkbox ticked by hand and takes over their VoiceOver. The method
+  # is the spike's (docs/adr/spikes/gate-tools-on-hosted-macos.md).
+  reader:
+    name: reader (VoiceOver, darwin-arm64)
+    runs-on: macos-15
+    # Two real layouts, an export and some seventy rows; the spec's own limit is two hours.
+    timeout-minutes: 140
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - name: Refuse a tag that names no Release
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "::error::$TAG is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Guidepup's setup crashes on Node 22 (the spike's record).
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Checked against SHA256SUMS.txt as step 1 checks it; the attestation
+      # is the acceptance job's to verify.
+      - name: The Mac app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          asset="Legible-Cities-${TAG#v}-mac-arm64.dmg"
+          download="$RUNNER_TEMP/download"
+          mount="$RUNNER_TEMP/dmg"
+          apps="$RUNNER_TEMP/apps"
+          mkdir -p "$download" "$mount" "$apps"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$download" \
+            --pattern "$asset" --pattern SHA256SUMS.txt
+          actual=$(node "$cli" sha256 "$download/$asset")
+          expected=$(node "$cli" sums "$download/SHA256SUMS.txt" "$asset")
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::$asset has SHA-256 $actual; SHA256SUMS.txt says $expected"
+            exit 1
+          fi
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$download/$asset"
+          ditto "$mount/Legible Cities.app" "$apps/Legible Cities.app"
+          hdiutil detach "$mount"
+          echo "LEGIBLE_READER_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
+
+      - name: Set up VoiceOver for automation
+        run: npx -y @guidepup/setup@0.29.3 setup --ci
+
+      # Without these VoiceOver will not start under Guidepup ("Failed to
+      # mount Guidepup preferences"). Run where @guidepup/guidepup is
+      # installed, since it reads that package's manifest.
+      - name: Guidepup's VoiceOver assets
+        run: npx -y @guidepup/setup@0.29.3 install voiceover
+
+      - name: The walkthrough, heard
+        env:
+          CI: 'true'
+        run: |
+          export LEGIBLE_READER_OUT="$RUNNER_TEMP/reader"
+          npm run test:reader
+
+      - name: The transcript, as the job's summary
+        if: ${{ !cancelled() }}
+        run: |
+          transcript="$RUNNER_TEMP/reader/transcript.md"
+          if [ -f "$transcript" ]; then
+            cat "$transcript" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No transcript was written: the spec did not start." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
+        with:
+          name: reader-darwin-arm64
+          path: |
+            ${{ runner.temp }}/reader/*.md
+            ${{ runner.temp }}/reader/*.json
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,0 +1,82 @@
+[
+  {
+    "file": "tests/reader/parts.ts",
+    "find": "    row: 'Revert',\n",
+    "replace": "    row: 'Revert to a day',\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "has one part per row",
+    "why": "A part whose row was renamed in the walkthrough would go unwalked with nothing said."
+  },
+  {
+    "file": "tests/reader/parts.ts",
+    "find": "    table: 'Revert, while a chosen day is not drawn',\n",
+    "replace": "    table: 'Revert while a chosen day',\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "puts each part",
+    "why": "A part whose result names no table row would be written nowhere, or into the wrong cell."
+  },
+  {
+    "file": "tests/reader/parts.ts",
+    "find": "        words: [SOURCE_HINT],\n",
+    "replace": "        words: ['A feed is a timetable of the transit agency.'],\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "types no sentence",
+    "why": "A sentence typed into a script is heard against itself, not against the app."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  return ` ${words} `\n",
+    "replace": "  return words\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "compares letters and digits only",
+    "why": "Without whole-word matching, unchecked would be heard as checked."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "    raw[VOICEOVER] = `${cell.replace(/\\s+$/, '')}; ${clause} `\n",
+    "replace": "    raw[VOICEOVER] = ` ${clause} `\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "appends to a cell",
+    "why": "A script that overwrites a cell erases a person's word."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  return text.replace(/[;|]/g, ',')",
+    "replace": "  return text.replace(/[|]/g, ',')",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "keeps the clause in one cell",
+    "why": "A semicolon in a phrase would end the clause early and the record test would read a stray one."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (outcomes.some((o) => o.kind === 'error')) return null\n",
+    "replace": "",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "never writes pass",
+    "why": "A row whose script stopped would be written as heard."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (result.hearings.length === 0) {\n    return { kind: 'error', message: 'the script listened for nothing' }\n  }\n",
+    "replace": "",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "never writes pass",
+    "why": "A script that listened for nothing would be written as heard."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "  if (words === undefined) {\n",
+    "replace": "  if (words === null) {\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "refuses a role",
+    "why": "A role with no words in the synonyms table would be wanted as nothing, and heard."
+  },
+  {
+    "file": "tests/reader/transcript.ts",
+    "find": "      bullets[bullets.length - 1] += ` ${line.trim()}`\n",
+    "replace": "      bullets[bullets.length - 1] += ''\n",
+    "test": "tests/unit/reader-record.test.ts",
+    "title": "reads the walkthrough",
+    "why": "A bold name broken over two lines would be lost, and its row unwalked."
+  }
+]

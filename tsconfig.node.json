@@ -21,6 +21,7 @@
     "vitest.live.config.ts",
     "playwright.config.ts",
     "playwright.acceptance.config.ts",
+    "playwright.reader.config.ts",
     "src/main/**/*",
     "src/preload/**/*",
     "src/shared/**/*"
