@@ -10,11 +10,6 @@ links are inline, with no images and no reference-style links.
 
 ## [Unreleased]
 
-### Fixed
-
-- On a Mac, when the engine stops by itself, the tools it was running stop
-  too, before it starts again or the app quits.
-
 ## [1.0.0]
 
 ### Added
@@ -104,6 +99,8 @@ links are inline, with no images and no reference-style links.
   undone when the redrawn map arrives.
 - A colour chosen by dragging is no longer kept one step short of where
   the drag ended, so the map shows the colour the swatch does.
+- On a Mac, when the engine stops by itself, the tools it was running stop
+  too, before it starts again or the app quits.
 
 ### Security
 
