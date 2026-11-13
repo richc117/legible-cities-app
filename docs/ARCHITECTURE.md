@@ -2682,7 +2682,8 @@ runs. Measured on an Apple-silicon Mac with the vendored binaries: under
 
 A pushed tag `v<version>` or `v<version>-rc.<N>` runs the same build, path
 filters or not (GitHub does not evaluate them for a tag), and after the
-vendor jobs and all three packaging jobs succeed a last job, the only one
+vendor jobs and all three packaging jobs succeed, and in signing mode the
+two notarising jobs as well ("Packaging"), a last job, the only one
 with `contents: write`, drafts a GitHub Release (A6-01,
 specs/025-release-on-a-tag, ADR-041). `scripts/release.mjs` decides and
 the workflow does: it refuses a tag that is not for `package.json`'s

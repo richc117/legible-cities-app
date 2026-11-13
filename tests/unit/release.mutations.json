@@ -454,5 +454,13 @@
     "test": "tests/unit/release.test.ts",
     "title": "the last check is the dmg mode over the one image, by the config's team",
     "why": "The image checked as if it were an app: its staple and Gatekeeper's verdict on the file a person downloads are never asked for."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable",
+    "replace": "          if true; then\n            sudo spctl --global-enable",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising leaves a Gatekeeper that is on alone, and says so twice",
+    "why": "A setting of the machine's changed with sudo on every signing run, needed or not: the one use of root in the job would run where nothing asked for it."
   }
 ]
