@@ -548,6 +548,15 @@ check_tree() {
   [ "$found" = "$2" ] || fail "$3 makes tree $found, and the pins say $2"
 }
 
+# unpack_stream: a tar stream on stdin unpacked into $work, with what follows
+# its end read and dropped.
+unpack_stream() {
+  local status=0
+  "$gnu_tar" -x -f - -C "$work" --no-same-owner || status=$?
+  cat > /dev/null
+  return "$status"
+}
+
 # verify <archive>: the archive, unpacked into the work folder, holds what
 # the fetch below would have packed from the pins and this checkout, judged
 # by the same ids, with no network. BUILD.txt names the commit whose run
@@ -557,7 +566,11 @@ verify() {
   local file=$1 root path want found built_repository built_commit
   [ "$(basename "$file")" = "$archive" ] || fail "$file is not $archive, the archive the pins name for Electron $electron_version"
   check_listing "$file"
-  xz -dc "$file" | "$gnu_tar" -x -f - -C "$work" --no-same-owner || fail "$archive does not unpack"
+  # tar stops reading at its end-of-archive blocks, and xz writes what
+  # follows them (bytes after the end inside the xz) a little later, so tar's
+  # exit could close the pipe on it and fail the pipeline by a race. The rest is
+  # read and dropped: the repack below refuses it for what it is.
+  xz -dc "$file" | unpack_stream || fail "$archive does not unpack"
   # Nothing but its one folder, and in it only files and folders, before any
   # file's bytes are read.
   [ "$(ls -A "$work")" = "$name" ] || fail "$archive unpacks to more than $name/"
