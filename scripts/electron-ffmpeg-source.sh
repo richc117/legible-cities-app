@@ -317,8 +317,10 @@ check_patch_list() {
   local listed line pinned key
   [ -f "$1/patches/ffmpeg/.patches" ] || fail "the archive lacks patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg"
   listed=$(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$1/patches/ffmpeg/.patches" | sed 's/[[:space:]]*$//' || true)
+  # The pattern opens with "(": bash 3.2, macOS's /bin/bash, ends a $( ... )
+  # at a case pattern's bare ")" and refuses the script as a syntax error.
   pinned=$(while IFS= read -r key; do
-    case $key in patches/ffmpeg/*.patch) printf '%s\n' "${key#patches/ffmpeg/}" ;; esac
+    case $key in (patches/ffmpeg/*.patch) printf '%s\n' "${key#patches/ffmpeg/}" ;; esac
   done <<< "$file_keys")
   while IFS= read -r line; do
     [ -n "$line" ] || continue

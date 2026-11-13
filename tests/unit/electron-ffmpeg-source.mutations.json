@@ -46,5 +46,13 @@
     "test": "tests/unit/release.test.ts",
     "title": "checks the list of FFmpeg patches in the fetch and in --verify",
     "why": "--verify without the list check: a cached archive missing a patch the library carries verifies and is attached to a release."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "    case $key in (patches/ffmpeg/*.patch) printf",
+    "replace": "    case $key in patches/ffmpeg/*.patch) printf",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "parses under the system bash, whatever its version",
+    "why": "A bare case pattern inside $( ... ) is a syntax error to macOS's bash 3.2, so every --verify on a Mac runner exits 2."
   }
 ]

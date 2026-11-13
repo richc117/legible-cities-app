@@ -16,6 +16,7 @@ import {
   chmodSync,
   copyFileSync,
   cpSync,
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -684,5 +685,16 @@ describe('the electron-ffmpeg-source job, for the cache', () => {
     expect(steps[upload]).toContain('name: electron-ffmpeg-source\n')
     expect(steps[upload]).toContain('path: electron-ffmpeg-source\n')
     expect(steps[upload]).toContain('if-no-files-found: error\n')
+  })
+})
+
+// macOS runs the script with its own /bin/bash, which is 3.2: a construct a
+// newer bash parses (a bare case pattern inside $( ... )) is a syntax error
+// there, and every --verify on a Mac runner exits 2 before it reads a file.
+describe.skipIf(!existsSync('/bin/bash'))('the script, under /bin/bash', () => {
+  it('parses under the system bash, whatever its version', () => {
+    const r = spawnSync('/bin/bash', ['-n', SCRIPT], { encoding: 'utf8', timeout: 10_000 })
+    expect(r.stderr).toBe('')
+    expect(r.status).toBe(0)
   })
 })
