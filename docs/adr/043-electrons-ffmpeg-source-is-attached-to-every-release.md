@@ -93,7 +93,12 @@ repository, revision and tree, a DEPS entry of that commit; the blob ids of
 Electron's `patches/ffmpeg/.patches`, `link_with_loader_path.patch`,
 `build/args/all.gn`, `build/args/release.gn`, and `patches/chromium/.patches`
 with the eight patches it lists that change files under Chromium's `build/`;
-the 29 components; and the licence.
+the 29 components; and the licence. (Amended 2026-11-13, issue 681: from
+Electron 45.2.3 the block pins every patch `patches/ffmpeg/.patches` lists -
+three FFmpeg cherry-picks besides `link_with_loader_path.patch` - and the
+source script refuses a list that names a patch the pins do not, or a pinned
+patch the list does not name; each changes the compiled library and is packed
+beside it.)
 
 **What goes in** is what FFmpeg's `BUILD.gn` and the `.gni` files it imports
 name outside themselves, read at the pinned commit: `//build` (compiler,

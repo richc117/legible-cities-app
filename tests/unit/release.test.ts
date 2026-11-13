@@ -1432,6 +1432,11 @@ describe("the source of Electron's FFmpeg library", () => {
     expect(build).toContain("'scripts/electron-ffmpeg-source.sh'")
   })
 
+  it('checks the list of FFmpeg patches in the fetch and in --verify', () => {
+    const script = readFileSync(join(repo, 'scripts', 'electron-ffmpeg-source.sh'), 'utf8')
+    expect(script.match(/^\s*check_patch_list "\$root\/electron"$/gm)).toHaveLength(2)
+  })
+
   it('is pinned for the Electron package.json and package-lock.json install, by object id', () => {
     const pins = PINS.electron_ffmpeg
     expect(pins.electron.version).toBe(ELECTRON)
@@ -1460,6 +1465,9 @@ describe("the source of Electron's FFmpeg library", () => {
     for (const required of [
       'patches/ffmpeg/.patches',
       'patches/ffmpeg/link_with_loader_path.patch',
+      'patches/ffmpeg/cherry-pick-f4bee18dadeb.patch',
+      'patches/ffmpeg/cherry-pick-5eed87f44b0a.patch',
+      'patches/ffmpeg/cherry-pick-fb424c4f78d1.patch',
       'build/args/all.gn',
       'build/args/release.gn',
       'patches/chromium/.patches',
@@ -1467,7 +1475,7 @@ describe("the source of Electron's FFmpeg library", () => {
       expect(files).toContain(required)
     }
     // Electron's patches to Chromium's build/, eight at Electron 44.2.0, 44.3.0, 44.5.1, 44.7.0,
-    // 44.7.1 and 44.9.1, and eight at 45.0.0, one of them another patch.
+    // 44.7.1 and 44.9.1, and eight at 45.0.0 and 45.2.3, one of them another patch.
     expect(files.filter((file) => /^patches\/chromium\/.+\.patch$/.test(file))).toHaveLength(8)
   })
 
