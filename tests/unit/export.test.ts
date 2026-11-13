@@ -756,6 +756,40 @@ describe('cancelling', () => {
     expect(h.exporter.live).toBe(0)
   })
 
+  it('lists what a quit would throw away: the exports running, oldest first, until each is asked to stop', async () => {
+    // What the quit's question is asked with (issue 552). Mutations
+    // (`export.mutations.json`): an export asked to stop still listed - a
+    // quit just after its Cancel is asked about an export that is already
+    // going; the start time not kept - the question's names lose their order.
+    const h = harness()
+    expect(h.exporter.running()).toEqual([])
+    const before = Date.now()
+    const one = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    const two = h.exporter.start('tok-2', 'abcdefghijk2', REEL)
+    const after = Date.now()
+    const running = h.exporter.running()
+    expect(running.map((run) => run.project)).toEqual(['abcdefghijk1', 'abcdefghijk2'])
+    for (const run of running) {
+      expect(run.started).toBeGreaterThanOrEqual(before)
+      expect(run.started).toBeLessThanOrEqual(after)
+    }
+    expect(Object.keys(running[0]).sort(), 'whose, and when: nothing else').toEqual([
+      'project',
+      'started',
+    ])
+
+    // Asked to stop: live until it has unwound, and nothing a quit would lose.
+    h.exporter.cancel('tok-1')
+    expect(h.exporter.live).toBe(2)
+    expect(h.exporter.running().map((run) => run.project)).toEqual(['abcdefghijk2'])
+
+    h.exporter.abortAll()
+    expect(h.exporter.running()).toEqual([])
+    await expect(one.result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    await expect(two.result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    expect(h.exporter.live).toBe(0)
+  })
+
   it('an unknown or finished id does nothing', () => {
     const h = harness()
     expect(() => h.exporter.cancel('nobody')).not.toThrow()

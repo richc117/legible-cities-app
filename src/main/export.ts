@@ -133,6 +133,8 @@ interface Control {
   abort: AbortController
   /** The engine request in flight, so a cancel reaches it; 0 when there is none. */
   engineId: number
+  /** When the export started, in milliseconds since the epoch. */
+  started: number
 }
 
 /**
@@ -358,6 +360,7 @@ export class Exporter {
       cancelled: false,
       abort: new AbortController(),
       engineId: 0,
+      started: Date.now(),
     }
     this.#live.set(token, control)
     this.#busy.add(projectId)
@@ -496,6 +499,19 @@ export class Exporter {
   /** How many exports are running; the tests read it to prove nothing is left. */
   get live(): number {
     return this.#live.size
+  }
+
+  /**
+   * The exports a quit or a close would throw away, in the order they
+   * started: whose each is, and when it began (issue 552). One already asked
+   * to stop is not among them, though it is `live` until it has unwound:
+   * nothing of it is left to lose, and a quit just after its Cancel must not
+   * be asked about it.
+   */
+  running(): { project: string; started: number }[] {
+    return [...this.#live.values()]
+      .filter((control) => !control.cancelled)
+      .map((control) => ({ project: control.projectId, started: control.started }))
   }
 
   #emit(

@@ -6,10 +6,15 @@
 // app sat windowless until the capture ended and then quit, cancelling the
 // export at its encode with nothing said.
 //
+// And whether a quit, or a close of that window, is asked about before it
+// throws a run away (issue 552, `quitQuestion`): the rule alone is here;
+// what it is asked with and how its answer is carried out is quit-guard.ts.
+//
 // No Electron import, so the rules are tested without a session; index.ts
 // hands in the platform, the quit and the opener.
 
 import { messageOf } from '../shared/errors'
+import type { QuitKind, QuitQuestion } from '../shared/quit'
 
 /** What the closing handler needs: the platform's name and the app's own quit. */
 export interface AppWindowClosedDeps {
@@ -21,7 +26,10 @@ export interface AppWindowClosedDeps {
  * The handler for the app's own window closing. Windows and Linux quit, as
  * they do when nothing else is open, so a running export is cancelled by the
  * quit at once and visibly; macOS stays running with no window, as its apps
- * do, and a running export goes on and finishes.
+ * do. A close is asked about first while a run is going (`quitQuestion`,
+ * below), and one that goes ahead has stopped the runs, so on macOS nothing
+ * goes on unseen; an export goes on without a window only where the question
+ * could not be shown.
  */
 export function onAppWindowClosed(deps: AppWindowClosedDeps): () => void {
   return () => {
@@ -46,6 +54,86 @@ export function onActivate(deps: ActivateDeps): () => void {
 /** The slice of Electron's event the gate needs. */
 export interface Cancellable {
   preventDefault(): void
+}
+
+/** A run a quit or a close would throw away. */
+export interface Run {
+  /** The project's identifier: a project is named once, however many runs it has. */
+  project: string
+  /** Its name, as the Library shows it. */
+  name: string
+  /** When the run started, in milliseconds since the epoch: the order the names are said in. */
+  started: number
+}
+
+/**
+ * Whether the page can show a question: `ready`, there and answering; `gone`,
+ * no window, a renderer that died, or a page that has not said it listens;
+ * `unresponsive`, as Electron reported it.
+ */
+export type RendererState = 'ready' | 'gone' | 'unresponsive'
+
+/** What `quitQuestion` is asked with. */
+export interface QuitFacts {
+  /** A quit of the app, or a close of its own window. */
+  kind: QuitKind
+  /** The exports running, from the main process's own state. */
+  exports: readonly Run[]
+  /** The layouts running, as the page last reported them: main cannot see one. */
+  layouts: readonly Run[]
+  renderer: RendererState
+  /**
+   * The quit is the app's own, not the person's: the crash box's Quit, a
+   * missing single-instance lock, an uncaught exception, the quit that
+   * follows the window on Windows and Linux, the one the person has just
+   * confirmed, and any quit already under way.
+   */
+  own: boolean
+  /** A question is on the screen already. */
+  open: boolean
+}
+
+/** Go ahead without asking, or ask this. */
+export type QuitDecision = { ask: false } | { ask: true; question: QuitQuestion }
+
+const GO_AHEAD: QuitDecision = { ask: false }
+
+/**
+ * Whether a quit, or a close of the app's window, is asked about first
+ * (issue 552, specs/039-quit-guard), and what is asked. Asked while an
+ * export or a layout is running, on every platform, the close on macOS
+ * included: the app stays running there with no window, and a window
+ * reopened from the Dock cannot see or stop an export that went on without
+ * one (issue 556), so going ahead stops the runs as a quit does.
+ *
+ * Never asked:
+ * - for the app's own quits, which nobody chose and nobody can answer;
+ * - while the page cannot show the question, because a person must always
+ *   be able to quit;
+ * - while a question is already open: a second quit is an answer, and it
+ *   goes ahead;
+ * - with nothing running, which is every quit and close before this rule.
+ *
+ * The question names each project once, in the order its first run started.
+ */
+export function quitQuestion(facts: QuitFacts): QuitDecision {
+  if (facts.own) return GO_AHEAD
+  if (facts.renderer !== 'ready') return GO_AHEAD
+  if (facts.open) return GO_AHEAD
+  // Sorted on a copy; ties keep the exports first, as they are handed in.
+  const runs = [...facts.exports, ...facts.layouts].sort((a, b) => a.started - b.started)
+  if (runs.length === 0) return GO_AHEAD
+  const named = new Map<string, string>()
+  for (const run of runs) if (!named.has(run.project)) named.set(run.project, run.name)
+  return {
+    ask: true,
+    question: {
+      kind: facts.kind,
+      exports: facts.exports.length,
+      layouts: facts.layouts.length,
+      names: [...named.values()],
+    },
+  }
 }
 
 /** What a `before-quit` was: the pass that starts the shutdown, or one that came after it. */

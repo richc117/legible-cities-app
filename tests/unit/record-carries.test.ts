@@ -252,6 +252,7 @@ const WRITERS: {
 const NOT_WRITERS: Record<string, string> = {
   constructor: 'makes the store',
   writing: 'counts the writes in flight',
+  nameOf: 'answers a name the store already holds, with no read or write',
   dir: 'names a folder',
   file: 'names a file',
   outputDir: 'names a folder',

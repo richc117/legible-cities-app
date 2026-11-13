@@ -490,6 +490,43 @@ describe('a leftover project.json.tmp', () => {
   })
 })
 
+// The name a project is known by without a read of the disk: what the quit's
+// question names a running project with, where nothing may be awaited (issue
+// 552). The mutations it was watched failing under are in
+// `projects-store.mutations.json`.
+describe('nameOf', () => {
+  it('knows no project whose record has not passed through the store', async () => {
+    await seed(A, record(A, { name: 'On disk, never read' }))
+    expect(store.nameOf(A)).toBeNull()
+    expect(store.nameOf('not an id')).toBeNull()
+  })
+
+  it('knows a name from the read of one record and from the list', async () => {
+    await seed(A, record(A, { name: 'Paris' }))
+    await seed(B, record(B, { name: 'Lyon' }))
+    await store.get(A)
+    expect(store.nameOf(A)).toBe('Paris')
+    expect(store.nameOf(B), 'not read yet').toBeNull()
+    await store.list()
+    expect(store.nameOf(B), 'the name the Library shows').toBe('Lyon')
+  })
+
+  it('knows a new project by the name it was made with, and a renamed one by its new name', async () => {
+    const made = await store.create({ name: '  Lille ', feed: 'la-metro-rail' })
+    expect(store.nameOf(made.id)).toBe('Lille')
+    await store.rename(made.id, 'Lille, again')
+    expect(store.nameOf(made.id)).toBe('Lille, again')
+  })
+
+  it('keeps the name it had when a write fails, and forgets a project that is deleted', async () => {
+    const made = await store.create({ name: 'Lille', feed: 'la-metro-rail' })
+    await expect(store.rename(made.id, '   ')).rejects.toThrow()
+    expect(store.nameOf(made.id)).toBe('Lille')
+    await store.delete(made.id)
+    expect(store.nameOf(made.id)).toBeNull()
+  })
+})
+
 describe('rename', () => {
   it('changes exactly name and modified', async () => {
     await seed(A, record(A, { name: 'Before', agency: 'Metro', date: '2026-09-01' }))

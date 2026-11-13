@@ -14,5 +14,21 @@
     "test": "tests/unit/export.test.ts",
     "title": "answers the file the plan named, and refuses a plan whose file is not a bare name",
     "why": "The preview's check of the file's name dropped: a plan naming a path would reach the screen as the file an export replaces."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "      .filter((control) => !control.cancelled)\n",
+    "replace": "",
+    "test": "tests/unit/export.test.ts",
+    "title": "lists what a quit would throw away: the exports running, oldest first, until each is asked to stop",
+    "why": "An export already asked to stop still listed: a quit just after its Cancel is asked about an export that is on its way out."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "      started: Date.now(),\n",
+    "replace": "      started: 0,\n",
+    "test": "tests/unit/export.test.ts",
+    "title": "lists what a quit would throw away: the exports running, oldest first, until each is asked to stop",
+    "why": "An export's start not kept: the question names the projects in no order of their runs."
   }
 ]

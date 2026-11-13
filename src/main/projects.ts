@@ -230,6 +230,13 @@ export class ProjectStore {
   private readonly root: string
   private readonly output: string
   #writing = 0
+  /**
+   * Each project's name as this store last read or wrote it, for whoever
+   * must name a project without waiting for the disk: the question a quit
+   * asks first (issue 552). The Library's list reads through here, so it is
+   * the name the Library shows.
+   */
+  readonly #names = new Map<string, string>()
 
   /**
    * Both folders derive from the engine home, so neither can be handed a
@@ -258,6 +265,15 @@ export class ProjectStore {
    */
   get writing(): number {
     return this.#writing
+  }
+
+  /**
+   * A project's name, at once: as the last read or write of its record here
+   * left it, or null for a project whose record has not passed through this
+   * store. Never the disk, so it can be asked where nothing may be awaited.
+   */
+  nameOf(id: string): string | null {
+    return this.#names.get(id) ?? null
   }
 
   /**
@@ -352,6 +368,7 @@ export class ProjectStore {
     // A folder copied by hand carries another project's identity; listing
     // it would show an entry that get() cannot resolve.
     if (parsed.record.id !== folder) return { reason: 'record id does not match its folder' }
+    this.#names.set(folder, parsed.record.name)
     return parsed
   }
 
@@ -390,6 +407,7 @@ export class ProjectStore {
     // write before it left. The answer is the record as written.
     const written: ProjectRecord = { ...record, revision: nextRevision(record) }
     await this.writeAtomic(id, carried.onto(written, renewed))
+    this.#names.set(id, written.name)
     return written
   }
 
@@ -1252,6 +1270,7 @@ export class ProjectStore {
         try {
           await rm(path, { recursive: true, force: true })
           result.removed.push(folder)
+          if (folder === 'project') this.#names.delete(id)
         } catch (error) {
           result.failed.push({ folder, reason: reasonOf(error) })
         }

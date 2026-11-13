@@ -4,9 +4,20 @@
 // come back from the Dock, and Windows and Linux windowless until the
 // capture ended. The tests keep a capture window open throughout and move
 // the app's window, which is what the old rule could not see.
+//
+// And the rule for the question a quit or a close asks first while a run is
+// going (issue 552): `quitQuestion`, further down, with its own note.
 
 import { describe, expect, it, vi } from 'vitest'
-import { onActivate, onAppWindowClosed, quitGate, shutDown } from '../../src/main/window-lifecycle'
+import {
+  onActivate,
+  onAppWindowClosed,
+  quitGate,
+  quitQuestion,
+  shutDown,
+  type QuitFacts,
+  type Run,
+} from '../../src/main/window-lifecycle'
 
 /** The app as the handlers see it: the windows open, and which one is the app's own. */
 function app() {
@@ -73,6 +84,152 @@ describe('onActivate', () => {
     const handler = onActivate({ appWindow: () => world.appWindow, open: make })
     handler()
     expect(world.windowsMade).toBe(0)
+  })
+})
+
+// Asking before a quit or a close throws a run away (issue 552,
+// specs/039-quit-guard, SC-001). The table: nothing running; an export; a
+// layout; both; two of one; the renderer gone; the renderer unresponsive; the
+// app's own quit; a question already open; quit and close. Each row's rule
+// has a mutation in `window-lifecycle.mutations.json` that turns it red.
+describe('quitQuestion', () => {
+  const run = (project: string, name: string, started: number): Run => ({ project, name, started })
+  const PARIS = run('paris0000001', 'Paris', 1_000)
+  const LYON = run('lyon00000001', 'Lyon', 2_000)
+  const LILLE = run('lille0000001', 'Lille', 3_000)
+
+  /** A person's quit, with a page that can be asked and nothing on the screen. */
+  const facts = (over: Partial<QuitFacts> = {}): QuitFacts => ({
+    kind: 'quit',
+    exports: [],
+    layouts: [],
+    renderer: 'ready',
+    own: false,
+    open: false,
+    ...over,
+  })
+
+  it('goes ahead with nothing running, as every quit and close did before', () => {
+    expect(quitQuestion(facts())).toEqual({ ask: false })
+    expect(quitQuestion(facts({ kind: 'close' }))).toEqual({ ask: false })
+  })
+
+  it('asks before a quit during an export, naming its project', () => {
+    expect(quitQuestion(facts({ exports: [PARIS] }))).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 1, layouts: 0, names: ['Paris'] },
+    })
+  })
+
+  it('asks before a quit during a layout, which only the report from the page shows', () => {
+    expect(quitQuestion(facts({ layouts: [PARIS] }))).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 0, layouts: 1, names: ['Paris'] },
+    })
+  })
+
+  it('counts an export and a layout as two runs', () => {
+    expect(quitQuestion(facts({ exports: [PARIS], layouts: [LYON] }))).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 1, layouts: 1, names: ['Paris', 'Lyon'] },
+    })
+  })
+
+  it('counts two of one kind as two runs', () => {
+    expect(quitQuestion(facts({ exports: [PARIS, LYON] }))).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 2, layouts: 0, names: ['Paris', 'Lyon'] },
+    })
+    expect(quitQuestion(facts({ layouts: [PARIS, LYON] }))).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 0, layouts: 2, names: ['Paris', 'Lyon'] },
+    })
+  })
+
+  it('names the projects in the order their runs started, whichever kind each is', () => {
+    // The layout began first, though exports are handed in first; and the
+    // lists themselves need not be in order.
+    const decision = quitQuestion(facts({ exports: [LILLE, LYON], layouts: [PARIS] }))
+    expect(decision).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 2, layouts: 1, names: ['Paris', 'Lyon', 'Lille'] },
+    })
+  })
+
+  it('names a project once, however many of its runs are going', () => {
+    // Its export and its layout: two runs, one name. Two projects that share
+    // a name are two projects, and each is named.
+    const again = run(PARIS.project, 'Paris', 5_000)
+    const namesake = run('paris0000002', 'Paris', 6_000)
+    expect(quitQuestion(facts({ exports: [PARIS], layouts: [again] }))).toEqual({
+      ask: true,
+      question: { kind: 'quit', exports: 1, layouts: 1, names: ['Paris'] },
+    })
+    expect(quitQuestion(facts({ exports: [PARIS, namesake] }))).toMatchObject({
+      question: { names: ['Paris', 'Paris'] },
+    })
+  })
+
+  it('does not ask when the renderer is gone, so a person can always quit', () => {
+    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'gone' }))).toEqual({ ask: false })
+    expect(quitQuestion(facts({ kind: 'close', layouts: [PARIS], renderer: 'gone' }))).toEqual({
+      ask: false,
+    })
+  })
+
+  it('does not ask when the renderer is unresponsive', () => {
+    expect(quitQuestion(facts({ exports: [PARIS], renderer: 'unresponsive' }))).toEqual({
+      ask: false,
+    })
+    expect(
+      quitQuestion(facts({ kind: 'close', layouts: [PARIS], renderer: 'unresponsive' })),
+    ).toEqual({ ask: false })
+  })
+
+  it('never asks about a quit of the app itself', () => {
+    expect(quitQuestion(facts({ exports: [PARIS], layouts: [LYON], own: true }))).toEqual({
+      ask: false,
+    })
+    // Nor about the windows such a quit closes on its way out.
+    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], own: true }))).toEqual({
+      ask: false,
+    })
+  })
+
+  it('lets a second quit go ahead while the question is open: it is an answer', () => {
+    expect(quitQuestion(facts({ exports: [PARIS], open: true }))).toEqual({ ask: false })
+    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], open: true }))).toEqual({
+      ask: false,
+    })
+  })
+
+  it('asks before a close during an export too, on macOS as everywhere', () => {
+    // The rule takes no platform. The approach first decided let macOS close
+    // its window silently during an export, which carries on there; the
+    // spec's close asks on every platform (a window reopened from the Dock
+    // cannot see or stop that export, issue 556), so an export counts for a
+    // close exactly as it does for a quit.
+    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS] }))).toEqual({
+      ask: true,
+      question: { kind: 'close', exports: 1, layouts: 0, names: ['Paris'] },
+    })
+    expect(quitQuestion(facts({ kind: 'close', exports: [PARIS], layouts: [LYON] }))).toEqual({
+      ask: true,
+      question: { kind: 'close', exports: 1, layouts: 1, names: ['Paris', 'Lyon'] },
+    })
+  })
+
+  it('asks before a close during a layout, and says which was asked for', () => {
+    expect(quitQuestion(facts({ kind: 'close', layouts: [PARIS] }))).toEqual({
+      ask: true,
+      question: { kind: 'close', exports: 0, layouts: 1, names: ['Paris'] },
+    })
+  })
+
+  it('leaves what it was handed as it was', () => {
+    const exports = [LILLE, LYON]
+    quitQuestion(facts({ exports, layouts: [PARIS] }))
+    expect(exports).toEqual([LILLE, LYON])
   })
 })
 

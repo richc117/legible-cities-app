@@ -1,0 +1,66 @@
+[
+  {
+    "file": "src/shared/quit.ts",
+    "find": "  const verb = question.kind === 'quit' ? 'Quit' : 'Close'\n",
+    "replace": "  const verb = 'Quit'\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "says Close in place of Quit for a close of the window",
+    "why": "A close of the window asked about as a quit: the title and the button say Quit for a window that is only closing."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "  const doing = question.kind === 'quit' ? 'Quitting' : 'Closing'\n",
+    "replace": "  const doing = 'Quitting'\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "says Close in place of Quit for a close of the window",
+    "why": "The sentence says quitting stops the run when the window is only closing."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "    const [article, run] = question.exports === 1 ? ['an', 'export'] : ['a', 'layout']\n",
+    "replace": "    const [article, run] = ['an', 'export']\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "asks about a quit during a layout in the spec’s words",
+    "why": "A layout asked about as an export: the question names a run that is not going."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "  if (runs === 1) {\n",
+    "replace": "  if (runs >= 1) {\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "counts several runs in the title and names each project in the sentence",
+    "why": "Several runs asked about as one: the title counts none and the sentence says it of them."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "export const KEEP_WORKING = 'Keep working'\n",
+    "replace": "export const KEEP_WORKING = 'Cancel'\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "names the safe button Keep working, never Cancel",
+    "why": "The safe button reads Cancel, which beside a running export already means stopping it."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`\n",
+    "replace": "  return names.join(', ')\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "counts several runs in the title and names each project in the sentence",
+    "why": "The names run together with commas alone: the sentence no longer reads as one."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "    asked.exports + asked.layouts > 0 &&\n",
+    "replace": "",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "the question’s shape on the bridge",
+    "why": "A question about no run reaches the page: the dialog asks about nothing."
+  },
+  {
+    "file": "src/shared/quit.ts",
+    "find": "    asked.names.every((name) => typeof name === 'string')\n",
+    "replace": "    true\n",
+    "test": "tests/unit/quit-words.test.ts",
+    "title": "the question’s shape on the bridge",
+    "why": "A question whose names are not text reaches the page's dialog."
+  }
+]
