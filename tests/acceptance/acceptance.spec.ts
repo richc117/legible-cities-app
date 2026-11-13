@@ -27,9 +27,9 @@
 // Steps 1, 2 and 21 (download, install, uninstall) are the workflow's
 // (.github/workflows/acceptance.yml), and so is step 22, the update over
 // 0.1.0, which it runs after step 21 with tests/acceptance/upgrade.spec.ts
-// and writes into this record. What a machine cannot judge - a drag's feel, whether a window
-// came to the front, whether a picture is the map - is written as not
-// automated, never as passed.
+// and writes into this record. What a machine cannot judge - a drag's
+// feel, whether a window came to the front, whether a picture is the map -
+// is written as not automated, never as passed.
 //
 // A failed step does not end the run: it is recorded, with the sentence the
 // app showed and a screenshot, and the steps that do not need it go on. A step
