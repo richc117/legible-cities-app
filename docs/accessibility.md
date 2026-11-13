@@ -136,8 +136,8 @@ person's, recorded in [Reader runs](#reader-runs).
    order axe reads them (the kit's buttons keep the real `button` in a
    shadow root, so those entries name the inner element, and a path into
    shadow roots is printed `host >>> inner`); and `color-contrast` (issue 710), in Night
-   only, on the layout tuning's, a line's options' and the network in
-   words' disclosures and the engine log's toggle. **The list must shrink
+   only, on a line's options' and the network in words' disclosures and
+   the engine log's toggle. **The list must shrink
    to empty** as those issues are fixed: an entry excuses nothing else, so
    the same rule on another element still fails, and one that matches
    nothing on the sweeps (and in the themes) it is expected on, which a

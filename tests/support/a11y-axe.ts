@@ -130,15 +130,10 @@ export const KNOWN_FINDINGS: readonly KnownFinding[] = [
     issue: 707,
     expectedOn: [],
   },
-  // Colour contrast, in Night only (issue 710): the words of three
-  // disclosures and the engine log's toggle.
-  {
-    rule: 'color-contrast',
-    selector: 'button.layout-tuning-toggle',
-    issue: 710,
-    expectedOn: ["the project, the layout tuning and a line's options open"],
-    themes: ['Night'],
-  },
+  // Colour contrast, in Night only (issue 710): the words of two
+  // disclosures (a line's options, the network in words) and the engine
+  // log's toggle. The layout tuning's toggle passes: the first run's two
+  // unnamed disclosures on its screen were the lines' option toggles.
   {
     rule: 'color-contrast',
     selector: 'button.line-options-toggle',
