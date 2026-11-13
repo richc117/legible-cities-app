@@ -602,6 +602,40 @@ class Session implements Ctx {
     await this.hear(`focus put on ${on}`, wants, from)
   }
 
+  /** Whether focus is on the element it was on before the key (`press` notes it). */
+  private stayed(): Promise<boolean> {
+    return this.page.evaluate(() => {
+      let el: Element | null = document.activeElement
+      while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
+      return el === (window as unknown as { __readerBefore?: Element }).__readerBefore
+    })
+  }
+
+  /**
+   * Focus watched until it lands inside `target` (anywhere, for null),
+   * and read the moment it does; or the target's name, where it never
+   * does, while the page still has it.
+   */
+  private async watchLanding(target: Locator | null): Promise<{
+    reading: Reading | null
+    stayed: boolean
+    missedName: string | null
+  }> {
+    if (target !== null) {
+      const end = Date.now() + LAND_MS
+      while (!(await this.focusIn(target)) && Date.now() < end) await sleep(50)
+      if (!(await this.focusIn(target))) {
+        return {
+          reading: null,
+          stayed: false,
+          missedName: await this.name(target).catch(() => null),
+        }
+      }
+    }
+    const reading = await this.reading().catch(() => null)
+    return { reading, stayed: await this.stayed(), missedName: null }
+  }
+
   async press(key: string, after: After): Promise<void> {
     const before = await this.reading().catch(() => null)
     await this.page.evaluate(() => {
@@ -615,42 +649,51 @@ class Session implements Ctx {
       after.said === undefined ? [] : Array.isArray(after.said) ? after.said : [after.said as Said]
     const held = await this.held(saids)
     const target = after.focus === undefined || after.focus === true ? null : after.focus
-    // Where focus lands is read as it lands, inside the action, while the
-    // control is there: a run's Cancel is gone once the run ends, and run
-    // 43446490051 read it too late, when only its locator was left to name.
-    let landed: { reading: Reading | null; stayed: boolean } | null = null
-    let missedName: string | null = null
-    await this.capture(async () => {
-      await this.page.keyboard.press(key)
-      if (after.focus === undefined) return
-      if (target !== null) {
-        const end = Date.now() + LAND_MS
-        while (!(await this.focusIn(target)) && Date.now() < end) await sleep(50)
-        if (!(await this.focusIn(target))) {
-          missedName = await this.name(target).catch(() => null)
-          return
-        }
-      }
-      const reading = await this.reading()
-      const stayed = await this.page.evaluate(() => {
-        let el: Element | null = document.activeElement
-        while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement
-        return el === (window as unknown as { __readerBefore?: Element }).__readerBefore
-      })
-      landed = { reading, stayed }
-    })
+    // Where focus lands is watched beside the capture, not inside it: the
+    // capture's action is the key alone, so VoiceOver is listened to at
+    // once (run 43471013113 lost "heading level 1 Settings…" to a status
+    // spoken while the action itself waited for focus). The watcher reads
+    // what focus lands on as it lands, while it is there: a run's Cancel is
+    // gone once the run ends (run 43446490051 had only its locator left).
+    // A target already holding focus "lands" before the key; the reading
+    // taken again after the capture is the one used then. Focus anywhere
+    // (`true`) is read once the capture is done.
+    const watch =
+      target === null
+        ? null
+        : this.watchLanding(target).catch(() => ({
+            reading: null,
+            stayed: false,
+            missedName: null,
+          }))
+    await this.capture(() => this.page.keyboard.press(key))
+    const anywhere =
+      after.focus === true
+        ? {
+            reading: await this.reading().catch(() => null),
+            stayed: await this.stayed(),
+            missedName: null,
+          }
+        : null
     const wants: Want[] = []
-    if (after.focus !== undefined) {
-      const at = landed as { reading: Reading | null; stayed: boolean } | null
-      if (at === null || at.reading === null) {
-        return this.notLanded(action, target, missedName, from)
+    if (watch !== null || anywhere !== null) {
+      const landed = anywhere ?? (await (watch as NonNullable<typeof watch>))
+      if (landed.reading === null) {
+        return this.notLanded(action, target, landed.missedName, from)
       }
-      if (at.stayed && before !== null) {
+      // Read again where focus still is, so a value the page writes a
+      // moment after the key (the clock's minute, run 43471013113) is there.
+      const still = target === null || (await this.focusIn(target))
+      const now = still
+        ? ((await this.reading().catch(() => null)) ?? landed.reading)
+        : landed.reading
+      const stayed = still ? await this.stayed() : landed.stayed
+      if (stayed && before !== null) {
         // Focus did not move: only what changed is said again.
-        wants.push(...changedWants(before, at.reading, after.also))
+        wants.push(...changedWants(before, now, after.also))
         for (const word of after.also?.words ?? []) wants.push(wantText(word))
       } else {
-        wants.push(...wantsOf(at.reading, after.also))
+        wants.push(...wantsOf(now, after.also))
         if (after.also?.within !== undefined) {
           wants.push(...(await this.containerWants(after.also.within)))
         }
@@ -747,15 +790,21 @@ class Session implements Ctx {
     await this.walkFrom(`VoiceOver next, from ${from}`, wants, steps, () => voiceOver.next())
   }
 
-  async walkBack(from: Locator, texts: readonly string[], steps: number): Promise<void> {
+  async walkBack(
+    from: Locator,
+    texts: readonly string[],
+    steps: number,
+    within?: Locator,
+  ): Promise<void> {
     await from.waitFor({ state: 'visible', timeout: 30 * SECOND })
+    const wants = [
+      ...(within === undefined ? [] : await this.containerWants(within)),
+      ...texts.map(wantText),
+    ]
     await this.capture(() => from.focus())
     await this.settle()
-    await this.walkFrom(
-      `VoiceOver previous, from ${await this.onNow()}`,
-      texts.map(wantText),
-      steps,
-      () => voiceOver.previous(),
+    await this.walkFrom(`VoiceOver previous, from ${await this.onNow()}`, wants, steps, () =>
+      voiceOver.previous(),
     )
   }
 

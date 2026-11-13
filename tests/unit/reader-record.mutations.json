@@ -17,8 +17,8 @@
   },
   {
     "file": "tests/reader/parts.ts",
-    "find": "      await c.walkInto(startFrom(c), [SOURCE_HINT], 6)\n",
-    "replace": "      await c.walkInto(startFrom(c), ['A feed is a timetable of the transit agency.'], 6)\n",
+    "find": "      await c.walkBack(findAFeed, [SOURCE_HINT], 6, startFrom(c))\n",
+    "replace": "      await c.walkBack(findAFeed, ['A feed is a timetable of the transit agency.'], 6, startFrom(c))\n",
     "test": "tests/unit/reader-record.test.ts",
     "title": "types no sentence",
     "why": "A sentence typed into a script is heard against itself, not against the app."
@@ -121,8 +121,8 @@
   },
   {
     "file": "tests/reader/transcript.ts",
-    "find": "earlier.some((b) => b.includes(phrase))",
-    "replace": "earlier.some((b) => b === phrase)",
+    "find": "recent.some((b) => b === sentence || b.includes(sentence))",
+    "replace": "recent.some((b) => b === sentence)",
     "test": "tests/unit/reader-record.test.ts",
     "title": "does not credit an action",
     "why": "The tail of the phrase before an action, reported again by Guidepup, would be credited to the action."
@@ -185,8 +185,8 @@
   },
   {
     "file": "tests/reader/parts.ts",
-    "find": "      await c.walkInto(startFrom(c), [SOURCE_HINT], 6)\n",
-    "replace": "      await c.walkInto(startFrom(c), [SOURCE_HINT, 'Start from'], 6)\n",
+    "find": "      await c.walkBack(findAFeed, [SOURCE_HINT], 6, startFrom(c))\n",
+    "replace": "      await c.walkBack(findAFeed, [SOURCE_HINT, 'Start from'], 6, startFrom(c))\n",
     "test": "tests/unit/reader-record.test.ts",
     "title": "types no word into what a row is to hear",
     "why": "A word typed into a walk into a group is heard against itself."
@@ -233,11 +233,11 @@
   },
   {
     "file": "tests/reader/transcript.ts",
-    "find": "earlier.some((b) => b.includes(phrase))",
-    "replace": "earlier.some((b) => b.endsWith(phrase))",
+    "find": "  const recent = before.map(lastSentence).filter((b) => b !== '')",
+    "replace": "  const recent = before.map((b) => b.trim()).filter((b) => b !== '')",
     "test": "tests/unit/reader-record.test.ts",
-    "title": "does not credit an action",
-    "why": "A stale phrase from the middle of what was heard before would be credited to the action."
+    "title": "keeps a phrase said again after the step back",
+    "why": "A field's own phrase, heard before the Tab when focus was put on it, would be dropped as stale and the field not heard."
   },
   {
     "file": "tests/reader/transcript.ts",

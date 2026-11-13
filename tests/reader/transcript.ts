@@ -349,24 +349,37 @@ export function missing(spoken: readonly string[], wants: readonly Want[]): Want
   return wants.filter((want) => left.includes(want))
 }
 
+/** The last sentence of a phrase: what VoiceOver said most recently in it. */
+const lastSentence = (phrase: string): string =>
+  phrase
+    .split(/\.\s+/)
+    .map((p) => p.trim())
+    .filter((p) => p !== '')
+    .at(-1) ?? ''
+
 /**
  * What VoiceOver said for one action, without what it had said before it.
- * Guidepup polls for the last phrase and, after some 650 ms of seeing the
- * same one or after an empty capture, reports that phrase as new: so a
- * quiet action can come back with the phrase before it. `before` is what
- * was last heard just before the action; a phrase (Guidepup joins several
- * with ". ") that is in one of them, wherever it sits, is not this
- * action's and is dropped.
+ * Guidepup polls for VoiceOver's last phrase and, after some 650 ms of
+ * seeing the same one or after an empty capture, reports that phrase as
+ * new: so an action can come back with the phrase said just before it.
+ * Only that phrase can come back so: the last sentence of what was heard
+ * before (`before`, joined by Guidepup with ". "). A sentence of the
+ * capture, wherever it sits, that is that sentence or is inside it is
+ * dropped. An earlier sentence of what was heard before is not stale: run
+ * 43471013113 lost "Name Shown in place of A…", which `tab` had heard
+ * when it put focus on the field before stepping back from it, when every
+ * sentence heard before was taken for stale.
  */
 export function freshPhrase(captured: string, before: readonly string[]): string {
-  const earlier = before.map((b) => b.trim()).filter((b) => b !== '')
-  const stale = (phrase: string): boolean => earlier.some((b) => b.includes(phrase))
+  const recent = before.map(lastSentence).filter((b) => b !== '')
+  const stale = (sentence: string): boolean =>
+    recent.some((b) => b === sentence || b.includes(sentence))
   const whole = captured.trim()
-  if (whole === '' || stale(whole)) return ''
+  if (whole === '' || stale(whole) || stale(whole.replace(/\.$/, ''))) return ''
   return whole
     .split('. ')
     .map((p) => p.trim())
-    .filter((p) => p !== '' && !stale(p) && !stale(`${p}.`))
+    .filter((p) => p !== '' && !stale(p) && !stale(p.replace(/\.$/, '')))
     .join('. ')
 }
 

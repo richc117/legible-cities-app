@@ -497,10 +497,35 @@ describe('what is not heard', () => {
     expect(freshPhrase('', before)).toBe('')
     // A joined snapshot's last phrase is stale on its own.
     expect(freshPhrase('Laid out.', ['Running: read. Laid out.'])).toBe('')
-    // and so is any phrase of it, wherever it sits.
+    // wherever it sits in what the action captured.
+    expect(freshPhrase('Settings button. Laid out', ['Running: read. Laid out.'])).toBe(
+      'Settings button',
+    )
+  })
+
+  it('keeps a phrase said again after the step back that comes before a Tab', () => {
+    // Run 43471013113: `tab` puts focus on the field, steps back to the
+    // control before it, and Tabs to the field again. The field's own phrase
+    // is in what was heard before the Tab, but not as its last sentence, and
+    // when every sentence heard before counted as stale it was lost.
+    const field =
+      'Name Shown in place of A in the page’s chips, rows and time chart, and on its trains. Up to 40 characters; left empty, the line is called A. edit text Line options for line A group'
+    const before = [`${field}. Line options for line A, Default expanded button`]
+    expect(freshPhrase(field, before)).toBe(field)
     expect(
-      freshPhrase('Running: read. Settings button', ['Lay out. Running: read. Laid out.']),
-    ).toBe('Settings button')
+      missing(
+        [freshPhrase(field, before)],
+        wantsOf(
+          reading('textbox', 'Name', {
+            description:
+              'Shown in place of A in the page’s chips, rows and time chart, and on its trains. Up to 40 characters; left empty, the line is called A.',
+          }),
+          { description: true },
+        ),
+      ),
+    ).toEqual([])
+    // What was said last before the Tab is still stale.
+    expect(freshPhrase('Line options for line A, Default expanded button', before)).toBe('')
   })
 })
 

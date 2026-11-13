@@ -81,8 +81,11 @@ export interface Ctx {
    * VoiceOver does not say on a Tab inside it.
    */
   walkInto(container: Locator, words: readonly string[], steps: number): Promise<void>
-  /** VoiceOver's own cursor moved back from `from` until each text is heard. */
-  walkBack(from: Locator, texts: readonly string[], steps: number): Promise<void>
+  /**
+   * VoiceOver's own cursor moved back from `from` until each text is heard,
+   * and the name and role of `within`, the container it walks back out of.
+   */
+  walkBack(from: Locator, texts: readonly string[], steps: number, within?: Locator): Promise<void>
   /** Mark this moment, to listen back to it. */
   mark(name: string): Promise<void>
   /** Hear what `said` came to hold since the mark, without acting. */
@@ -209,7 +212,9 @@ export const PARTS: readonly Part[] = [
       // Said by itself as the app starts: VoiceOver is started before it.
       await c.listen('launch', { scope: status, pick: 'last' })
       // And again with the cursor on it, from the Jobs toggle after it.
-      await c.walkBack(jobsToggle(c), [await c.text(status)], 3)
+      // Run 43471013113: the first step back says "end of Engine status",
+      // and the sentence is a step or two further.
+      await c.walkBack(jobsToggle(c), [await c.text(status)], 8)
     },
   },
   {
@@ -318,7 +323,12 @@ export const PARTS: readonly Part[] = [
       const findAFeed = sheet(c).getByRole('button', { name: FIND_A_FEED })
       await c.walkBack(findAFeed, [description], 4)
       await c.tab(findAFeed)
-      await c.walkInto(startFrom(c), [SOURCE_HINT], 6)
+      // Where to find a feed is the group's first control, so nothing in
+      // the sheet comes before the group to walk into it from (run
+      // 43471013113 stopped there): it is walked back out of instead, which
+      // run 43471013113 heard as "A feed is a transit agency’s timetable…" /
+      // "Start from" / "Start from group".
+      await c.walkBack(findAFeed, [SOURCE_HINT], 6, startFrom(c))
       await c.tab(startFrom(c).getByRole('radio', { checked: true }))
       await c.tab(sheet(c).getByRole('combobox', { name: 'Feed' }), { value: true })
       const name = sheet(c).getByRole('textbox', { name: 'Name' })
