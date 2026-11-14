@@ -626,6 +626,39 @@ async function holdKey(
   return { gaps: gapsBetween((await heardOf()).slice(before)) }
 }
 
+/** The hue, in degrees, of a #rrggbb colour. */
+function hueOf(hex: string): number {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+  const max = Math.max(r, g, b)
+  const span = max - Math.min(r, g, b)
+  if (span === 0) return 0
+  const sector =
+    max === r ? ((g - b) / span) % 6 : max === g ? (b - r) / span + 2 : (r - g) / span + 4
+  return (sector * 60 + 360) % 360
+}
+
+/**
+ * The hex field's colour once it shows the hue the slider reports: the
+ * slider's value is the library's own, drawn in the keydown's render, and
+ * every key moves it by 18 degrees, so a field within a degree of it (hex
+ * rounding) is showing that repeat and not an earlier one. Read by state,
+ * not by time, and independent of the release.
+ */
+async function caughtUpWithHue(field: Locator, slider: Locator, what: string): Promise<string> {
+  await expect
+    .poll(
+      async () => {
+        const shown = hueOf(await field.inputValue())
+        const drawn = Number(await slider.getAttribute('aria-valuenow'))
+        const apart = Math.abs(shown - drawn)
+        return Math.min(apart, 360 - apart) <= 1
+      },
+      { message: `${what}: the hex field has caught up with the hue slider`, timeout: 30_000 },
+    )
+    .toBe(true)
+  return field.inputValue()
+}
+
 test('a held arrow key is one gesture and one build, and each tap is a build of its own', async () => {
   // react-colorful sends one change per keydown, repeats included, and its
   // end - the one that builds - on the key's keyup. A held key is therefore
@@ -644,40 +677,30 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     await watchKeys(page)
 
     // Held: the key goes down and repeats, and nothing has come up. The
-    // field is only checked to have moved, not read for the colour the
-    // gesture ends on: react-colorful's changes run at continuous priority, so
-    // on a starved runner the field can still be drawing an earlier repeat
-    // while the key is down (issues 380 and 733).
+    // colour the gesture ends on is read while the key is still down, from
+    // the field once it has caught up with the hue slider, which the
+    // library draws in the keydown's own render. The field is drawn from
+    // the picker's onChange, which comes a render later, from the library's
+    // effect; a loaded runner has been seen reading it between the two
+    // (#3700bc on the field while #7000bc, the last repeat, was built:
+    // issues 380 and 733). Reading it after the release would let the
+    // release itself say what the colour was, so that a build and a record
+    // that both took an earlier repeat would agree with the field.
     await hue.focus()
     const heldKey = await holdKey(page, 'ArrowRight', 4, 'a held arrow key')
     await expect(field, 'the field follows the held key').not.toHaveValue('#0072bc')
+    const held = await caughtUpWithHue(field, hue, 'a held arrow key')
     await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
     expect(buildsOf(engineHome), 'a key held down builds nothing, however long it is held').toBe(
       drawnBefore,
     )
     await page.keyboard.up('ArrowRight')
-    // The colour the gesture ended on is read once the key is up, the build
-    // has come and gone and the section is no longer busy: every repeat has
-    // been drawn by then, so the field holds the last of them, and the text
-    // is then read steady across two frames and settled across a poll. What
-    // the build carries is judged against that, not against the app's record.
     await expect
       .poll(() => buildsOf(engineHome), {
         message: 'a held arrow key is one build, on its release',
         timeout: 30_000,
       })
       .toBe(drawnBefore + 1)
-    await expect(
-      panel.getByRole('region', { name: 'Line colours' }),
-      'no build is left in flight after the held key',
-    ).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 })
-    await steadyText(
-      page,
-      () => field.inputValue(),
-      'the hex field once the held key was up and its build drawn',
-    )
-    const held = await settledValue(field)
-    expect(held, 'the held key moved the colour').not.toBe('#0072bc')
     await drawnIn(
       page,
       engineHome,
@@ -686,6 +709,8 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
       drawnBefore + 1,
       `a held arrow key is one build, on its release (${heardApart('the repeats were', heldKey.gaps)})`,
     )
+    await expect(field, 'the swatch did not move on release').toHaveValue(held)
+    await quietAt(page, engineHome, drawnBefore + 1, 'the held key')
 
     // Three taps, each drawn before the next: three gestures, three builds.
     let colour = held
@@ -710,14 +735,8 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     await hue.focus()
     const heldAgain = await holdKey(page, 'ArrowRight', 2, 'a key held under a closing panel')
     // The panel is closed under the key, so the field cannot be read after
-    // the key is up; it is read steady across two frames and then settled
-    // across a poll, once the page has heard both repeats.
-    await steadyText(
-      page,
-      () => field.inputValue(),
-      'the hex field once the held key had repeated twice',
-    )
-    const seen = await settledValue(field)
+    // the key is up: it is read now, once it has caught up with the slider.
+    const seen = await caughtUpWithHue(field, hue, 'a key held under a closing panel')
     expect(seen, 'the held key moved the colour').not.toBe(colour)
     await panel.getByText(/^A line is drawn in the colour its feed publishes/).click()
     await expect(picker).toBeHidden()
