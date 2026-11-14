@@ -701,14 +701,25 @@ describe('the script, as bash 3.2 reads it', () => {
     let found = 0
     let inside = false
     let inCase = false
+    // A pattern stands first in a case's body and after each ";;"; any other
+    // line of the body is a command, whatever parentheses it holds.
+    let expectPattern = false
+    // A here-document's lines are its text, not the shell's, until its word.
+    let hereWord: string | null = null
     for (const [index, line] of text.split('\n').entries()) {
-      const code = line.replace(/^\s*#.*$/, '')
-      if (!inside) {
-        const opened = code.lastIndexOf('$(')
-        if (opened !== -1 && !code.slice(opened).includes(')')) inside = true
+      if (hereWord !== null) {
+        if (line === hereWord) hereWord = null
         continue
       }
-      if (/^\s*\)/.test(code) || /^\s*done\b.*\)\s*$/.test(code)) {
+      let code = line.replace(/^\s*#.*$/, '')
+      const here = /<<-?\s*'?(\w+)'?\s*$/.exec(code)
+      if (here) hereWord = here[1] ?? null
+      if (!inside) {
+        const opened = code.lastIndexOf('$(')
+        if (opened === -1 || code.slice(opened).includes(')')) continue
+        inside = true
+        code = code.slice(opened + 2)
+      } else if (/^\s*\)/.test(code) || /^\s*(done|esac)\b.*\)\s*$/.test(code)) {
         inside = false
         inCase = false
         continue
@@ -719,9 +730,13 @@ describe('the script, as bash 3.2 reads it', () => {
         const rest = (head[1] ?? '').trim()
         inCase = !/\besac\b/.test(rest)
         if (rest !== '') patterns.push(rest)
+        expectPattern = rest === '' || /;;\s*$/.test(rest)
       } else if (inCase) {
         if (/^\s*esac\b/.test(code)) inCase = false
-        else if (/^\s*[^\s;][^;]*\)/.test(code)) patterns.push(code.trim())
+        else if (expectPattern && code.trim() !== '') {
+          patterns.push(code.trim())
+          expectPattern = /;;\s*$/.test(code)
+        } else if (/;;\s*$/.test(code)) expectPattern = true
       }
       for (const pattern of patterns) {
         found += 1
@@ -733,23 +748,37 @@ describe('the script, as bash 3.2 reads it', () => {
 
   it('opens every case pattern inside a $( ... ) with "("', () => {
     const { found, bare } = casesInSubstitutions(readFileSync(SCRIPT, 'utf8'))
-    expect(found, 'the script has a case inside a command substitution').toBeGreaterThan(0)
+    expect(
+      found,
+      'the script has a case inside a command substitution (if it no longer does, this test and its mutation entry go)',
+    ).toBeGreaterThan(0)
     expect(bare, "bash 3.2 ends the $( ... ) at these patterns' bare )").toEqual([])
   })
 
-  it('finds a bare pattern on the case line and on the lines after it', () => {
+  it('finds a bare pattern on the case line and on the lines after it, and nothing else', () => {
     const sample = [
       'a=$(while read -r k; do',
       '  case $k in x/*) echo "$k" ;; esac',
       '  case $k in',
       '    y) echo y ;;',
       '    (z) echo z ;;',
+      '    (v)',
+      '      echo "$(basename "$k")" ;;',
       '  esac',
       'done <<< "$keys")',
       'case $k in w) ;; esac',
+      '# a comment: b=$(case $k in u) ;; esac',
+      "c=$(python3 - <<'PY'",
+      'print("case x in y) z")',
+      'PY',
+      ')',
+      'd=$(case $k in',
+      '  (t) echo t ;;',
+      'esac)',
+      'case $k in s) ;; esac',
     ].join('\n')
     expect(casesInSubstitutions(sample)).toEqual({
-      found: 3,
+      found: 5,
       bare: ['line 2: x/*) echo "$k" ;; esac', 'line 4: y) echo y ;;'],
     })
   })
