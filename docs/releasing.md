@@ -94,7 +94,11 @@ landed, the record says that part is not automated.
   [`docs/acceptance.md`](acceptance.md) on a macOS and a Windows runner,
   and must be green on both: steps 1 to 21, the update over 0.1.0 (step
   22, issue 690), and the visual evidence with its machine assertions
-  (issue 689).
+  (issue 689). Before a system's record goes on the gate issue, run
+  `node tests/acceptance/record-cli.mjs candidate <record.md>` over it.
+  It exits with a sentence and a failure on a rehearsal's record, or on
+  anything that is not an acceptance record, and nothing runs it for you:
+  a record goes on only once it has passed.
 - **The scripted VoiceOver run** on the macOS runner (issue 691), its
   cells worded as [`docs/accessibility.md`](accessibility.md#results-by-screen)'s
   reader legend says. What it hears is not a pass. If it is not recorded
@@ -116,6 +120,17 @@ landed, the record says that part is not automated.
 - **Windows** is a beta, and while it is one it is accepted on its
   automated results alone: no person run, no SmartScreen check and no
   Narrator walk.
+
+**A rehearsal** comes before the tag: `gh workflow run acceptance.yml
+--ref main -f run=<build run id>` runs the same two jobs over a
+`build.yml` run's own installers, the update over 0.1.0 and the scripted
+VoiceOver run included. With no Release there is no `SHA256SUMS.txt` to
+match and no attestation to verify, so its records say "not verified (a
+rehearsal; no attestation)" and never yes. Its record and summaries say
+REHEARSAL, its artefacts are named `rehearsal-<name>`, and it never
+counts as the candidate's run of any part of the gate: the `candidate`
+check made before a record goes on the gate issue, above, refuses its
+record.
 
 **After the release**, the stranger's timed run,
 [`docs/acceptance-stranger.md`](acceptance-stranger.md), is feedback on

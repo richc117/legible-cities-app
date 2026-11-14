@@ -4,15 +4,21 @@
 // and how the release's tag is asked whether it contains a commit. The run
 // itself launches an installed app and is never part of `npm test`.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, posix, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   cell,
+  checkBuildRun,
+  checkDispatch,
   fillStep,
   makeRedact,
   parseSums,
+  recordKind,
+  rehearsalVersion,
+  requireCandidateRecord,
   RESULTS,
   tagContains,
   tagSourceContains,
@@ -437,5 +443,516 @@ describe('the gate documents', () => {
       return anchorsIn(file)?.has(anchor) === true
     })
     expect(landed, 'these headings are there now: take them out of PENDING').toEqual([])
+  })
+})
+
+describe('checkDispatch', () => {
+  it('takes a tag alone, or a run id alone', () => {
+    expect(checkDispatch({ tag: 'v1.0.0-rc.4' })).toEqual({ kind: 'tag', tag: 'v1.0.0-rc.4' })
+    expect(checkDispatch({ tag: '', run: '42' })).toEqual({ kind: 'rehearsal', run: '42' })
+  })
+
+  it('refuses both, with a sentence', () => {
+    expect(() => checkDispatch({ tag: 'v1.0.0', run: '42' })).toThrow(/not both/)
+  })
+
+  it('refuses spaces around either input, rather than trimming what the workflow uses as given', () => {
+    expect(() => checkDispatch({ tag: 'v1.0.0', run: ' ' })).toThrow(/spaces around/)
+    expect(() => checkDispatch({ run: '42 ' })).toThrow(/spaces around/)
+    expect(() => checkDispatch({ tag: ' v1.0.0' })).toThrow(/spaces around/)
+  })
+
+  it('refuses neither, with a sentence', () => {
+    expect(() => checkDispatch({ tag: '', run: '' })).toThrow(/neither was given/)
+    expect(() => checkDispatch({})).toThrow(/neither was given/)
+  })
+
+  it('refuses a tag that names no Release, and a run that is not an id', () => {
+    expect(() => checkDispatch({ tag: 'main' })).toThrow(/neither v<X.Y.Z>/)
+    expect(() => checkDispatch({ run: 'abc' })).toThrow(/not a run id/)
+  })
+})
+
+describe('checkBuildRun', () => {
+  const sha = 'a'.repeat(40)
+  const good = {
+    workflowDatabaseId: 1234,
+    event: 'push',
+    headSha: sha,
+    headBranch: 'main',
+    jobs: [
+      { name: 'vendor', conclusion: 'success' },
+      { name: 'package (darwin-arm64)', conclusion: 'success' },
+      { name: 'package (win-x64)', conclusion: 'success' },
+    ],
+  }
+
+  it('gives the commit and ref of a build run whose package jobs succeeded', () => {
+    expect(checkBuildRun(good, '1234')).toEqual({
+      commit: sha,
+      branch: 'main',
+      ref: 'refs/heads/main',
+    })
+  })
+
+  it('names a tag push by its tag, and a branch by its branch', () => {
+    const tagged = { ...good, headBranch: 'v1.0.0-rc.4' }
+    expect(checkBuildRun(tagged, 1234).ref).toBe('refs/tags/v1.0.0-rc.4')
+    expect(checkBuildRun({ ...good, headBranch: 'feature/x' }, 1234).ref).toBe(
+      'refs/heads/feature/x',
+    )
+    expect(
+      checkBuildRun({ ...good, event: 'workflow_dispatch', headBranch: 'main' }, 1234).ref,
+    ).toBe('refs/heads/main')
+  })
+
+  it('refuses a build run dispatched on a tag, rather than judge it a branch build', () => {
+    expect(() =>
+      checkBuildRun({ ...good, event: 'workflow_dispatch', headBranch: 'v1.0.0-rc.4' }, 1234),
+    ).toThrow(
+      'a build run dispatched on a tag (v1.0.0-rc.4): accept the tag itself with tag=v1.0.0-rc.4',
+    )
+  })
+
+  it('refuses a run of another workflow, by id and not by name', () => {
+    expect(() => checkBuildRun({ ...good, workflowDatabaseId: 99 }, 1234)).toThrow(/not build.yml/)
+    expect(() => checkBuildRun(good, '')).toThrow(/not build.yml/)
+  })
+
+  it('refuses a run with a package job that did not succeed, naming it', () => {
+    const jobs = [...good.jobs, { name: 'package (darwin-x64)', conclusion: 'failure' }]
+    expect(() => checkBuildRun({ ...good, jobs }, 1234)).toThrow(
+      /package \(darwin-x64\) is failure/,
+    )
+  })
+
+  it('refuses a run with no package jobs, and one that names no commit', () => {
+    expect(() => checkBuildRun({ ...good, jobs: [good.jobs[0]] }, 1234)).toThrow(/no package jobs/)
+    expect(() => checkBuildRun({ ...good, headSha: '' }, 1234)).toThrow(/no commit/)
+    expect(() => checkBuildRun(null, 1234)).toThrow(/could not be read/)
+  })
+})
+
+describe('a rehearsal and its record', () => {
+  it('says the version a build reports: X.Y.Z+<sha7> for main or a branch, the tag for a tag push', () => {
+    const commit = 'abcdef0123456789abcdef0123456789abcdef01'
+    expect(rehearsalVersion('1.0.0', 'refs/heads/main', commit)).toBe('1.0.0+abcdef0')
+    expect(rehearsalVersion('1.0.0', 'refs/heads/feature/x', commit)).toBe('1.0.0+abcdef0')
+    expect(rehearsalVersion('1.0.0', 'refs/tags/v1.0.0-rc.4', commit)).toBe('1.0.0-rc.4')
+    expect(() => rehearsalVersion('1.0.1', 'refs/tags/v1.0.0-rc.4', commit)).toThrow(/package.json/)
+  })
+
+  const rehearsal = () => {
+    const dir = scratch()
+    const prior = join(dir, 'prior.json')
+    writeFileSync(
+      prior,
+      JSON.stringify({ rehearsal: { run: '77', commit: 'b'.repeat(40), ref: 'refs/heads/main' } }),
+    )
+    const record = new RunRecord(join(dir, 'r.md'))
+    record.applyPrior(prior)
+    return record
+  }
+
+  it('heads a rehearsal record as one, with its run and commit, and a candidate record plainly', () => {
+    const text = rehearsal().render()
+    expect(text).toContain("## Acceptance run: REHEARSAL, not a candidate's run")
+    expect(text).toContain('build run 77 at commit bbbbbbb')
+    expect(recordKind(text)).toBe('rehearsal')
+    const candidate = new RunRecord(join(scratch(), 'c.md')).render()
+    expect(candidate).not.toContain('REHEARSAL')
+    expect(recordKind(candidate)).toBe('candidate')
+  })
+
+  it('reads a record with Windows line ends the same', () => {
+    expect(recordKind(rehearsal().render().replace(/\n/g, '\r\n'))).toBe('rehearsal')
+    expect(recordKind(new RunRecord(join(scratch(), 'c.md')).render().replace(/\n/g, '\r\n'))).toBe(
+      'candidate',
+    )
+  })
+
+  it("is refused where a candidate's record is required, and a candidate's is let through", () => {
+    expect(() => requireCandidateRecord(rehearsal().render())).toThrow(/rehearsal/)
+    const candidate = new RunRecord(join(scratch(), 'c.md')).render()
+    expect(requireCandidateRecord(candidate)).toBe(candidate)
+    expect(() => requireCandidateRecord('hello')).toThrow(/not an acceptance record/)
+  })
+
+  it('is refused by the CLI candidate check, with a sentence and a failing exit', () => {
+    const dir = scratch()
+    const cli = resolve(__dirname, '../acceptance/record-cli.mjs')
+    const file = join(dir, 'r.md')
+    writeFileSync(file, rehearsal().render())
+    const refused = spawnSync('node', [cli, 'candidate', file], {
+      encoding: 'utf8',
+      timeout: 30_000,
+      windowsHide: true,
+    })
+    expect(refused.status).toBe(1)
+    expect(refused.stderr).toMatch(/rehearsal/)
+    writeFileSync(file, new RunRecord(join(dir, 'x.md')).render())
+    expect(
+      spawnSync('node', [cli, 'candidate', file], {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+      }).status,
+    ).toBe(0)
+  })
+
+  it('has the CLI refuse a dispatch of both or neither, and name what it is given', () => {
+    const cli = resolve(__dirname, '../acceptance/record-cli.mjs')
+    const run = (...args: string[]) =>
+      spawnSync('node', [cli, 'dispatch', ...args], {
+        encoding: 'utf8',
+        timeout: 30_000,
+        windowsHide: true,
+      })
+    expect(run('v1.0.0', '5').status).toBe(1)
+    expect(run('', '').status).toBe(1)
+    expect(run('v1.0.0', '').stdout.trim()).toBe('tag')
+    expect(run('', '5').stdout.trim()).toBe('rehearsal')
+  })
+})
+
+/** What a rehearsal says of the attestation it has none of, in the record and the summaries. */
+const NOT_ATTESTED = 'not verified (a rehearsal; no attestation)'
+
+interface Step {
+  job: string
+  name: string
+  text: string
+  if: string
+  shell: string
+  run: string
+  minutes: number
+}
+
+/** The steps of each job in a workflow, read by indentation as the workflow is written. */
+function stepsOf(workflow: string): Step[] {
+  const jobs = workflow.slice(workflow.indexOf('\njobs:\n'))
+  const out: Step[] = []
+  for (const section of jobs.split(/\n(?= {2}[a-z][\w-]*:\n)/)) {
+    const job = /^ {2}([a-z][\w-]*):\n/.exec(section)?.[1]
+    if (job === undefined) continue
+    for (const text of section.split(/\n(?= {6}- )/).filter((b) => b.startsWith('      - '))) {
+      const block = /^ {8}run: \|\n((?:(?: {10}[^\n]*)?\n)*)/m.exec(`${text}\n`)
+      out.push({
+        job,
+        name: /^ {6}- (?:name|uses): (.+)$/m.exec(text)?.[1] ?? '',
+        text,
+        if: /^ {8}if: (.+)$/m.exec(text)?.[1] ?? '',
+        shell: /^ {8}shell: (\w+)$/m.exec(text)?.[1] ?? 'bash',
+        run:
+          block !== null
+            ? block[1].replace(/^ {10}/gm, '')
+            : (/^ {8}run: (.+)$/m.exec(text)?.[1] ?? ''),
+        minutes: Number(/^ {8}timeout-minutes: (\d+)$/m.exec(text)?.[1] ?? NaN),
+      })
+    }
+  }
+  return out
+}
+
+describe('acceptance.yml, dispatched with a run', () => {
+  const workflow = readFileSync(
+    resolve(__dirname, '../../.github/workflows/acceptance.yml'),
+    'utf8',
+  )
+  const rehearsalStep = workflow.slice(
+    workflow.indexOf('- name: Step 1, rehearsal'),
+    workflow.indexOf('- name: Step 1, download the installer and check it'),
+  )
+
+  it('takes a run input beside the tag, neither required', () => {
+    expect(workflow).toMatch(
+      /inputs:\n {6}tag:[\s\S]*?required: false[\s\S]*? {6}run:[\s\S]*?required: false/,
+    )
+    expect(workflow).toContain('node "$cli" dispatch "$TAG" "$BUILD_RUN"')
+  })
+
+  it('downloads the installers of the run, and says what it could not check', () => {
+    expect(rehearsalStep).toContain('gh run download "$BUILD_RUN"')
+    expect(rehearsalStep).toContain('--name "installer-$TARGET"')
+    expect(rehearsalStep).toContain('field \'Matches SHA256SUMS.txt?\' "$sums"')
+    expect(rehearsalStep).toContain(
+      "sums='not checked (a rehearsal; no Release, so no SHA256SUMS.txt)'",
+    )
+  })
+
+  it("never records a rehearsal's step 1 as a pass, nor its checksum or attestation as yes", () => {
+    expect(rehearsalStep).toContain(`attestation='${NOT_ATTESTED}'`)
+    expect(rehearsalStep).toContain('field \'Attestation verified?\' "$attestation"')
+    const results = [...rehearsalStep.matchAll(/ step 1 '?([a-z, ]+?)'? "/g)].map(([, r]) => r)
+    expect(results).toEqual(['fail', 'fail', 'not automated'])
+    expect(rehearsalStep).not.toMatch(/\? '?yes'?\n/)
+    // The checklist quotes the record's words.
+    const checklist = readFileSync(resolve(__dirname, '../../docs/acceptance.md'), 'utf8')
+    expect(checklist.replace(/\s+/g, ' ')).toContain(NOT_ATTESTED)
+  })
+
+  it('keys both checkouts of at-tag on the dispatch result, never on the raw inputs', () => {
+    expect(workflow).toMatch(/if: \$\{\{ env\.KIND == 'tag' \}\}\n {8}with:\n {10}ref: refs\/tags/)
+    expect(workflow).toMatch(
+      /if: \$\{\{ env\.KIND == 'rehearsal' \}\}\n {8}with:\n {10}ref: \$\{\{ env\.REHEARSAL_SHA/,
+    )
+    expect(workflow).not.toMatch(/if: \$\{\{ inputs\./)
+  })
+
+  it('has no bash 4 construct, for the macOS runner may have 3.2', () => {
+    expect(workflow).not.toMatch(/mapfile|readarray|declare -A|\$\{[a-z_]+(,,|\^\^)\}|&>>/)
+  })
+
+  it("leaves the tag's step 1, with its checksum and attestation, to a tag alone", () => {
+    const step = workflow.slice(
+      workflow.indexOf('- name: Step 1, download the installer and check it'),
+    )
+    expect(step.slice(0, 120)).toContain("if: ${{ env.KIND == 'tag' }}")
+    expect(workflow).toContain('gh attestation verify "$subject"')
+    expect(rehearsalStep).not.toContain('gh attestation verify')
+  })
+
+  const steps = stepsOf(workflow)
+  const step = (job: string, name: string): Step => {
+    const found = steps.filter((s) => s.job === job && s.name === name)
+    expect(found, `${job} has one step named ${name}`).toHaveLength(1)
+    return found[0]!
+  }
+
+  it('reads both jobs and their steps', () => {
+    expect([...new Set(steps.map((s) => s.job))]).toEqual(['acceptance', 'reader'])
+    expect(steps.length).toBeGreaterThan(30)
+  })
+
+  it("finds the app by the Release's tag only in a step that runs for a tag alone", () => {
+    // A step that reads the Release, its tag or its attestation has nothing
+    // to read in a rehearsal: it runs on the dispatch's own result, a tag.
+    const byTag =
+      /gh release download "\$TAG"|refs\/tags\/\$\{?TAG|gh attestation verify|refs\/tags\/\$\{\{ inputs\.tag/
+    const reading = steps.filter((s) => byTag.test(s.text.replace(/^\s*#.*$/gm, '')))
+    expect(reading.map((s) => `${s.job}: ${s.name}`)).toEqual([
+      'acceptance: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+      'acceptance: Step 1, download the installer and check it',
+      'reader: The Mac app',
+    ])
+    for (const s of reading) expect(s.if, `${s.job}: ${s.name}`).toBe("${{ env.KIND == 'tag' }}")
+  })
+
+  it('checks the dispatch and the build run in both jobs, the run by its workflow id', () => {
+    for (const job of ['acceptance', 'reader']) {
+      const check = step(job, 'Refuse a dispatch that names no Release and no build run')
+      expect(check.if, job).toBe('')
+      expect(check.run, job).toContain('node "$cli" dispatch "$TAG" "$BUILD_RUN"')
+      expect(check.run, job).toContain('echo "KIND=$kind" >> "$GITHUB_ENV"')
+      expect(check.run, job).toContain('--json workflowDatabaseId,')
+      expect(check.run, job).toContain('actions/workflows/build.yml" --jq .id')
+      expect(check.run, job).toContain(
+        'node "$cli" build-run "$RUNNER_TEMP/build-run.json" "$build_id"',
+      )
+      // Before any step that asks which it was.
+      const mine = steps.filter((s) => s.job === job)
+      const first = mine.findIndex((s) => s.if.includes('env.KIND'))
+      expect(mine.indexOf(check), job).toBeLessThan(first)
+    }
+    expect(workflow.match(/^ {6}BUILD_RUN: \$\{\{ inputs\.run \}\}$/gm)).toHaveLength(2)
+  })
+
+  it("gives the reader the build run's own Mac app in a rehearsal, and never says it is attested", () => {
+    const app = step('reader', 'The Mac app, rehearsal')
+    expect(app.if).toBe("${{ env.KIND == 'rehearsal' }}")
+    expect(app.run).toContain(
+      'gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name installer-darwin-arm64',
+    )
+    expect(app.run).toContain('echo "LEGIBLE_READER_APP=$apps/Legible Cities.app"')
+    expect(app.run).toContain(`Attestation verified? ${NOT_ATTESTED}`)
+    expect(app.run).not.toMatch(/gh release download|gh attestation verify|\? yes/)
+  })
+
+  it("withholds the run's id from a rehearsal's walk, so it writes no clause", () => {
+    const walk = step('reader', 'The walkthrough, heard')
+    const unset = walk.run.indexOf('if [ "$KIND" != tag ]; then unset GITHUB_RUN_ID; fi')
+    expect(unset).toBeGreaterThan(-1)
+    expect(unset).toBeLessThan(walk.run.indexOf('npm run test:reader'))
+    // What that relies on: the spec writes a clause only when every fact,
+    // the run's id among them, was read.
+    const spec = readFileSync(resolve(__dirname, '../reader/voiceover.spec.ts'), 'utf8')
+    expect(spec).toContain("run: process.env.GITHUB_RUN_ID ?? '',")
+    expect(spec).toContain("if (Object.values(read).every((v) => v !== null && v !== '')) facts")
+    expect(spec).toMatch(/if \(facts !== null\) \{\n {4}const clauses = clausesByTable/)
+    expect(step('reader', "The transcript, as the job's summary").run).toContain(
+      'if [ "${KIND:-}" = rehearsal ]; then',
+    )
+  })
+
+  it("makes step 22's update with the build run's own installer", () => {
+    expect(rehearsalStep).toContain('echo "ASSET=$rel" >> "$GITHUB_ENV"')
+    expect(step('acceptance', 'Step 22, install the release over 0.1.0 on macOS').run).toContain(
+      '"$DOWNLOAD/$ASSET"',
+    )
+    expect(step('acceptance', 'Step 22, install the release over 0.1.0 on Windows').run).toContain(
+      '(Join-Path $env:DOWNLOAD $env:ASSET)',
+    )
+    for (const s of steps.filter((s) => s.name.startsWith('Step 22, '))) {
+      expect(s.text, s.name).not.toMatch(/\$TAG|\$env:TAG|inputs\.tag|env\.KIND/)
+    }
+  })
+
+  it("keeps the acceptance job's rehearsal step 1 to a rehearsal", () => {
+    expect(step('acceptance', "Step 1, rehearsal, download the build run's installer").if).toBe(
+      "${{ env.KIND == 'rehearsal' }}",
+    )
+  })
+
+  it("heads a rehearsal's summary as one, and gives only a candidate's an issue title", () => {
+    const summary = step('acceptance', "The record, as the job's summary").run
+    const branches =
+      /if \[ "\$KIND" = rehearsal \]; then\n([\s\S]*?)\n {4}else\n([\s\S]*?)\n {4}fi\n/.exec(
+        summary,
+      )
+    expect(branches, 'the summary branches on a rehearsal').not.toBeNull()
+    const [, then, otherwise] = branches as RegExpExecArray
+    expect(then).toContain("**REHEARSAL, not a candidate's run:** build run $BUILD_RUN")
+    expect(then).toContain('Issue title: none; a rehearsal has no issue.')
+    expect(then).not.toContain('A6-04 run')
+    expect(otherwise).toContain('Issue title: \\`A6-04 run: ')
+  })
+
+  it("names every artefact of a rehearsal apart, so its evidence is never fetched as a candidate's", () => {
+    const uploads = steps.filter((s) => s.name.startsWith('actions/upload-artifact@'))
+    expect(uploads.map((s) => s.job)).toEqual([...Array<string>(6).fill('acceptance'), 'reader'])
+    for (const upload of uploads) {
+      expect(/^ {10}name: (.+)$/m.exec(upload.text)?.[1], upload.job).toMatch(
+        /^\$\{\{ env\.KIND == 'rehearsal' && 'rehearsal-' \|\| '' \}\}(acceptance|reader)-/,
+      )
+    }
+    // The protocol says why its download fails on a rehearsal.
+    const checklist = readFileSync(resolve(__dirname, '../../docs/acceptance.md'), 'utf8')
+    expect(checklist.replace(/\s+/g, ' ')).toContain(
+      "`rehearsal-acceptance-evidence-<target>` and the like, so this download fails on a rehearsal's run, by design.",
+    )
+  })
+
+  it("has the gate check that a record is a candidate's before it goes on the gate issue", () => {
+    const releasing = readFileSync(resolve(__dirname, '../../docs/releasing.md'), 'utf8')
+    const automated = releasing.slice(
+      releasing.indexOf('- **The automated run**'),
+      releasing.indexOf('- **The scripted VoiceOver run**'),
+    )
+    expect(automated.replace(/\s+/g, ' ')).toContain(
+      "Before a system's record goes on the gate issue, run `node tests/acceptance/record-cli.mjs candidate <record.md>` over it.",
+    )
+  })
+
+  it('gives the reader job time for every step of either kind', () => {
+    const limit = Number(
+      /\n {2}reader:\n[\s\S]*?\n {4}timeout-minutes: (\d+)\n/.exec(workflow)?.[1],
+    )
+    const reader = steps.filter((s) => s.job === 'reader')
+    for (const s of reader) expect(s.minutes, s.name).toBeGreaterThan(0)
+    for (const kind of ['tag', 'rehearsal']) {
+      const other = kind === 'tag' ? 'rehearsal' : 'tag'
+      const total = reader
+        .filter((s) => !s.if.includes(`env.KIND == '${other}'`))
+        .reduce((sum, s) => sum + s.minutes, 0)
+      expect(total, kind).toBeLessThanOrEqual(limit)
+    }
+  })
+})
+
+// macOS runs a workflow's bash steps with a bash that may be 3.2, where a
+// construct a newer bash parses (a bare case pattern inside $( ... )) is a
+// syntax error and the step dies before it runs a line.
+describe.skipIf(process.platform === 'win32' || !existsSync('/bin/bash'))(
+  "acceptance.yml's bash, under /bin/bash",
+  () => {
+    it('parses every bash step', () => {
+      const workflow = readFileSync(
+        resolve(__dirname, '../../.github/workflows/acceptance.yml'),
+        'utf8',
+      )
+      const bash = stepsOf(workflow).filter((s) => s.shell === 'bash' && s.run !== '')
+      expect(bash.length).toBeGreaterThan(20)
+      const dir = scratch()
+      for (const [i, s] of bash.entries()) {
+        const file = join(dir, `step-${i}.sh`)
+        // GitHub fills in each expression before bash reads the script.
+        writeFileSync(file, s.run.replace(/\$\{\{[^}]*\}\}/g, 'X'))
+        const r = spawnSync('/bin/bash', ['-n', file], {
+          encoding: 'utf8',
+          timeout: 10_000,
+          windowsHide: true,
+        })
+        expect(r.stderr, `${s.job}: ${s.name}`).toBe('')
+        expect(r.status, `${s.job}: ${s.name}`).toBe(0)
+      }
+    })
+  },
+)
+
+// The acceptance specs run under Playwright, whose loader compiles each
+// module it imports and cannot read one that uses import.meta: the first
+// rehearsal's steps 3 to 20 never started, on a module Vitest loads
+// happily. So the specs' own import graph is held to that, and Playwright
+// is asked to load them as the workflow's step does.
+describe("the acceptance specs' imports, as Playwright loads them", () => {
+  const repo = resolve(__dirname, '../..')
+  const SPECS = ['tests/acceptance/acceptance.spec.ts', 'tests/acceptance/upgrade.spec.ts']
+
+  /** Every file of the repository a spec reaches through relative imports. */
+  const graph = (): string[] => {
+    const seen = new Set<string>()
+    const visit = (file: string): void => {
+      if (seen.has(file)) return
+      seen.add(file)
+      const text = readFileSync(file, 'utf8')
+      for (const [, spec] of text.matchAll(/(?:from|import)\s*\(?\s*'(\.{1,2}\/[^']+)'/g)) {
+        const base = resolve(file, '..', spec!)
+        const found = [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')].find(
+          (candidate) => existsSync(candidate) && !statSync(candidate).isDirectory(),
+        )
+        expect(found, `${file} imports ${spec}`).toBeDefined()
+        visit(found!)
+      }
+    }
+    for (const spec of SPECS) visit(join(repo, spec))
+    return [...seen].map((file) => posix.normalize(file.slice(repo.length + 1).replace(/\\/g, '/')))
+  }
+
+  it('reaches no module that uses import.meta', () => {
+    const files = graph()
+    expect(files).toEqual(expect.arrayContaining(['tests/acceptance/pure.mjs']))
+    expect(files.length).toBeGreaterThan(10)
+    // Code only: a comment may name it.
+    const code = (file: string): string =>
+      readFileSync(join(repo, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '')
+    const using = files.filter((file) => /\bimport\.meta\b/.test(code(file)))
+    expect(using, 'modules Playwright cannot load').toEqual([])
+  })
+
+  it('lists both specs under Playwright, with no app to run them on', () => {
+    const env = { ...process.env }
+    delete env.LEGIBLE_ACCEPTANCE_APP
+    delete env.LEGIBLE_UPGRADE_APP
+    // On a CI runner the spec refuses to run with no app named (it has lost
+    // its install step); here no app is the point, so this listing is not CI's.
+    delete env.CI
+    delete env.GITHUB_ACTIONS
+    const listed = spawnSync(
+      process.execPath,
+      [
+        join(repo, 'node_modules', '@playwright', 'test', 'cli.js'),
+        'test',
+        '-c',
+        'playwright.acceptance.config.ts',
+        '--list',
+      ],
+      { cwd: repo, encoding: 'utf8', env, timeout: 120_000, windowsHide: true },
+    )
+    const said = `${listed.stdout}\n${listed.stderr}`
+    expect(said).not.toMatch(/SyntaxError|Error:/)
+    expect(listed.status, said).toBe(0)
+    expect(said).toContain('Total: 2 tests in 2 files')
   })
 })

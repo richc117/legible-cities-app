@@ -74,8 +74,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative, resolve } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
+import { COMMIT, parseTag, releaseLabel, VERSION } from './release-label.mjs'
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+
+// The label lives where a loader without import.meta can read it (the
+// acceptance spec's, under Playwright); every caller of release.mjs keeps it.
+export { parseTag, releaseLabel }
 
 export const PRODUCT = 'Legible Cities'
 
@@ -101,70 +106,6 @@ export const SUMS = 'SHA256SUMS.txt'
 
 /** Git and tar are given this long; a wedged child fails the job rather than holding it. */
 const CHILD_TIMEOUT_MS = 5 * 60 * 1000
-
-const NUMBER = '(0|[1-9]\\d*)'
-const VERSION = new RegExp(`^${NUMBER}\\.${NUMBER}\\.${NUMBER}$`)
-const TAG = new RegExp(`^v(${NUMBER}\\.${NUMBER}\\.${NUMBER})(?:-rc\\.([1-9]\\d*))?$`)
-
-/**
- * What a tag says: the version it is for, its release-candidate number or
- * null, and the name it gives a Release. Null for any other tag.
- *
- * @param {string} tag
- * @returns {{ version: string, rc: number | null, label: string } | null}
- */
-export function parseTag(tag) {
-  const match = TAG.exec(tag)
-  if (match === null) return null
-  const rc = match[5] === undefined ? null : Number(match[5])
-  return { version: match[1], rc, label: tag.slice(1) }
-}
-
-const COMMIT = /^[0-9a-f]{7,64}$/
-
-/**
- * The version the app reports, in Settings, Copy diagnostics and so the bug
- * report (issue 558): a release tag's own version, `1.0.0-rc.2` for
- * `refs/tags/v1.0.0-rc.2` and `1.0.0` for `refs/tags/v1.0.0`, so a
- * candidate says which candidate it is while package.json, which the tag
- * rules and the Windows installer's version read, stays X.Y.Z. Any other
- * build - a branch, a pull request, a local build, a tag that is not a
- * release tag - reports package.json's version with the commit as SemVer
- * build metadata, `1.0.0+abc1234`, so an installer from main says which
- * commit it is, or the bare version when no commit is known. A release tag
- * for another version than package.json's throws, which fails the build,
- * as `decide` would refuse its Release.
- *
- * @param {string} pkgVersion package.json's version, X.Y.Z
- * @param {string | null | undefined} ref the ref built, as GitHub names it
- *   (`refs/tags/<tag>`, `refs/heads/<branch>`), or nothing
- * @param {string | null | undefined} [commit] the commit built, in hex
- * @returns {string}
- */
-export function releaseLabel(pkgVersion, ref, commit = null) {
-  if (typeof pkgVersion !== 'string' || !VERSION.test(pkgVersion)) {
-    throw new Error(
-      `package.json's version is ${JSON.stringify(pkgVersion)}, not X.Y.Z, so the app has no version to report`,
-    )
-  }
-  const tag =
-    typeof ref === 'string' && ref.startsWith('refs/tags/')
-      ? parseTag(ref.slice('refs/tags/'.length))
-      : null
-  if (tag !== null) {
-    if (tag.version !== pkgVersion) {
-      throw new Error(
-        `the tag ${ref.slice('refs/tags/'.length)} is for version ${tag.version}, and package.json says ${pkgVersion}; an app built from it would report a version it is not`,
-      )
-    }
-    return tag.label
-  }
-  if (commit === null || commit === undefined || commit === '') return pkgVersion
-  if (typeof commit !== 'string' || !COMMIT.test(commit)) {
-    throw new Error(`the commit built is ${JSON.stringify(commit)}, not a commit id in hex`)
-  }
-  return `${pkgVersion}+${commit.slice(0, 7)}`
-}
 
 /** A build asks git for its commit for this long at most. */
 const LOOKUP_TIMEOUT_MS = 10 * 1000

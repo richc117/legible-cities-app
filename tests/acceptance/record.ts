@@ -15,7 +15,7 @@
 // test predates; either part is named in the notes, never counted as passed.
 
 import { readFileSync, writeFileSync } from 'node:fs'
-import { cell, redact, type Result } from './pure.mjs'
+import { cell, REHEARSAL_HEADING, redact, type Result } from './pure.mjs'
 
 export { redact }
 export type { Result }
@@ -76,6 +76,8 @@ export interface Row {
 export interface Prior {
   fields?: Partial<Record<Field, string>>
   steps?: Record<string, { result: Result; notes: string }>
+  /** Set when the run is a rehearsal on a build.yml run, not a Release's. */
+  rehearsal?: { run: string; commit: string; ref: string }
 }
 
 export class RunRecord {
@@ -84,6 +86,7 @@ export class RunRecord {
   readonly #rows = new Map<number, Row>()
   #versions: string[] = []
   readonly #else: string[] = []
+  #rehearsal: { run: string; commit: string; ref: string } | undefined
 
   constructor(path: string) {
     this.#path = path
@@ -107,6 +110,11 @@ export class RunRecord {
     this.#rows.set(n, { title: title ?? row.title, result, notes })
   }
 
+  /** Whether this is a rehearsal on a build run, and which. */
+  get rehearsal(): { run: string; commit: string; ref: string } | undefined {
+    return this.#rehearsal
+  }
+
   result(n: number): Result | undefined {
     return this.#rows.get(n)?.result
   }
@@ -128,6 +136,16 @@ export class RunRecord {
     } catch {
       return
     }
+    if (prior.rehearsal !== undefined) {
+      this.#rehearsal = {
+        run: String(prior.rehearsal.run),
+        commit: String(prior.rehearsal.commit),
+        ref: String(prior.rehearsal.ref),
+      }
+      this.anythingElse(
+        `REHEARSAL: the installers of build run ${this.#rehearsal.run} at commit ${this.#rehearsal.commit.slice(0, 7)}, not a published Release. It does not count as a candidate's run of the gate.`,
+      )
+    }
     for (const [name, value] of Object.entries(prior.fields ?? {})) {
       if ((FIELDS as readonly string[]).includes(name) && typeof value === 'string') {
         this.field(name as Field, value)
@@ -140,7 +158,7 @@ export class RunRecord {
 
   render(): string {
     const lines = [
-      '## Acceptance run',
+      this.#rehearsal === undefined ? '## Acceptance run' : REHEARSAL_HEADING,
       '',
       '| | |',
       '|---|---|',

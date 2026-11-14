@@ -1,7 +1,7 @@
 [
   {
     "file": "docs/acceptance.md",
-    "find": "| Attestation verified? | yes / no / not attested (before 1.0) |\n",
+    "find": "| Attestation verified? | yes / no / not attested (before 1.0) / not verified (a rehearsal; no attestation) |\n",
     "replace": "",
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "is the results template's run table, row for row",
@@ -126,5 +126,285 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "links only to headings that are there",
     "why": "A link inside the accessibility record to a heading that is not there: the person walking it is sent to the top of a long page."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (hasTag && hasRun) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses both, with a sentence",
+    "why": "Both given and the dispatch carries on: a tag's Release and a build run mixed in one record."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (!hasTag && !hasRun) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses neither, with a sentence",
+    "why": "Neither given and the dispatch carries on with nothing to accept."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "String(info.workflowDatabaseId) !== String(buildWorkflowId)",
+    "replace": "false",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run of another workflow, by id and not by name",
+    "why": "Any run's artefacts accepted as a build's."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (failed.length > 0) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run with a package job that did not succeed, naming it",
+    "why": "A build with a failed package job rehearsed as though it had installers."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (kind === 'rehearsal') {\n    throw",
+    "replace": "  if (false) {\n    throw",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is refused where a candidate's record is required, and a candidate's is let through",
+    "why": "A rehearsal's record counted as a candidate's run of the gate."
+  },
+  {
+    "file": "tests/acceptance/record.ts",
+    "find": "this.#rehearsal === undefined ? '## Acceptance run' : REHEARSAL_HEADING",
+    "replace": "'## Acceptance run'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "heads a rehearsal record as one, with its run and commit, and a candidate record plainly",
+    "why": "A rehearsal's record that does not say so."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        if: ${{ env.KIND == 'tag' }}\n        env:\n",
+    "replace": "        env:\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "leaves the tag's step 1, with its checksum and attestation, to a tag alone",
+    "why": "The Release's checksum and attestation check run, and fail, on a rehearsal that has no Release."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "    if (value !== value.trim()) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses spaces around either input, rather than trimming what the workflow uses as given",
+    "why": "A padded input trimmed in the check but used as given by the workflow: both checkouts or a wrong run id."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        if: ${{ env.KIND == 'rehearsal' }}\n        with:\n          ref: ${{ env.REHEARSAL_SHA }}",
+    "replace": "        if: ${{ inputs.run != '' }}\n        with:\n          ref: ${{ env.REHEARSAL_SHA }}",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "keys both checkouts of at-tag on the dispatch result, never on the raw inputs",
+    "why": "A padded run input alongside a tag runs both checkouts, the second with an empty ref."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  markdown = markdown.replace(/\\r\\n/g, '\\n')\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "reads a record with Windows line ends the same",
+    "why": "A CRLF rehearsal record read as unknown and let past nothing, or a candidate's misjudged."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  return releaseLabel(packageVersion, ref, commit)",
+    "replace": "  return `${packageVersion}+${commit.slice(0, 7)}`",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "says the version a build reports: X.Y.Z+<sha7> for main or a branch, the tag for a tag push",
+    "why": "A tag-push build expected to report X.Y.Z+sha7 and failed on the right version."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "isTag ? 'refs/tags/' : 'refs/heads/'",
+    "replace": "'refs/heads/'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "names a tag push by its tag, and a branch by its branch",
+    "why": "A tag push judged as a branch build."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          found=()\n          while IFS= read -r file; do found+=(\"$file\"); done < <(find \"$DOWNLOAD\"",
+    "replace": "          mapfile -t found < <(find \"$DOWNLOAD\"",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "has no bash 4 construct, for the macOS runner may have 3.2",
+    "why": "mapfile on a bash 3.2 runner dies at step 1."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: The Mac app\n        if: ${{ env.KIND == 'tag' }}\n",
+    "replace": "      - name: The Mac app\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "finds the app by the Release's tag only in a step that runs for a tag alone",
+    "why": "The reader job's Release download and attestation check run in a rehearsal, where there is no Release, and fail the job or, worse, find an older one."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            echo \"REHEARSAL_SHA=$sha\" >> \"$GITHUB_ENV\"",
+    "replace": "echo \"$build_id\" HEAD); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            echo \"REHEARSAL_SHA=$sha\" >> \"$GITHUB_ENV\"",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "checks the dispatch and the build run in both jobs, the run by its workflow id",
+    "why": "The reader job walks the artefact of any run, of any workflow or with a failed package job, as though it were a build's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "echo \"- Attestation verified? not verified (a rehearsal; no attestation)\"",
+    "replace": "echo \"- Attestation verified? yes\"",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "gives the reader the build run's own Mac app in a rehearsal, and never says it is attested",
+    "why": "A rehearsal's reader summary says the app it walked was attested, which nothing checked."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          if [ \"$KIND\" != tag ]; then unset GITHUB_RUN_ID; fi\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "withholds the run's id from a rehearsal's walk, so it writes no clause",
+    "why": "A rehearsal writes VoiceOver clauses naming the app's version and a run, ready to be committed to the record as though a candidate had been heard."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "step 1 'not automated' \"REHEARSAL:",
+    "replace": "step 1 'pass, part not automated' \"REHEARSAL:",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "never records a rehearsal's step 1 as a pass, nor its checksum or attestation as yes",
+    "why": "A rehearsal's step 1 recorded as passed, though it checked neither the checksum nor the attestation a tagged run's step 1 is passed on."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "attestation='not verified (a rehearsal; no attestation)'",
+    "replace": "attestation='yes'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "never records a rehearsal's step 1 as a pass, nor its checksum or attestation as yes",
+    "why": "A rehearsal's record says its installer's attestation was verified, when there was none to verify."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          echo \"ASSET=$rel\" >> \"$GITHUB_ENV\"\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "makes step 22's update with the build run's own installer",
+    "why": "Steps 2 and 22 look for a Release's file name that a rehearsal never downloaded, and step 22 installs nothing over 0.1.0."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "            exit 1\n          fi\n          case \"$PLATFORM\" in macos) ext=dmg ;; *) ext=exe ;; esac\n",
+    "replace": "            exit 1\n          case \"$PLATFORM\" in macos) ext=dmg ;; *) ext=exe ;; esac\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "parses every bash step",
+    "why": "A step the runner's bash cannot parse dies before its first line; on macOS a bare case pattern inside $( ) does that under bash 3.2."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: Refuse a dispatch that names no Release and no build run\n        timeout-minutes: 2\n",
+    "replace": "      - name: Refuse a dispatch that names no Release and no build run\n        timeout-minutes: 9\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "gives the reader job time for every step of either kind",
+    "why": "The reader job's steps may take longer together than the job is given, and a slow walk is cut off with nothing written."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (tagLike && info.event !== 'push') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a build run dispatched on a tag, rather than judge it a branch build",
+    "why": "A build dispatched on a tag judged a branch build: the App row is held to X.Y.Z+<sha7> and a right build fails the rehearsal."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (!/^[0-9a-f]{40}$/.test(String(info.headSha ?? ''))) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run with no package jobs, and one that names no commit",
+    "why": "A run that names no commit rehearsed, its pins checked out from an empty ref."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": ".filter((job) => String(job.name).startsWith('package ('))",
+    "replace": ".filter(() => true)",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run with no package jobs, and one that names no commit",
+    "why": "Any job counted as a package job: a run that packaged nothing is rehearsed as though it had installers."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}reader-darwin-arm64\n",
+    "replace": "          name: reader-darwin-arm64\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "names every artefact of a rehearsal apart, so its evidence is never fetched as a candidate's",
+    "why": "A rehearsal's artefact under a candidate's name: fetched by the documented download and read as the candidate's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: Step 1, rehearsal, download the build run's installer\n        if: ${{ env.KIND == 'rehearsal' }}\n",
+    "replace": "      - name: Step 1, rehearsal, download the build run's installer\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "keeps the acceptance job's rehearsal step 1 to a rehearsal",
+    "why": "A tag's run takes the rehearsal's step 1 too: a build run download with no run, and the Release's checks overwritten."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "              if [ \"$KIND\" = rehearsal ]; then\n                echo \"**REHEARSAL, not a candidate's run:**",
+    "replace": "              if false; then\n                echo \"**REHEARSAL, not a candidate's run:**",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "heads a rehearsal's summary as one, and gives only a candidate's an issue title",
+    "why": "A rehearsal's summary given a candidate's issue title, ready to be pasted onto the gate issue."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        run: |\n          set -euo pipefail\n          cli=tests/acceptance/record-cli.mjs\n          if ! kind=$(node \"$cli\" dispatch \"$TAG\" \"$BUILD_RUN\"); then\n            echo \"::error::see above: $TAG / $BUILD_RUN\"\n            exit 1\n          fi\n          echo \"KIND=$kind\" >> \"$GITHUB_ENV\"\n          if [ \"$kind\" = rehearsal ]; then\n            gh run view \"$BUILD_RUN\" --repo \"$GITHUB_REPOSITORY\" \\\n              --json workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs > \"$RUNNER_TEMP/build-run.json\"\n            build_id=$(gh api \"repos/$GITHUB_REPOSITORY/actions/workflows/build.yml\" --jq .id)\n            if ! read -r sha ref < <(node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "replace": "        run: |\n          set -euo pipefail\n          cli=tests/acceptance/record-cli.mjs\n          if ! kind=$(echo tag); then\n            echo \"::error::see above: $TAG / $BUILD_RUN\"\n            exit 1\n          fi\n          echo \"KIND=$kind\" >> \"$GITHUB_ENV\"\n          if [ \"$kind\" = rehearsal ]; then\n            gh run view \"$BUILD_RUN\" --repo \"$GITHUB_REPOSITORY\" \\\n              --json workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs > \"$RUNNER_TEMP/build-run.json\"\n            build_id=$(gh api \"repos/$GITHUB_REPOSITORY/actions/workflows/build.yml\" --jq .id)\n            if ! read -r sha ref < <(node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "checks the dispatch and the build run in both jobs, the run by its workflow id",
+    "why": "The acceptance job takes every dispatch for a tag: both inputs, neither, or a run id run as a tag."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "replace": "echo \"$build_id\" HEAD); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "checks the dispatch and the build run in both jobs, the run by its workflow id",
+    "why": "The acceptance job rehearses the artefacts of any run, of any workflow or with a failed package job, as though it were a build's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: The Mac app, rehearsal\n        if: ${{ env.KIND == 'rehearsal' }}\n",
+    "replace": "      - name: The Mac app, rehearsal\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "gives the reader the build run's own Mac app in a rehearsal, and never says it is attested",
+    "why": "A tag's reader job also takes the rehearsal's step: a build run download with no run, over the Release's app."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          sums='not checked (a rehearsal; no Release, so no SHA256SUMS.txt)'",
+    "replace": "          sums='yes'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "downloads the installers of the run, and says what it could not check",
+    "why": "A rehearsal's record says its installer matched SHA256SUMS.txt, which it never had."
+  },
+  {
+    "file": "docs/releasing.md",
+    "find": "(issue 689). Before a system's record goes on the gate issue, run\n",
+    "replace": "(issue 689).\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "has the gate check that a record is a candidate's before it goes on the gate issue",
+    "why": "The candidate check documented nowhere a person would run it: a rehearsal's record goes on the gate issue unrefused."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "import { releaseLabel } from '../../scripts/release-label.mjs'",
+    "replace": "import { releaseLabel } from '../../scripts/release.mjs'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "reaches no module that uses import.meta",
+    "why": "The acceptance spec imports a module that uses import.meta: Playwright cannot load it, and steps 3 to 20 never start (the first rehearsal's failure)."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "import { releaseLabel } from '../../scripts/release-label.mjs'",
+    "replace": "import { releaseLabel } from '../../scripts/release.mjs'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "lists both specs under Playwright, with no app to run them on",
+    "why": "The acceptance spec imports a module that uses import.meta: Playwright cannot load it, and steps 3 to 20 never start (the first rehearsal's failure)."
   }
 ]

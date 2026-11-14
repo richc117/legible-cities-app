@@ -96,7 +96,7 @@
     "why": "An empty change heading counted as a change: a section of bare headings passes, and the notes print \"### Added\" over nothing."
   },
   {
-    "file": "scripts/release.mjs",
+    "file": "scripts/release-label.mjs",
     "find": "    return tag.label\n",
     "replace": "    return tag.version\n",
     "test": "tests/unit/release.test.ts",
@@ -104,7 +104,7 @@
     "why": "The -rc.N stripped from the version the app reports: a candidate says 1.0.0 in Settings and in its bug reports, and no one can tell which candidate it was."
   },
   {
-    "file": "scripts/release.mjs",
+    "file": "scripts/release-label.mjs",
     "find": "    if (tag.version !== pkgVersion) {\n",
     "replace": "    if (false) {\n",
     "test": "tests/unit/release.test.ts",

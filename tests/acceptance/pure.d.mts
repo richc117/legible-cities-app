@@ -64,3 +64,21 @@ export function tagSourceContains(options: {
     options: { cwd: string; encoding: 'utf8'; timeout: number; windowsHide: boolean },
   ) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout' | 'error'>
 }): boolean | null
+
+export function checkDispatch(options: {
+  tag?: string
+  run?: string
+}): { kind: 'tag'; tag: string } | { kind: 'rehearsal'; run: string }
+
+export function checkBuildRun(
+  info: unknown,
+  buildWorkflowId: string | number,
+): { commit: string; branch: string; ref: string }
+
+export function rehearsalVersion(packageVersion: string, ref: string, commit: string): string
+
+export const REHEARSAL_HEADING: string
+
+export function recordKind(markdown: string): 'rehearsal' | 'candidate' | 'unknown'
+
+export function requireCandidateRecord(markdown: string): string

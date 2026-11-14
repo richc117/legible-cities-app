@@ -68,8 +68,39 @@ over 0.1.0 with `tests/acceptance/upgrade.spec.ts`, in three phases with an
 install between each (see [step 22](#22-update-over-010)). Its record is this
 checklist's [results template](#results-template), filled in, as the job's
 summary and an artefact with a screenshot of each failed step, ready to
-paste into the run's issue. On a machine with the app already installed,
-the spec runs on its own:
+paste into the run's issue.
+
+Before a tag exists, the same run can **rehearse** a build: dispatch it
+with the id of any `build.yml` run, a branch's before it merges included,
+instead of a tag. Exactly one of the two is given; both or neither is
+refused with a sentence.
+
+```
+gh workflow run acceptance.yml --ref main -f run=<build run id>
+```
+
+The run must be a `build.yml` run whose package jobs all succeeded, and
+its `installer-<target>` artefacts must not have expired (30 days for a
+run on `main`, 7 for any other). A rehearsal runs everything a tag's run
+does, on those artefacts: steps 2 to 21, step 22's update over 0.1.0
+(0.1.0 still from its own Release), the visual evidence, and the scripted
+VoiceOver walk over the run's Mac app. The App row must say what the run's
+build labelled it: `X.Y.Z+<sha7>` of the run's commit, or the tag's own
+version for a tag's build. What needs a published Release it cannot
+check: the record's "Matches SHA256SUMS.txt?" says "not checked (a
+rehearsal; no Release, so no SHA256SUMS.txt)", "Attestation verified?"
+says "not verified (a rehearsal; no attestation)", never yes, and step 1
+is not automated rather than passed. The record and the summaries say
+**REHEARSAL**, the record names the run and its commit, and the VoiceOver
+walk writes its transcript and no clause. Its artefacts are named
+`rehearsal-<name>` (`rehearsal-acceptance-<target>` and so on). A
+rehearsal is never a candidate's run of the gate: `node
+tests/acceptance/record-cli.mjs candidate <record.md>`, which
+[`releasing.md`](releasing.md#the-gate) has run over a record before it
+goes on the gate issue, refuses its record, and its evidence is not the
+gate's visual review.
+
+On a machine with the app already installed, the spec runs on its own:
 
 ```
 LEGIBLE_ACCEPTANCE_APP="/Applications/Legible Cities.app" LEGIBLE_ACCEPTANCE_TAG=v0.1.0-rc.5 npm run test:acceptance
@@ -1363,6 +1394,9 @@ records a verdict per entry in the second table of the results template.
 1. Fetch the evidence alone: `gh run download <run> -n
    acceptance-evidence-<target>`. Do not open the run's page, its summary or
    the gate issue before every verdict is written: they carry the record.
+   A rehearsal's artefacts have names of their own,
+   `rehearsal-acceptance-evidence-<target>` and the like, so this download
+   fails on a rehearsal's run, by design.
 2. Open `evidence.json` and every image it names, and nothing else:
    `evidence.json` holds, for each entry, the pictures, the question, the
    expected text and the row's not-automated sentence, and no machine check.
@@ -1413,8 +1447,8 @@ Copy everything in the block below into a new issue titled
 | Run by | |
 | Installer file name | |
 | Its SHA-256 | |
-| Matches SHA256SUMS.txt? | yes / no |
-| Attestation verified? | yes / no / not attested (before 1.0) |
+| Matches SHA256SUMS.txt? | yes / no / not checked (a rehearsal; no Release, so no SHA256SUMS.txt) |
+| Attestation verified? | yes / no / not attested (before 1.0) / not verified (a rehearsal; no attestation) |
 | Started, finished | |
 | Time taken | |
 

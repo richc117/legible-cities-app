@@ -257,11 +257,13 @@ describe('acceptance.yml verifies the attestation of the Release it downloads', 
     acceptance.indexOf('- name: Step 2, install on macOS'),
   )
 
-  it('may read attestations, and nothing more than it did', () => {
+  it('may read attestations and the build run it rehearses, and write nothing', () => {
     expect(acceptance).toMatch(
-      /\npermissions:\n {2}contents: read\n(?: {2}#[^\n]*\n)* {2}attestations: read\n\njobs:/,
+      /\npermissions:\n {2}contents: read\n(?: {2}#[^\n]*\n)* {2}actions: read\n(?: {2}#[^\n]*\n)* {2}attestations: read\n\njobs:/,
     )
-    expect(acceptance).not.toMatch(/^ +(id-token|contents: write|attestations: write)/m)
+    expect(acceptance).not.toMatch(
+      /^ +(id-token|contents: write|attestations: write|actions: write)/m,
+    )
   })
 
   it('verifies the installer and SHA256SUMS.txt against the tag, after the checksum matched', () => {
@@ -558,6 +560,12 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
           join(dir, 'tests', 'acceptance', name),
         )
       }
+      // pure.mjs imports the release label from scripts/release-label.mjs.
+      mkdirSync(join(dir, 'scripts'))
+      copyFileSync(
+        join(repo, 'scripts', 'release-label.mjs'),
+        join(dir, 'scripts', 'release-label.mjs'),
+      )
       mkdirSync(join(dir, 'fixtures'))
       mkdirSync(join(dir, 'bin'))
       mkdirSync(join(dir, 'download'))

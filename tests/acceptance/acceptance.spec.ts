@@ -24,6 +24,12 @@
 //                             before step 3 rather than failed step by step;
 //                             without it nothing is refused
 //
+// A rehearsal (the workflow dispatched with a build run's id, not a tag) names
+// no tag; the workflow's prior carries the run and its commit, the record says
+// REHEARSAL in its heading, and the App row is checked against the label the
+// run's own build gave it (`releaseLabel` of the run's ref: X.Y.Z+<sha7> for a
+// branch, the tag's version for a tag's push).
+//
 // Steps 1, 2 and 21 (download, install, uninstall) are the workflow's
 // (.github/workflows/acceptance.yml), and so is step 22, the update over
 // 0.1.0, which it runs after step 21 with tests/acceptance/upgrade.spec.ts
@@ -96,7 +102,12 @@ import {
   type Sampled,
   type Shootable,
 } from './evidence'
-import { tagContains as gitTagContains, tagSourceContains, writtenSince } from './pure.mjs'
+import {
+  rehearsalVersion,
+  tagContains as gitTagContains,
+  tagSourceContains,
+  writtenSince,
+} from './pure.mjs'
 import { RunRecord, STEP_TITLES, redact, type Result } from './record'
 
 /** The presets in the engine's registry at the pin (`vendor/pins.json`, v0.10.1). */
@@ -713,11 +724,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
   ] as const) {
     record.fieldUnlessSet(name, 'set by the acceptance workflow; not known to a local run')
   }
-  record.anythingElse(
-    TAG === ''
-      ? 'No release tag was named (LEGIBLE_ACCEPTANCE_TAG), so a check of something newer than some releases runs only if this build has it, and says so.'
-      : `The release under test: ${TAG}.`,
-  )
+  if (record.rehearsal === undefined)
+    record.anythingElse(
+      TAG === ''
+        ? 'No release tag was named (LEGIBLE_ACCEPTANCE_TAG), so a check of something newer than some releases runs only if this build has it, and says so.'
+        : `The release under test: ${TAG}.`,
+    )
   const started = new Date()
   record.field('OS and version', operatingSystem())
   record.field(
@@ -1128,7 +1140,29 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // -rc.<N>, which is package.json's, for one older than it; where git
         // cannot tell which, the row is recorded as not automated.
         const contains = TAG === '' ? null : tagContains(FEATURES.appVersionRow)
-        if (TAG === '') {
+        if (record.rehearsal !== undefined) {
+          // A build's own label (issue 558): X.Y.Z+<sha7>, or the tag's own
+          // for a tag push, as releaseLabel says from the run's ref.
+          try {
+            const app = await read('App')
+            log.note(`App: ${app}`)
+            const { version } = JSON.parse(
+              readFileSync(join(dirname(PINS_PATH), '..', 'package.json'), 'utf8'),
+            ) as { version: string }
+            const expected = rehearsalVersion(
+              version,
+              record.rehearsal.ref,
+              record.rehearsal.commit,
+            )
+            if (app !== expected) {
+              wrong.push(`App is ${app}, not ${expected} (build run ${record.rehearsal.run})`)
+            }
+          } catch (error) {
+            wrong.push(
+              `the App row could not be read: ${error instanceof Error ? error.message : String(error)}`,
+            )
+          }
+        } else if (TAG === '') {
           log.notAutomated(
             'whether the App row is the release under test: no tag was named (LEGIBLE_ACCEPTANCE_TAG).',
           )
