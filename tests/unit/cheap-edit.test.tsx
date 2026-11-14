@@ -392,6 +392,24 @@ describe.each(PANELS)('$name: a change is drawn after the panel’s delay', (pan
   )
 })
 
+// A gesture that comes back to where it began, or one the picker reports
+// the end of with nothing moved since (issue 671: its end is the last colour
+// it followed), ends on the colour the record holds, and builds nothing.
+// Mutation: `attempt` not comparing the change with the record.
+describe('Line colours: a gesture ended on the colour the record holds', () => {
+  it('draws nothing, and the next that moves it draws once', async () => {
+    await open('lines', COLOURS.record(COLOURS.one))
+    const pick = (hex: string): void => prop<(hex: string) => void>(leaves.chips, A, 'onPick')(hex)
+    gesture(() => pick(COLOURS.two as string))
+    gesture(() => pick(COLOURS.one as string))
+    COLOURS.make(COLOURS.one)
+    wait(REDRAW_DELAY * 3)
+    expect(COLOURS.drawn(), 'nothing built for the colour already on the map').toEqual([])
+    COLOURS.make(COLOURS.two)
+    expect(COLOURS.drawn()).toEqual([COLOURS.two])
+  })
+})
+
 // Mutation: `mustWait` asked without the screen's hold (`held: facts.held ||`
 // taken out of `attempt`) - every row here draws during the read-back. The
 // line order's under R7-02's own mutation (`held: disabled || settling` in

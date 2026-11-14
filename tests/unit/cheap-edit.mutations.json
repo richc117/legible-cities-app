@@ -70,5 +70,13 @@
     "test": "tests/unit/cheap-edit.test.tsx",
     "title": "offers nothing when the reset’s redraw stops with Put back waiting",
     "why": "A stop offering Put back again whatever the record holds: the reset was never drawn, the record still holds the values, and Put back is offered for nothing."
+  },
+  {
+    "file": "src/renderer/src/notebook/useCheapEdit.ts",
+    "find": "    drawing(next)\n    if (facts.same(next, facts.stored(facts.project))) return\n",
+    "replace": "    drawing(next)\n",
+    "test": "tests/unit/cheap-edit.test.tsx",
+    "title": "draws nothing, and the next that moves it draws once",
+    "why": "A change not compared with the record before it is drawn: a gesture ended on the colour the map already carries rebuilds the map for nothing."
   }
 ]

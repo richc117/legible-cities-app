@@ -14,5 +14,13 @@
     "test": "tests/unit/colour-picker.test.tsx",
     "title": "follows a colour that moves, the refusal going with it",
     "why": "The field no longer following the colour: after a drag or a reset it shows the old hex, and the six-digit refusal stays under it."
+  },
+  {
+    "file": "src/renderer/src/ColourChip.tsx",
+    "find": "<HexColorPicker color={colour} onChange={picked} onChangeEnd={ended} />",
+    "replace": "<HexColorPicker color={colour} onChange={picked} onChangeEnd={onPickEnd} />",
+    "test": "tests/unit/colour-picker.test.tsx",
+    "title": "is the colour the drag was released on when the last move and the release come in one task",
+    "why": "The picker's own end passed straight through, as before issue 671: react-colorful reports the colour of the move before the last when the release arrives before React has rendered the last move, so the map is built one step short of the colour the swatch shows."
   }
 ]
