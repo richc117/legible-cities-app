@@ -285,15 +285,19 @@ deletion runs. What main refuses: an export may not start while the map is
 being written, with nothing planned or written; a deletion may not run while
 a request names the project or it exports, with the record and `out/<id>`
 untouched; and a `map.build` is refused while the project's deletion runs,
-while its export runs, and for an `out` that names no project record (issue
-505), so a layout's closing `map.build` cannot make `out/<id>` again for a
-project deleted while its `graph.build` ran. That last question is the
-store's (`ProjectStore.recordGone`, queued behind the project's writes),
-asked within `FOLDERS_TIMEOUT_MS`, and a lapse refuses too; a record that is
-there but cannot be read is let through. **The bridge marks first, then
-asks**: `requestRefusal` and `beginRequest` in one turn, then the lookup's
-await, then the guard's, whose sentence wins and whose last look at the
-reset comes after every await. An export or a deletion begun while the
+while its export runs, for an `out` whose record a later build wrote (issue
+633, ADR-056), since this build never writes that record and the draw would
+replace that build's map, and for an `out` that names no project record
+(issue 505), so a layout's closing `map.build` cannot make `out/<id>` again
+for a project deleted while its `graph.build` ran. Those two questions are
+the store's (`ProjectStore.recordGone`, then, of a record not gone,
+`ProjectStore.readOnly`, each queued behind the project's writes), each
+asked within a `FOLDERS_TIMEOUT_MS` of its own, and a lapse of either
+refuses; a record that is there but cannot be read or parsed is let through
+by both. **The bridge marks first, then asks**: `requestRefusal` and
+`beginRequest` in one turn, then the two lookups' awaits, then the guard's,
+whose sentence wins and whose last look at the reset comes after every
+await. An export or a deletion begun while the
 bridge awaits meets the mark. Of those, the export and the deletion also
 refuse for a project whose `map.build` a bound ended (`inactive`, from
 `Sidecar.expire`) while the engine still reports a request it stopped
