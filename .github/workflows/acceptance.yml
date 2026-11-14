@@ -440,11 +440,15 @@ jobs:
 
       # The record, the evidence and its key as steps 1 to 21 left them, kept
       # now: a job that runs out of time is cancelled, and no step after that
-      # runs. Uploaded again, over these, once step 22 is written.
+      # runs. Uploaded again, over these, once step 22 is written. Every
+      # artefact of a rehearsal is named rehearsal-<name>, so the reviewer's
+      # protocol, which fetches acceptance-evidence-<target> before opening
+      # anything else, fails on a rehearsal's instead of reviewing it as a
+      # candidate's.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-${{ matrix.target }}
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}acceptance-${{ matrix.target }}
           path: |
             ${{ runner.temp }}/acceptance/*.md
             ${{ runner.temp }}/acceptance/*.png
@@ -454,7 +458,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-evidence-${{ matrix.target }}
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}acceptance-evidence-${{ matrix.target }}
           path: ${{ runner.temp }}/acceptance/evidence/
           if-no-files-found: warn
           retention-days: 30
@@ -462,7 +466,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-evidence-key-${{ matrix.target }}
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}acceptance-evidence-key-${{ matrix.target }}
           path: ${{ runner.temp }}/acceptance/evidence-key/
           if-no-files-found: warn
           retention-days: 30
@@ -725,7 +729,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-${{ matrix.target }}
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}acceptance-${{ matrix.target }}
           # Over the copy kept after step 21.
           overwrite: true
           # Not made.json: its paths are absolute and unredacted, for step 21's
@@ -743,7 +747,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-evidence-${{ matrix.target }}
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}acceptance-evidence-${{ matrix.target }}
           # Over the copy kept after step 21.
           overwrite: true
           path: ${{ runner.temp }}/acceptance/evidence/
@@ -755,7 +759,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: acceptance-evidence-key-${{ matrix.target }}
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}acceptance-evidence-key-${{ matrix.target }}
           # Over the copy kept after step 21.
           overwrite: true
           path: ${{ runner.temp }}/acceptance/evidence-key/
@@ -1019,7 +1023,7 @@ jobs:
         if: always()
         timeout-minutes: 5
         with:
-          name: reader-darwin-arm64
+          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}reader-darwin-arm64
           path: |
             ${{ runner.temp }}/reader/*.md
             ${{ runner.temp }}/reader/*.json

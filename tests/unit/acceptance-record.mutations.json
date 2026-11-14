@@ -220,7 +220,7 @@
     "find": "isTag ? 'refs/tags/' : 'refs/heads/'",
     "replace": "'refs/heads/'",
     "test": "tests/unit/acceptance-record.test.ts",
-    "title": "names a tag push by its tag, and a branch that looks like one by its branch",
+    "title": "names a tag push by its tag, and a branch by its branch",
     "why": "A tag push judged as a branch build."
   },
   {
@@ -302,5 +302,93 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "gives the reader job time for every step of either kind",
     "why": "The reader job's steps may take longer together than the job is given, and a slow walk is cut off with nothing written."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (tagLike && info.event !== 'push') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a build run dispatched on a tag, rather than judge it a branch build",
+    "why": "A build dispatched on a tag judged a branch build: the App row is held to X.Y.Z+<sha7> and a right build fails the rehearsal."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (!/^[0-9a-f]{40}$/.test(String(info.headSha ?? ''))) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run with no package jobs, and one that names no commit",
+    "why": "A run that names no commit rehearsed, its pins checked out from an empty ref."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": ".filter((job) => String(job.name).startsWith('package ('))",
+    "replace": ".filter(() => true)",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run with no package jobs, and one that names no commit",
+    "why": "Any job counted as a package job: a run that packaged nothing is rehearsed as though it had installers."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          name: ${{ env.KIND == 'rehearsal' && 'rehearsal-' || '' }}reader-darwin-arm64\n",
+    "replace": "          name: reader-darwin-arm64\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "names every artefact of a rehearsal apart, so its evidence is never fetched as a candidate's",
+    "why": "A rehearsal's artefact under a candidate's name: fetched by the documented download and read as the candidate's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: Step 1, rehearsal, download the build run's installer\n        if: ${{ env.KIND == 'rehearsal' }}\n",
+    "replace": "      - name: Step 1, rehearsal, download the build run's installer\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "keeps the acceptance job's rehearsal step 1 to a rehearsal",
+    "why": "A tag's run takes the rehearsal's step 1 too: a build run download with no run, and the Release's checks overwritten."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "              if [ \"$KIND\" = rehearsal ]; then\n                echo \"**REHEARSAL, not a candidate's run:**",
+    "replace": "              if false; then\n                echo \"**REHEARSAL, not a candidate's run:**",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "heads a rehearsal's summary as one, and gives only a candidate's an issue title",
+    "why": "A rehearsal's summary given a candidate's issue title, ready to be pasted onto the gate issue."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        run: |\n          set -euo pipefail\n          cli=tests/acceptance/record-cli.mjs\n          if ! kind=$(node \"$cli\" dispatch \"$TAG\" \"$BUILD_RUN\"); then\n            echo \"::error::see above: $TAG / $BUILD_RUN\"\n            exit 1\n          fi\n          echo \"KIND=$kind\" >> \"$GITHUB_ENV\"\n          if [ \"$kind\" = rehearsal ]; then\n            gh run view \"$BUILD_RUN\" --repo \"$GITHUB_REPOSITORY\" \\\n              --json workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs > \"$RUNNER_TEMP/build-run.json\"\n            build_id=$(gh api \"repos/$GITHUB_REPOSITORY/actions/workflows/build.yml\" --jq .id)\n            if ! read -r sha ref < <(node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "replace": "        run: |\n          set -euo pipefail\n          cli=tests/acceptance/record-cli.mjs\n          if ! kind=$(echo tag); then\n            echo \"::error::see above: $TAG / $BUILD_RUN\"\n            exit 1\n          fi\n          echo \"KIND=$kind\" >> \"$GITHUB_ENV\"\n          if [ \"$kind\" = rehearsal ]; then\n            gh run view \"$BUILD_RUN\" --repo \"$GITHUB_REPOSITORY\" \\\n              --json workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs > \"$RUNNER_TEMP/build-run.json\"\n            build_id=$(gh api \"repos/$GITHUB_REPOSITORY/actions/workflows/build.yml\" --jq .id)\n            if ! read -r sha ref < <(node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "checks the dispatch and the build run in both jobs, the run by its workflow id",
+    "why": "The acceptance job takes every dispatch for a tag: both inputs, neither, or a run id run as a tag."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "replace": "echo \"$build_id\" HEAD); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "checks the dispatch and the build run in both jobs, the run by its workflow id",
+    "why": "The acceptance job rehearses the artefacts of any run, of any workflow or with a failed package job, as though it were a build's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: The Mac app, rehearsal\n        if: ${{ env.KIND == 'rehearsal' }}\n",
+    "replace": "      - name: The Mac app, rehearsal\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "gives the reader the build run's own Mac app in a rehearsal, and never says it is attested",
+    "why": "A tag's reader job also takes the rehearsal's step: a build run download with no run, over the Release's app."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          sums='not checked (a rehearsal; no Release, so no SHA256SUMS.txt)'",
+    "replace": "          sums='yes'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "downloads the installers of the run, and says what it could not check",
+    "why": "A rehearsal's record says its installer matched SHA256SUMS.txt, which it never had."
+  },
+  {
+    "file": "docs/releasing.md",
+    "find": "(issue 689). Before a system's record goes on the gate issue, run\n",
+    "replace": "(issue 689).\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "has the gate check that a record is a candidate's before it goes on the gate issue",
+    "why": "The candidate check documented nowhere a person would run it: a rehearsal's record goes on the gate issue unrefused."
   }
 ]

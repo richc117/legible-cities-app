@@ -495,14 +495,22 @@ describe('checkBuildRun', () => {
     })
   })
 
-  it('names a tag push by its tag, and a branch that looks like one by its branch', () => {
+  it('names a tag push by its tag, and a branch by its branch', () => {
     const tagged = { ...good, headBranch: 'v1.0.0-rc.4' }
     expect(checkBuildRun(tagged, 1234).ref).toBe('refs/tags/v1.0.0-rc.4')
-    expect(checkBuildRun({ ...tagged, event: 'workflow_dispatch' }, 1234).ref).toBe(
-      'refs/heads/v1.0.0-rc.4',
-    )
     expect(checkBuildRun({ ...good, headBranch: 'feature/x' }, 1234).ref).toBe(
       'refs/heads/feature/x',
+    )
+    expect(
+      checkBuildRun({ ...good, event: 'workflow_dispatch', headBranch: 'main' }, 1234).ref,
+    ).toBe('refs/heads/main')
+  })
+
+  it('refuses a build run dispatched on a tag, rather than judge it a branch build', () => {
+    expect(() =>
+      checkBuildRun({ ...good, event: 'workflow_dispatch', headBranch: 'v1.0.0-rc.4' }, 1234),
+    ).toThrow(
+      'a build run dispatched on a tag (v1.0.0-rc.4): accept the tag itself with tag=v1.0.0-rc.4',
     )
   })
 
@@ -787,6 +795,52 @@ describe('acceptance.yml, dispatched with a run', () => {
     for (const s of steps.filter((s) => s.name.startsWith('Step 22, '))) {
       expect(s.text, s.name).not.toMatch(/\$TAG|\$env:TAG|inputs\.tag|env\.KIND/)
     }
+  })
+
+  it("keeps the acceptance job's rehearsal step 1 to a rehearsal", () => {
+    expect(step('acceptance', "Step 1, rehearsal, download the build run's installer").if).toBe(
+      "${{ env.KIND == 'rehearsal' }}",
+    )
+  })
+
+  it("heads a rehearsal's summary as one, and gives only a candidate's an issue title", () => {
+    const summary = step('acceptance', "The record, as the job's summary").run
+    const branches =
+      /if \[ "\$KIND" = rehearsal \]; then\n([\s\S]*?)\n {4}else\n([\s\S]*?)\n {4}fi\n/.exec(
+        summary,
+      )
+    expect(branches, 'the summary branches on a rehearsal').not.toBeNull()
+    const [, then, otherwise] = branches as RegExpExecArray
+    expect(then).toContain("**REHEARSAL, not a candidate's run:** build run $BUILD_RUN")
+    expect(then).toContain('Issue title: none; a rehearsal has no issue.')
+    expect(then).not.toContain('A6-04 run')
+    expect(otherwise).toContain('Issue title: \\`A6-04 run: ')
+  })
+
+  it("names every artefact of a rehearsal apart, so its evidence is never fetched as a candidate's", () => {
+    const uploads = steps.filter((s) => s.name.startsWith('actions/upload-artifact@'))
+    expect(uploads.map((s) => s.job)).toEqual([...Array<string>(6).fill('acceptance'), 'reader'])
+    for (const upload of uploads) {
+      expect(/^ {10}name: (.+)$/m.exec(upload.text)?.[1], upload.job).toMatch(
+        /^\$\{\{ env\.KIND == 'rehearsal' && 'rehearsal-' \|\| '' \}\}(acceptance|reader)-/,
+      )
+    }
+    // The protocol says why its download fails on a rehearsal.
+    const checklist = readFileSync(resolve(__dirname, '../../docs/acceptance.md'), 'utf8')
+    expect(checklist.replace(/\s+/g, ' ')).toContain(
+      "`rehearsal-acceptance-evidence-<target>` and the like, so this download fails on a rehearsal's run, by design.",
+    )
+  })
+
+  it("has the gate check that a record is a candidate's before it goes on the gate issue", () => {
+    const releasing = readFileSync(resolve(__dirname, '../../docs/releasing.md'), 'utf8')
+    const automated = releasing.slice(
+      releasing.indexOf('- **The automated run**'),
+      releasing.indexOf('- **The scripted VoiceOver run**'),
+    )
+    expect(automated.replace(/\s+/g, ' ')).toContain(
+      "Before a system's record goes on the gate issue, run `node tests/acceptance/record-cli.mjs candidate <record.md>` over it.",
+    )
   })
 
   it('gives the reader job time for every step of either kind', () => {

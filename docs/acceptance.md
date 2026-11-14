@@ -92,9 +92,12 @@ rehearsal; no Release, so no SHA256SUMS.txt)", "Attestation verified?"
 says "not verified (a rehearsal; no attestation)", never yes, and step 1
 is not automated rather than passed. The record and the summaries say
 **REHEARSAL**, the record names the run and its commit, and the VoiceOver
-walk writes its transcript and no clause. A rehearsal is never a
-candidate's run of the gate: `node tests/acceptance/record-cli.mjs
-candidate <record.md>` refuses its record, and its evidence is not the
+walk writes its transcript and no clause. Its artefacts are named
+`rehearsal-<name>` (`rehearsal-acceptance-<target>` and so on). A
+rehearsal is never a candidate's run of the gate: `node
+tests/acceptance/record-cli.mjs candidate <record.md>`, which
+[`releasing.md`](releasing.md#the-gate) has run over a record before it
+goes on the gate issue, refuses its record, and its evidence is not the
 gate's visual review.
 
 On a machine with the app already installed, the spec runs on its own:
@@ -1391,6 +1394,9 @@ records a verdict per entry in the second table of the results template.
 1. Fetch the evidence alone: `gh run download <run> -n
    acceptance-evidence-<target>`. Do not open the run's page, its summary or
    the gate issue before every verdict is written: they carry the record.
+   A rehearsal's artefacts have names of their own,
+   `rehearsal-acceptance-evidence-<target>` and the like, so this download
+   fails on a rehearsal's run, by design.
 2. Open `evidence.json` and every image it names, and nothing else:
    `evidence.json` holds, for each entry, the pictures, the question, the
    expected text and the row's not-automated sentence, and no machine check.

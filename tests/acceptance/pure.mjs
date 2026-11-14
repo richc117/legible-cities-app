@@ -218,7 +218,8 @@ export function checkDispatch({ tag = '', run = '' }) {
  * by its display name) and whose package jobs all succeeded. Returns its
  * commit and the ref it built, as GitHub names a ref (`refs/tags/<tag>` for
  * a tag push, else `refs/heads/<branch>`), or throws the sentence that says
- * what is wrong with it.
+ * what is wrong with it. A run dispatched on a ref named like a tag is
+ * refused: the run does not say whether that ref was a tag or a branch.
  */
 export function checkBuildRun(info, buildWorkflowId) {
   if (info === null || typeof info !== 'object') throw new Error('the run could not be read')
@@ -242,7 +243,16 @@ export function checkBuildRun(info, buildWorkflowId) {
     )
   }
   const branch = String(info.headBranch ?? '')
-  const isTag = info.event === 'push' && /^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/.test(branch)
+  const tagLike = /^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/.test(branch)
+  // A run dispatched by hand names its ref without saying whether it is a
+  // tag or a branch, and its build label follows which: refused, never
+  // guessed, since a guess fails the App row on a build that is right.
+  if (tagLike && info.event !== 'push') {
+    throw new Error(
+      `the run is a build run dispatched on a tag (${branch}): accept the tag itself with tag=${branch}`,
+    )
+  }
+  const isTag = info.event === 'push' && tagLike
   return { commit: info.headSha, branch, ref: `${isTag ? 'refs/tags/' : 'refs/heads/'}${branch}` }
 }
 
