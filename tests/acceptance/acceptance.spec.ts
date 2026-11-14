@@ -148,7 +148,10 @@ const LA_CITY = 'Los Angeles'
 const LA_NETWORK = 'Metro Rail'
 /**
  * The stations an enlarged picture of the map is centred on: two
- * interchanges downtown, where line A, the first line, runs beside others.
+ * interchanges downtown, where line A, the first line, runs beside others,
+ * named as LA's feed names them. They are looked for among the labels the
+ * page draws (`mapEnlarger`), never assumed: where the page draws neither,
+ * the picture is of the middle of the map, and its question says so.
  */
 const DOWNTOWN = ['Union Station', '7th Street / Metro Center']
 /** A day as the interface writes one, "17 September 2026" (`dates.ts`, issue 559). */
@@ -659,6 +662,8 @@ interface Session {
  * is of and back; `where` says what an enlarged picture was centred on.
  */
 interface View {
+  /** What the picture is of, for a sentence that says it was not taken. */
+  what: string
   target: Shootable
   show?: () => Promise<void>
   leave?: () => Promise<void>
@@ -748,7 +753,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
    * record, never a problem, and an entry left with no picture and no check
    * is not written.
    */
-  const viewed = new Map<string, { views: readonly View[]; before: string[] }>()
+  const viewed = new Map<string, { views: number; taken: { view: View; before: string }[] }>()
   const shootView = async (id: string, view: View): Promise<string> => {
     await view.show?.()
     try {
@@ -758,45 +763,56 @@ test('a release, installed, through docs/acceptance.md', async () => {
     }
   }
   const viewsBefore = async (log: StepLog, id: string, views: readonly View[]): Promise<void> => {
-    try {
-      const before: string[] = []
-      for (const [k, view] of views.entries())
-        before.push(await shootView(`${id}-v${k + 1}-a`, view))
-      viewed.set(id, { views, before })
-    } catch (error) {
-      log.note(`Evidence: the pictures before ${id} were not taken: ${messageOf(error)}.`)
+    const taken: { view: View; before: string }[] = []
+    for (const [k, view] of views.entries()) {
+      try {
+        taken.push({ view, before: await shootView(`${id}-v${k + 1}-a`, view) })
+      } catch (error) {
+        log.note(`Evidence: ${view.what} before ${id} was not taken: ${messageOf(error)}.`)
+      }
     }
+    viewed.set(id, { views: views.length, taken })
   }
   const viewsAfter = async (
     log: StepLog,
     init: EntryInit,
     check: Check | null = null,
   ): Promise<void> => {
-    const held = viewed.get(init.id)
+    const held = viewed.get(init.id) ?? { views: 0, taken: [] }
     viewed.delete(init.id)
-    let images: string[] = []
-    if (held !== undefined) {
+    const images: string[] = []
+    const where: string[] = []
+    const kept: string[] = []
+    for (const [k, { view, before }] of held.taken.entries()) {
       try {
-        const after: string[] = []
-        for (const [k, view] of held.views.entries())
-          after.push(await shootView(`${init.id}-v${k + 1}-b`, view))
-        images = held.before.flatMap((before, k) => [before, after[k]])
+        images.push(before, await shootView(`${init.id}-v${k + 1}-b`, view))
+        kept.push(view.what)
+        const said = view.where?.() ?? ''
+        if (said !== '') where.push(said)
       } catch (error) {
-        log.note(`Evidence: the pictures after ${init.id} were not taken: ${messageOf(error)}.`)
+        log.note(`Evidence: ${view.what} after ${init.id} was not taken: ${messageOf(error)}.`)
       }
     }
     if (images.length === 0 && check === null) return
-    const where = (held?.views ?? []).map((view) => view.where?.() ?? '').filter((w) => w !== '')
-    const question =
+    // A view whose pictures were not taken is said in the question, so the
+    // pictures there are never read as the ones it describes.
+    const missing =
       images.length === 0
-        ? `${init.question} (Its pictures could not be taken.)`
-        : [init.question, ...where].join(' ')
-    evidence.keep({ ...init, question }, images, check)
+        ? ['(Its pictures could not be taken.)']
+        : kept.length < held.views
+          ? [`(Only the pictures of ${kept.join(' and ')} were taken, before and after.)`]
+          : []
+    evidence.keep(
+      { ...init, question: [init.question, ...where, ...missing].join(' ') },
+      images,
+      check,
+    )
   }
   /** A part of the map enlarged, centred on the stations named, the same part before and after. */
   const mapPart = (on: Page, names: readonly string[]): View => {
     const target = enlarged(mapEnlarger(on, names))
     return {
+      what: 'the enlarged part of the map',
       target,
       where: () => `The enlarged part of the map is centred on ${target.around()}.`,
     }
@@ -2344,7 +2360,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           step: 8,
           row: LOOKS.markers,
           question:
-            'The third picture is the map after the interchange marker was set to Square. Are the interchanges square, where the first two have rings? (The marks are small at this size: 8-interchange-enlarged has them enlarged.)',
+            'The third picture is the map after the interchange marker was set to Square. Are the interchanges square, where the first two have rings? (The marks are small at this size: 8-interchange-enlarged has them enlarged, where it was kept.)',
         },
         { name: 'interchange-marker' },
       )
@@ -2374,7 +2390,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           step: 8,
           row: LOOKS.markers,
           question:
-            'The third picture is the map after the label typeface was set to Inter. Are the names set differently from the first two, with the stations where they were? (The names are small at this size: 8-typeface-label has one enlarged.)',
+            'The third picture is the map after the label typeface was set to Inter. Are the names set differently from the first two, with the stations where they were? (The names are small at this size: 8-typeface-label has one enlarged, where it was kept.)',
         },
         { name: 'typeface-pixels' },
       )
@@ -2540,11 +2556,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
           id: '9-colour',
           step: 9,
           row: LOOKS.colour,
-          question: `The third picture is the map after line ${line} was given a colour of its own by dragging. Is line ${line} drawn in a colour it was not drawn in before, one that stands out from the map's ground? (Its chip is in 9-colour-chip.)`,
+          question: `The third picture is the map after line ${line} was given a colour of its own by dragging. Is line ${line} drawn in a colour it was not drawn in before, one that stands out from the map's ground? (Its chip is in 9-colour-chip, where it was kept.)`,
         },
         { name: 'line-colour' },
       )
-      await viewsBefore(log, '9-colour-chip', [{ target: rows.first() }])
+      await viewsBefore(log, '9-colour-chip', [
+        { what: `line ${line}'s row`, target: rows.first() },
+      ])
 
       await panel
         .getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
@@ -2558,7 +2576,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
        * slider's edges). The colour square is left above and to the right of
        * itself: full saturation and brightness. The hue slider is left below
        * the picker at five sixths of its width: a hue of 300, magenta, which
-       * no LA line is drawn in. So the line ends #ff00ff, which stands out
+       * no LA line is drawn in. So the line ends about #ff00ff, magenta (the
+       * step's notes give the value it took), which stands out
        * from the warm-dark and the sepia ground alike; letting go below and
        * to the right of both, as the run did before, left it near-black,
        * which all but vanished on the warm-dark ground. Where the window has
@@ -2797,7 +2816,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Width',
           '1.25',
           (now) => of(now)?.width === 1.25,
-          `The third picture is the map after line ${line} was made bold. Is line ${line} drawn thicker than in the first two? (The lines are thin at this size: 9-width-enlarged has them enlarged.)`,
+          `The third picture is the map after line ${line} was made bold. Is line ${line} drawn thicker than in the first two? (The lines are thin at this size: 9-width-enlarged has them enlarged, where it was kept.)`,
           `The two pictures are the same part of the map enlarged, before and after line ${line} was made bold. Is line ${line} drawn thicker in the second, with the lines beside it moved out to make room, and no station moved?`,
         )
         await choose(
@@ -2948,8 +2967,9 @@ test('a release, installed, through docs/acceptance.md', async () => {
       }
       await pauseAndRead(window).catch(() => undefined)
       await viewsBefore(log, '10-order-rows', [
-        { target: list },
+        { what: 'the list', target: list },
         {
+          what: 'the Linear view',
           target: enlarged(mapEnlarger(window, []), { whole: true }),
           show: toView('Linear'),
           leave: toView('Schematic'),
@@ -2963,7 +2983,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           id: '10-order',
           step: 10,
           row: LOOKS.order,
-          question: `The third picture is the map after the order of the lines was changed with the arrows. Where two lines share track, is a different one drawn on top than in the first two? (The schematic need not change visibly with the order, so a picture that looks the same is not a failure: say what you see. The rows are in 10-order-rows.)`,
+          question: `The third picture is the map after the order of the lines was changed with the arrows. Shared track is drawn as lines side by side, so the order can show only in which side a line runs on and which is drawn over where lines cross: has either changed from the first two? (The schematic need not change visibly with the order, so a picture that looks the same is not a failure: say what you see. The rows are in 10-order-rows, where it was kept.)`,
         },
         { name: 'order-changes', noteOnly: true },
       )

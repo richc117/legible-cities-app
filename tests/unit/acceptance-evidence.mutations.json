@@ -237,7 +237,7 @@
     "replace": "Math.round(ENLARGED.em / em)",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "sets a name about 18 pixels tall, within the scales allowed",
-    "why": "A large name would be drawn at a scale of nothing, and the part to enlarge would be infinitely wide."
+    "why": "A large name would round to a scale of nothing, held at 1: the picture would be no larger than the window draws it."
   },
   {
     "file": "tests/acceptance/evidence.ts",
@@ -278,5 +278,21 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "keeps one part for every picture, following the frame",
     "why": "The part would be taken in the frame's own pixels as if they were the window's, a picture of the interface beside the map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    clearTimeout(timer)\n",
+    "replace": "    void timer\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "gives what the call answered, and leaves no timer behind",
+    "why": "Every enlarged picture would leave a 30-second timer running after it was taken, holding the run open and firing a rejection nothing waits for."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "return await Promise.race([work, late])",
+    "replace": "return await work",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "rejects with its sentence once a call that never answers runs out of time",
+    "why": "A capture an occluded window never answers would stall the run to its own timeout instead of becoming a note."
   }
 ]

@@ -1357,16 +1357,20 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   pixels on a runner, where a station's name is about 3 pixels tall), an
   entry of its own, `<id>-enlarged` (and `8-typeface-label`), keeps the same
   part of the map before and after the change, drawn again at a scale that
-  sets a name about 18 pixels tall: centred on Union Station and 7th Street
-  / Metro Center, or on the name the typeface is judged by, and its question
-  says which. It is taken through the DevTools protocol's
+  sets a name about 18 pixels tall (the device's pixel ratio allowed for):
+  centred on Union Station and 7th Street / Metro Center where the page
+  draws those names, or on the name the typeface is judged by, else on the
+  middle of the map, and its question says which. It is taken through the DevTools protocol's
   `Page.captureScreenshot` with a scaled clip, the path Playwright's own
   screenshot takes, and never through the export's capture. Likewise
   `9-colour-chip` keeps the first line's row in **Line colours** before
   and after the drag, and `10-order-rows` keeps **Line order**'s list and
   the map's **Linear** view, at up to twice its size, before and after the
-  arrows. These carry no check: one that cannot be taken is a note in the
-  step's record, never a problem.
+  arrows. These add no check (`8-typeface-label` keeps the typeface check
+  it always had): a picture that cannot be taken, or whose call does not
+  answer in 30 seconds, is a note in the step's record, never a problem, the
+  pictures that were taken are kept, and the question says which are
+  missing. A pair's question names its enlarged twin "where it was kept".
 - The questions ask only what the pictures can show. The notebook's map
   draws no clock and no title, so step 4 asks about the trains alone. An
   export's title, and the GIF's title card, draw the city over the network,
@@ -1378,8 +1382,9 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   storyboard, not a fault.
 - Step 9's drag lets the colour square go above and to its right and the
   hue slider below the picker at five sixths of its width, so the first
-  line (A) ends in `#ff00ff`, a colour no LA line has, which stands out
-  from both themes' ground.
+  line (A) ends about `#ff00ff`, magenta, a colour no LA line has, which
+  stands out from both themes' ground; the step's notes give the value it
+  took.
 - `evidence/evidence.json` has an entry per question: the row's own
   not-automated sentence, the images, the question and the text expected in
   them. The machine checks, with their values and thresholds, are the

@@ -1025,6 +1025,7 @@ export function enlarged(enlarger: Enlarger, options: { whole?: boolean } = {}):
  */
 export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
   const element = window.locator('iframe.viewer-frame')
+  let ratio: number | null = null
   return {
     async frame() {
       await element.scrollIntoViewIfNeeded()
@@ -1068,18 +1069,60 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
         .catch(() => ({ boxes: [], em: null, found: [] }))
     },
     async capture(clip) {
-      const cdp = await window.context().newCDPSession(window)
+      // The protocol draws the clip at its scale times the device's pixel
+      // ratio, and the scale here is in CSS pixels: so it is divided by the
+      // ratio, read once, and a name stands as tall on a Retina screen.
+      if (ratio === null) {
+        const read = await withDeadline(
+          window.evaluate(() => globalThis.devicePixelRatio),
+          ENLARGED_DEADLINE_MS,
+          SILENT,
+        ).catch(() => 1)
+        ratio = typeof read === 'number' && read > 0 ? read : 1
+      }
+      // An occluded window can leave either call unanswered: each is raced
+      // against a deadline, so a picture that cannot be taken is a note in
+      // a moment and never a run stalled to its own timeout.
+      const opening = window.context().newCDPSession(window)
+      let cdp: Awaited<typeof opening> | null = null
       try {
-        const { data } = await cdp.send('Page.captureScreenshot', {
-          format: 'png',
-          clip,
-          captureBeyondViewport: false,
-        })
+        cdp = await withDeadline(opening, ENLARGED_DEADLINE_MS, SILENT)
+        const { data } = await withDeadline(
+          cdp.send('Page.captureScreenshot', {
+            format: 'png',
+            clip: { ...clip, scale: clip.scale / ratio },
+            captureBeyondViewport: false,
+          }),
+          ENLARGED_DEADLINE_MS,
+          SILENT,
+        )
         return Buffer.from(data, 'base64')
       } finally {
-        await cdp.detach().catch(() => undefined)
+        if (cdp !== null)
+          await withDeadline(cdp.detach(), ENLARGED_DEADLINE_MS, SILENT).catch(() => undefined)
+        else void opening.then((late) => late.detach()).catch(() => undefined)
       }
     },
+  }
+}
+
+/** How long one call of an enlarged picture may take before it is given up as a note. */
+export const ENLARGED_DEADLINE_MS = 30_000
+const SILENT = `the enlarged capture did not answer in ${ENLARGED_DEADLINE_MS / 1000} s`
+
+/**
+ * `work`, or a rejection saying `said` once `ms` have passed without it
+ * settling; the timer is cleared either way.
+ */
+export async function withDeadline<T>(work: Promise<T>, ms: number, said: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(said)), ms)
+  })
+  try {
+    return await Promise.race([work, late])
+  } finally {
+    clearTimeout(timer)
   }
 }
 

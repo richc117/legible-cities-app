@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ENLARGED,
   Evidence,
@@ -31,6 +31,7 @@ import {
   sampleTimes,
   stepResult,
   thresholdFor,
+  withDeadline,
   type Box,
   type Clip,
   type Enlarger,
@@ -686,6 +687,28 @@ describe('an enlarged picture of the map', () => {
     expect(whole.around()).toBe('the whole map')
     const gone = enlarged(windowOf(['Union Station'], null).enlarger)
     await expect(evidence.shot('8-w', gone)).rejects.toThrow(/has no box/)
+  })
+})
+
+describe('a call given a deadline', () => {
+  it('gives what the call answered, and leaves no timer behind', async () => {
+    vi.useFakeTimers()
+    try {
+      await expect(withDeadline(Promise.resolve(7), 30_000, 'late')).resolves.toBe(7)
+      await expect(
+        withDeadline(Promise.reject(new Error('refused')), 30_000, 'late'),
+      ).rejects.toThrow('refused')
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects with its sentence once a call that never answers runs out of time', async () => {
+    const never = new Promise<number>(() => undefined)
+    await expect(
+      withDeadline(never, 20, 'the enlarged capture did not answer in 30 s'),
+    ).rejects.toThrow('the enlarged capture did not answer in 30 s')
   })
 })
 
