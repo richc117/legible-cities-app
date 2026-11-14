@@ -73,6 +73,8 @@ on:
       # release.mjs's releaseLabel (issue 558).
       - 'electron.vite.config.ts'
       - 'scripts/release.mjs'
+      # The label itself, which release.mjs re-exports.
+      - 'scripts/release-label.mjs'
       - 'package.json'
       - 'package-lock.json'
       - 'scripts/vendor-python.sh'
