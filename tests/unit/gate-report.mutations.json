@@ -1,0 +1,226 @@
+[
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "      if (!NOT_FAILURES.includes(step.result)) {",
+    "replace": "      if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "lists every failed row with the issue its notes name, or says none is named",
+    "why": "A failed row dropped from the page: the gate issue would read as clean while a step failed."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "      line(`| ${step.n} | ${cell(step.title)} | ${cell(step.result)} |`)",
+    "replace": "      line(`| ${step.n} | ${cell(step.title)} | ${cell(step.result.replace(/^not automated$/, 'pass'))} |`)",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "never writes pass for a row the record marks not automated",
+    "why": "A row no machine passed written as pass: the page would claim more than the record says."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (build.commit === '' || build.commit !== tagCommit) {",
+    "replace": "  if (build.commit === '') {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a build run that is not the tag's commit",
+    "why": "A build of another commit accepted: the page would vouch for a build the tag is not."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (record.tag !== tag) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses an acceptance run of another tag",
+    "why": "An acceptance run of an earlier candidate written up as this one's."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (artefacts.some((name) => name.startsWith('rehearsal-'))) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a rehearsal by its artefacts",
+    "why": "A rehearsal's run let through by its artefact names."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (/REHEARSAL/.test(acceptance.title)) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a rehearsal by its title alone",
+    "why": "A rehearsal's run let through by its title."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (recordKind(text) === 'rehearsal') {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a rehearsal by its record's heading",
+    "why": "A rehearsal's record let through."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (build.branch !== tag || build.event !== 'push') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a build run that is not a push of the tag",
+    "why": "A branch named like the tag accepted as the tag's build."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (build.workflow !== 'build') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a run of the wrong workflow",
+    "why": "A run of another workflow accepted as the build."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (acceptance.workflow !== 'acceptance') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a run of the wrong workflow",
+    "why": "A run of another workflow accepted as the acceptance run."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (acceptance.title !== `acceptance ${tag}` && acceptance.title !== 'acceptance') {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "takes a bare acceptance title only on a record that names the tag",
+    "why": "Any title accepted."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (acceptance.title === 'acceptance' && parsed.size === 0) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "takes a bare acceptance title only on a record that names the tag",
+    "why": "A bare title accepted with no record naming the tag."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (draft?.conclusion !== 'success') {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a build whose release (draft) did not succeed",
+    "why": "A build that drafted no release accepted."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (job.conclusion !== 'success') {\n      failures.push(`build job",
+    "replace": "    if (job.conclusion === 'failure') {\n      failures.push(`build job",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "counts a skipped or cancelled build job as a failure",
+    "why": "A skipped job read as fine."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "      if (!NOT_FAILURES.includes(step.result)) {",
+    "replace": "      if (step.result === 'fail') {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "lists a not run row and a result the checklist does not have as failures",
+    "why": "Rows other than fail dropped from Failures."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    for (let n = 1; n <= 22; n++) {",
+    "replace": "    for (let n = 1; n <= 0; n++) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "reports a short row and a missing step instead of dropping them",
+    "why": "A missing step passing unnoticed."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "      if (step.short) {",
+    "replace": "      if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "reports a short row and a missing step instead of dropping them",
+    "why": "A short row dropped silently."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "targets: [...new Set([...SYSTEMS, ...parsed.keys()])].sort(),",
+    "replace": "targets: [...new Set([...parsed.keys()])].sort(),",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "renders both systems, and a system with no job or record is not recorded and a failure",
+    "why": "A system with no record vanishing from the page."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "/(?:\\/issues\\/|\\bissues? )(\\d+)\\b/gi",
+    "replace": "/(?:\\/issues\\/|#|\\bissues? )(\\d+)\\b/gi",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "reads an issue only as \"issue N\", \"issues N\" or an issues link, never a bare #N",
+    "why": "A colour in a message read as an issue."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "      } else if (row.verdict !== null && !VERDICTS.includes(row.verdict)) {",
+    "replace": "      } else if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "lists a verdict outside the three words as a failure, and points at a linked review",
+    "why": "A verdict of pass accepted from the reviewer."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    .split(/(?<=\\])\\s*(?=\\[)/)",
+    "replace": "    .split(/(?<=\\x00)/)",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "merges the pages of a paginated artefact list",
+    "why": "Only the first page of artefacts read."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (out.tag !== undefined && !TAG.test(out.tag)) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "refuses a tag that is not a tag before it goes into an API path",
+    "why": "An unchecked tag in an API path."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  for (const part of missing) line(`- ${part}`)",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names every part that reads not recorded, apart from the failures",
+    "why": "The list of parts with no record dropped: a page of None recorded would read as a clean gate."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    : `its notes mention ${found.map",
+    "replace": "    : `${found.map",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "only mentions an issue number in a failure's notes, never takes it as the failure's",
+    "why": "An issue number from a spec sentence in the notes shown as the failure's own issue."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (!transcript) missing.push(\"the scripted VoiceOver run's transcript\")\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names a missing transcript, evidence or key under Not recorded",
+    "why": "A reader job with no transcript kept, closed out as if every part had a record."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (!kept.includes(t)) missing.push(`${t} visual evidence`)\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names a missing transcript, evidence or key under Not recorded",
+    "why": "A system that kept no visual evidence, closed out as if every part had a record."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (!keyKept.includes(t)) missing.push(`${t} visual evidence key`)\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names a missing transcript, evidence or key under Not recorded",
+    "why": "A system that kept no control-pair key, closed out as if every part had a record."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (unread > 0) missing.push(`${unread} visual evidence verdicts`)\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "keeps the visual review to its three verdicts and counts a blank one as not recorded",
+    "why": "Blank verdicts counted on the page but left out of Not recorded."
+  }
+]

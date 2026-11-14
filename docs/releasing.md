@@ -137,6 +137,20 @@ record.
 the released version. It does not hold the release, and what it finds goes
 into the next one.
 
+The gate issue's page, each part with its result and a link, is written by
+`node scripts/gate-report.mjs --tag vX.Y.Z-rc.N --build <build run id>
+--acceptance <acceptance run id> [--sitting <issue>] [--review <issue or
+link>] [--out <file>]` (issue 693). It copies what the runs and their
+records say, reads "not recorded" for a part with none, lists every row
+still not automated, and lists as a failure any job that is not a success,
+any result the checklist does not count as a pass or as not automated, and
+any step or system missing from the records. A failure's notes are only
+mentioned, never taken for its issue; a part with no record is named under
+"Not recorded", never counted as a pass. It refuses a rehearsal's run,
+a run of the wrong workflow or another tag, and a build that is not the
+tag's push or did not draft a release. It does not read the visual review's
+verdicts from an issue: `--review` links them.
+
 A failure is an issue of its own, as the checklist says. One that needs a
 change is fixed on `main`, and the fix goes out as the next candidate.
 
