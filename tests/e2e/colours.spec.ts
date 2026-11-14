@@ -783,19 +783,29 @@ test('the page stays where it is while a colour is being drawn, and the picker w
   })
 })
 
-test('and so does the first redraw after the app was closed and opened again', async () => {
-  // Nothing has run in this session, so the run cell is idle and the
-  // diagnostics are absent: the redraw must neither shrink the one nor add
-  // the other.
-  const engineHome = home({ progress_delay_ms: 200 })
-  await withApp(engineHome, async (page) => {
-    await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-  })
-  await withApp(engineHome, async (page) => {
-    await openProject(page, 'Los Angeles')
-    await holdsStillThroughARedraw(page)
-  })
-})
+test(
+  'and so does the first redraw after the app was closed and opened again',
+  {
+    tag: '@quarantine',
+    annotation: {
+      type: 'issue',
+      description: 'https://github.com/richc117/legible-cities-app/issues/650',
+    },
+  },
+  async () => {
+    // Nothing has run in this session, so the run cell is idle and the
+    // diagnostics are absent: the redraw must neither shrink the one nor add
+    // the other.
+    const engineHome = home({ progress_delay_ms: 200 })
+    await withApp(engineHome, async (page) => {
+      await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
+    })
+    await withApp(engineHome, async (page) => {
+      await openProject(page, 'Los Angeles')
+      await holdsStillThroughARedraw(page)
+    })
+  },
+)
 
 test('one press opens another row’s picker while one is already open', async () => {
   const engineHome = home()
