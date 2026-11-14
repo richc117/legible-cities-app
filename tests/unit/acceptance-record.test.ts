@@ -5,7 +5,7 @@
 // itself launches an installed app and is never part of `npm test`.
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, posix, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -888,3 +888,67 @@ describe.skipIf(process.platform === 'win32' || !existsSync('/bin/bash'))(
     })
   },
 )
+
+// The acceptance specs run under Playwright, whose loader compiles each
+// module it imports and cannot read one that uses import.meta: the first
+// rehearsal's steps 3 to 20 never started, on a module Vitest loads
+// happily. So the specs' own import graph is held to that, and Playwright
+// is asked to load them as the workflow's step does.
+describe("the acceptance specs' imports, as Playwright loads them", () => {
+  const repo = resolve(__dirname, '../..')
+  const SPECS = ['tests/acceptance/acceptance.spec.ts', 'tests/acceptance/upgrade.spec.ts']
+
+  /** Every file of the repository a spec reaches through relative imports. */
+  const graph = (): string[] => {
+    const seen = new Set<string>()
+    const visit = (file: string): void => {
+      if (seen.has(file)) return
+      seen.add(file)
+      const text = readFileSync(file, 'utf8')
+      for (const [, spec] of text.matchAll(/(?:from|import)\s*\(?\s*'(\.{1,2}\/[^']+)'/g)) {
+        const base = resolve(file, '..', spec!)
+        const found = [base, `${base}.ts`, `${base}.tsx`, join(base, 'index.ts')].find(
+          (candidate) => existsSync(candidate) && !statSync(candidate).isDirectory(),
+        )
+        expect(found, `${file} imports ${spec}`).toBeDefined()
+        visit(found!)
+      }
+    }
+    for (const spec of SPECS) visit(join(repo, spec))
+    return [...seen].map((file) => posix.normalize(file.slice(repo.length + 1).replace(/\\/g, '/')))
+  }
+
+  it('reaches no module that uses import.meta', () => {
+    const files = graph()
+    expect(files).toEqual(expect.arrayContaining(['tests/acceptance/pure.mjs']))
+    expect(files.length).toBeGreaterThan(10)
+    // Code only: a comment may name it.
+    const code = (file: string): string =>
+      readFileSync(join(repo, file), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '')
+    const using = files.filter((file) => /\bimport\.meta\b/.test(code(file)))
+    expect(using, 'modules Playwright cannot load').toEqual([])
+  })
+
+  it('lists both specs under Playwright, with no app to run them on', () => {
+    const env = { ...process.env }
+    delete env.LEGIBLE_ACCEPTANCE_APP
+    delete env.LEGIBLE_UPGRADE_APP
+    const listed = spawnSync(
+      process.execPath,
+      [
+        join(repo, 'node_modules', '@playwright', 'test', 'cli.js'),
+        'test',
+        '-c',
+        'playwright.acceptance.config.ts',
+        '--list',
+      ],
+      { cwd: repo, encoding: 'utf8', env, timeout: 120_000, windowsHide: true },
+    )
+    const said = `${listed.stdout}\n${listed.stderr}`
+    expect(said).not.toMatch(/SyntaxError|Error:/)
+    expect(listed.status, said).toBe(0)
+    expect(said).toContain('Total: 2 tests in 2 files')
+  })
+})

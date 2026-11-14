@@ -390,5 +390,21 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "has the gate check that a record is a candidate's before it goes on the gate issue",
     "why": "The candidate check documented nowhere a person would run it: a rehearsal's record goes on the gate issue unrefused."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "import { releaseLabel } from '../../scripts/release-label.mjs'",
+    "replace": "import { releaseLabel } from '../../scripts/release.mjs'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "reaches no module that uses import.meta",
+    "why": "The acceptance spec imports a module that uses import.meta: Playwright cannot load it, and steps 3 to 20 never start (the first rehearsal's failure)."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "import { releaseLabel } from '../../scripts/release-label.mjs'",
+    "replace": "import { releaseLabel } from '../../scripts/release.mjs'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "lists both specs under Playwright, with no app to run them on",
+    "why": "The acceptance spec imports a module that uses import.meta: Playwright cannot load it, and steps 3 to 20 never start (the first rehearsal's failure)."
   }
 ]

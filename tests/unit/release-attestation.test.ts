@@ -560,9 +560,12 @@ describe.skipIf(process.platform === 'win32' || !tool('bash') || !tool('git'))(
           join(dir, 'tests', 'acceptance', name),
         )
       }
-      // pure.mjs imports the release label from scripts/release.mjs.
+      // pure.mjs imports the release label from scripts/release-label.mjs.
       mkdirSync(join(dir, 'scripts'))
-      copyFileSync(join(repo, 'scripts', 'release.mjs'), join(dir, 'scripts', 'release.mjs'))
+      copyFileSync(
+        join(repo, 'scripts', 'release-label.mjs'),
+        join(dir, 'scripts', 'release-label.mjs'),
+      )
       mkdirSync(join(dir, 'fixtures'))
       mkdirSync(join(dir, 'bin'))
       mkdirSync(join(dir, 'download'))

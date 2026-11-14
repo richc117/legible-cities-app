@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, realpathSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import process from 'node:process'
-import { releaseLabel } from '../../scripts/release.mjs'
+import { releaseLabel } from '../../scripts/release-label.mjs'
 
 /** Every result a step of the record can have. */
 export const RESULTS = [
