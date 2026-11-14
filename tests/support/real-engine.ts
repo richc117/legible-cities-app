@@ -151,6 +151,7 @@ export async function startRealEngine(
       ...options.env,
     },
     pin: PINS.engine,
+    resetting: () => null,
     log: (m) => log.push(m),
     bounds: { handshakeMs: HANDSHAKE_MS },
   })

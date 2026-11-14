@@ -143,12 +143,18 @@ change to it must keep:
   home that is itself a link would pass them all and then remove four
   folders from wherever it points.
 - Main refuses while a reset is already running, while an export, an
-  engine request or a record write is in flight, and for a home so high up
-  that the four names would mean something else; the screen refuses
-  separately while a layout run or an export is open, because only the
-  renderer sees the gaps between a run's steps. The flag goes up **before
-  the first `await`**, and while it is up every engine request, export and
-  record write is refused.
+  engine request or a record write is in flight, while the engine is
+  starting or restarting, while the engine, or what an exited engine left
+  in its process group (on POSIX; on Windows nothing tracks it), is still
+  being ended (`Sidecar.stillEnding`, the question a retry asks too, issue
+  637), and for a home so high up that the four names would mean something
+  else; the screen refuses separately while a layout run or an export is
+  open, because only the renderer sees the gaps between a run's steps. The
+  flag goes up **before the first `await`**, and while it is up every
+  engine request, export and record write is refused, and no engine starts:
+  the supervisor asks the same question (`resetting`) as a restart comes
+  due, which then waits for the flag to come down, and before a retry,
+  which is refused.
 - A project's own export folder is kept out of the reset's reach at three
   doors (issue 206): the reset, which refuses while a project under the
   home in force exports to a folder inside the home or around it; the

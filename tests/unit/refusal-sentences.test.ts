@@ -15,6 +15,7 @@ import { NAME_MAX, validateName } from '../../src/shared/project/validate'
 import { FEED_REFUSALS, PickedPaths, refuseUrl, registryGuard } from '../../src/main/feeds-ipc'
 import { DESTINATION_REFUSALS, destinationLate, EXPORTS_THERE } from '../../src/main/export'
 import { NO_BAND_FOR_ADDRESS, staleFrame, unreadFrame } from '../../src/main/capture'
+import { RESET_REFUSALS, RESTART_WAITS_FOR_RESET } from '../../src/main/sidecar'
 import { SHEET_REFUSALS, validateFeedUrl } from '../../src/renderer/src/NewProjectSheet'
 import { openFailed } from '../../src/renderer/src/Library'
 
@@ -45,6 +46,10 @@ async function refusals(): Promise<Array<[string, string | null]>> {
     ['staleFrame', staleFrame(3)],
     ['unreadFrame', unreadFrame(0)],
     ['NO_BAND_FOR_ADDRESS', NO_BAND_FOR_ADDRESS],
+    ...Object.entries(RESET_REFUSALS).map(([k, s]): [string, string] => [`RESET_REFUSALS.${k}`, s]),
+    // Not a refusal but the restart's reason while it waits for a reset
+    // (issue 637), shown on the status line as written.
+    ['RESTART_WAITS_FOR_RESET', RESTART_WAITS_FOR_RESET],
     ['validateFeedUrl, empty', validateFeedUrl('  ')],
     ['validateFeedUrl, not http', validateFeedUrl('ftp://agency.example/gtfs.zip')],
     ...Object.entries(SHEET_REFUSALS).map(([k, s]): [string, string] => [`SHEET_REFUSALS.${k}`, s]),

@@ -16,6 +16,8 @@ import {
   HANDSHAKE_FAILED_REASON,
   handshakeTimedOutReason,
   PROTOCOL_ERROR_REASON,
+  RESET_REFUSALS,
+  RESTART_WAITS_FOR_RESET,
   Sidecar,
   WROTE_IN_THE_LOG,
   type Bounds,
@@ -23,6 +25,7 @@ import {
 import {
   describeState,
   ERROR_CODES,
+  QUITTING_REASON,
   RETRY_REFUSALS,
   type EngineError,
   type EnginePin,
@@ -72,6 +75,7 @@ function harness(control: Record<string, unknown> = {}, bounds: Partial<Bounds> 
       development: true,
     }),
     pin: PIN,
+    resetting: () => null,
     log: (m) => log.push(m),
     bounds: { ...FAST, ...bounds },
   })
@@ -376,6 +380,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       unavailableReason: 'No engine to run: set LEGIBLE_ENGINE_CHECKOUT.',
       env: {},
       pin: PIN,
+      resetting: () => null,
       log: () => {},
     })
     none.start()
@@ -393,6 +398,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       command: ['no-such-interpreter-xyz', '-m', 'schematic.serve'],
       env: { PATH: process.env.PATH ?? '' },
       pin: PIN,
+      resetting: () => null,
       log: () => {},
       bounds: FAST,
     })
@@ -420,6 +426,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
       command: ['no-such-interpreter-xyz', '-m', 'schematic.serve'],
       env: { PATH: process.env.PATH ?? '' },
       pin: PIN,
+      resetting: () => null,
       log: (m) => log.push(m),
       bounds: FAST,
       bundledInterpreter: true,
@@ -934,6 +941,7 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
         command: ['no-such-interpreter-xyz', '-m', 'schematic.serve'],
         env: { PATH: process.env.PATH ?? '' },
         pin: PIN,
+        resetting: () => null,
         log: () => {},
         bounds: FAST,
       })
@@ -989,7 +997,13 @@ describe.skipIf(PYTHON === null)('Sidecar', { timeout: 20_000 }, () => {
     }, 45_000)
 
     it('is refused with no interpreter at all, which is not retryable', () => {
-      const none = new Sidecar({ command: null, env: {}, pin: PIN, log: () => {} })
+      const none = new Sidecar({
+        command: null,
+        env: {},
+        pin: PIN,
+        log: () => {},
+        resetting: () => null,
+      })
       none.start()
       expect(none.state).toMatchObject({ state: 'unavailable', retryable: false })
       expect(none.retry()).toBe(RETRY_REFUSALS.noInterpreter)
@@ -1214,6 +1228,7 @@ describe('a retry beside a child that outlived the kill', () => {
       command: ['stand-in-interpreter', '-m', 'schematic.serve'],
       env: {},
       pin: PIN,
+      resetting: () => null,
       log: (m) => log.push(m),
       platform: 'linux',
       // The handshake goes unanswered, the first failure is the give-up, and
@@ -1234,12 +1249,230 @@ describe('a retry beside a child that outlived the kill', () => {
     expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
     expect(sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
     expect(spawned, 'no second engine beside the one still there').toHaveLength(1)
+    // And the reset of its data, which it may still be writing into (issue 637).
+    expect(sidecar.inFlight).toBe(0)
+    expect(engineWorkRefusal(sidecar), 'the reset too').toBe(RESET_REFUSALS.stillStopping)
 
     spawned[0]!.exit()
+    expect(engineWorkRefusal(sidecar), 'the reset, once it has gone').toBeNull()
     expect(sidecar.retry()).toBeNull()
     expect(spawned).toHaveLength(2)
     spawned[1]!.exit()
     await sidecar.stop()
+  })
+})
+
+// A reset of the engine's data and a start of the engine (issue 637): an
+// engine started while the reset removes the home's folders writes into
+// them. The supervisor asks the reset's own question before a restart and a
+// retry, and the reset asks the supervisor whether an engine is on its way.
+// Stand-ins for `spawn` with no process id, so no group, and no Python: each
+// exits when the test says. Nothing waits on a real clock but the restart's
+// own short waits, which the tests wait out with `eventually` on what the
+// supervisor did, never with a fixed sleep.
+describe('an engine start and a reset of its data', () => {
+  const RESETTING = 'The engine data is being reset; wait for it to finish.'
+  const supervisors: Sidecar[] = []
+  afterEach(async () => {
+    for (const sidecar of supervisors.splice(0)) await sidecar.stop()
+  })
+
+  /** A supervisor whose reset is a variable the test sets, and which counts each time it is asked. */
+  function supervised(bounds: Partial<Bounds> = {}) {
+    const spawned: Fake[] = []
+    const log: string[] = []
+    const reset = { now: null as string | null, asked: 0 }
+    const sidecar = new Sidecar({
+      command: ['stand-in-interpreter', '-m', 'schematic.serve'],
+      env: {},
+      pin: PIN,
+      resetting: () => {
+        reset.asked += 1
+        return reset.now
+      },
+      log: (m) => log.push(m),
+      platform: 'linux',
+      // The handshake is never answered and never lapses here; one restart,
+      // then the give-up; a stop ends a child that does not exit quickly.
+      bounds: {
+        handshakeMs: 60_000,
+        shutdownMs: 20,
+        terminateMs: 20,
+        restartDelaysMs: [20],
+        resetPollMs: 10,
+        ...bounds,
+      },
+      spawn: (() => {
+        const fake = fakeChild()
+        spawned.push(fake)
+        return fake.child
+      }) as never,
+    })
+    supervisors.push(sidecar)
+    return { sidecar, spawned, log, reset }
+  }
+
+  /**
+   * The restart's timer armed. `failed()` reaches it through promise turns
+   * alone, with no engine to end and no group to wait for, so no timer -
+   * the restart's own included - can fire before this returns.
+   */
+  async function restartArmed(sidecar: Sidecar): Promise<void> {
+    for (let turn = 0; turn < 100 && !sidecar.restartArmed; turn++) await Promise.resolve()
+    expect(sidecar.restartArmed, 'the restart armed within its promise turns').toBe(true)
+  }
+
+  const waiting = (sidecar: Sidecar): boolean =>
+    sidecar.state.state === 'restarting' && sidecar.state.reason.startsWith(RESTART_WAITS_FOR_RESET)
+
+  it('starts no engine while the data is reset, and starts it once the reset has ended', async () => {
+    const { sidecar, spawned, log, reset } = supervised()
+    sidecar.start()
+    expect(spawned).toHaveLength(1)
+    // The engine fails, and a restart is armed.
+    spawned[0]!.exit()
+    const failure = 'The engine ended by signal SIGKILL.'
+    expect(sidecar.state).toEqual({ state: 'restarting', attempt: 2, reason: failure })
+    await restartArmed(sidecar)
+    // A reset begins, then the restart's wait is over.
+    reset.now = RESETTING
+    await eventually(() => waiting(sidecar), 5_000, 'the restart to wait for the reset')
+    // The wait first, then why the engine stopped, which is kept.
+    expect(sidecar.state).toEqual({
+      state: 'restarting',
+      attempt: 2,
+      reason: `${RESTART_WAITS_FOR_RESET} ${failure}`,
+    })
+    expect(describeState(sidecar.state)).toBe(
+      `The engine stopped; restarting (attempt 2). ${RESTART_WAITS_FOR_RESET} ${failure}`,
+    )
+    // It looks again, and again, and starts nothing while the reset runs.
+    const asked = reset.asked
+    await eventually(() => reset.asked >= asked + 3, 5_000, 'the restart to look again')
+    expect(spawned, 'no engine started under the reset').toHaveLength(1)
+    expect(sidecar.restartArmed).toBe(true)
+    expect(log).toContain(`the restart waits for the reset of the engine data to end: ${RESETTING}`)
+
+    reset.now = null
+    await eventually(() => spawned.length === 2, 5_000, 'the engine to start after the reset')
+    expect(sidecar.state).toEqual({ state: 'starting', attempt: 2 })
+    expect(log).toContain('the reset of the engine data has ended; restarting')
+    // Said once as the wait began, and not at each look.
+    expect(
+      log.filter((l) => l.startsWith('the restart waits for the reset')),
+      'one line for the wait',
+    ).toHaveLength(1)
+    spawned[1]!.exit()
+  })
+
+  // The wait is said again for a second reset: its record of the first ends
+  // with the launch, and a restart that met one reset meets the next as new.
+  it('says the wait again when a later restart meets a later reset', async () => {
+    // Two restarts before the give-up.
+    const { sidecar, spawned, log, reset } = supervised({ restartDelaysMs: [20, 20] })
+    sidecar.start()
+    for (const attempt of [2, 3]) {
+      spawned[attempt - 2]!.exit()
+      expect(sidecar.state).toMatchObject({ state: 'restarting', attempt })
+      await restartArmed(sidecar)
+      reset.now = RESETTING
+      await eventually(() => waiting(sidecar), 5_000, `wait ${attempt - 1} for a reset`)
+      expect(sidecar.state).toMatchObject({ state: 'restarting', attempt })
+      expect(spawned, 'nothing started under the reset').toHaveLength(attempt - 1)
+      reset.now = null
+      await eventually(() => spawned.length === attempt, 5_000, `start ${attempt} after it`)
+      expect(sidecar.state).toEqual({ state: 'starting', attempt })
+    }
+    expect(
+      log.filter((l) => l.startsWith('the restart waits for the reset')),
+      'one line for each wait',
+    ).toHaveLength(2)
+    expect(
+      log.filter((l) => l === 'the reset of the engine data has ended; restarting'),
+    ).toHaveLength(2)
+    spawned[2]!.exit()
+  })
+
+  it('leaves no timer and starts nothing once a stop comes during the wait', async () => {
+    const { sidecar, spawned, reset } = supervised()
+    sidecar.start()
+    spawned[0]!.exit()
+    await restartArmed(sidecar)
+    reset.now = RESETTING
+    await eventually(() => waiting(sidecar), 5_000, 'the restart to wait for the reset')
+    expect(sidecar.restartArmed).toBe(true)
+    const stopping = sidecar.stop()
+    // Cleared as the stop begins, before anything it awaits: with no timer
+    // there is nothing left to start an engine.
+    expect(sidecar.restartArmed, 'the wait’s timer, as the stop begins').toBe(false)
+    reset.now = null
+    await stopping
+    expect(sidecar.restartArmed).toBe(false)
+    expect(spawned, 'no engine started by the wait or the stop').toHaveLength(1)
+    expect(sidecar.state).toEqual({ state: 'stopped', reason: QUITTING_REASON, retryable: false })
+  })
+
+  it('refuses a retry while the engine data is being reset, with the reset’s sentence', () => {
+    // No restarts: the first failure is the give-up.
+    const { sidecar, spawned, reset } = supervised({ restartDelaysMs: [] })
+    sidecar.start()
+    spawned[0]!.exit()
+    expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+    reset.now = RESETTING
+    expect(sidecar.retry()).toBe(RESETTING)
+    expect(spawned, 'no engine started under the reset').toHaveLength(1)
+    expect(sidecar.state.state).toBe('stopped')
+
+    reset.now = null
+    expect(sidecar.retry()).toBeNull()
+    expect(spawned).toHaveLength(2)
+    spawned[1]!.exit()
+  })
+
+  it('has the reset refused while the engine is starting or restarting', () => {
+    // A restart that never comes due within the test.
+    const { sidecar, spawned } = supervised({ restartDelaysMs: [60_000] })
+    sidecar.start()
+    // The handshake is a request in flight; what is said is the start.
+    expect(sidecar.state).toEqual({ state: 'starting', attempt: 1 })
+    expect(sidecar.inFlight).toBe(1)
+    expect(engineWorkRefusal(sidecar), 'starting').toBe(RESET_REFUSALS.starting)
+    spawned[0]!.exit()
+    // Nothing in flight and nothing left running: only the state says it.
+    expect(sidecar.state.state).toBe('restarting')
+    expect(sidecar.inFlight).toBe(0)
+    expect(sidecar.stillEnding).toBe(false)
+    expect(engineWorkRefusal(sidecar), 'restarting').toBe(RESET_REFUSALS.starting)
+  })
+
+  // `failed()` says stopped as it gives up, then ends the engine it gave up
+  // on, which takes up to `shutdownMs` and two `terminateMs`; the client is
+  // gone by then, so nothing counts as in flight, and no group has exited.
+  it('has the reset refused, as a retry is, while the engine given up on is still being ended', async () => {
+    // The handshake lapses at once and the first failure is the give-up; the
+    // engine, which answers nothing, is asked to shut down for as long as
+    // the test needs, and exits when the test says.
+    const { sidecar, spawned } = supervised({
+      handshakeMs: 20,
+      shutdownMs: 60_000,
+      restartDelaysMs: [],
+    })
+    sidecar.start()
+    try {
+      await eventually(() => sidecar.state.state === 'stopped', 5_000, 'the give-up')
+      expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+      expect(sidecar.inFlight).toBe(0)
+      expect(sidecar.groupsBeingEnded).toBe(0)
+      expect(sidecar.stillEnding).toBe(true)
+      expect(engineWorkRefusal(sidecar), 'the reset').toBe(RESET_REFUSALS.stillStopping)
+      expect(sidecar.retry(), 'a retry').toBe(RETRY_REFUSALS.stillStopping)
+      expect(spawned, 'no engine beside the one being ended').toHaveLength(1)
+    } finally {
+      // Whatever failed above, no engine is left for the stop to wait out.
+      for (const fake of spawned) if (fake.child.signalCode === null) fake.exit()
+    }
+    await eventually(() => !sidecar.stillEnding, 5_000, 'the engine to have been ended')
+    expect(engineWorkRefusal(sidecar)).toBeNull()
   })
 })
 
@@ -1288,6 +1521,7 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
       command: ['stand-in-interpreter', '-m', 'schematic.serve'],
       env: {},
       pin: PIN,
+      resetting: () => null,
       log: (m) => log.push(m),
       platform: 'linux',
       bounds: { terminateMs: 1_000, restartDelaysMs: [], ...bounds },
@@ -1335,6 +1569,24 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
     // Only the supervisor signals it before the test is over: SIGTERM, or
     // SIGKILL on a machine too slow to deliver that within terminateMs.
     expect(['SIGTERM', 'SIGKILL']).toContain(left.signalCode)
+  })
+
+  // What is left in the group may still be writing into the home, so the
+  // reset of the engine's data waits for it as a retry does (issue 637).
+  it('has the reset refused while the group is being ended, and let through once it has been', async () => {
+    const left = await member()
+    const fake = fakeChild(left.pid)
+    const sidecar = supervisor([fake])
+    sidecar.start()
+    // Reported at once: the give-up, with the group still to be ended.
+    fake.exit()
+    expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+    expect(sidecar.inFlight).toBe(0)
+    expect(sidecar.groupsBeingEnded).toBe(1)
+    expect(engineWorkRefusal(sidecar)).toBe(RESET_REFUSALS.stillStopping)
+    await eventually(() => sidecar.groupsBeingEnded === 0, 10_000, 'the group to be ended')
+    expect(engineWorkRefusal(sidecar)).toBeNull()
+    expect(alive(left.pid as number)).toBe(false)
   })
 
   // An engine that outlived the last wait after SIGKILL (issue 562) can exit
@@ -1398,13 +1650,23 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
   )
 })
 
-describe('engineWorkRefusal (issue 107)', () => {
-  it('lets a reset through when the engine has nothing to do', () => {
-    expect(engineWorkRefusal({ inFlight: 0, abandoned: 0 })).toBeNull()
+describe('engineWorkRefusal (issues 107 and 637)', () => {
+  const READY: EngineState = { state: 'ready', version: '0.2.0', protocol: 1 }
+  const idle = { inFlight: 0, abandoned: 0, state: READY, stillEnding: false }
+
+  it('lets a reset through when the engine has nothing to do, up or down', () => {
+    expect(engineWorkRefusal(idle)).toBeNull()
+    for (const state of [
+      { state: 'stopped', reason: 'x.', retryable: true },
+      { state: 'unavailable', reason: 'x.', retryable: false },
+      { state: 'mismatched', expected: PIN, found: { version: '0.1.0', protocol: 1 } },
+    ] as EngineState[]) {
+      expect(engineWorkRefusal({ ...idle, state }), state.state).toBeNull()
+    }
   })
 
   it('asks to wait for a request the engine is answering', () => {
-    expect(engineWorkRefusal({ inFlight: 2, abandoned: 0 })).toBe(
+    expect(engineWorkRefusal({ ...idle, inFlight: 2 })).toBe(
       'The engine is answering a request; wait for it to finish.',
     )
   })
@@ -1412,8 +1674,38 @@ describe('engineWorkRefusal (issue 107)', () => {
   it('names the way out for a request the engine stopped answering, which may never end', () => {
     const said =
       'The engine has not finished a request it stopped answering. If it does not, quit and reopen Legible Cities.'
-    expect(engineWorkRefusal({ inFlight: 1, abandoned: 1 })).toBe(said)
-    expect(engineWorkRefusal({ inFlight: 3, abandoned: 1 })).toBe(said)
+    expect(engineWorkRefusal({ ...idle, inFlight: 1, abandoned: 1 })).toBe(said)
+    expect(engineWorkRefusal({ ...idle, inFlight: 3, abandoned: 1 })).toBe(said)
+    // Before an engine on its way: a quit is still the way out.
+    expect(
+      engineWorkRefusal({
+        ...idle,
+        inFlight: 1,
+        abandoned: 1,
+        state: { state: 'starting', attempt: 2 },
+      }),
+    ).toBe(said)
+  })
+
+  it('asks to wait for an engine on its way, before the handshake it is answering', () => {
+    // The words the renderer has for the same state (layoutRun, exportRun, feedAdd).
+    const said = 'The engine is still starting. Try again in a moment.'
+    expect(engineWorkRefusal({ ...idle, state: { state: 'starting', attempt: 1 } })).toBe(said)
+    expect(
+      engineWorkRefusal({ ...idle, inFlight: 1, state: { state: 'starting', attempt: 1 } }),
+    ).toBe(said)
+    expect(
+      engineWorkRefusal({ ...idle, state: { state: 'restarting', attempt: 2, reason: 'x.' } }),
+    ).toBe(said)
+  })
+
+  it('asks to wait while the engine, or what an exited engine left running, is being ended', () => {
+    const state: EngineState = { state: 'stopped', reason: 'x.', retryable: true }
+    expect(engineWorkRefusal({ ...idle, state, stillEnding: true })).toBe(
+      'The engine is still stopping. Try again in a moment.',
+    )
+    // The retry's own sentence, so the two doors agree.
+    expect(RESET_REFUSALS.stillStopping).toBe(RETRY_REFUSALS.stillStopping)
   })
 })
 
@@ -1481,6 +1773,7 @@ describe('stopping', () => {
           development: true,
         }),
         pin: PIN,
+        resetting: () => null,
         log: (m) => log.push(m),
         // Generous, because a stand-in that has not left by `shutdownMs` is
         // ended as a tree - `taskkill /T /F` on Windows, the process group on
