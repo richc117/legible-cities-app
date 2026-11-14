@@ -1261,7 +1261,6 @@ export async function redrawnCapture(
   const k = crop.scale
   const origin = k > 1 ? { x: (k * crop.x) / (k - 1), y: (k * crop.y) / (k - 1) } : { x: 0, y: 0 }
   const clockBefore = await dl(r.clock()).catch(() => null)
-  // Null where the drawing is back at its size; else what is wrong with it.
   // `left` is null where the drawing is back at its size, else what is
   // wrong with it; `found`, whether the test's marks were still on it.
   const putBack = async (): Promise<{ left: string | null; found: boolean }> => {
@@ -1473,7 +1472,12 @@ export async function askTwice<T>(ask: () => Promise<T>): Promise<T> {
   }
 }
 
-/** How long one call of an enlarged picture may take before it is given up as a note. */
+/**
+ * How long one call of an enlarged picture may take before it is given up.
+ * A put-back asked through `askTwice` can take two of these: a first call
+ * that fails other than by silence, and a second that then runs to its
+ * deadline.
+ */
 export const ENLARGED_DEADLINE_MS = 30_000
 const SILENT = `the enlarged capture did not answer in ${ENLARGED_DEADLINE_MS / 1000} s`
 

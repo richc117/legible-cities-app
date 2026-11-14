@@ -438,5 +438,13 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "asks a put-back that failed once again",
     "why": "A put-back made as a redraw navigated the frame would fail once and be taken as silence: a pair refused as a problem, on dozens of pairs, for nothing."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (error instanceof DeadlinePassed) throw error\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says a drawing could not be confirmed put back where the frame did not answer",
+    "why": "A frame that did not answer would be asked again, doubling the wait on a silent window, where only a failure other than silence is worth a second ask."
   }
 ]

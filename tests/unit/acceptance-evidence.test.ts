@@ -896,6 +896,8 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     expect((error as Error).message).toBe(
       "the page's drawing could not be confirmed put back (the map’s frame did not answer)",
     )
+    // Silence is not asked again: one put-back, one deadline.
+    expect(w.calls.filter((c) => c === 'frame restoreSvg').length).toBe(1)
   })
 
   it('refuses a picture of a page drawn anew while its drawing was scaled', async () => {
