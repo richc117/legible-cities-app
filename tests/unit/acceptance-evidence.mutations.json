@@ -294,5 +294,37 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "rejects with its sentence once a call that never answers runs out of time",
     "why": "A capture an occluded window never answers would stall the run to its own timeout instead of becoming a note."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "protocol.send('Emulation.clearDeviceMetricsOverride')",
+    "replace": "Promise.resolve()",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "clears the override when the capture fails",
+    "why": "The interface window would be left drawn at seven times its scale for the rest of the run, and every later picture and step with it."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (!sameBox(before, during))\n",
+    "replace": "    if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "clears the override when the capture fails, and refuses a frame that moved",
+    "why": "A layout that moved under the higher scale would be captured and kept as if it were the same part of the map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "width: clip.width, height: clip.height, scale: 1 },",
+    "replace": "width: clip.width, height: clip.height, scale: clip.scale },",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "overrides the device scale, captures at a scale of 1",
+    "why": "The scale would be applied twice, once by the device scale and again by the clip: a picture 49 times the area, enlarged past what was drawn."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "        deviceScaleFactor: clip.scale,\n",
+    "replace": "        deviceScaleFactor: 1,\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "overrides the device scale, captures at a scale of 1",
+    "why": "The window would not be drawn again at the higher scale, and the picture would be the one the window already has, no larger."
   }
 ]

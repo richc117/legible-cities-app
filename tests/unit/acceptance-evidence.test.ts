@@ -28,6 +28,7 @@ import {
   judgeMovement,
   judgeTypeface,
   pixelsOfColour,
+  redrawnCapture,
   sampleTimes,
   stepResult,
   thresholdFor,
@@ -36,6 +37,7 @@ import {
   type Clip,
   type Enlarger,
   type Pair,
+  type Protocol,
   type Rgb,
   type Shootable,
 } from '../acceptance/evidence'
@@ -709,6 +711,80 @@ describe('a call given a deadline', () => {
     await expect(
       withDeadline(never, 20, 'the enlarged capture did not answer in 30 s'),
     ).rejects.toThrow('the enlarged capture did not answer in 30 s')
+  })
+})
+
+describe('an enlarged picture drawn again at a higher scale', () => {
+  const clip: Clip = { x: 120, y: 480, width: 137, height: 77, scale: 7 }
+  const box: Box = { x: 20, y: 400, width: 740, height: 315 }
+
+  /** A protocol that records its calls, and answers each as `answer` says. */
+  function protocolOf(answer: (method: string) => Promise<unknown> = async () => undefined) {
+    const calls: [string, Record<string, unknown> | undefined][] = []
+    const protocol: Protocol = {
+      send: (method, params) => {
+        calls.push([method, params])
+        if (method === 'Page.captureScreenshot')
+          return answer(method).then((a) => a ?? { data: 'AAEC' })
+        return answer(method)
+      },
+    }
+    return { protocol, calls, methods: () => calls.map(([m]) => m) }
+  }
+  const still = { frame: async () => box, repaint: async () => undefined }
+
+  it('overrides the device scale, captures at a scale of 1 and clears the override', async () => {
+    const { protocol, calls, methods } = protocolOf(async (m) =>
+      m === 'Page.captureScreenshot' ? { data: 'AAEC' } : {},
+    )
+    const png = await redrawnCapture(protocol, clip, still)
+    expect([...png]).toEqual([0, 1, 2])
+    expect(methods()).toEqual([
+      'Emulation.setDeviceMetricsOverride',
+      'Page.captureScreenshot',
+      'Emulation.clearDeviceMetricsOverride',
+    ])
+    expect(calls[0][1]).toEqual({ width: 0, height: 0, deviceScaleFactor: 7, mobile: false })
+    expect(calls[1][1]?.clip).toEqual({ x: 120, y: 480, width: 137, height: 77, scale: 1 })
+  })
+
+  it('clears the override when the capture fails, and refuses a frame that moved', async () => {
+    const failing = protocolOf(async (m) => {
+      if (m === 'Page.captureScreenshot') throw new Error('target closed')
+      return {}
+    })
+    await expect(redrawnCapture(failing.protocol, clip, still)).rejects.toThrow('target closed')
+    expect(failing.methods().at(-1)).toBe('Emulation.clearDeviceMetricsOverride')
+
+    let reads = 0
+    const moving = protocolOf()
+    const moved = {
+      frame: async () => ({ ...box, y: box.y + (reads++ === 1 ? 3 : 0) }),
+      repaint: async () => undefined,
+    }
+    await expect(redrawnCapture(moving.protocol, clip, moved)).rejects.toThrow(
+      /frame moved at the higher scale/,
+    )
+    expect(moving.methods()).not.toContain('Page.captureScreenshot')
+    expect(moving.methods().at(-1)).toBe('Emulation.clearDeviceMetricsOverride')
+
+    reads = 0
+    const after = protocolOf()
+    const notBack = {
+      frame: async () => ({ ...box, width: box.width + (reads++ === 2 ? 4 : 0) }),
+      repaint: async () => undefined,
+    }
+    await expect(redrawnCapture(after.protocol, clip, notBack)).rejects.toThrow(/did not come back/)
+  })
+
+  it('gives up on a call that never answers, and still clears the override', async () => {
+    const silent = protocolOf((m) =>
+      m === 'Page.captureScreenshot' ? new Promise(() => undefined) : Promise.resolve({}),
+    )
+    await expect(redrawnCapture(silent.protocol, clip, still, 20)).rejects.toThrow(
+      'the enlarged capture did not answer in 0.02 s',
+    )
+    expect(silent.methods().at(-1)).toBe('Emulation.clearDeviceMetricsOverride')
   })
 })
 

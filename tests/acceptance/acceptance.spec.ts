@@ -98,6 +98,7 @@ import {
   mapEnlarger,
   measureLabel,
   pauseAndRead,
+  readDraws,
   sampleTimes,
   type Check,
   type EntryInit,
@@ -2662,21 +2663,53 @@ test('a release, installed, through docs/acceptance.md', async () => {
           /^your colour, #[0-9a-f]{6}; the feed(’s is #[0-9a-f]{6}| has none)$/,
         ),
       )
-      await until(
-        async () => ((await recordOf(window, LA)).colors[line] !== undefined ? true : undefined),
+      // Each drag's release is a pick of its own, written and drawn in
+      // turn: the square's first (line A's own hue at full saturation and
+      // brightness), then the hue's. So the colour the line ended at is the
+      // one the row says, "your colour, #rrggbb", once it holds still across
+      // two reads and the project holds it too; read any sooner it can be
+      // the square's, which the map no longer draws. (Until issue 728 the
+      // square was let go at a brightness of 0, black whatever the hue, so
+      // both picks were #000000 and an early read was right by chance.)
+      const landed = await until(
+        (() => {
+          let last = ''
+          return async (): Promise<string | undefined> => {
+            const said = (
+              /^your colour, (#[0-9a-f]{6});/i.exec(await text(source))?.[1] ?? ''
+            ).toLowerCase()
+            const stored = ((await recordOf(window, LA)).colors[line] ?? '').toLowerCase()
+            const agreed = said !== '' && said === stored ? said : ''
+            const held = agreed !== '' && agreed === last
+            last = agreed
+            return held ? agreed : undefined
+          }
+        })(),
         REBUILD_MS,
-        () => 'the dragged colour was never written to the project',
+        async () =>
+          `the row and the project never agreed on one colour for line ${line}: the row says "${await text(source)}", the project ${(await recordOf(window, LA)).colors[line] ?? 'nothing'}`,
       )
-      log.note(`The drag left line ${line} at ${(await recordOf(window, LA)).colors[line]}.`)
+      log.note(`The drag left line ${line} at ${landed}.`)
+      // The map draws each pick in turn: the picture after is taken once
+      // its draw count has held still a moment (the map is paused), so it
+      // is of the last pick and not the one before. Never a failure.
+      await (async () => {
+        const end = Date.now() + SHORT_MS
+        let last = await readDraws(window)
+        while (Date.now() < end) {
+          await sleep(1_500)
+          const now = await readDraws(window)
+          if (now === last) return
+          last = now
+        }
+      })()
       await log.soft('the redraw sentence', async () => {
         const said = (await saidSoFar(window)).slice(mark)
         expect(said).toContain(
           'Drawn in the colours you chose, from the stored layout. The stations have not moved.',
         )
       })
-      await evAfter(log, '9-colour', {
-        colour: async () => (await recordOf(window, LA)).colors[line] as string,
-      })
+      await evAfter(log, '9-colour', { colour: async () => landed })
       await viewsAfter(log, {
         id: '9-colour-chip',
         step: 9,

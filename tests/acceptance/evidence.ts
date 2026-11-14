@@ -1018,28 +1018,37 @@ export function enlarged(enlarger: Enlarger, options: { whole?: boolean } = {}):
  * The map's frame, enlarged, in the window `window`: its box read from the
  * interface's side, the named labels read inside it (`#linear-labels text`,
  * the copies the page draws, as `measureLabel` reads them), and the picture
- * taken through the DevTools protocol's `Page.captureScreenshot`, whose clip
- * draws the part again at the scale asked for. Playwright's own screenshot
- * takes the same path at the scale of 1 or the device's; nothing here
- * touches the export's capture (`src/main/capture.ts`).
+ * taken by `redrawnCapture`, which has the window drawn again at a higher
+ * device scale for the moment of the shot. Nothing here touches the
+ * export's capture (`src/main/capture.ts`).
  */
 export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
   const element = window.locator('iframe.viewer-frame')
-  let ratio: number | null = null
+  const frame = async (): Promise<Box | null> => {
+    await element.scrollIntoViewIfNeeded()
+    return element.evaluate((node) => {
+      const box = node.getBoundingClientRect()
+      const view = node.ownerDocument.defaultView as Window
+      return {
+        x: box.left + node.clientLeft + view.scrollX,
+        y: box.top + node.clientTop + view.scrollY,
+        width: node.clientWidth,
+        height: node.clientHeight,
+      }
+    })
+  }
+  const twoFrames = (): Promise<void> =>
+    new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))
+  // Two animation frames in the interface and two in the page, then a
+  // moment: the page is SVG, which Chromium rasterises again at the new
+  // scale on its next paint.
+  const repaint = async (): Promise<void> => {
+    await window.evaluate(twoFrames)
+    await window.frameLocator('iframe.viewer-frame').locator('html').evaluate(twoFrames)
+    await sleep(250)
+  }
   return {
-    async frame() {
-      await element.scrollIntoViewIfNeeded()
-      return element.evaluate((frame) => {
-        const box = frame.getBoundingClientRect()
-        const view = frame.ownerDocument.defaultView as Window
-        return {
-          x: box.left + frame.clientLeft + view.scrollX,
-          y: box.top + frame.clientTop + view.scrollY,
-          width: frame.clientWidth,
-          height: frame.clientHeight,
-        }
-      })
-    },
+    frame,
     async marks() {
       return window
         .frameLocator('iframe.viewer-frame')
@@ -1069,34 +1078,19 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
         .catch(() => ({ boxes: [], em: null, found: [] }))
     },
     async capture(clip) {
-      // The protocol draws the clip at its scale times the device's pixel
-      // ratio, and the scale here is in CSS pixels: so it is divided by the
-      // ratio, read once, and a name stands as tall on a Retina screen.
-      if (ratio === null) {
-        const read = await withDeadline(
-          window.evaluate(() => globalThis.devicePixelRatio),
-          ENLARGED_DEADLINE_MS,
-          SILENT,
-        ).catch(() => 1)
-        ratio = typeof read === 'number' && read > 0 ? read : 1
-      }
-      // An occluded window can leave either call unanswered: each is raced
+      // An occluded window can leave a call unanswered: each is raced
       // against a deadline, so a picture that cannot be taken is a note in
       // a moment and never a run stalled to its own timeout.
       const opening = window.context().newCDPSession(window)
       let cdp: Awaited<typeof opening> | null = null
       try {
         cdp = await withDeadline(opening, ENLARGED_DEADLINE_MS, SILENT)
-        const { data } = await withDeadline(
-          cdp.send('Page.captureScreenshot', {
-            format: 'png',
-            clip: { ...clip, scale: clip.scale / ratio },
-            captureBeyondViewport: false,
-          }),
-          ENLARGED_DEADLINE_MS,
-          SILENT,
-        )
-        return Buffer.from(data, 'base64')
+        const session = cdp
+        const protocol: Protocol = {
+          send: (method, params) =>
+            (session.send as unknown as Protocol['send']).call(session, method, params),
+        }
+        return await redrawnCapture(protocol, clip, { frame, repaint })
       } finally {
         if (cdp !== null)
           await withDeadline(cdp.detach(), ENLARGED_DEADLINE_MS, SILENT).catch(() => undefined)
@@ -1104,6 +1098,84 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
       }
     },
   }
+}
+
+/** The DevTools protocol, as far as an enlarged picture uses it. */
+export interface Protocol {
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>
+}
+
+/** Two boxes the same to half a CSS pixel (a layout at another scale may round differently). */
+export function sameBox(a: Box | null, b: Box | null): boolean {
+  if (a === null || b === null) return false
+  return (['x', 'y', 'width', 'height'] as const).every((k) => Math.abs(a[k] - b[k]) <= 0.5)
+}
+
+const boxSaid = (b: Box | null): string =>
+  b === null ? 'no box' : `${b.x},${b.y} ${b.width}x${b.height}`
+
+/**
+ * `clip` drawn again at `clip.scale`, not the bitmap already drawn made
+ * larger. `Page.captureScreenshot` with a scaled clip only enlarges what the
+ * window has painted, which smears a three-pixel name; so the window's
+ * device scale is overridden for the moment of the shot
+ * (`Emulation.setDeviceMetricsOverride`, with a width and height of 0, which
+ * leave the window's own size alone, and `mobile` off), the page is let
+ * repaint, the clip is captured at a scale of 1 (the protocol multiplies it
+ * by the device scale), and the override is cleared, whatever happened. The
+ * map's frame is read before, during and after: a frame that moved means the
+ * layout changed, and the picture is refused, never kept. Every call is
+ * raced against `deadline`.
+ */
+export async function redrawnCapture(
+  protocol: Protocol,
+  clip: Clip,
+  hooks: { frame: () => Promise<Box | null>; repaint: () => Promise<void> },
+  deadline = ENLARGED_DEADLINE_MS,
+): Promise<Buffer> {
+  const said = `the enlarged capture did not answer in ${deadline / 1000} s`
+  const before = await withDeadline(hooks.frame(), deadline, said)
+  let data: string
+  try {
+    await withDeadline(
+      protocol.send('Emulation.setDeviceMetricsOverride', {
+        width: 0,
+        height: 0,
+        deviceScaleFactor: clip.scale,
+        mobile: false,
+      }),
+      deadline,
+      said,
+    )
+    await withDeadline(hooks.repaint(), deadline, said)
+    const during = await withDeadline(hooks.frame(), deadline, said)
+    if (!sameBox(before, during))
+      throw new Error(
+        `the map’s frame moved at the higher scale: ${boxSaid(before)}, then ${boxSaid(during)}`,
+      )
+    const answer = (await withDeadline(
+      protocol.send('Page.captureScreenshot', {
+        format: 'png',
+        clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height, scale: 1 },
+        captureBeyondViewport: false,
+      }),
+      deadline,
+      said,
+    )) as { data?: unknown } | undefined
+    if (typeof answer?.data !== 'string') throw new Error('the capture gave no picture')
+    data = answer.data
+  } finally {
+    await withDeadline(protocol.send('Emulation.clearDeviceMetricsOverride'), deadline, said).catch(
+      () => undefined,
+    )
+  }
+  await withDeadline(hooks.repaint(), deadline, said).catch(() => undefined)
+  const after = await withDeadline(hooks.frame(), deadline, said)
+  if (!sameBox(before, after))
+    throw new Error(
+      `the map’s frame did not come back after the higher scale: ${boxSaid(before)}, then ${boxSaid(after)}`,
+    )
+  return Buffer.from(data, 'base64')
 }
 
 /** How long one call of an enlarged picture may take before it is given up as a note. */
