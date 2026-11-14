@@ -224,7 +224,8 @@ export const SAMPLES_AWAY =
 
 /**
  * What follows the engine's reason when it is not coming back by itself
- * (unavailable, mismatched, or stopped after failing too often): no promise
+ * (unavailable, mismatched, stopped after failing too often, or stopped
+ * beside an engine still stopping, issue 673): no promise
  * of a wait, and where to go if it keeps happening (issue 547). The reason
  * comes first, in full, since the status line cuts a long one short, and a
  * packaged app's reason leads with its own next step. Copy diagnostics is
