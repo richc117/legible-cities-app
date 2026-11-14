@@ -118,22 +118,32 @@ test('within a cell every field value starts at one x, and every heading keeps o
   })
 })
 
-test('cell 02 does not move when a run starts', async () => {
-  test.setTimeout(180_000)
-  // Slow enough that the run is still on the screen when it is measured.
-  await withApp(profile({ progress_delay_ms: 400 }), async (page) => {
-    await newProjectFromLibrary(page, 'Los Angeles')
-    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
-    const before = await read(page, '02')
-    expect(before.edges.length).toBeGreaterThan(0)
-    await page.getByRole('button', { name: 'Lay out', exact: true }).click()
-    await expect(page.getByRole('region', { name: 'Layout run' })).toBeVisible()
-    const during = await read(page, '02')
-    for (const r of [before, during]) {
-      const off = r.edges.filter((e) => Math.abs(e.left - r.bodyLeft) > 1)
-      expect(off, `cell 02 at ${r.bodyLeft}`).toEqual([])
-    }
-    expect(Math.abs(during.bodyLeft - before.bodyLeft)).toBeLessThanOrEqual(1)
-    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-  })
-})
+test(
+  'cell 02 does not move when a run starts',
+  {
+    tag: '@quarantine',
+    annotation: {
+      type: 'issue',
+      description: 'https://github.com/richc117/legible-cities-app/issues/678',
+    },
+  },
+  async () => {
+    test.setTimeout(180_000)
+    // Slow enough that the run is still on the screen when it is measured.
+    await withApp(profile({ progress_delay_ms: 400 }), async (page) => {
+      await newProjectFromLibrary(page, 'Los Angeles')
+      await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+      const before = await read(page, '02')
+      expect(before.edges.length).toBeGreaterThan(0)
+      await page.getByRole('button', { name: 'Lay out', exact: true }).click()
+      await expect(page.getByRole('region', { name: 'Layout run' })).toBeVisible()
+      const during = await read(page, '02')
+      for (const r of [before, during]) {
+        const off = r.edges.filter((e) => Math.abs(e.left - r.bodyLeft) > 1)
+        expect(off, `cell 02 at ${r.bodyLeft}`).toEqual([])
+      }
+      expect(Math.abs(during.bodyLeft - before.bodyLeft)).toBeLessThanOrEqual(1)
+      await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+    })
+  },
+)
