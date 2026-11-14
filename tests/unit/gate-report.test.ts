@@ -126,6 +126,8 @@ describe('the gate report', () => {
     const text = page({ records: new Map([['darwin-arm64', record(STEPS, evidence)]]) })
     expect(text).toContain('Verdicts: 1 looks right, 1 looks wrong, 1 cannot tell, 1 not recorded.')
     expect(text).toContain('darwin-arm64 evidence b: looks wrong')
+    const notRecorded = text.slice(text.indexOf('### Not recorded'))
+    expect(notRecorded).toContain('- 1 visual evidence verdicts')
   })
 
   it('names a failed job of the build', () => {
@@ -377,11 +379,16 @@ describe('the gate report', () => {
         { name: 'reader (VoiceOver, darwin-arm64)', conclusion: 'success', url: '' },
       ],
     })
-    const text = page({ acceptance, artefacts: ['acceptance-darwin-arm64'] })
+    const text = page({
+      acceptance,
+      artefacts: ['acceptance-darwin-arm64', 'acceptance-evidence-darwin-arm64'],
+    })
     const notRecorded = text.slice(text.indexOf('### Not recorded'))
     expect(notRecorded).toContain("- the scripted VoiceOver run's transcript")
-    expect(notRecorded).toContain('- the visual evidence artefacts')
-    expect(notRecorded).toContain("- the visual evidence's key")
+    expect(notRecorded).toContain('- win-x64 visual evidence\n')
+    expect(notRecorded).not.toContain('- darwin-arm64 visual evidence\n')
+    expect(notRecorded).toContain('- darwin-arm64 visual evidence key')
+    expect(notRecorded).toContain('- win-x64 visual evidence key')
     expect(notRecorded).not.toContain('Nothing above reads not recorded.')
   })
 

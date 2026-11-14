@@ -201,18 +201,26 @@
   },
   {
     "file": "scripts/gate-report.mjs",
-    "find": "  if (kept.length === 0) missing.push('the visual evidence artefacts')\n",
+    "find": "    if (!kept.includes(t)) missing.push(`${t} visual evidence`)\n",
     "replace": "",
     "test": "tests/unit/gate-report.test.ts",
     "title": "names a missing transcript, evidence or key under Not recorded",
-    "why": "A run that kept no visual evidence, closed out as if every part had a record."
+    "why": "A system that kept no visual evidence, closed out as if every part had a record."
   },
   {
     "file": "scripts/gate-report.mjs",
-    "find": "  if (!keyKept) missing.push(\"the visual evidence's key\")\n",
+    "find": "    if (!keyKept.includes(t)) missing.push(`${t} visual evidence key`)\n",
     "replace": "",
     "test": "tests/unit/gate-report.test.ts",
     "title": "names a missing transcript, evidence or key under Not recorded",
-    "why": "A run that kept no control-pair key, closed out as if every part had a record."
+    "why": "A system that kept no control-pair key, closed out as if every part had a record."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (unread > 0) missing.push(`${unread} visual evidence verdicts`)\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "keeps the visual review to its three verdicts and counts a blank one as not recorded",
+    "why": "Blank verdicts counted on the page but left out of Not recorded."
   }
 ]

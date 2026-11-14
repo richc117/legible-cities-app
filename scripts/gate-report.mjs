@@ -393,11 +393,15 @@ export function renderReport(model) {
   for (const target of targets)
     for (const row of records.get(target)?.evidence ?? []) rows.push([target, row])
   const kept = targets.filter((t) => artefacts.includes(`acceptance-evidence-${t}`))
-  const keyKept = targets.some((t) => artefacts.includes(`acceptance-evidence-key-${t}`))
-  if (kept.length === 0) missing.push('the visual evidence artefacts')
-  if (!keyKept) missing.push("the visual evidence's key")
+  const keyKept = targets.filter((t) => artefacts.includes(`acceptance-evidence-key-${t}`))
+  for (const t of targets) {
+    if (!kept.includes(t)) missing.push(`${t} visual evidence`)
+    if (!keyKept.includes(t)) missing.push(`${t} visual evidence key`)
+  }
+  const listed = (names, prefix) =>
+    names.length === 0 ? 'not recorded' : names.map((t) => `\`${prefix}${t}\``).join(', ')
   line(
-    `Evidence artefacts kept: ${kept.length === 0 ? 'not recorded' : kept.map((t) => `\`acceptance-evidence-${t}\``).join(', ')}. Key artefacts kept: ${keyKept ? 'yes' : 'not recorded'}.`,
+    `Evidence artefacts kept: ${listed(kept, 'acceptance-evidence-')}. Key artefacts kept: ${listed(keyKept, 'acceptance-evidence-key-')}.`,
   )
   if (links.review !== undefined) line(`The review's record: ${links.review}`)
   if (rows.length === 0) {
@@ -409,9 +413,9 @@ export function renderReport(model) {
     )
   } else {
     const count = (v) => rows.filter(([, r]) => r.verdict === v).length
-    line(
-      `Verdicts: ${VERDICTS.map((v) => `${count(v)} ${v}`).join(', ')}, ${rows.filter(([, r]) => r.verdict === null).length} not recorded.`,
-    )
+    const unread = count(null)
+    if (unread > 0) missing.push(`${unread} visual evidence verdicts`)
+    line(`Verdicts: ${VERDICTS.map((v) => `${count(v)} ${v}`).join(', ')}, ${unread} not recorded.`)
     for (const [target, row] of rows) {
       if (row.verdict === 'looks wrong') {
         failures.push(`${target} evidence ${row.entry}: looks wrong; ${ISSUES(row.visible)}`)
