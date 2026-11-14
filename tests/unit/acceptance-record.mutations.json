@@ -112,9 +112,9 @@
     "why": "A link from the sitting to a heading that is not there: GitHub opens the top of the page and the person is left to find the section."
   },
   {
-    "file": "docs/acceptance.md",
-    "find": "## The steps\n",
-    "replace": "## The reviewer's protocol\n\n## The steps\n",
+    "file": "tests/unit/acceptance-record.test.ts",
+    "find": "  const PENDING = new Set<string>([])\n",
+    "replace": "  const PENDING = new Set<string>(['acceptance.md#the-reviewers-protocol'])\n",
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "has no pending heading that has landed",
     "why": "A heading allowed to be missing has landed and its entry stays: a later rename of it would break the links to it unseen."

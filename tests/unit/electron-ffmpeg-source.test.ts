@@ -691,6 +691,99 @@ describe('the electron-ffmpeg-source job, for the cache', () => {
 // macOS runs the script with its own /bin/bash, which is 3.2: a construct a
 // newer bash parses (a bare case pattern inside $( ... )) is a syntax error
 // there, and every --verify on a Mac runner exits 2 before it reads a file.
+// The same rule read from the text, so it holds on a system whose bash is
+// newer and would parse the bare pattern: the mutation job runs on Ubuntu.
+describe('the script, as bash 3.2 reads it', () => {
+  // The case patterns that sit inside a $( ... ) spanning lines, and those
+  // among them that do not open with "(".
+  function casesInSubstitutions(text: string): { found: number; bare: string[] } {
+    const bare: string[] = []
+    let found = 0
+    let inside = false
+    let inCase = false
+    // A pattern stands first in a case's body and after each ";;"; any other
+    // line of the body is a command, whatever parentheses it holds.
+    let expectPattern = false
+    // A here-document's lines are its text, not the shell's, until its word.
+    let hereWord: string | null = null
+    for (const [index, line] of text.split('\n').entries()) {
+      if (hereWord !== null) {
+        if (line === hereWord) hereWord = null
+        continue
+      }
+      let code = line.replace(/^\s*#.*$/, '')
+      const here = /<<-?\s*'?(\w+)'?\s*$/.exec(code)
+      if (here) hereWord = here[1] ?? null
+      if (!inside) {
+        const opened = code.lastIndexOf('$(')
+        if (opened === -1 || code.slice(opened).includes(')')) continue
+        inside = true
+        code = code.slice(opened + 2)
+      } else if (/^\s*\)/.test(code) || /^\s*(done|esac)\b.*\)\s*$/.test(code)) {
+        inside = false
+        inCase = false
+        continue
+      }
+      const head = /\bcase\s+\S+\s+in\b(.*)$/.exec(code)
+      const patterns: string[] = []
+      if (head) {
+        const rest = (head[1] ?? '').trim()
+        inCase = !/\besac\b/.test(rest)
+        if (rest !== '') patterns.push(rest)
+        expectPattern = rest === '' || /;;\s*$/.test(rest)
+      } else if (inCase) {
+        if (/^\s*esac\b/.test(code)) inCase = false
+        else if (expectPattern && code.trim() !== '') {
+          patterns.push(code.trim())
+          expectPattern = /;;\s*$/.test(code)
+        } else if (/;;\s*$/.test(code)) expectPattern = true
+      }
+      for (const pattern of patterns) {
+        found += 1
+        if (!pattern.startsWith('(')) bare.push(`line ${index + 1}: ${pattern}`)
+      }
+    }
+    return { found, bare }
+  }
+
+  it('opens every case pattern inside a $( ... ) with "("', () => {
+    const { found, bare } = casesInSubstitutions(readFileSync(SCRIPT, 'utf8'))
+    expect(
+      found,
+      'the script has a case inside a command substitution (if it no longer does, this test and its mutation entry go)',
+    ).toBeGreaterThan(0)
+    expect(bare, "bash 3.2 ends the $( ... ) at these patterns' bare )").toEqual([])
+  })
+
+  it('finds a bare pattern on the case line and on the lines after it, and nothing else', () => {
+    const sample = [
+      'a=$(while read -r k; do',
+      '  case $k in x/*) echo "$k" ;; esac',
+      '  case $k in',
+      '    y) echo y ;;',
+      '    (z) echo z ;;',
+      '    (v)',
+      '      echo "$(basename "$k")" ;;',
+      '  esac',
+      'done <<< "$keys")',
+      'case $k in w) ;; esac',
+      '# a comment: b=$(case $k in u) ;; esac',
+      "c=$(python3 - <<'PY'",
+      'print("case x in y) z")',
+      'PY',
+      ')',
+      'd=$(case $k in',
+      '  (t) echo t ;;',
+      'esac)',
+      'case $k in s) ;; esac',
+    ].join('\n')
+    expect(casesInSubstitutions(sample)).toEqual({
+      found: 5,
+      bare: ['line 2: x/*) echo "$k" ;; esac', 'line 4: y) echo y ;;'],
+    })
+  })
+})
+
 describe.skipIf(!existsSync('/bin/bash'))('the script, under /bin/bash', () => {
   it('parses under the system bash, whatever its version', () => {
     const r = spawnSync('/bin/bash', ['-n', SCRIPT], { encoding: 'utf8', timeout: 10_000 })
