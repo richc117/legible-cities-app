@@ -935,6 +935,10 @@ describe("the acceptance specs' imports, as Playwright loads them", () => {
     const env = { ...process.env }
     delete env.LEGIBLE_ACCEPTANCE_APP
     delete env.LEGIBLE_UPGRADE_APP
+    // On a CI runner the spec refuses to run with no app named (it has lost
+    // its install step); here no app is the point, so this listing is not CI's.
+    delete env.CI
+    delete env.GITHUB_ACTIONS
     const listed = spawnSync(
       process.execPath,
       [
