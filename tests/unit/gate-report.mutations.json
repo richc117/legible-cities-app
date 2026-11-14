@@ -190,5 +190,29 @@
     "test": "tests/unit/gate-report.test.ts",
     "title": "only mentions an issue number in a failure's notes, never takes it as the failure's",
     "why": "An issue number from a spec sentence in the notes shown as the failure's own issue."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    if (!transcript) missing.push(\"the scripted VoiceOver run's transcript\")\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names a missing transcript, evidence or key under Not recorded",
+    "why": "A reader job with no transcript kept, closed out as if every part had a record."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (kept.length === 0) missing.push('the visual evidence artefacts')\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names a missing transcript, evidence or key under Not recorded",
+    "why": "A run that kept no visual evidence, closed out as if every part had a record."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  if (!keyKept) missing.push(\"the visual evidence's key\")\n",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names a missing transcript, evidence or key under Not recorded",
+    "why": "A run that kept no control-pair key, closed out as if every part had a record."
   }
 ]

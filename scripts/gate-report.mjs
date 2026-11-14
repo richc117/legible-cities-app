@@ -375,6 +375,8 @@ export function renderReport(model) {
       'Not recorded: this run has no reader job, so the sitting walks the VoiceOver rows by ear (docs/releasing.md).',
     )
   } else {
+    if (reader === undefined) missing.push('the reader job')
+    if (!transcript) missing.push("the scripted VoiceOver run's transcript")
     line(
       `Job: ${reader === undefined ? 'not recorded' : `${jobLink(reader)}, ${reader.conclusion}`}. Transcript artefact: ${transcript ? 'kept (`reader-darwin-arm64`)' : 'not recorded'}.`,
     )
@@ -391,8 +393,11 @@ export function renderReport(model) {
   for (const target of targets)
     for (const row of records.get(target)?.evidence ?? []) rows.push([target, row])
   const kept = targets.filter((t) => artefacts.includes(`acceptance-evidence-${t}`))
+  const keyKept = targets.some((t) => artefacts.includes(`acceptance-evidence-key-${t}`))
+  if (kept.length === 0) missing.push('the visual evidence artefacts')
+  if (!keyKept) missing.push("the visual evidence's key")
   line(
-    `Evidence artefacts kept: ${kept.length === 0 ? 'not recorded' : kept.map((t) => `\`acceptance-evidence-${t}\``).join(', ')}. Key artefacts kept: ${targets.some((t) => artefacts.includes(`acceptance-evidence-key-${t}`)) ? 'yes' : 'not recorded'}.`,
+    `Evidence artefacts kept: ${kept.length === 0 ? 'not recorded' : kept.map((t) => `\`acceptance-evidence-${t}\``).join(', ')}. Key artefacts kept: ${keyKept ? 'yes' : 'not recorded'}.`,
   )
   if (links.review !== undefined) line(`The review's record: ${links.review}`)
   if (rows.length === 0) {
@@ -445,7 +450,7 @@ export function renderReport(model) {
 
   line('### Not recorded')
   line()
-  if (missing.length === 0) line('Every part above has a record.')
+  if (missing.length === 0) line('Nothing above reads not recorded.')
   for (const part of missing) line(`- ${part}`)
   line()
   return redact(out.join('\n'))

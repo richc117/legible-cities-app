@@ -317,7 +317,7 @@ describe('the gate report', () => {
     expect(tail).toContain("- the visual review's verdicts")
     expect(tail).toContain('- the sitting')
     expect(tail).toContain('- win-x64 record')
-    expect(tail).not.toContain('Every part above has a record.')
+    expect(tail).not.toContain('Nothing above reads not recorded.')
     const linked = page({
       links: {
         sitting: 'https://github.com/richc117/legible-cities-app/issues/3',
@@ -327,7 +327,7 @@ describe('the gate report', () => {
     expect(linked.slice(linked.indexOf('### Not recorded'))).not.toContain('the sitting')
   })
 
-  it('says every part has a record when none is missing', () => {
+  it('says nothing reads not recorded when no part is missing', () => {
     const acceptance = run('22', {
       workflowName: 'acceptance',
       jobs: [
@@ -354,8 +354,35 @@ describe('the gate report', () => {
       sitting: 'https://github.com/richc117/legible-cities-app/issues/3',
       review: 'https://github.com/richc117/legible-cities-app/issues/5',
     }
-    const text = page({ acceptance, build, records, links })
-    expect(text).toContain('Every part above has a record.')
+    const artefacts = [
+      'acceptance-darwin-arm64',
+      'acceptance-win-x64',
+      'reader-darwin-arm64',
+      'acceptance-evidence-darwin-arm64',
+      'acceptance-evidence-win-x64',
+      'acceptance-evidence-key-darwin-arm64',
+      'acceptance-evidence-key-win-x64',
+    ]
+    const text = page({ acceptance, build, records, links, artefacts })
+    expect(text).toContain('Nothing above reads not recorded.')
+    const notRecorded = text.slice(text.indexOf('### Not recorded'))
+    expect(notRecorded).not.toMatch(/^- /m)
+  })
+
+  it('names a missing transcript, evidence or key under Not recorded', () => {
+    const acceptance = run('22', {
+      workflowName: 'acceptance',
+      jobs: [
+        { name: 'acceptance (darwin-arm64)', conclusion: 'success', url: '' },
+        { name: 'reader (VoiceOver, darwin-arm64)', conclusion: 'success', url: '' },
+      ],
+    })
+    const text = page({ acceptance, artefacts: ['acceptance-darwin-arm64'] })
+    const notRecorded = text.slice(text.indexOf('### Not recorded'))
+    expect(notRecorded).toContain("- the scripted VoiceOver run's transcript")
+    expect(notRecorded).toContain('- the visual evidence artefacts')
+    expect(notRecorded).toContain("- the visual evidence's key")
+    expect(notRecorded).not.toContain('Nothing above reads not recorded.')
   })
 
   it("only mentions an issue number in a failure's notes, never takes it as the failure's", () => {
