@@ -15,6 +15,7 @@ import {
   engineWorkRefusal,
   HANDSHAKE_FAILED_REASON,
   handshakeTimedOutReason,
+  NOT_RESTARTED_STILL_STOPPING,
   PROTOCOL_ERROR_REASON,
   RESET_REFUSALS,
   RESTART_WAITS_FOR_RESET,
@@ -1262,6 +1263,156 @@ describe('a retry beside a child that outlived the kill', () => {
   })
 })
 
+// A restart is a start too (issue 673). `failed()` used to arm the next
+// start once it had ended the engine that failed, whether or not that
+// engine had gone: one that outlived the kill had the next started beside
+// it on the same home. Now the restart asks what the retry asks, arms
+// nothing while that engine is there, and says stopped, so a person's Try
+// again is the way back. The same stand-ins for `spawn`, with no process
+// id: each takes no signal and exits when the test says. Failures here are
+// short of the give-up, which never restarted: restarts are left in the
+// budget.
+describe('a restart beside a child that outlived the kill', () => {
+  /** The restart's wait: what a second engine would have started after. */
+  const RESTART_MS = 20
+  const supervisors: Array<{ sidecar: Sidecar; spawned: Fake[] }> = []
+  // The stop first, so an exit after it is one the app asked for and
+  // restarts nothing; then every stand-in exits, so the stop waits none out.
+  afterEach(async () => {
+    for (const { sidecar, spawned } of supervisors.splice(0)) {
+      const stopped = sidecar.stop()
+      for (const fake of spawned) if (fake.child.signalCode === null) fake.exit()
+      await stopped
+    }
+  })
+
+  function supervised(bounds: Partial<Bounds> = {}) {
+    const spawned: Fake[] = []
+    const log: string[] = []
+    const states: EngineState[] = []
+    const sidecar = new Sidecar({
+      command: ['stand-in-interpreter', '-m', 'schematic.serve'],
+      env: {},
+      pin: PIN,
+      resetting: () => null,
+      log: (m) => log.push(m),
+      platform: 'linux',
+      // The handshake is never answered and never lapses: each failure is a
+      // stray line the test writes. Every wait of the shutdown is short.
+      bounds: {
+        handshakeMs: 60_000,
+        shutdownMs: 20,
+        terminateMs: 20,
+        restartDelaysMs: [RESTART_MS, RESTART_MS, RESTART_MS],
+        ...bounds,
+      },
+      spawn: (() => {
+        const fake = fakeChild()
+        spawned.push(fake)
+        return fake.child
+      }) as never,
+    })
+    sidecar.onState((s) => states.push(s))
+    supervisors.push({ sidecar, spawned })
+    return { sidecar, spawned, log, states }
+  }
+
+  /** What is not a message, on the engine's output: the supervisor ends the engine for it. */
+  const strayLine = (fake: Fake): void => {
+    fake.child.stdout?.push('this is not a frame\n\n')
+  }
+
+  const names = (states: EngineState[]): string[] =>
+    states.map((s) =>
+      s.state === 'starting' || s.state === 'restarting' ? `${s.state} ${s.attempt}` : s.state,
+    )
+
+  it('starts no engine beside it, says stopped and why, and starts one on Try again once it has gone', async () => {
+    const { sidecar, spawned, log, states } = supervised()
+    sidecar.start()
+    expect(spawned).toHaveLength(1)
+    strayLine(spawned[0]!)
+    await eventually(
+      () => log.some((line) => line.includes('it is still there')),
+      5_000,
+      'the last wait after the kill to lapse',
+    )
+    // Seen from a timer, so every promise turn of `failed()` after that
+    // line has run: what it decided is decided.
+    expect(sidecar.state).toEqual({
+      state: 'stopped',
+      reason: `${PROTOCOL_ERROR_REASON} ${NOT_RESTARTED_STILL_STOPPING}`,
+      retryable: true,
+    })
+    expect(describeState(sidecar.state)).toBe(
+      `Engine stopped: ${PROTOCOL_ERROR_REASON} The engine was still stopping, so it was not started again.`,
+    )
+    expect(names(states)).toEqual(['starting 1', 'restarting 2', 'stopped'])
+    // No timer is left to start one: this, not the pause below, is what
+    // makes it certain however slow the machine.
+    expect(sidecar.restartArmed, 'no restart waits').toBe(false)
+    // And across ten times the restart's wait, as the issue asks. A timer
+    // armed for the restart would fire before this pause's own, which was
+    // set after it and for longer.
+    await sleep(RESTART_MS * 10)
+    expect(spawned, 'no second engine beside the one still there').toHaveLength(1)
+    expect(names(states)).toEqual(['starting 1', 'restarting 2', 'stopped'])
+
+    // Try again is the way back, and is refused while that engine is there;
+    // so is the reset of the data it may still be writing (issue 637).
+    expect(sidecar.retry()).toBe(RETRY_REFUSALS.stillStopping)
+    expect(engineWorkRefusal(sidecar), 'the reset').toBe(RESET_REFUSALS.stillStopping)
+    expect(spawned, 'nor by a refused retry').toHaveLength(1)
+
+    // Its exit is seen at last: nothing starts by itself, and one press starts one engine.
+    spawned[0]!.exit()
+    expect(sidecar.state.state, 'its exit starts nothing').toBe('stopped')
+    expect(engineWorkRefusal(sidecar), 'the reset, once it has gone').toBeNull()
+    expect(sidecar.retry()).toBeNull()
+    expect(spawned).toHaveLength(2)
+    // With the whole budget, as any retry has.
+    expect(sidecar.state).toEqual({ state: 'starting', attempt: 1 })
+    expect(sidecar.retry(), 'a second press').toBe(RETRY_REFUSALS.notDown)
+    await sleep(RESTART_MS * 10)
+    expect(spawned, 'exactly one engine').toHaveLength(2)
+    expect(sidecar.restartArmed).toBe(false)
+  })
+
+  // Every other way through `failed()` restarts as it did: the engine it
+  // ended went when asked, or had exited by itself. A check that held every
+  // restart back would pass the test above.
+  it('restarts as before where the engine has gone: ended as asked, then exited by itself', async () => {
+    // Asked to shut down for as long as the test needs: it exits when the test says.
+    const { sidecar, spawned, log, states } = supervised({ shutdownMs: 60_000 })
+    sidecar.start()
+    strayLine(spawned[0]!)
+    await eventually(() => sidecar.state.state === 'restarting', 5_000, 'the failure')
+    expect(sidecar.stillEnding, 'the engine is being ended').toBe(true)
+    expect(spawned, 'nothing starts while it is').toHaveLength(1)
+    // It ends on the request, so nothing is left beside the next.
+    spawned[0]!.exit()
+    await eventually(() => sidecar.state.state !== 'restarting', 5_000, 'the restart to be decided')
+    expect(sidecar.state).toEqual({ state: 'starting', attempt: 2 })
+    expect(spawned).toHaveLength(2)
+    expect(log).toContain('ended on request (failure)')
+
+    // And an exit nobody asked for, with no engine to end at all.
+    spawned[1]!.exit()
+    expect(sidecar.state).toMatchObject({ state: 'restarting', attempt: 3 })
+    await eventually(() => sidecar.state.state !== 'restarting', 5_000, 'the second restart')
+    expect(sidecar.state).toEqual({ state: 'starting', attempt: 3 })
+    expect(spawned).toHaveLength(3)
+    expect(names(states)).toEqual([
+      'starting 1',
+      'restarting 2',
+      'starting 2',
+      'restarting 3',
+      'starting 3',
+    ])
+    expect(log.some((line) => line.includes('it is still there'))).toBe(false)
+  })
+})
+
 // A reset of the engine's data and a start of the engine (issue 637): an
 // engine started while the reset removes the home's folders writes into
 // them. The supervisor asks the reset's own question before a restart and a
@@ -1589,63 +1740,60 @@ describe.skipIf(process.platform === 'win32')("an exited engine's group", () => 
     expect(alive(left.pid as number)).toBe(false)
   })
 
-  // An engine that outlived the last wait after SIGKILL (issue 562) can exit
-  // at last while a quit is waiting on another engine's group, and leave a
-  // group of its own; the quit waits for that one too. Nothing real can be
-  // made to outlive SIGKILL on cue, nor what is in its group with it, so the
-  // stand-in for that engine has no pid while it is being ended, and takes a
-  // real group's id only as it exits.
+  // An engine that outlived the last wait after SIGKILL (issue 562) has no
+  // group to look at until it exits, and nothing is started beside it
+  // meanwhile (issue 673): the state says stopped, and it is the one engine
+  // there is. When it exits at last, what it left in its group is seen to
+  // as any exited engine's is: a retry is refused until that has been ended
+  // too, and a quit waits for it. Nothing real can be made to outlive
+  // SIGKILL on cue, nor what is in its group with it, so the stand-in for
+  // that engine has no pid while it is being ended, and takes a real
+  // group's id only as it exits.
   //
-  // No assertion here turns on how fast the machine is. What the quit
-  // waited for is read in a handler on the quit itself, as it resolves, not
-  // after; the outlived member's end is waited for as this process reaps
-  // it, not asked of its pid (`reaped` says why). And the order in which a
-  // quit that waits only for the groups there when it began resolves too
-  // soon is set by the test, not by a pause: the next engine's group ends
-  // once its member is killed, by the test after the outlived engine has
-  // exited, or by the supervisor terminateMs after its SIGTERM. Only a
-  // machine stalled that long sees the second; the quit has then resolved
-  // before the exit, with nothing to wait for, and correct code passes that
-  // too.
+  // No assertion here turns on how fast the machine is. The retry is asked
+  // in the turn the exit is seen, with the member, which ignores SIGTERM,
+  // still to be signalled; what the quit waited for is read in a handler on
+  // the quit itself, as it resolves, not after; and the member's end is
+  // waited for as this process reaps it, not asked of its pid (`reaped`
+  // says why).
   it(
-    'has a quit wait too for a group added while it waits, as an engine that outlived the kill exits',
+    'ends what an engine that outlived the kill left as it exits at last, before a retry or a quit goes on',
     { timeout: 20_000 },
     async () => {
-      const [nextLeft, outlivedLeft] = [await member(true), await member(true)]
+      const left = await member(true)
       const outlived = fakeChild()
-      const next = fakeChild(nextLeft.pid)
+      // The second is there to be started by mistake: it never is.
+      const spawned = [outlived, fakeChild()]
       const log: string[] = []
-      // One restart, then the give-up.
-      const sidecar = supervisor([outlived, next], log, { shutdownMs: 20, restartDelaysMs: [20] })
+      // One restart in the budget, so the failure is not the give-up.
+      const sidecar = supervisor(spawned, log, {
+        shutdownMs: 20,
+        terminateMs: 300,
+        restartDelaysMs: [20],
+      })
       sidecar.start()
-      // A stray line: the first engine is ended, outlives the kill, and the next starts.
+      // A stray line: the engine is ended, and outlives the kill.
       outlived.child.stdout?.push('this is not a frame\n\n')
       await eventually(() => log.some((l) => l.includes('it is still there')), 10_000, 'the kill')
-      await eventually(
-        () => log.some((l) => l.startsWith('starting, attempt 2')),
-        5_000,
-        'a restart',
-      )
-      next.exit()
+      expect(sidecar.state).toMatchObject({ state: 'stopped', retryable: true })
+      expect(sidecar.groupsBeingEnded, 'no group to end while it is there').toBe(0)
+      expect(sidecar.retry(), 'while it is there').toBe(RETRY_REFUSALS.stillStopping)
+
+      // It exits at last, and what it left in its group ignores SIGTERM.
+      ;(outlived.child as unknown as { pid: number }).pid = left.pid as number
+      outlived.exit()
       expect(sidecar.groupsBeingEnded).toBe(1)
+      expect(sidecar.retry(), 'gone, with what it left still to be ended').toBe(
+        RETRY_REFUSALS.stillStopping,
+      )
+      expect(spawned, 'no second engine was started').toHaveLength(1)
       let atTheQuit = -1
-      const quit = sidecar.stop().then(() => {
+      await sidecar.stop().then(() => {
         atTheQuit = sidecar.groupsBeingEnded
       })
-      // The next engine has exited and its pipes have closed, so the quit
-      // reaches its wait on the groups before any timer runs: after this
-      // pause it is waiting on the next engine's group, whose member ignores
-      // SIGTERM.
-      await sleep(0)
-      ;(outlived.child as unknown as { pid: number }).pid = outlivedLeft.pid as number
-      outlived.exit()
-      // The next engine's group can end now; the outlived one's member, which
-      // ignores SIGTERM too, is not killed before terminateMs has passed.
-      nextLeft.kill('SIGKILL')
-      await quit
       expect(atTheQuit, 'groups still being ended as the quit resolved').toBe(0)
-      await eventually(() => reaped(outlivedLeft), 10_000, "the outlived engine's member")
-      expect(outlivedLeft.signalCode, 'the supervisor killed it').toBe('SIGKILL')
+      await eventually(() => reaped(left), 10_000, "the outlived engine's member")
+      expect(left.signalCode, 'the supervisor killed it').toBe('SIGKILL')
     },
   )
 })

@@ -105,6 +105,9 @@ links are inline, with no images and no reference-style links.
   it starts again only once the reset has finished, so it no longer writes
   into the folders being removed. **Reset engine data** says to try again
   in a moment while the engine is starting or still stopping.
+- When the app has to stop the engine and the engine does not stop, a
+  second one is no longer started beside it. The Library says the engine
+  was still stopping, and **Try again** starts it once the first has gone.
 
 ### Security
 

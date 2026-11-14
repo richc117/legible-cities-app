@@ -224,7 +224,8 @@ export const SAMPLES_AWAY =
 
 /**
  * What follows the engine's reason when it is not coming back by itself
- * (unavailable, mismatched, or stopped after failing too often): no promise
+ * (unavailable, mismatched, stopped after failing too often, or stopped
+ * beside an engine still stopping, issue 673): no promise
  * of a wait, and where to go if it keeps happening (issue 547). The reason
  * comes first, in full, since the status line cuts a long one short, and a
  * packaged app's reason leads with its own next step. Copy diagnostics is
@@ -244,7 +245,8 @@ export const SAMPLES_ENGINE_DOWN_LISTED =
 /**
  * What a stopped engine leads with: the two ways to begin it anew, the one
  * under the sentence first (issue 562). A stop after giving up is always
- * retryable, so Try again is there whenever this is said.
+ * retryable, and so is one beside an engine that had outlived the kill
+ * (issue 673), so Try again is there whenever this is said.
  */
 export const SAMPLES_STOPPED_FIRST =
   'Press Try again to start the engine once more, or quit and open Legible Cities again.'

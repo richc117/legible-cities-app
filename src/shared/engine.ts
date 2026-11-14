@@ -26,7 +26,9 @@ export const QUITTING_REASON = 'The app is quitting.'
  * are said only when the state moved between the drawing and the press;
  * `stillStopping` is the exception, since the state says `stopped` the
  * moment the supervisor gives up, before the engine it gave up on has been
- * ended, which can take some seconds.
+ * ended, which can take some seconds; and where a failed engine outlived
+ * the kill the state says `stopped`, with no restart to come, for as long
+ * as that engine is there (issue 673), which can be far longer.
  */
 export const RETRY_REFUSALS = {
   quitting: 'The app is quitting, so the engine is not started again.',
@@ -41,14 +43,15 @@ export const RETRY_REFUSALS = {
 /**
  * `retryable` on the two down states that carry it says whether a person's
  * "Try again" can help (issue 562): true where the supervisor gave up after
- * failing too often, or where the interpreter existed when the app opened
- * and its spawn then failed (not executable, say, or taken away since); false
- * where no interpreter was found at all, and for the app's own quit. The
- * interpreter is looked for once, as the app opens, and a retry does not look
- * again: one missing then, a runtime a scanner quarantined before the start
- * among them, is `command: null` and offers no button. A
- * mismatched engine has no such flag: starting it again finds the same
- * version, and its dialog says so.
+ * failing too often, where it would not restart the engine beside one that
+ * had outlived the kill (issue 673), or where the interpreter existed when
+ * the app opened and its spawn then failed (not executable, say, or taken
+ * away since); false where no interpreter was found at all, and for the
+ * app's own quit. The interpreter is looked for once, as the app opens, and
+ * a retry does not look again: one missing then, a runtime a scanner
+ * quarantined before the start among them, is `command: null` and offers no
+ * button. A mismatched engine has no such flag: starting it again finds the
+ * same version, and its dialog says so.
  */
 export type EngineState =
   | { state: 'starting'; attempt: number }
@@ -266,9 +269,10 @@ export function engineError(
 
 /**
  * Whether the engine is not coming back by itself: it could not be started,
- * ended at the handshake, or stopped for good (after failing too often, or
- * for the app's own quit, which a caller that reports failures tells apart
- * by `QUITTING_REASON`). `starting` and `restarting` are on their way and
+ * ended at the handshake, or stopped for good (after failing too often,
+ * with an engine that outlived the kill still there, or for the app's own
+ * quit, which a caller that reports failures tells apart by
+ * `QUITTING_REASON`). `starting` and `restarting` are on their way and
  * `ready` is up. The one place that decides it, so that a state added to
  * the union is added here and nowhere else (issue 595).
  */

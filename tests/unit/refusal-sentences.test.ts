@@ -15,7 +15,11 @@ import { NAME_MAX, validateName } from '../../src/shared/project/validate'
 import { FEED_REFUSALS, PickedPaths, refuseUrl, registryGuard } from '../../src/main/feeds-ipc'
 import { DESTINATION_REFUSALS, destinationLate, EXPORTS_THERE } from '../../src/main/export'
 import { NO_BAND_FOR_ADDRESS, staleFrame, unreadFrame } from '../../src/main/capture'
-import { RESET_REFUSALS, RESTART_WAITS_FOR_RESET } from '../../src/main/sidecar'
+import {
+  NOT_RESTARTED_STILL_STOPPING,
+  RESET_REFUSALS,
+  RESTART_WAITS_FOR_RESET,
+} from '../../src/main/sidecar'
 import { SHEET_REFUSALS, validateFeedUrl } from '../../src/renderer/src/NewProjectSheet'
 import { openFailed } from '../../src/renderer/src/Library'
 
@@ -50,6 +54,10 @@ async function refusals(): Promise<Array<[string, string | null]>> {
     // Not a refusal but the restart's reason while it waits for a reset
     // (issue 637), shown on the status line as written.
     ['RESTART_WAITS_FOR_RESET', RESTART_WAITS_FOR_RESET],
+    // Nor this: the end of the stopped state's reason where no restart was
+    // started beside an engine that outlived the kill (issue 673), shown on
+    // the status line and the Library as written.
+    ['NOT_RESTARTED_STILL_STOPPING', NOT_RESTARTED_STILL_STOPPING],
     ['validateFeedUrl, empty', validateFeedUrl('  ')],
     ['validateFeedUrl, not http', validateFeedUrl('ftp://agency.example/gtfs.zip')],
     ...Object.entries(SHEET_REFUSALS).map(([k, s]): [string, string] => [`SHEET_REFUSALS.${k}`, s]),
