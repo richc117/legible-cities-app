@@ -230,5 +230,221 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "names the step’s pictures, controls included, as one sorted list",
     "why": "The record's row would list the real pictures only, and so name the controls by leaving them out."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    clearTimeout(timer)\n",
+    "replace": "    void timer\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "gives what the call answered, and leaves no timer behind",
+    "why": "Every enlarged picture would leave a 30-second timer running after it was taken, holding the run open and firing a rejection nothing waits for."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "return await Promise.race([work, late])",
+    "replace": "return await work",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "rejects with its sentence once a call that never answers runs out of time",
+    "why": "A capture an occluded window never answers would stall the run to its own timeout instead of becoming a note."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "Math.max(ENLARGED.minScale, Math.round(ENLARGED.em / em))",
+    "replace": "Math.round(ENLARGED.em / em)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "sets a name about 18 pixels tall, within the scales allowed",
+    "why": "A large name would round to a scale of nothing, held at 1: the picture would be no larger than the window draws it."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  const x = Math.min(Math.max(cx - width / 2, 0), frame.width - width)\n",
+    "replace": "  const x = cx - width / 2\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "stays inside the frame, moved in from an edge it would run past",
+    "why": "A station near the frame's edge would be enlarged with part of the picture outside the map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      frame.width / (right - left + 2 * ENLARGED.pad),\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "grows to hold every mark with room round it",
+    "why": "Two named stations further apart than the part would be cut off at its sides."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      if (crop === null) {\n",
+    "replace": "      if (true) {\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps one part for every picture",
+    "why": "The part would be chosen again for the picture after a change, so a label that moved would move the part, and before and after would not be of the same place."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "return measured !== null && Math.abs(measured - wanted) <= wanted * 0.01",
+    "replace": "return true",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the picture where neither route drew the map larger",
+    "why": "A frame painted at a device scale of 1 would pass as drawn larger, and its stretched bitmap be kept as a close-up: the smear rehearsal 43586166710 kept."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "await dl(r.window.send('Emulation.clearDeviceMetricsOverride'))",
+    "replace": "await Promise.resolve()",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "clears the override when the capture fails",
+    "why": "The interface window would be left drawn at seven times its scale for the rest of the run, and every later picture and step with it."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "        if (!sameBox(before, during))\n",
+    "replace": "        if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses a frame that moved",
+    "why": "A layout that moved under the higher scale would be captured and kept as if it were the same part of the map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "          scale: 1,\n        })\n",
+    "replace": "          scale: crop.scale,\n        })\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "takes the device scale where the frame draws at it",
+    "why": "The scale would be applied twice, by the device scale and again by the clip: a picture enlarged past what was drawn."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "if (state.route === 'device scale') throw new Error(",
+    "replace": "if (false) throw new Error(",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "never switching mid-pair",
+    "why": "A pair's before taken at the device scale could be followed by an after taken another way, and the two would not be alike."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const origin = k > 1 ? { x: (k * crop.x) / (k - 1), y: (k * crop.y) / (k - 1) } : { x: 0, y: 0 }",
+    "replace": "const origin = { x: crop.x, y: crop.y }",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "scales the page’s drawing instead, and puts it back",
+    "why": "The drawing would be scaled about the part's corner, which does not stay in place: the picture would show a different part of the map from the one asked for."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  const { left, found } = await putBack()\n  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)\n",
+    "replace": "  const { left, found } = { left: null, found: true }\n  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "scales the page’s drawing instead, and puts it back",
+    "why": "The page's drawing would be left scaled after the picture, and every later step would see a map seven times its size."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (left !== null)\n      throw new DrawingNotPutBack(`${said}",
+    "replace": "    if (false)\n      throw new DrawingNotPutBack(`${said}",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says so when a picture failed and the drawing was not put back either",
+    "why": "A picture that failed with the page's drawing left scaled would say only why it failed: every later picture would be of a scaled map, and nothing would say why."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "`${NOT_ENLARGED}: ${[...state.said, ",
+    "replace": "`${NOT_ENLARGED}: ${[",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the picture where neither route drew the map larger",
+    "why": "Where both routes failed, the record would say only what the transform measured, and not that the frame's devicePixelRatio stayed at 1 under the override, which is why."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (found)\n",
+    "replace": "  if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the pair where the drawing was still marked",
+    "why": "A pair whose A shots were of a map an enlarged picture left scaled would be judged against a B of the map put back: a change invented by the test."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (!drawnLarger(1, measured))\n    throw new DrawingNotPutBack(",
+    "replace": "  if (false)\n    throw new DrawingNotPutBack(",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "reports a drawing that does not measure 1 again as not put back",
+    "why": "A drawing that could not be put back before a pair would be taken as clean, and the pair judged on a scaled map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (drawing !== null) await drawingPutBack(drawing)\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "takes no B, and keeps no entry, across a scaled and an unscaled shot",
+    "why": "B would be taken of a drawing still scaled, or put back after the As were scaled, and the pair judged across the two."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      throw new DrawingNotPutBack(`${said}, and the page's drawing ${left}`, { cause: error })",
+    "replace": "      throw new Error(`${said}, and the page's drawing ${left}`, { cause: error })",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says so when a picture failed and the drawing was not put back either",
+    "why": "A drawing left scaled after a failed picture would be an ordinary refusal, a note in the record, where it is a problem for every later picture."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (scaled === 'still scaled')\n      throw new Error(",
+    "replace": "    if (false)\n      throw new Error(",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "neither scales nor saves a drawing still scaled from an earlier picture",
+    "why": "The refusal would say the drawing measured nothing, not that an earlier picture left it scaled and it is now put back."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (clockBefore !== clockAfter)\n",
+    "replace": "  if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses one whose clock moved or cannot be read",
+    "why": "A picture taken while the map played would be kept as the part at those settings, the trains in it from another instant than the pair's."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (clockBefore === null || clockAfter === null)\n",
+    "replace": "  if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses one whose clock moved or cannot be read",
+    "why": "A page whose clock could not be read would pass as standing still, so a moving map could be kept as a close-up."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (error instanceof DeadlinePassed) throw new DrawingNotPutBack(FRAME_SILENT, { cause: error })\n",
+    "replace": "    if (error instanceof DeadlinePassed) return { found: false, measured: 1 }\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the pair where the map's frame did not answer the put-back",
+    "why": "A frame that did not answer would be taken as clean: A1 and A2 could be of a scaled drawing that a restore landing later puts back before B, and the pair would be judged as changed."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "            ? 'could not be confirmed put back (the map’s frame did not answer)'",
+    "replace": "            ? 'could not be confirmed put back (the put-back failed twice)'",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says a drawing could not be confirmed put back where the frame did not answer",
+    "why": "A restore that timed out would pass as a drawing put back, and the next pair would meet a scaled map with nothing in the record."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (!found)\n    throw new Error(\n",
+    "replace": "  if (false)\n    throw new Error(\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses a picture of a page drawn anew while its drawing was scaled",
+    "why": "A redraw landing between the scale and the capture would give the whole map at its own size, kept as an enlarged picture."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (error instanceof DeadlinePassed) throw error\n    return ask()\n",
+    "replace": "    throw error\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks a put-back that failed once again",
+    "why": "A put-back made as a redraw navigated the frame would fail once and be taken as silence: a pair refused as a problem, on dozens of pairs, for nothing."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (error instanceof DeadlinePassed) throw error\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says a drawing could not be confirmed put back where the frame did not answer",
+    "why": "A frame that did not answer would be asked again, doubling the wait on a silent window, where only a failure other than silence is worth a second ask."
   }
 ]

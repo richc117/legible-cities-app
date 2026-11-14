@@ -7,15 +7,25 @@ import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Page } from '@playwright/test'
 import {
+  DrawingNotPutBack,
+  DrawingStillScaled,
+  ENLARGED,
+  FRAME_SILENT,
+  NOT_ENLARGED,
   Evidence,
   THRESHOLDS,
   blankness,
   contactSheet,
+  cropAround,
+  drawingPutBack,
+  drawnLarger,
   decodePng,
   difference,
   encodePng,
+  enlarged,
   failuresOf,
   judgeBlank,
   judgeChange,
@@ -24,10 +34,19 @@ import {
   judgeMovement,
   judgeTypeface,
   pixelsOfColour,
+  putBackDrawing,
+  redrawnCapture,
   sampleTimes,
   stepResult,
   thresholdFor,
+  withDeadline,
+  type Box,
+  type Clip,
+  type Enlarger,
   type Pair,
+  type Protocol,
+  type Redrawer,
+  type Redrawn,
   type Rgb,
   type Shootable,
 } from '../acceptance/evidence'
@@ -557,6 +576,470 @@ describe('the manifest', () => {
     expect(names).toHaveLength(6)
     expect(names).toEqual([...names].sort())
     expect(said.match(/theme:/g)).toHaveLength(1)
+  })
+})
+
+describe('an enlarged picture of the map', () => {
+  // The notebook's frame as a runner draws it, about 740 by 315 CSS pixels,
+  // where a station's name is about 2.5 pixels tall.
+  const frame = { width: 740, height: 315 }
+  const centre = (clip: Clip): [number, number] => [
+    clip.x + clip.width / 2,
+    clip.y + clip.height / 2,
+  ]
+
+  it('sets a name about 18 pixels tall, within the scales allowed', () => {
+    expect(cropAround(frame, [], 2.5).scale).toBe(7)
+    expect(cropAround(frame, [], 100).scale).toBe(ENLARGED.minScale)
+    expect(cropAround(frame, [], 0.5).scale).toBe(ENLARGED.maxScale)
+    expect(cropAround(frame, [], null).scale).toBe(ENLARGED.fallbackScale)
+    expect(cropAround(frame, [], 0).scale).toBe(ENLARGED.fallbackScale)
+  })
+
+  it('is the frame’s shape at one over the scale, so drawn larger it fills the frame, centred on the marks', () => {
+    const marks: Box[] = [
+      { x: 290, y: 90, width: 20, height: 4 },
+      { x: 250, y: 100, width: 30, height: 6 },
+    ]
+    const clip = cropAround(frame, marks, 2.5)
+    expect(clip.scale).toBe(7)
+    expect(clip.width * clip.scale).toBeCloseTo(frame.width)
+    expect(clip.height * clip.scale).toBeCloseTo(frame.height)
+    expect(centre(clip)[0]).toBeCloseTo(280)
+    expect(centre(clip)[1]).toBeCloseTo(98)
+  })
+
+  it('centres on the middle of the frame when no mark was found', () => {
+    const clip = cropAround(frame, [], null)
+    expect(centre(clip)[0]).toBeCloseTo(370)
+    expect(centre(clip)[1]).toBeCloseTo(157.5)
+  })
+
+  it('stays inside the frame, moved in from an edge it would run past', () => {
+    const corner = cropAround(frame, [{ x: 0, y: 0, width: 4, height: 3 }], 2.5)
+    expect([corner.x, corner.y]).toEqual([0, 0])
+    const far = cropAround(frame, [{ x: 730, y: 310, width: 10, height: 5 }], 2.5)
+    expect(far.x + far.width).toBeCloseTo(frame.width)
+    expect(far.y + far.height).toBeCloseTo(frame.height)
+  })
+
+  it('grows to hold every mark with room round it, at a smaller scale, never below 1', () => {
+    const wide = cropAround(
+      frame,
+      [
+        { x: 100, y: 100, width: 10, height: 4 },
+        { x: 500, y: 120, width: 10, height: 4 },
+      ],
+      2.5,
+    )
+    expect(wide.x).toBeLessThanOrEqual(100 - ENLARGED.pad + 1e-9)
+    expect(wide.x + wide.width).toBeGreaterThanOrEqual(510 + ENLARGED.pad - 1e-9)
+    expect(wide.scale).toBeLessThan(7)
+    const all = cropAround(frame, [{ x: -50, y: -50, width: 900, height: 500 }], 2.5)
+    expect([all.x, all.y, all.width, all.height, all.scale]).toEqual([
+      0,
+      0,
+      frame.width,
+      frame.height,
+      1,
+    ])
+  })
+
+  /** A window whose frame is at `at`, and the parts asked of it. */
+  function windowOf(found: string[], at: Box | null = { x: 20, y: 400, width: 740, height: 315 }) {
+    const asked: Clip[] = []
+    let reads = 0
+    const enlarger: Enlarger = {
+      frame: async () => at,
+      marks: async () => {
+        reads++
+        return {
+          boxes: found.map((_, k) => ({ x: 200 + 40 * k, y: 100, width: 30, height: 4 })),
+          em: found.length > 0 ? 2.5 : null,
+          found,
+        }
+      },
+      capture: async (crop) => {
+        asked.push(crop)
+        return encodePng(picture(BG, 10, [255, 255, 255], [8, 4]))
+      },
+      said: () => 'device scale 7.00: read 7',
+    }
+    return { enlarger, asked, reads: () => reads }
+  }
+
+  it('keeps one part for every picture, and says what it is centred on and what was read', async () => {
+    const evidence = new Evidence(dir)
+    const window = windowOf(['Union Station', '7th Street / Metro Center'])
+    const part = enlarged(window.enlarger)
+    expect(part.around()).toBe('')
+    const path = await evidence.shot('8-x-a', part)
+    expect(evidence.open(path).width).toBe(8)
+    await evidence.shot('8-x-b', part)
+    expect(window.reads()).toBe(1)
+    const [a, b] = window.asked
+    expect(b).toEqual(a)
+    expect(part.around()).toBe('Union Station and 7th Street / Metro Center')
+    expect(part.said()).toBe('device scale 7.00: read 7')
+  })
+
+  it('says when no named station was found, and throws with no frame', async () => {
+    const evidence = new Evidence(dir)
+    const none = enlarged(windowOf([]).enlarger)
+    await evidence.shot('8-y', none)
+    expect(none.around()).toMatch(/^the middle of the map/)
+    const gone = enlarged(windowOf(['Union Station'], null).enlarger)
+    await expect(evidence.shot('8-w', gone)).rejects.toThrow(/has no box/)
+  })
+})
+
+describe('a call given a deadline', () => {
+  it('gives what the call answered, and leaves no timer behind', async () => {
+    vi.useFakeTimers()
+    try {
+      await expect(withDeadline(Promise.resolve(7), 30_000, 'late')).resolves.toBe(7)
+      await expect(
+        withDeadline(Promise.reject(new Error('refused')), 30_000, 'late'),
+      ).rejects.toThrow('refused')
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('rejects with its sentence once a call that never answers runs out of time', async () => {
+    const never = new Promise<number>(() => undefined)
+    await expect(
+      withDeadline(never, 20, 'the enlarged capture did not answer in 30 s'),
+    ).rejects.toThrow('the enlarged capture did not answer in 30 s')
+  })
+})
+
+describe('an enlarged picture drawn again at a higher scale', () => {
+  // A part of a 740 by 315 frame at a scale of 7, and where the frame is.
+  const crop: Clip = { x: 280, y: 105, width: 740 / 7, height: 45, scale: 7 }
+  const box: Box = { x: 20, y: 400, width: 740, height: 315 }
+
+  /**
+   * A window that answers as told: the frame's devicePixelRatio during the
+   * override, whether the frame has a session of its own, what the drawing
+   * measures under a transform and once put back, and how each call goes.
+   */
+  function windowOf(
+    options: {
+      frameRatio?: number
+      own?: boolean
+      svg?: number | null | 'still scaled'
+      back?: number | null
+      silentRestore?: boolean
+      /** The put-back finds no mark: the page was drawn anew while scaled. */
+      replaced?: boolean
+      /** How many put-backs fail, as a navigation fails them, before one answers. */
+      restoreFails?: number
+      boxes?: (read: number) => Box
+      clock?: (read: number) => number | null
+      capture?: () => Promise<unknown>
+    } = {},
+  ) {
+    const calls: string[] = []
+    const clips: unknown[] = []
+    const origins: { x: number; y: number }[] = []
+    let ratio = 1
+    let boxReads = 0
+    let clockReads = 0
+    let restoreFailed = 0
+    const protocolOf = (who: string): Protocol => ({
+      send: async (method, params) => {
+        calls.push(`${who} ${method}`)
+        if (method === 'Emulation.setDeviceMetricsOverride' && who === 'window')
+          ratio = Number(params?.deviceScaleFactor)
+        if (method === 'Emulation.clearDeviceMetricsOverride' && who === 'window') ratio = 1
+        if (method === 'Target.getTargets') return { targetInfos: [{ type: 'iframe' }] }
+        if (method === 'Page.captureScreenshot') {
+          clips.push(params?.clip)
+          return options.capture === undefined ? { data: 'AAEC' } : options.capture()
+        }
+        return {}
+      },
+    })
+    const redrawer: Redrawer = {
+      window: protocolOf('window'),
+      frameSession: async () => (options.own === true ? protocolOf('frame') : null),
+      iframeTargets: async () => 1,
+      frame: async () => (options.boxes === undefined ? box : options.boxes(boxReads++)),
+      repaint: async () => undefined,
+      ratios: async () => ({
+        window: ratio,
+        frame: ratio === 1 ? 1 : (options.frameRatio ?? ratio),
+      }),
+      clock: async () => (options.clock === undefined ? 27000 : options.clock(clockReads++)),
+      scaleSvg: async (_scale, origin) => {
+        calls.push('frame scaleSvg')
+        origins.push(origin)
+        return options.svg === undefined ? 7 : options.svg
+      },
+      restoreSvg: async () => {
+        calls.push('frame restoreSvg')
+        if (options.silentRestore === true)
+          return new Promise<{ found: boolean; measured: number | null }>(() => undefined)
+        if ((options.restoreFails ?? 0) > restoreFailed) {
+          restoreFailed++
+          throw new Error('Execution context was destroyed')
+        }
+        return {
+          found: options.replaced !== true,
+          measured: options.back === undefined ? 1 : options.back,
+        }
+      },
+    }
+    return { redrawer, calls, clips, origins }
+  }
+  const fresh = (): Redrawn => ({ route: null, said: [] })
+
+  it('takes the device scale where the frame draws at it: override, capture at 1, clear', async () => {
+    const w = windowOf()
+    const state = fresh()
+    const png = await redrawnCapture(w.redrawer, crop, state)
+    expect([...png]).toEqual([0, 1, 2])
+    expect(w.calls).toEqual([
+      'window Emulation.setDeviceMetricsOverride',
+      'window Page.captureScreenshot',
+      'window Emulation.clearDeviceMetricsOverride',
+    ])
+    expect(w.clips[0]).toEqual({ x: 300, y: 505, width: 740 / 7, height: 45, scale: 1 })
+    expect(state.route).toBe('device scale')
+    expect(state.said[0]).toMatch(/the map frame's 7; the frame shares the window’s target/)
+  })
+
+  it('never keeps a frame painted at 1: it scales the page’s drawing instead, and puts it back', async () => {
+    const w = windowOf({ frameRatio: 1, own: true })
+    const state = fresh()
+    await redrawnCapture(w.redrawer, crop, state)
+    expect(w.calls).toEqual([
+      'window Emulation.setDeviceMetricsOverride',
+      'frame Emulation.setDeviceMetricsOverride',
+      'window Emulation.clearDeviceMetricsOverride',
+      'frame Emulation.clearDeviceMetricsOverride',
+      'frame scaleSvg',
+      'window Page.captureScreenshot',
+      'frame restoreSvg',
+    ])
+    expect(w.clips[0]).toEqual({ ...box, scale: 1 })
+    // The point that maps the part onto the whole frame.
+    expect(w.origins[0].x).toBeCloseTo((7 * 280) / 6)
+    expect(w.origins[0].y).toBeCloseTo((7 * 105) / 6)
+    expect(state.route).toBe('SVG transform')
+    expect(state.said[0]).toMatch(/the map frame's 1; the frame is a target of its own/)
+    // And the next picture goes the same way, without the override.
+    w.calls.length = 0
+    await redrawnCapture(w.redrawer, crop, state)
+    expect(w.calls[0]).toBe('frame scaleSvg')
+  })
+
+  it('refuses the picture where neither route drew the map larger', async () => {
+    const w = windowOf({ frameRatio: 1, svg: 1 })
+    const promise = redrawnCapture(w.redrawer, crop, fresh())
+    await expect(promise).rejects.toThrow(NOT_ENLARGED)
+    // And says what both routes read, the device scale's included.
+    await expect(
+      redrawnCapture(windowOf({ frameRatio: 1, svg: 1 }).redrawer, crop, fresh()),
+    ).rejects.toThrow(
+      /device scale 7\.00: the interface's devicePixelRatio read 7 and the map frame's 1;.*the browser lists 1 iframe targets; SVG transform 7\.00: the page's drawing measured 1 times its size/,
+    )
+    expect(w.calls).not.toContain('window Page.captureScreenshot')
+    expect(w.calls.at(-1)).toBe('frame restoreSvg')
+    expect(drawnLarger(7, 7.03)).toBe(true)
+    expect(drawnLarger(7, 1)).toBe(false)
+    expect(drawnLarger(7, null)).toBe(false)
+  })
+
+  it('refuses a device-scale picture once that route stops drawing larger, never switching mid-pair', async () => {
+    const w = windowOf({ frameRatio: 1 })
+    const state: Redrawn = { route: 'device scale', said: [] }
+    await expect(redrawnCapture(w.redrawer, crop, state)).rejects.toThrow(NOT_ENLARGED)
+    expect(w.calls).not.toContain('frame scaleSvg')
+  })
+
+  it('refuses a frame that moved, or a drawing not put back', async () => {
+    const moved = windowOf({ boxes: (read) => ({ ...box, y: box.y + (read === 1 ? 3 : 0) }) })
+    await expect(redrawnCapture(moved.redrawer, crop, fresh())).rejects.toThrow(
+      /frame moved at the higher scale/,
+    )
+    expect(moved.calls.at(-1)).toBe('window Emulation.clearDeviceMetricsOverride')
+
+    const stuck = windowOf({ frameRatio: 1, back: 7 })
+    const left = await redrawnCapture(stuck.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect((left as Error).message).toMatch(/not put back/)
+    expect(left).toBeInstanceOf(DrawingNotPutBack)
+  })
+
+  it('keeps a transformed picture of a still clock, and refuses one whose clock moved or cannot be read', async () => {
+    // Paused, the page still draws on every frame; only the instant drawn matters.
+    const still = windowOf({ frameRatio: 1, clock: () => 27000 })
+    await expect(redrawnCapture(still.redrawer, crop, fresh())).resolves.toBeInstanceOf(Buffer)
+
+    const moved = windowOf({ frameRatio: 1, clock: (read) => 27000 + read * 4 })
+    await expect(redrawnCapture(moved.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's clock moved while its drawing was scaled (from 27000 to 27004)`,
+    )
+
+    const unread = windowOf({ frameRatio: 1, clock: (read) => (read === 0 ? 27000 : null) })
+    await expect(redrawnCapture(unread.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's clock could not be read, so a moving map cannot be told from a still one`,
+    )
+  })
+
+  it('says a drawing could not be confirmed put back where the frame did not answer', async () => {
+    const w = windowOf({ frameRatio: 1, silentRestore: true })
+    const error = await redrawnCapture(w.redrawer, crop, fresh(), 20).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+    expect((error as Error).message).toBe(
+      "the page's drawing could not be confirmed put back (the map’s frame did not answer)",
+    )
+    // Silence is not asked again: one put-back, one deadline.
+    expect(w.calls.filter((c) => c === 'frame restoreSvg').length).toBe(1)
+  })
+
+  it('refuses a picture of a page drawn anew while its drawing was scaled', async () => {
+    const w = windowOf({ frameRatio: 1, replaced: true })
+    await expect(redrawnCapture(w.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's drawing was replaced while it was scaled (the frame was sent to a page drawn anew), so the picture is of the whole map at its own size`,
+    )
+  })
+
+  it('asks a put-back that failed once again, and says when it failed twice', async () => {
+    const once = windowOf({ frameRatio: 1, restoreFails: 1 })
+    await expect(redrawnCapture(once.redrawer, crop, fresh())).resolves.toBeInstanceOf(Buffer)
+    const twice = windowOf({ frameRatio: 1, restoreFails: 2 })
+    const error = await redrawnCapture(twice.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+    expect((error as Error).message).toBe(
+      "the page's drawing could not be confirmed put back (the put-back failed twice: Execution context was destroyed)",
+    )
+  })
+
+  it('neither scales nor saves a drawing still scaled from an earlier picture, and puts it back', async () => {
+    const w = windowOf({ frameRatio: 1, svg: 'still scaled' })
+    await expect(redrawnCapture(w.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's drawing was still scaled from an earlier picture; put back now`,
+    )
+    expect(w.calls.at(-1)).toBe('frame restoreSvg')
+    expect(w.calls).not.toContain('window Page.captureScreenshot')
+  })
+
+  it('says so when a picture failed and the drawing was not put back either', async () => {
+    const failing = (): Promise<unknown> => Promise.reject(new Error('target closed'))
+    const stuck = windowOf({ frameRatio: 1, back: 7, capture: failing })
+    const both = await redrawnCapture(stuck.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect((both as Error).message).toBe(
+      "target closed, and the page's drawing was not put back (it measured 7)",
+    )
+    // A problem in the step's record, not a note: the spec tells it by its class.
+    expect(both).toBeInstanceOf(DrawingNotPutBack)
+    const undone = windowOf({ frameRatio: 1, capture: failing })
+    const error = await redrawnCapture(undone.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect((error as Error).message).toBe('target closed')
+    expect(undone.calls.at(-1)).toBe('frame restoreSvg')
+  })
+
+  it('clears the override when the capture fails, and gives up on a call that never answers', async () => {
+    const failing = windowOf({
+      capture: async () => {
+        throw new Error('target closed')
+      },
+    })
+    await expect(redrawnCapture(failing.redrawer, crop, fresh())).rejects.toThrow('target closed')
+    expect(failing.calls.at(-1)).toBe('window Emulation.clearDeviceMetricsOverride')
+
+    const silent = windowOf({ capture: () => new Promise(() => undefined) })
+    await expect(redrawnCapture(silent.redrawer, crop, fresh(), 20)).rejects.toThrow(
+      'the enlarged capture did not answer in 0.02 s',
+    )
+    expect(silent.calls.at(-1)).toBe('window Emulation.clearDeviceMetricsOverride')
+  })
+})
+
+describe('a pair, and a drawing an enlarged picture left scaled', () => {
+  it('goes on where nothing of the test’s was on the drawing', async () => {
+    await expect(
+      drawingPutBack(async () => ({ found: false, measured: 1 })),
+    ).resolves.toBeUndefined()
+  })
+
+  it('refuses the pair where the drawing was still marked, once it is put back', async () => {
+    const error = await drawingPutBack(async () => ({ found: true, measured: 1 })).catch((e) => e)
+    expect(error).toBeInstanceOf(DrawingStillScaled)
+    expect((error as Error).message).toMatch(
+      /still scaled from an earlier picture and has been put back/,
+    )
+  })
+
+  it('reports a drawing that does not measure 1 again as not put back', async () => {
+    const error = await drawingPutBack(async () => ({ found: true, measured: 7 })).catch((e) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+  })
+
+  it("refuses the pair where the map's frame did not answer the put-back", async () => {
+    // A frame there, whose evaluate never settles: never taken as clean.
+    const silent = {
+      locator: () => ({ count: async () => 1 }),
+      frameLocator: () => ({ locator: () => ({ evaluate: () => new Promise(() => undefined) }) }),
+    } as unknown as Page
+    const error = await putBackDrawing(silent, 20).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+    expect((error as Error).message).toBe(FRAME_SILENT)
+    expect(FRAME_SILENT).toBe(
+      "the map's frame did not answer, so whether its drawing was still scaled is not known; the pair is not judged",
+    )
+    // A navigation is not silence: asked again, and said apart where it fails twice.
+    let asked = 0
+    const navigating = (fails: number): Page =>
+      ({
+        locator: () => ({ count: async () => 1 }),
+        frameLocator: () => ({
+          locator: () => ({
+            evaluate: async () => {
+              asked++
+              if (asked <= fails) throw new Error('Execution context was destroyed')
+              return { found: false, measured: 1 }
+            },
+          }),
+        }),
+      }) as unknown as Page
+    await expect(putBackDrawing(navigating(1), 20)).resolves.toEqual({ found: false, measured: 1 })
+    asked = 0
+    const failed = await putBackDrawing(navigating(2), 20).catch((e: Error) => e)
+    expect(failed).toBeInstanceOf(DrawingNotPutBack)
+    expect((failed as Error).message).toBe(
+      "the put-back in the map's frame failed twice (Execution context was destroyed), so whether its drawing was still scaled is not known; the pair is not judged",
+    )
+    // No frame at all: nothing of the test's to put back.
+    const none = { locator: () => ({ count: async () => 0 }) } as unknown as Page
+    await expect(putBackDrawing(none, 20)).resolves.toEqual({ found: false, measured: 1 })
+  })
+
+  it('takes no B, and keeps no entry, across a scaled and an unscaled shot', async () => {
+    const evidence = new Evidence(dir)
+    const a = await evidence.settled('8-theme-a1', camera(picture(BG, 10)), async () => undefined)
+    const target = camera(picture(BG, 500))
+    const pair: Pair = {
+      init: { id: '8-theme', step: 8, row: 'r', question: 'q' },
+      name: 'theme',
+      target,
+      a1: a.path,
+      a2: a.path,
+      steady: true,
+      control: null,
+      controlShots: [],
+    }
+    await expect(
+      evidence.finish(pair, {
+        wait: async () => undefined,
+        drawing: async () => ({ found: true, measured: 1 }),
+      }),
+    ).rejects.toBeInstanceOf(DrawingStillScaled)
+    expect(target.taken).toBe(0)
+    expect(evidence.entries).toEqual([])
   })
 })
 

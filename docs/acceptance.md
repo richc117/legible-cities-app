@@ -1353,6 +1353,60 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
 - `evidence/<step>-<name>.png` are the pictures: the map's frame, cell 06's
   preview, or an export's frames (a contact sheet of five, and its first
   and last frame in full).
+- Where the map's frame is too small for its question (about 730 by 315
+  pixels on a runner, where a station's name is about 3 pixels tall), an
+  entry of its own, `<id>-enlarged` (and `8-typeface-label`), keeps the same
+  part of the map before and after the change, drawn again at a scale that
+  sets a name about 18 pixels tall: centred on Union Station and 7th
+  Street / Metro Center where the page draws those names, or on the name
+  the typeface is judged by, else on the middle of the map, and its
+  question says which. The part is drawn again,
+  never the window's pixels made larger, which smears a name, by the first
+  of two routes that works for its first picture, and every later picture
+  of the part takes the same one: the window's device scale overridden for
+  the moment of the shot (`Emulation.setDeviceMetricsOverride`, on the map
+  frame's own target too where it is one), which counts only where the
+  frame's own `devicePixelRatio` reads the scale; else the page's drawing
+  scaled for the moment by a CSS transform, its style put back, which
+  counts only where the drawing measures the scale, the page's clock
+  (`state().now`) reads the same before and after, and the frame's box is
+  where it was. (The page draws on every animation frame, paused or not,
+  so its draw count is no measure of a still map: a paused map draws the
+  same instant again.) Where neither drew the
+  map larger, the picture is not kept, and the step's record says "the map
+  could not be drawn larger here; drawn at 1 and not enlarged" with what
+  was read; where one did, the record says which and what it read. A
+  drawing the transform left scaled and that could not be put back is a
+  problem in the step's record, never a note, since every later picture of
+  the map would be of it; and every pair puts the drawing back before A1
+  and before B, and is refused where it found the drawing still scaled,
+  or where the map's frame did not answer (that refusal a problem too; a
+  put-back that fails as a redraw navigates the frame is asked again once
+  first), so no pair is judged across a scaled and an unscaled shot. A
+  picture whose page was drawn anew while it was scaled (the put-back finds
+  none of the test's marks) is refused as not enlarged. None of this
+  touches the export's capture. Likewise `9-colour-chip` keeps the
+  first line's row in **Line colours** before and after the drag, and
+  `10-order-rows` keeps **Line order**'s list and the map's **Linear**
+  view before and after the arrows. These add no check (`8-typeface-label` keeps the typeface check
+  it always had): a picture that cannot be taken, or whose call does not
+  answer in 30 seconds, is a note in the step's record, never a problem, the
+  pictures that were taken are kept, and the question says which are
+  missing. A pair's question names its enlarged twin "where it was kept".
+- The questions ask only what the pictures can show. The notebook's map
+  draws no clock and no title, so step 4 asks about the trains alone. An
+  export's title, and the GIF's title card, draw the city over the network,
+  "Los Angeles" over "Metro Rail", and those are the expected text, never
+  the project's name. The reel's storyboard (the engine's `tour`) plays the
+  map, then the Linear view, then the Time view swept across four hours, and
+  the GIF's (`morph`, after its opening) the map, the Linear view, the Time
+  view and the map again, so a frame of rows or of the time chart is the
+  storyboard, not a fault.
+- Step 9's drag lets the colour square go above and to its right and the
+  hue slider below the picker at five sixths of its width, so the first
+  line (A) ends about `#ff00ff`, magenta, a colour no LA line has, which
+  stands out from both themes' ground; the step's notes give the value it
+  took.
 - `evidence/evidence.json` has an entry per question: the row's own
   not-automated sentence, the images, the question and the text expected in
   them. The machine checks, with their values and thresholds, are the
