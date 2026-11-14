@@ -53,6 +53,9 @@ links are inline, with no images and no reference-style links.
 - The New project sheet says what a feed is, and **Where to find a feed**
   under it opens [Finding a feed](docs/feeds.md), which the Help menu also
   offers.
+- Quitting the app, or closing its window, while an export or a layout
+  runs asks first. **Keep working** is the default; **Quit anyway** (or
+  **Close anyway**) stops the runs. With nothing running, nothing is asked.
 
 ### Changed
 
@@ -80,6 +83,7 @@ links are inline, with no images and no reference-style links.
   simplify, sort, straighten, trips, draw, animate and save; the
   diagnostics say what the layout had to compromise on; and each line's
   colour is written once.
+- The app runs on Electron 45.2.3 (Chromium 156.0.8078.80).
 
 ### Fixed
 
@@ -130,6 +134,13 @@ links are inline, with no images and no reference-style links.
   install one over the old one.
 - An export's frame cannot be cropped or rotated. The map is padded to the
   preset's shape and never cropped, so no station is cut off.
+- Some controls are named with more or other words than they show, which
+  speech control relies on: the sample and project cards, the rail's steps,
+  the two folder buttons in Settings, and the Jobs button while a job runs
+  ([issue 707](https://github.com/richc117/legible-cities-app/issues/707)).
+- In the Night theme, a line's options toggle, the network-in-words toggle
+  and the engine log's toggle fall short of the contrast WCAG asks for
+  ([issue 710](https://github.com/richc117/legible-cities-app/issues/710)).
 
 ## [0.1.0] - 2026-10-08
 
