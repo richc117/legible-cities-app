@@ -68,7 +68,24 @@ over 0.1.0 with `tests/acceptance/upgrade.spec.ts`, in three phases with an
 install between each (see [step 22](#22-update-over-010)). Its record is this
 checklist's [results template](#results-template), filled in, as the job's
 summary and an artefact with a screenshot of each failed step, ready to
-paste into the run's issue. On a machine with the app already installed,
+paste into the run's issue.
+
+Before a tag exists, the same run can **rehearse** a build: dispatch it
+with the id of any `build.yml` run (a branch's, before it merges, included) instead of a tag (exactly one of
+the two; both or neither is refused with a sentence):
+
+```
+gh workflow run acceptance.yml --ref main -f run=<build run id>
+```
+
+The run's package jobs must all have succeeded; the installers come from
+that run's `installer-<target>` artefacts, which expire (30 days for a run on `main`, 7 for any other).
+The app must report what the run's build labelled it: `X.Y.Z+<sha7>` of the run's commit, or the tag's own version for a tag's build. The summary and the
+record say **REHEARSAL** in their heading, name the run and its commit, and
+mark the checksum and attestation rows "skipped: rehearsal, no Release",
+since there is no Release to check them against. A rehearsal is never a
+candidate's run of the gate: `node tests/acceptance/record-cli.mjs
+candidate <record.md>` refuses its record. On a machine with the app already installed,
 the spec runs on its own:
 
 ```

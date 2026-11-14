@@ -7,6 +7,10 @@
 //   node tests/acceptance/record-cli.mjs sums <SHA256SUMS.txt> <name>
 //   node tests/acceptance/record-cli.mjs prior <prior.json> field <name> <value>
 //   node tests/acceptance/record-cli.mjs prior <prior.json> step <n> <result> <notes>
+//   node tests/acceptance/record-cli.mjs prior <prior.json> rehearsal <run id> <commit> <ref>
+//   node tests/acceptance/record-cli.mjs dispatch <tag> <run id>
+//   node tests/acceptance/record-cli.mjs build-run <gh run view json file> <build.yml's workflow id>
+//   node tests/acceptance/record-cli.mjs candidate <record.md>
 //   node tests/acceptance/record-cli.mjs fill <record.md> <n> <result> <notes>
 //   node tests/acceptance/record-cli.mjs leftovers <made.json> <record.md> [<install folder>]
 //   node tests/acceptance/record-cli.mjs step 22 <record.md> <upgrade.json> <name=outcome>...
@@ -30,7 +34,16 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
-import { fillField, fillStep, parseSums, redact, RESULTS } from './pure.mjs'
+import {
+  checkBuildRun,
+  checkDispatch,
+  fillField,
+  fillStep,
+  parseSums,
+  redact,
+  requireCandidateRecord,
+  RESULTS,
+} from './pure.mjs'
 import { notRunRow, readUpgrade, upgradeRow } from './upgrade.mjs'
 
 function sha256(path) {
@@ -245,12 +258,27 @@ function main(args) {
         const [result, ...notes] = value
         if (!RESULTS.includes(result)) throw new Error(`${result} is not a result`)
         prior.steps = { ...(prior.steps ?? {}), [key]: { result, notes: notes.join(' ') } }
+      } else if (kind === 'rehearsal') {
+        prior.rehearsal = { run: key, commit: value[0], ref: value[1] }
       } else {
-        throw new Error(`prior takes field or step, not ${kind}`)
+        throw new Error(`prior takes field, step or rehearsal, not ${kind}`)
       }
       writeFileSync(path, `${JSON.stringify(prior, null, 2)}\n`)
       return 0
     }
+    case 'dispatch': {
+      const [tag, run] = rest
+      process.stdout.write(`${checkDispatch({ tag, run }).kind}\n`)
+      return 0
+    }
+    case 'build-run': {
+      const { commit, ref } = checkBuildRun(readJson(rest[0], null), rest[1])
+      process.stdout.write(`${commit} ${ref}\n`)
+      return 0
+    }
+    case 'candidate':
+      requireCandidateRecord(readFileSync(rest[0], 'utf8'))
+      return 0
     case 'fill': {
       const [path, n, result, ...notes] = rest
       writeFileSync(path, fillStep(readRecord(path), Number(n), result, notes.join(' ')))
@@ -265,7 +293,7 @@ function main(args) {
     }
     default:
       process.stderr.write(
-        'usage: record-cli.mjs sha256 | sums | prior | fill | leftovers | step (see the head of the file)\n',
+        'usage: record-cli.mjs sha256 | sums | prior | dispatch | build-run | candidate | fill | leftovers | step (see the head of the file)\n',
       )
       return 2
   }

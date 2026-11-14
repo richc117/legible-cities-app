@@ -117,6 +117,16 @@ landed, the record says that part is not automated.
   automated results alone: no person run, no SmartScreen check and no
   Narrator walk.
 
+**A rehearsal** comes before the tag: `gh workflow run acceptance.yml
+--ref main -f run=<build run id>` runs the same two jobs over a
+`build.yml` run's own installers, the update over 0.1.0 and the scripted
+VoiceOver run included. With no Release there is no `SHA256SUMS.txt` to
+match and no attestation to verify, so its records say "not verified (a
+rehearsal; no attestation)" and never yes. Its record and summaries say
+REHEARSAL, and it never counts as the candidate's run of any part of the
+gate: `node tests/acceptance/record-cli.mjs candidate <record.md>`
+refuses its record.
+
 **After the release**, the stranger's timed run,
 [`docs/acceptance-stranger.md`](acceptance-stranger.md), is feedback on
 the released version. It does not hold the release, and what it finds goes

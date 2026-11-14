@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, realpathSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import process from 'node:process'
+import { releaseLabel } from '../../scripts/release.mjs'
 
 /** Every result a step of the record can have. */
 export const RESULTS = [
@@ -169,4 +170,112 @@ export function tagSourceContains({ tag, path, text, cwd, run = spawnSync }) {
   const file = run('git', ['cat-file', 'blob', `refs/tags/${tag}:${path}`], options)
   if (file.error || file.status !== 0) return null
   return String(file.stdout).includes(text)
+}
+
+/**
+ * What a dispatch of the acceptance workflow asked to accept: a published
+ * Release by its `tag`, or - a rehearsal - the installers of a build.yml
+ * run by its id. Exactly one of the two; anything else is a sentence, never
+ * a guess. A tag names a Release, so it is v<X.Y.Z> or v<X.Y.Z>-rc.<N>.
+ */
+export function checkDispatch({ tag = '', run = '' }) {
+  for (const [name, value] of [
+    ['tag', tag],
+    ['run', run],
+  ]) {
+    if (value !== value.trim()) {
+      throw new Error(`the ${name} input has spaces around it: give it exactly, or leave it empty`)
+    }
+  }
+  const hasTag = tag !== ''
+  const hasRun = run !== ''
+  if (hasTag && hasRun) {
+    throw new Error(
+      'give either a tag (a published Release) or a run (a build.yml run, for a rehearsal), not both',
+    )
+  }
+  if (!hasTag && !hasRun) {
+    throw new Error(
+      'give a tag (a published Release) or a run (the id of a build.yml run, for a rehearsal); neither was given',
+    )
+  }
+  if (hasRun) {
+    if (!/^[0-9]+$/.test(run)) {
+      throw new Error(`${run} is not a run id: a run id is digits only, as gh run list prints it`)
+    }
+    return { kind: 'rehearsal', run }
+  }
+  if (!/^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/.test(tag)) {
+    throw new Error(`${tag} is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>`)
+  }
+  return { kind: 'tag', tag }
+}
+
+/**
+ * Whether a run, read with `gh run view <id> --json
+ * workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs`, is a
+ * run of the workflow whose id is `buildWorkflowId` (build.yml, by id, not
+ * by its display name) and whose package jobs all succeeded. Returns its
+ * commit and the ref it built, as GitHub names a ref (`refs/tags/<tag>` for
+ * a tag push, else `refs/heads/<branch>`), or throws the sentence that says
+ * what is wrong with it.
+ */
+export function checkBuildRun(info, buildWorkflowId) {
+  if (info === null || typeof info !== 'object') throw new Error('the run could not be read')
+  if (
+    String(buildWorkflowId ?? '') === '' ||
+    String(info.workflowDatabaseId) !== String(buildWorkflowId)
+  ) {
+    throw new Error(
+      `the run is of workflow ${info.workflowDatabaseId}, not build.yml (${buildWorkflowId})`,
+    )
+  }
+  if (!/^[0-9a-f]{40}$/.test(String(info.headSha ?? ''))) {
+    throw new Error('the run names no commit')
+  }
+  const packages = (info.jobs ?? []).filter((job) => String(job.name).startsWith('package ('))
+  if (packages.length === 0) throw new Error('the run has no package jobs')
+  const failed = packages.filter((job) => job.conclusion !== 'success')
+  if (failed.length > 0) {
+    throw new Error(
+      `the run's package jobs did not all succeed: ${failed.map((j) => `${j.name} is ${j.conclusion || 'not finished'}`).join(', ')}`,
+    )
+  }
+  const branch = String(info.headBranch ?? '')
+  const isTag = info.event === 'push' && /^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/.test(branch)
+  return { commit: info.headSha, branch, ref: `${isTag ? 'refs/tags/' : 'refs/heads/'}${branch}` }
+}
+
+/**
+ * The version an app built by that run reports (issue 558): what build.yml's
+ * LEGIBLE_RELEASE_REF and GITHUB_SHA make `releaseLabel` say - X.Y.Z+<sha7>
+ * for a branch, the tag's own version for a tag push.
+ */
+export function rehearsalVersion(packageVersion, ref, commit) {
+  return releaseLabel(packageVersion, ref, commit)
+}
+
+/** The heading of a record made by a rehearsal, which no candidate's has. */
+export const REHEARSAL_HEADING = "## Acceptance run: REHEARSAL, not a candidate's run"
+
+/** Whether a record is a rehearsal's, a candidate's, or neither. */
+export function recordKind(markdown) {
+  markdown = markdown.replace(/\r\n/g, '\n')
+  if (
+    markdown.includes(`\n${REHEARSAL_HEADING}\n`) ||
+    markdown.startsWith(`${REHEARSAL_HEADING}\n`)
+  )
+    return 'rehearsal'
+  if (/^## Acceptance run$/m.test(markdown)) return 'candidate'
+  return 'unknown'
+}
+
+/** The record, or a sentence refusing it: the gate counts a candidate's run only. */
+export function requireCandidateRecord(markdown) {
+  const kind = recordKind(markdown)
+  if (kind === 'rehearsal') {
+    throw new Error("this record is a rehearsal's, run on a build and not on a candidate's Release")
+  }
+  if (kind === 'unknown') throw new Error('this is not an acceptance record')
+  return markdown
 }

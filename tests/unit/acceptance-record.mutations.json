@@ -126,5 +126,109 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "links only to headings that are there",
     "why": "A link inside the accessibility record to a heading that is not there: the person walking it is sent to the top of a long page."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (hasTag && hasRun) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses both, with a sentence",
+    "why": "Both given and the dispatch carries on: a tag's Release and a build run mixed in one record."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (!hasTag && !hasRun) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses neither, with a sentence",
+    "why": "Neither given and the dispatch carries on with nothing to accept."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "String(info.workflowDatabaseId) !== String(buildWorkflowId)",
+    "replace": "false",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run of another workflow, by id and not by name",
+    "why": "Any run's artefacts accepted as a build's."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (failed.length > 0) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a run with a package job that did not succeed, naming it",
+    "why": "A build with a failed package job rehearsed as though it had installers."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (kind === 'rehearsal') {\n    throw",
+    "replace": "  if (false) {\n    throw",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "is refused where a candidate's record is required, and a candidate's is let through",
+    "why": "A rehearsal's record counted as a candidate's run of the gate."
+  },
+  {
+    "file": "tests/acceptance/record.ts",
+    "find": "this.#rehearsal === undefined ? '## Acceptance run' : REHEARSAL_HEADING",
+    "replace": "'## Acceptance run'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "heads a rehearsal record as one, with its run and commit, and a candidate record plainly",
+    "why": "A rehearsal's record that does not say so."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        if: ${{ env.KIND == 'tag' }}\n        env:\n",
+    "replace": "        env:\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "leaves the tag's step 1, with its checksum and attestation, to a tag alone",
+    "why": "The Release's checksum and attestation check run, and fail, on a rehearsal that has no Release."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "    if (value !== value.trim()) {",
+    "replace": "    if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses spaces around either input, rather than trimming what the workflow uses as given",
+    "why": "A padded input trimmed in the check but used as given by the workflow: both checkouts or a wrong run id."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "        if: ${{ env.KIND == 'rehearsal' }}\n        with:\n          ref: ${{ env.REHEARSAL_SHA }}",
+    "replace": "        if: ${{ inputs.run != '' }}\n        with:\n          ref: ${{ env.REHEARSAL_SHA }}",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "keys both checkouts of at-tag on the dispatch result, never on the raw inputs",
+    "why": "A padded run input alongside a tag runs both checkouts, the second with an empty ref."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  markdown = markdown.replace(/\\r\\n/g, '\\n')\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "reads a record with Windows line ends the same",
+    "why": "A CRLF rehearsal record read as unknown and let past nothing, or a candidate's misjudged."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  return releaseLabel(packageVersion, ref, commit)",
+    "replace": "  return `${packageVersion}+${commit.slice(0, 7)}`",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "says the version a build reports: X.Y.Z+<sha7> for main or a branch, the tag for a tag push",
+    "why": "A tag-push build expected to report X.Y.Z+sha7 and failed on the right version."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "isTag ? 'refs/tags/' : 'refs/heads/'",
+    "replace": "'refs/heads/'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "names a tag push by its tag, and a branch that looks like one by its branch",
+    "why": "A tag push judged as a branch build."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          found=()\n          while IFS= read -r file; do found+=(\"$file\"); done < <(",
+    "replace": "          mapfile -t found < <(",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "has no bash 4 construct, for the macOS runner may have 3.2",
+    "why": "mapfile on a bash 3.2 runner dies at step 1."
   }
 ]

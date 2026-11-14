@@ -9,11 +9,18 @@
 # the checklist's results template, is the job's summary and an artefact,
 # for pasting into the run's issue.
 #
-# On request only, with the Release's tag. The spec and its tooling come from
-# the ref the run is dispatched on, since a tag cut before the spec existed
-# does not carry it; what the app must report - the engine, Python and LOOM
-# pins, and the version - is read from vendor/pins.json and package.json at
-# the tag itself.
+# On request only, with the Release's tag, or - a rehearsal - with the id of
+# a build.yml run, whose installers it downloads from the run's artefacts
+# before any tag exists: `gh workflow run acceptance.yml --ref main -f
+# run=<id>`. Exactly one of the two. A rehearsal's record and summary say so,
+# it skips what needs a published Release (the checksums file, the
+# attestations), and it never counts as a candidate's run of the gate.
+#
+# The spec and its tooling come from the ref the run is dispatched on,
+# since a tag cut before the spec existed does not carry it; what the app
+# must report - the engine, Python and LOOM pins, and the version - is read
+# from vendor/pins.json and package.json at the tag itself, or for a
+# rehearsal at the commit the build run built.
 #
 # What it cannot do is the rest of the gate (ADR-063, docs/releasing.md):
 # the assistant's review of the images it keeps, and a person's sitting on the final candidate (docs/acceptance-sitting.md),
@@ -24,22 +31,33 @@
 # timed run comes after the release.
 #
 # Read-only: the token lists and downloads Release assets, and reads their
-# attestations (step 1), and nothing else. A draft Release is invisible to
+# attestations (step 1); for a rehearsal it reads the build run and
+# downloads its artefacts; and nothing else. A draft Release is invisible to
 # it; publish the draft (as a prerelease for an -rc tag) before dispatching
 # this. No secrets. The network is used for the feeds the checklist
 # downloads.
 name: acceptance
 
+run-name: acceptance ${{ inputs.tag || format('REHEARSAL of build run {0}', inputs.run) }}
+
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'The Release to accept, by its tag (for example v0.1.0-rc.3)'
-        required: true
+        description: 'The Release to accept, by its tag (for example v0.1.0-rc.3); give this or run, not both'
+        required: false
+        default: ''
+        type: string
+      run:
+        description: 'A rehearsal: the id of a build.yml run whose installers to try, before any tag; give this or tag, not both'
+        required: false
+        default: ''
         type: string
 
 permissions:
   contents: read
+  # gh run download reads the installers a rehearsal's build run uploaded.
+  actions: read
   # gh attestation verify asks the attestations API for the installer's.
   attestations: read
 
@@ -78,6 +96,8 @@ jobs:
         shell: bash
     env:
       TAG: ${{ inputs.tag }}
+      BUILD_RUN: ${{ inputs.run }}
+      TARGET: ${{ matrix.target }}
       SUFFIX: ${{ matrix.suffix }}
       PLATFORM: ${{ matrix.platform }}
       # Step 22's earlier version: the first release, from its own Release.
@@ -89,14 +109,9 @@ jobs:
       JOB_MINUTES: 360
       UPGRADE_MINUTES: 195
     steps:
-      - name: Refuse a tag that names no Release
-        run: |
-          # When the job began, near enough, for step 22's check of the time left.
-          echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
-            echo "::error::$TAG is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>"
-            exit 1
-          fi
+      # When the job began, near enough, for step 22's check of the time left.
+      - name: When the job began
+        run: echo "JOB_STARTED=$(date +%s)" >> "$GITHUB_ENV"
 
       # The whole history and every tag: a check of something newer than some
       # releases asks git whether this tag contains the commit that brought it.
@@ -105,10 +120,49 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Refuse a dispatch that names no Release and no build run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          if ! kind=$(node "$cli" dispatch "$TAG" "$BUILD_RUN"); then
+            echo "::error::see above: $TAG / $BUILD_RUN"
+            exit 1
+          fi
+          echo "KIND=$kind" >> "$GITHUB_ENV"
+          if [ "$kind" = rehearsal ]; then
+            gh run view "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" \
+              --json workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs > "$RUNNER_TEMP/build-run.json"
+            build_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)
+            if ! read -r sha ref < <(node "$cli" build-run "$RUNNER_TEMP/build-run.json" "$build_id"); then
+              echo "::error::run $BUILD_RUN cannot be rehearsed: see above"
+              exit 1
+            fi
+            {
+              echo "REHEARSAL_SHA=$sha"
+              echo "REHEARSAL_REF=$ref"
+            } >> "$GITHUB_ENV"
+          fi
+
       # The pins and the version the Release was built from.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.KIND == 'tag' }}
         with:
           ref: refs/tags/${{ inputs.tag }}
+          path: at-tag
+          persist-credentials: false
+          sparse-checkout: |
+            vendor/pins.json
+            package.json
+            electron-builder.yml
+          sparse-checkout-cone-mode: false
+
+      # A rehearsal: the pins and the version of the commit the build run built.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ env.KIND == 'rehearsal' }}
+        with:
+          ref: ${{ env.REHEARSAL_SHA }}
           path: at-tag
           persist-credentials: false
           sparse-checkout: |
@@ -138,11 +192,57 @@ jobs:
             echo "OLD_ASSET=Legible-Cities-${UPGRADE_FROM#v}-$SUFFIX"
           } >> "$GITHUB_ENV"
 
+      # A rehearsal's step 1: the build run's own artefact for this target,
+      # in place of a Release's asset. There is no Release, so no
+      # SHA256SUMS.txt to match and no attestation to verify; each is
+      # recorded as skipped, never as passed.
+      - name: Step 1, rehearsal, download the build run's installer
+        if: ${{ env.KIND == 'rehearsal' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          node "$cli" prior "$PRIOR" rehearsal "$BUILD_RUN" "$REHEARSAL_SHA" "$REHEARSAL_REF"
+          node "$cli" prior "$PRIOR" field 'Clean machine?' "yes: a fresh GitHub runner (${ImageOS:-image unknown} ${ImageVersion:-})"
+          if ! gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name "installer-$TARGET" --dir "$DOWNLOAD"; then
+            node "$cli" prior "$PRIOR" step 1 fail "The artefact installer-$TARGET of build run $BUILD_RUN could not be downloaded; it may have expired (a main run's are kept 30 days, any other 7)."
+            echo "::error::could not download installer-$TARGET from build run $BUILD_RUN"
+            exit 1
+          fi
+          case "$PLATFORM" in macos) ext=dmg ;; *) ext=exe ;; esac
+          # No bash 4 array builtin: the macOS runner's bash may be 3.2.
+          found=()
+          while IFS= read -r file; do found+=("$file"); done < <(find "$DOWNLOAD" -type f -name "*.$ext")
+          if [ "${#found[@]}" -ne 1 ]; then
+            node "$cli" prior "$PRIOR" step 1 fail "Expected one .$ext in installer-$TARGET of build run $BUILD_RUN, found ${#found[@]}."
+            echo "::error::expected one .$ext in installer-$TARGET, found ${#found[@]}"
+            exit 1
+          fi
+          # Step 2 reads $DOWNLOAD/$ASSET: the file sits where the artefact put it.
+          rel="${found[0]#"$DOWNLOAD"/}"
+          actual=$(node "$cli" sha256 "${found[0]}")
+          node "$cli" prior "$PRIOR" field 'Installer file name' "$rel"
+          node "$cli" prior "$PRIOR" field 'Its SHA-256' "$actual"
+          node "$cli" prior "$PRIOR" field 'Matches SHA256SUMS.txt?' 'skipped: rehearsal, no Release'
+          node "$cli" prior "$PRIOR" field 'Attestation verified?' 'skipped: rehearsal, no Release'
+          node "$cli" prior "$PRIOR" step 1 'pass, part not automated' "REHEARSAL: $rel, SHA-256 $actual, from build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}, downloaded with the GitHub CLI. skipped: rehearsal, no Release (SHA256SUMS.txt and the attestation exist only for a published Release)."
+          echo "ASSET=$rel" >> "$GITHUB_ENV"
+          {
+            echo "### Rehearsal"
+            echo
+            echo "Build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}: not a candidate's run of the gate."
+            echo
+            echo "- Matches SHA256SUMS.txt? skipped: rehearsal, no Release"
+            echo "- Attestation verified? skipped: rehearsal, no Release"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # ATTESTED_SINCE is the commit that brought the attest job (pull request
       # 449, ADR-057). A tag that does not contain it, v0.1.0 among them, has
       # no attestation to verify, and a failed verify cannot say whether one
       # never existed or was refused, so git is asked which it is.
       - name: Step 1, download the installer and check it
+        if: ${{ env.KIND == 'tag' }}
         env:
           GH_TOKEN: ${{ github.token }}
           ATTESTED_SINCE: 8d37d20ea4a97190104bbbadaf88b70eb83d570f
@@ -592,7 +692,13 @@ jobs:
           record="$OUT/acceptance-$PLATFORM.md"
           if [ -f "$record" ]; then
             {
-              echo "Issue title: \`A6-04 run: $([ "$PLATFORM" = macos ] && echo macOS || echo Windows) ${TAG#v}, $(date -u +%F)\`"
+              if [ "$KIND" = rehearsal ]; then
+                echo "**REHEARSAL, not a candidate's run:** build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}. It does not go on the gate's issue as a candidate's run."
+                echo
+                echo "Issue title: none; a rehearsal has no issue. Skipped: rehearsal, no Release."
+              else
+                echo "Issue title: \`A6-04 run: $([ "$PLATFORM" = macos ] && echo macOS || echo Windows) ${TAG#v}, $(date -u +%F)\`"
+              fi
               echo
               cat "$record"
             } >> "$GITHUB_STEP_SUMMARY"
