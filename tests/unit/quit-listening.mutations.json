@@ -1,0 +1,10 @@
+[
+  {
+    "file": "src/renderer/src/QuitDialog.tsx",
+    "find": "    return () => {\n      offQuestion()\n      offReport()\n    }\n",
+    "replace": "    return () => {\n      offReport()\n    }\n",
+    "test": "tests/unit/quit-listening.test.tsx",
+    "title": "is taken back when an uncaught error takes the interface down",
+    "why": "The dialog's cleanup no longer unsubscribes: after an uncaught error takes the interface down, main is never told the page has stopped listening, and a quit during a run is held for a dialog nobody will draw."
+  }
+]

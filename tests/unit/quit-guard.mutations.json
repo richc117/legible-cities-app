@@ -1,0 +1,378 @@
+[
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (deps.guard.beforeQuit(event, deps.gate.quitting)) return\n",
+    "replace": "    deps.guard.beforeQuit(event, deps.gate.quitting)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "keeps a quit that is asked about from the gate, so Keep working leaves the app able to quit",
+    "why": "A quit that is asked about goes on to the gate: the engine is stopped while the question is still on the screen, and Keep working keeps nothing."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (deps.gate.beforeQuit(event, deps.engineRunning()) === 'later') return\n    deps.shutDown()\n",
+    "replace": "    deps.gate.beforeQuit(event, deps.engineRunning())\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "stops the engine exactly as before once the person has said Quit anyway",
+    "why": "The shutdown no longer started after the question: the quit the person confirmed is cancelled by the gate for a stop that never runs, and the app can never quit."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "  quit(): void {\n    this.#own = true\n",
+    "replace": "  quit(): void {\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "quits after Quit anyway, as the app’s own quit, and does not ask again",
+    "why": "The quit the guard makes not marked as the app's own: the quit the person has just confirmed is asked about again, for ever."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      own: this.#own || underWay,\n",
+    "replace": "      own: this.#own,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does not ask about a quit already under way, nor the windows it closes",
+    "why": "A quit under way no longer counted as the app's: the windows a quit closes are held by a question, which cancels the quit half way through its shutdown."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (this.#open !== null) {\n      this.#open = null\n      this.#deps.withdraw()\n    }\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "takes a second quit as the answer once the question has been open a second, and takes the dialog back",
+    "why": "The question left open after a second quit answered it: the dialog stays on a quitting app, and its buttons answer a question already answered."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (open === null || open.id !== id) return\n",
+    "replace": "    if (open === null) return\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does nothing for an answer to an earlier question",
+    "why": "An answer taken for whichever question is open: a press on its way as one dialog closed quits the app from under the next."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (frame !== this.#listener) return\n    const open = this.#open\n",
+    "replace": "    const open = this.#open\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does nothing for an answer from a frame that is not the listening page",
+    "why": "An answer heard from any frame: a page that is not the one asked can quit the app."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    // Cancel before it answered; the exports are stopped here too, since on\n    // macOS no quit follows the window to do it.\n    this.#deps.stopExports()\n",
+    "replace": "    // Cancel before it answered; the exports are stopped here too, since on\n    // macOS no quit follows the window to do it.\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "stops the exports and then closes the window after Close anyway",
+    "why": "Close anyway no longer stops the exports main holds: on macOS, where no quit follows the window, an export goes on with no window that can see or stop it."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#passing = true\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does not ask about the close it makes itself, with the export still unwinding",
+    "why": "The close the guard makes not let through: Close anyway is answered with the same question again, and the window never closes."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (this.#passing) {\n      this.#passing = false\n      return false\n    }\n",
+    "replace": "    if (this.#passing) return false\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does not ask about the close it makes itself, with the export still unwinding",
+    "why": "The pass for the guard's own close never spent: every later close of that window goes unasked, whatever is running."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (this.#open !== null && !this.#own && !underWay) {\n      this.#open = null\n      this.#deps.stopExports()\n      this.#deps.cancelRequests()\n    }\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "takes a second close as the answer once the question has been open a second, and does the page’s part itself",
+    "why": "A second close goes ahead and stops nothing: on macOS the export goes on behind a window that is gone."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (frame !== this.#listener) return\n    this.#layouts = layouts\n",
+    "replace": "    this.#layouts = layouts\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hears a report from the listening frame only",
+    "why": "A report heard from any frame: a page that is not the one asked decides what a quit is asked about."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (frame !== this.#listener) {\n      this.#layouts = []\n      this.#open = null\n    }\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forgets the report with the page that made it",
+    "why": "A page's report kept for the page that replaces it: a quit is asked about a layout that died with the renderer running it."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (this.#listener === null || !this.#deps.current(this.#listener)) return 'gone'\n",
+    "replace": "    if (this.#listener === null) return 'gone'\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does not ask once the listening frame is no longer the window’s",
+    "why": "A page asked though its frame is no longer the window's: the question goes to a document that is not on the screen, and the quit is held for it."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    return this.#responsive ? 'ready' : 'unresponsive'\n",
+    "replace": "    return 'ready'\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "does not ask an unresponsive page, and asks again once it answers",
+    "why": "Electron's report that the page is unresponsive ignored: a quit is held for a question the page cannot show."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      name: this.#deps.nameOf(run.project) ?? UNNAMED_PROJECT,\n",
+    "replace": "      name: this.#deps.nameOf(run.project) ?? run.project,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "names a project the store cannot name as the sentence’s fallback",
+    "why": "A project the store cannot name said by its identifier: the sentence reads as twelve letters and digits."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#listener = null\n    this.#layouts = []\n    this.#open = null\n",
+    "replace": "    this.#listener = null\n    this.#layouts = []\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "drops the open question when the page goes, so the next quit is not held by it",
+    "why": "A question kept open over a crash: an answer from the dead page's last moments quits the app after its window was loaded again."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (typeof project !== 'string' || validateId(project) !== null || seen.has(project))\n      return null\n",
+    "replace": "    if (typeof project !== 'string' || seen.has(project)) return null\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "the report’s shape",
+    "why": "A report's identifiers no longer checked: any string the page sends is kept and looked up as a project."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (typeof id !== 'number' || !Number.isInteger(id) || !isQuitAnswer(answer))\n      throw new Error(BAD_ANSWER)\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "refuses an answer that names no question or says neither word",
+    "why": "An answer of any shape taken: a word that is neither keep nor anyway closes the question, and is carried out as a quit."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (report === null) throw new Error(BAD_REPORT)\n",
+    "replace": "    if (report === null) return\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "takes the report through its shape, and refuses one that is not a report",
+    "why": "A report of the wrong shape dropped in silence: the page is never told that main is not hearing what it runs."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    // The app's own quit, never asked about: the page that would ask is gone.\n    () => quitGuard.quit(),\n",
+    "replace": "    // The app's own quit, never asked about: the page that would ask is gone.\n    () => app.quit(),\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "quits through the guard everywhere but in the guard’s own quit",
+    "why": "The crash box's Quit made a quit of a person's: with an export running and the page reloaded it is held for a question, behind a box that offered to quit."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    quit: () => {\n      if (!quit.quitting) quitGuard.quit()\n    },\n",
+    "replace": "    quit: () => {\n      if (!quit.quitting) app.quit()\n    },\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "quits through the guard everywhere but in the guard’s own quit",
+    "why": "The quit that follows the window made a quit of a person's: with nothing left to ask, a run the page never reported ended could hold it."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  window.on(\n    'close',\n    onAppWindowClose({\n      guard: quitGuard,\n      gate: quit,\n      closing: () => {\n        windowKept = keeper.closing()\n      },\n    }),\n  )\n",
+    "replace": "  window.on('close', () => {\n    windowKept = keeper.closing()\n  })\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hands before-quit and the window’s close to the composed handlers, over the one guard",
+    "why": "The window's close no longer asks: a window closed during an export closes, and the export is thrown away or left running unseen."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  window.webContents.on('render-process-gone', () => {\n    menuCommands.crashed()\n    quitGuard.gone()\n  })\n",
+    "replace": "  window.webContents.on('render-process-gone', () => {\n    menuCommands.crashed()\n  })\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hands before-quit and the window’s close to the composed handlers, over the one guard",
+    "why": "A renderer that died still counted as listening: a quit is held for a question sent to a dead page."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      this.#deps.stopExports()\n      this.#deps.cancelRequests()\n",
+    "replace": "      this.#deps.stopExports()\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "takes a second close as the answer once the question has been open a second, and does the page’s part itself",
+    "why": "A second close leaves the page's requests with the engine: on macOS a layout's graph goes on being built with no window, and no page to take its next step."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    // Too soon after the question to be its answer: nothing changes.\n    if (decision.hold) {\n      event.preventDefault()\n      return true\n    }\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "holds a second quit that comes before the question could have been read, and leaves the dialog",
+    "why": "A quit the rule holds goes on to the gate: the repeat of a held shortcut quits the app under the question it has just asked."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (decision.hold) {\n      event.preventDefault()\n      return true\n    }\n    // A second close is an answer",
+    "replace": "    // A second close is an answer",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "holds a second close that comes before the question could have been read",
+    "why": "A close the rule holds goes ahead: the second click of a double click closes the window under the question, and the export is stopped unread."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      open: this.#open === null ? null : this.#deps.now() - this.#open.at,\n",
+    "replace": "      open: this.#open === null ? null : 0,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "takes a second quit as the answer once the question has been open a second, and takes the dialog back",
+    "why": "The open question always counted as new: no second quit is ever its answer, and a dialog that cannot be answered leaves the app unquittable."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#open = { id: this.#asked, kind: question.kind, at: this.#deps.now() }\n",
+    "replace": "    this.#open = { id: this.#asked, kind: question.kind, at: 0 }\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "holds a second quit that comes before the question could have been read, and leaves the dialog",
+    "why": "When the question was asked not kept: its age is the clock's own reading, so a question asked this instant counts as old and the next quit answers it."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (frame !== this.#listener) return\n    this.gone()\n",
+    "replace": "    if (frame !== this.#listener) return\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "is not asked, and what it reported and was asked goes with its word",
+    "why": "A page's word that it has stopped listening ignored: after an error takes the interface down, a quit during a run is held for a dialog nobody will draw."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (frame !== this.#listener) return\n    this.gone()\n",
+    "replace": "    this.gone()\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "is heard from the listening frame only",
+    "why": "Any frame's word that it has stopped listening taken: a frame that is not the page stops the page being asked."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (listening) guard.listening(event.senderFrame)\n    else guard.notListening(event.senderFrame)\n",
+    "replace": "    guard.listening(event.senderFrame)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hears that the page listens and that it has stopped, and refuses a word that says neither",
+    "why": "The page's word that it has stopped heard as its word that it listens: main goes on asking a page that draws nothing."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    if (typeof listening !== 'boolean') throw new Error(BAD_LISTENING)\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hears that the page listens and that it has stopped, and refuses a word that says neither",
+    "why": "A word that says neither taken for one that says stopped: a call of the wrong shape stops the page being asked."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "  if (deps.platform === 'win32') return\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "is left to Windows on Windows",
+    "why": "The signals installed on Windows too, where Node's emulation of them is not what closes a console."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "export const TERMINATION_SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const\n",
+    "replace": "export const TERMINATION_SIGNALS = ['SIGINT', 'SIGHUP'] as const\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "is the app’s own quit on macOS and Linux: interrupt, terminate and hang up",
+    "why": "SIGTERM left to Electron: `kill` during a run is asked about like a person's quit, and a second one ends the process with the engine not stopped."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  cancelRequests: () => engineBridge?.cancelAll(),\n",
+    "replace": "  cancelRequests: () => undefined,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "hands the guard a clock that cannot go back, and the bridge that cancels a page’s requests",
+    "why": "The guard handed nothing to cancel the page's requests with: a second close leaves a layout's request running in the engine."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      asked = true\n      deps.quit()\n",
+    "replace": "      asked = true\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "is the app’s own quit on macOS and Linux: interrupt, terminate and hang up",
+    "why": "A first signal heard and nothing done: with Node's handler in place of Electron's, `kill` no longer begins a quit at all."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      asked = true\n      deps.quit()\n",
+    "replace": "      asked = true\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "goes on to the gate unasked, with an export running and a page that could be asked",
+    "why": "A first signal heard and nothing done: the signal's quit never reaches the gate, and the engine is never stopped for it."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      if (asked || deps.quitting()) {\n        deps.off(signal, listener)\n        deps.raise(signal)\n        return\n      }\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "A second signal asks for the quit again and forces nothing: a quit that is stuck can no longer be ended by `kill`, only by SIGKILL."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        deps.off(signal, listener)\n        deps.raise(signal)\n",
+    "replace": "        deps.off(signal, listener)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "The listener taken off and the signal not raised again: the second signal is swallowed, and the stuck quit goes on until a third."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        deps.off(signal, listener)\n        deps.raise(signal)\n",
+    "replace": "        deps.raise(signal)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "The signal raised again with its listener still on: it has no default action to take, comes straight back here, and is raised again without end."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        deps.off(signal, listener)\n        deps.raise(signal)\n",
+    "replace": "        deps.raise(signal)\n        deps.off(signal, listener)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal while the quit is under way: its listener off, then the signal raised again",
+    "why": "The signal raised before its listener is off: it is delivered to the listener it was meant to get past."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      if (asked || deps.quitting()) {\n",
+    "replace": "      if (deps.quitting()) {\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a second signal though the gate has not seen the first",
+    "why": "Only the gate's word counted: where the first signal's quit never reached `before-quit`, every later signal asks for the same stuck quit again."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      if (asked || deps.quitting()) {\n",
+    "replace": "      if (asked) {\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "forces the exit at a signal that arrives during a quit begun some other way",
+    "why": "Only this module's own first signal counted: a signal sent to end a quit that is stuck asks for that quit again."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    quitOnSignals({\n      platform: process.platform,\n      on: (signal, listener) => process.on(signal, listener),\n      off: (signal, listener) => process.removeListener(signal, listener),\n      raise: (signal) => process.kill(process.pid, signal),\n      quitting: () => quit.quitting,\n      quit: () => quitGuard.quit(),\n    })\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "installs the termination signals as the guard’s own quit, once the app is ready",
+    "why": "The signals not installed: a termination signal during a run is a person's quit again, asked about in a window its sender cannot see."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "      raise: (signal) => process.kill(process.pid, signal),\n",
+    "replace": "      raise: () => undefined,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "installs the termination signals as the guard’s own quit, once the app is ready",
+    "why": "Nothing raised at a second signal: its listener is taken off and the stuck quit is left as it was."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "      quitting: () => quit.quitting,\n",
+    "replace": "      quitting: () => false,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "installs the termination signals as the guard’s own quit, once the app is ready",
+    "why": "The gate's word never passed on: a signal sent during a quit begun from the window asks for the quit again and forces nothing."
+  }
+]

@@ -6,5 +6,21 @@
     "test": "tests/unit/engine-ipc.test.ts",
     "title": "is refused while the engine data is being reset",
     "why": "The retry not checked against the reset (issue 562): a Try again pressed during a reset of the engine's data starts an engine that writes into the folders being removed."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "    for (const [token, id] of idOf) {\n      if (id === 0) cancelledEarly.add(token)\n      else engine.cancel(id)\n    }\n",
+    "replace": "    for (const [token, id] of idOf) {\n      if (id === 0) cancelledEarly.add(token)\n    }\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "cancels every request the page has with the engine at once, as its own cancel cancels each",
+    "why": "The requests the engine already has left running: a window closed twice over the quit's question leaves a layout going in the engine with no page to hear it."
+  },
+  {
+    "file": "src/main/engine-ipc.ts",
+    "find": "    for (const [token, id] of idOf) {\n      if (id === 0) cancelledEarly.add(token)\n      else engine.cancel(id)\n    }\n",
+    "replace": "    for (const [token, id] of idOf) {\n      if (id !== 0) engine.cancel(id)\n    }\n",
+    "test": "tests/unit/engine-ipc.test.ts",
+    "title": "holds the cancel of every request for one the guard is still thinking about",
+    "why": "A request the guard is still thinking about passed over: it is sent to the engine a moment after the window that asked for it was closed, and nothing stops it."
   }
 ]

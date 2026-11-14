@@ -152,7 +152,10 @@ slow from the first call, not rewrite the file mid-session. A `<dialog>`'s
 cancel event is cancelable only while the window holds an unspent
 activation: the first Escape spends it and the second closes the dialog
 whatever `preventDefault` says, so a close handler must tell the parent
-whenever the element closed on its own (A2-01). The platform's file
+whenever the element closed on its own (A2-01). A `<dialog>` fires `close`
+a task after it closes: one element opened again within that task hears the
+last closing as its own, so a dialog that can be asked for twice in a row is
+keyed by what it asks (`QuitDialog.tsx`, issue 552). The platform's file
 chooser cannot be driven by a test; replace `dialog.showOpenDialog` in the
 main process through Playwright's `app.evaluate`, so the app's own handler
 runs. A record is read after the Library lists it, never straight after

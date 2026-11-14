@@ -1,0 +1,34 @@
+[
+  {
+    "file": "src/main/projects.ts",
+    "find": "    this.#names.set(folder, parsed.record.name)\n",
+    "replace": "",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "knows a name from the read of one record and from the list",
+    "why": "A record's name not kept as it is read: the quit's question cannot name a project the Library has listed."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "    this.#names.set(id, written.name)\n",
+    "replace": "",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "knows a new project by the name it was made with, and a renamed one by its new name",
+    "why": "A record's name not kept as it is written: a project renamed while it exports is asked about by its old name."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "          if (folder === 'project') this.#names.delete(id)\n",
+    "replace": "",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "keeps the name it had when a write fails, and forgets a project that is deleted",
+    "why": "A deleted project's name kept for as long as the app runs."
+  },
+  {
+    "file": "src/main/projects.ts",
+    "find": "    await this.writeAtomic(id, carried.onto(written, renewed))\n    this.#names.set(id, written.name)\n",
+    "replace": "    this.#names.set(id, written.name)\n    await this.writeAtomic(id, carried.onto(written, renewed))\n",
+    "test": "tests/unit/projects-store.test.ts",
+    "title": "keeps the name it had when a write fails, and forgets a project that is deleted",
+    "why": "The name kept before the write has landed: a rename the disk refused is said in the quit's question as though it had been made."
+  }
+]

@@ -15,6 +15,7 @@ import type { FirstRunResult } from './first-run'
 import type { LayoutDone, LayoutResult } from './layout'
 import type { LicencesView } from './licences'
 import type { HelpPage, MenuCommand } from './menu'
+import type { AskedQuit, QuitAnswer, RunningLayout } from './quit'
 import type { AppTheme, FolderSize, ResetOutcome, SettingsView } from './settings'
 import type { Station } from './trip'
 import type { ViewerMethod, ViewerRole } from './viewer'
@@ -405,7 +406,8 @@ export interface Api {
     openChromium(): Promise<void>
   }
   // The app's own menu (issue 554). Main builds the menu and answers most of
-  // it itself; these are the two ways it reaches the page and back.
+  // it itself; these are the two ways it reaches the page and back. And the
+  // question a quit or a close asks first while a run is going (issue 552).
   /** What the window as a whole is told by the main process. */
   app: {
     /**
@@ -416,6 +418,30 @@ export interface Api {
      * arrives first.
      */
     onMenuCommand(listener: (command: MenuCommand) => void): () => void
+    /**
+     * The question main asks before a quit, or a close of the window, throws
+     * a run away (issue 552, specs/039-quit-guard): the page shows it in its
+     * own dialog and answers with `answerQuit`. Null takes back the question
+     * on screen, which a second quit has answered. Subscribing tells main
+     * the page listens, and so can be asked, and the function handed back
+     * tells it the page has stopped; a page that has not said it listens,
+     * or has said it stopped, is never asked, and the quit goes ahead.
+     */
+    onQuitQuestion(listener: (question: AskedQuit | null) => void): () => void
+    /**
+     * The person's answer to the question of that number: `keep` to carry
+     * on, `anyway` to go ahead. Main ignores an answer to any question but
+     * the one it has open.
+     */
+    answerQuit(id: number, answer: QuitAnswer): Promise<void>
+    /**
+     * The layouts the page is running, by project, sent whenever that
+     * changes: a layout is steps the page drives, with nothing in flight
+     * between them, so main cannot see one, and it never asks the page at
+     * the moment of a quit. Identifiers and start times only; main names the
+     * projects from its own store.
+     */
+    reportLayouts(layouts: RunningLayout[]): Promise<void>
   }
   /**
    * The Help pages, opened in the platform's browser by name. Takes no
@@ -498,5 +524,10 @@ export const CHANNELS = {
   // The app's own menu (issue 554).
   menuCommand: 'app:menu-command',
   menuListening: 'app:menu-listening',
+  // Asking before a quit or a close throws a run away (issue 552).
+  quitQuestion: 'app:quit-question',
+  quitListening: 'app:quit-listening',
+  quitAnswer: 'app:quit-answer',
+  quitLayouts: 'app:running-layouts',
   helpOpen: 'help:open',
 } as const

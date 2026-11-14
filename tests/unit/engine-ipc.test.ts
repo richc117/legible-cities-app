@@ -91,7 +91,7 @@ function harness(
     return { id, result }
   }
   let engineRequest: typeof defaultRequest = defaultRequest
-  registerEngineHandlers(
+  const bridge = registerEngineHandlers(
     ipc,
     engine,
     () => topFrame,
@@ -108,6 +108,7 @@ function harness(
   const call = (channel: string, ...args: unknown[]) => handlers.get(channel)!(event, ...args)
   return {
     handlers,
+    bridge,
     call,
     sent,
     log,
@@ -263,6 +264,28 @@ describe('registerEngineHandlers', () => {
       error: { code: -32800, message: 'Request Cancelled' },
     })
   })
+  it('cancels every request the page has with the engine at once, as its own cancel cancels each', async () => {
+    // For a window closed over a question nobody answered in the page (issue
+    // 552): the page was the only thing that could cancel them one by one.
+    // Mutation (`engine-ipc.mutations.json`): the requests the engine has
+    // are left running.
+    const { call, requests, cancelled, bridge } = harness()
+    bridge.cancelAll()
+    expect(cancelled, 'nothing in flight, nothing to cancel').toEqual([])
+
+    await call(CHANNELS.engineRequest, 'tok-a', 'graph.build', { key: 'x' })
+    await call(CHANNELS.engineRequest, 'tok-b', 'feeds.service', { key: 'x' })
+    await call(CHANNELS.engineRequest, 'tok-c', 'feeds.list')
+    // One that has been answered is the page's no longer.
+    requests[2].deferred.resolve({ feeds: [] })
+    await tick()
+
+    bridge.cancelAll()
+    expect(cancelled).toEqual([requests[0].id, requests[1].id])
+    // It is still the way to stop hearing the engine, as it was.
+    expect(() => bridge()).not.toThrow()
+  })
+
   it('carries a stage report’s layout to the page, and only an id in the engine’s shape', async () => {
     // Engine v0.14.0 names the layout on each stage's report (issue 382);
     // cell 01 draws the stage from it before the run ends.
@@ -470,6 +493,28 @@ describe('the guard in front of the engine', () => {
     expect(await accepted).toEqual({ accepted: true })
     expect(h.requests.map((r) => r.method)).toEqual(['feeds.remove'])
     expect(h.cancelled, 'the engine is told to cancel the request it was sent').toEqual([
+      h.requests[0].id,
+    ])
+  })
+
+  it('holds the cancel of every request for one the guard is still thinking about', async () => {
+    // Mutation (`engine-ipc.mutations.json`): a request with no engine id
+    // yet is passed over, and is sent to the engine with nothing to stop it.
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const h = harness(true, async () => {
+      await gate
+      return null
+    })
+    const accepted = h.call(CHANNELS.engineRequest, 'tok1', 'graph.build', { key: 'x' })
+    await tick()
+    h.bridge.cancelAll()
+    expect(h.cancelled, 'there is no id to cancel yet').toEqual([])
+    release()
+    expect(await accepted).toEqual({ accepted: true })
+    expect(h.cancelled, 'the engine is told to cancel the request it was then sent').toEqual([
       h.requests[0].id,
     ])
   })

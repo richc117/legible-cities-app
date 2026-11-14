@@ -45,6 +45,7 @@ import {
 import { UNLISTED_STATION } from '../../src/shared/trip'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { cellHeading, openCell, openProject, withoutOpened } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const fixture = resolve(__dirname, '../fixtures/capture-page.html')
@@ -92,7 +93,7 @@ async function withApp(
     })
     await run(page, app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 

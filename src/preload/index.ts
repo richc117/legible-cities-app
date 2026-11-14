@@ -8,6 +8,7 @@ import { CHANNELS, type Accepted, type Api, type Settled } from '../shared/api'
 import { type EngineErrorShape } from '../shared/engine'
 import { messageOf, unwrapIpcError } from '../shared/errors'
 import { isMenuCommand } from '../shared/menu'
+import { quitQuestionListeners } from '../shared/quit'
 
 // A rejection's message is the contract's sentence, without Electron's
 // remote-method wrapper around it.
@@ -179,6 +180,22 @@ const api: Api = {
       ipcRenderer.invoke(CHANNELS.menuListening).catch(() => undefined)
       return off
     },
+    // Asking before a quit or a close throws a run away (issue 552). Only a
+    // question of the right shape, or the null that takes one back, reaches
+    // the page's listener. Main is told the page listens once the listener
+    // is on, as for the menu, and told again when the last one goes: a page
+    // that has not said it listens, or has said it stopped, is never asked
+    // (`quitQuestionListeners`). A refusal of either word leaves main where
+    // it was, and is not the listener's to hear.
+    onQuitQuestion: quitQuestionListeners({
+      hear: (handler) => subscribe<unknown>(CHANNELS.quitQuestion, handler),
+      tell: (listening) => {
+        ipcRenderer.invoke(CHANNELS.quitListening, listening).catch(() => undefined)
+      },
+    }),
+    answerQuit: (id, answer) => invoke(CHANNELS.quitAnswer, id, answer),
+    // Identifiers and start times; main checks both and names the projects.
+    reportLayouts: (layouts) => invoke(CHANNELS.quitLayouts, layouts),
   },
   help: {
     open: (page) => invoke(CHANNELS.helpOpen, page),

@@ -7,6 +7,13 @@ interface Props {
   title: string
   description: string
   confirmLabel: string
+  /**
+   * The safe button's words, where "Cancel" would be read as something else:
+   * the quit's question says "Keep working", since Cancel there already
+   * means stopping a run (issue 552). The button is the same one, focused
+   * first, and Escape still answers it.
+   */
+  cancelLabel?: string
   /** Performs the action; a rejection's message is shown and the dialog stays open. */
   onConfirm: () => Promise<void>
   /** Cancelled before the action, or the element closed on its own (the platform's second Escape). */
@@ -41,6 +48,9 @@ export interface Stoppable {
   asked: string
 }
 
+/** The safe button's words unless a caller gives its own. */
+export const CANCEL_LABEL = 'Cancel'
+
 /** The sentence a running confirmation says after its busy label. */
 export const BUSY_SENTENCE = 'It cannot be stopped.'
 
@@ -73,6 +83,7 @@ export default function ConfirmDialog({
   title,
   description,
   confirmLabel,
+  cancelLabel = CANCEL_LABEL,
   onConfirm,
   onCancel,
   variant = 'destructive',
@@ -209,7 +220,7 @@ export default function ConfirmDialog({
       )}
       <div className="actions">
         <Button ref={cancelRef} aria-disabled={cancelUnavailable} onClick={cancel}>
-          Cancel
+          {cancelLabel}
         </Button>
         <Button variant={variant} aria-disabled={busy} onClick={() => void confirm()}>
           {confirmLabel}

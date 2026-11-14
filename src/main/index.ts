@@ -30,7 +30,7 @@ import {
   type Config,
   type Source,
 } from './config'
-import { registerEngineHandlers } from './engine-ipc'
+import { registerEngineHandlers, type EngineBridge } from './engine-ipc'
 import { FIXTURE_FOLDER, FirstRunCheck, LOG_TAG as FIRST_RUN_TAG } from './first-run'
 import { registerFirstRunHandlers } from './first-run-ipc'
 import { openHelpPage, registerHelpHandlers, type HelpIpcDeps } from './help-ipc'
@@ -61,6 +61,13 @@ import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
 import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
+import {
+  onAppWindowClose,
+  onBeforeQuit,
+  QuitGuard,
+  quitOnSignals,
+  registerQuitHandlers,
+} from './quit-guard'
 import { keepBounds, MINIMUM_WINDOW_SIZE, placeWindow } from './window-bounds'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
@@ -199,6 +206,12 @@ function shortHomeLookups(): Promise<string | null>[] {
 let mainWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
 let exporter: Exporter | null = null
+// Held at this scope for the quit's question, which names the projects whose
+// runs it would throw away; assigned once, during startup.
+let projects: ProjectStore | null = null
+// And the engine bridge, whose requests a window closed over an unanswered
+// question takes with it; assigned once, during startup.
+let engineBridge: EngineBridge | null = null
 let firstRun: FirstRunCheck | null = null
 // Held at this scope because the handlers registered before it exists ask
 // it whether a reset is under way; it is assigned once, during startup.
@@ -206,6 +219,41 @@ let settings: SettingsService | null = null
 const quit = quitGate()
 /** The app window's last place being written as it closed; a quit waits for it (issue 549). */
 let windowKept: Promise<void> = Promise.resolve()
+/**
+ * Asking before a quit, or a close of the app's window, throws a run away
+ * (issue 552, src/main/quit-guard.ts). Every quit the app makes itself goes
+ * through `quitGuard.quit()`, which is never asked about; a quit that reaches
+ * `before-quit` any other way is a person's - the menu, the shortcut, the
+ * Dock or the taskbar.
+ */
+const quitGuard = new QuitGuard({
+  exports: () => exporter?.running() ?? [],
+  nameOf: (project) => projects?.nameOf(project) ?? null,
+  current: (frame) =>
+    mainWindow !== null && !mainWindow.isDestroyed() && mainWindow.webContents.mainFrame === frame,
+  // The window is brought up first - restored if minimised, and focused - so
+  // the question is seen, as for a command of the menu's.
+  ask: (question) => {
+    const window = mainWindow
+    if (window === null || window.isDestroyed()) return
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    window.webContents.send(CHANNELS.quitQuestion, question)
+  },
+  withdraw: () => {
+    if (mainWindow !== null && !mainWindow.isDestroyed())
+      mainWindow.webContents.send(CHANNELS.quitQuestion, null)
+  },
+  stopExports: () => exporter?.abortAll(),
+  cancelRequests: () => engineBridge?.cancelAll(),
+  close: () => {
+    if (mainWindow !== null && !mainWindow.isDestroyed()) mainWindow.close()
+  },
+  quit: () => app.quit(),
+  // How old the open question is: a clock that never goes back.
+  now: () => performance.now(),
+})
 
 /** Why nothing may write under the engine's home right now, or null. */
 const resetInProgress = (): string | null => settings?.refuseWhileResetting() ?? null
@@ -294,7 +342,8 @@ function createWindow(): BrowserWindow {
   watchRendererCrash(
     window.webContents,
     crashBox((options) => dialog.showMessageBox(options), PRODUCT_NAME),
-    () => app.quit(),
+    // The app's own quit, never asked about: the page that would ask is gone.
+    () => quitGuard.quit(),
   )
 
   window.on('ready-to-show', () => {
@@ -317,25 +366,40 @@ function createWindow(): BrowserWindow {
   window.on('resize', moved)
   window.on('maximize', moved)
   window.on('unmaximize', moved)
-  window.on('close', () => {
-    windowKept = keeper.closing()
-  })
+  // A close while a run is going is asked about first, and held (issue 552);
+  // the place is kept by a close that goes ahead.
+  window.on(
+    'close',
+    onAppWindowClose({
+      guard: quitGuard,
+      gate: quit,
+      closing: () => {
+        windowKept = keeper.closing()
+      },
+    }),
+  )
+  // A page Electron reports unresponsive cannot show a question, so none is
+  // asked of it until it answers again.
+  window.on('unresponsive', () => quitGuard.unresponsive())
+  window.on('responsive', () => quitGuard.responsive())
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
   // Windows and Linux quit when the app's own window closes, whatever else
   // is open - an export's capture window, say - and the quit cancels the
   // export (issue 537). `window-all-closed` asks again behind it; the quit
-  // gate cancels that pass while the engine stops.
+  // gate cancels that pass while the engine stops. The quit is the app's
+  // own: what the close would throw away was asked about as it closed.
   const quitWithTheWindow = onAppWindowClosed({
     platform: process.platform,
     quit: () => {
-      if (!quit.quitting) app.quit()
+      if (!quit.quitting) quitGuard.quit()
     },
   })
   window.on('closed', () => {
     if (mainWindow !== window) return
     mainWindow = null
     menuCommands.gone()
+    quitGuard.gone()
     quitWithTheWindow()
   })
   // A page that goes stops hearing the menu until the next one says it
@@ -343,8 +407,14 @@ function createWindow(): BrowserWindow {
   // committed: `did-navigate` is the main frame's, to another document, and
   // a navigation `will-navigate` refuses never reaches it. A renderer that
   // died takes the held command with it.
-  window.webContents.on('did-navigate', () => menuCommands.gone())
-  window.webContents.on('render-process-gone', () => menuCommands.crashed())
+  window.webContents.on('did-navigate', () => {
+    menuCommands.gone()
+    quitGuard.gone()
+  })
+  window.webContents.on('render-process-gone', () => {
+    menuCommands.crashed()
+    quitGuard.gone()
+  })
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
     if (sidecar !== null) window.webContents.send(CHANNELS.engineStateChanged, sidecar.state)
@@ -498,7 +568,7 @@ function setAppMenu(help: HelpIpcDeps): void {
 
 const hasLock = app.requestSingleInstanceLock()
 if (!hasLock) {
-  app.quit()
+  quitGuard.quit()
 } else {
   app.on('second-instance', () => {
     // A second launch focuses the existing window (FR-035); on macOS, where
@@ -513,7 +583,7 @@ if (!hasLock) {
 
   // Nothing uncaught goes unlogged, and an exception ends the app through
   // its ordinary quit, which stops the engine first (issue 432).
-  registerProcessHandlers(process, () => app.quit())
+  registerProcessHandlers(process, () => quitGuard.quit())
 
   app.whenReady().then(async () => {
     // The spellchecker service is the session's and fetches dictionaries on
@@ -593,6 +663,8 @@ if (!hasLock) {
       activity,
       () => engine.readyVersion,
     )
+    // Held where the quit's question can name a project.
+    projects = store
     const isTopFrame = (event: Electron.IpcMainInvokeEvent): boolean =>
       mainWindow !== null && event.senderFrame === mainWindow.webContents.mainFrame
     // Every record and every output folder lives under the engine's home, so
@@ -805,7 +877,7 @@ if (!hasLock) {
     const registry = registryGuard(picked, async () =>
       (await store.list()).map((p) => ({ feed: p.feed, name: p.name })),
     )
-    registerEngineHandlers(
+    engineBridge = registerEngineHandlers(
       ipcMain,
       engine,
       isTopFrame,
@@ -934,6 +1006,23 @@ if (!hasLock) {
     }
     registerHelpHandlers(ipcMain, helpDeps, isTopFrame)
     registerMenuHandlers(ipcMain, menuCommands, isTopFrame)
+    // The page's word that it can be asked before a quit, its running
+    // layouts, and the person's answer (issue 552).
+    registerQuitHandlers(ipcMain, quitGuard, isTopFrame)
+    // A termination signal on macOS and Linux is the app's own quit: whoever
+    // sent it cannot answer a question in the window (src/main/quit-guard.ts).
+    // Installed here, once Electron has installed its own handlers for the
+    // same signals, so that these are the ones in force. A second signal
+    // while the quit is under way takes its listener off and is raised
+    // again, so its default action ends a quit that is stuck.
+    quitOnSignals({
+      platform: process.platform,
+      on: (signal, listener) => process.on(signal, listener),
+      off: (signal, listener) => process.removeListener(signal, listener),
+      raise: (signal) => process.kill(process.pid, signal),
+      quitting: () => quit.quitting,
+      quit: () => quitGuard.quit(),
+    })
     setAppMenu(helpDeps)
     mainWindow = createWindow()
 
@@ -950,27 +1039,35 @@ if (!hasLock) {
     )
   })
 
-  // Quitting ends the engine first: ask, then terminate, then kill, and only
-  // then let Electron go (specs/004, FR-014). The first pass prevents the
-  // default and comes back through here with the flag set.
-  app.on('before-quit', (event) => {
-    if (quit.beforeQuit(event, sidecar !== null) === 'later') return
-    // An export in flight is cancelled, and its capture window destroyed,
-    // before the engine is asked to stop; the first-run check's children, if
-    // any are still running, end now. One failing does not skip the others
-    // or the stop, which the gate is waiting for.
-    shutDown({
-      aborts: [
-        { name: 'the export', run: () => exporter?.abortAll() },
-        { name: 'the capture', run: () => abortCaptures() },
-        { name: 'the first-run check', run: () => firstRun?.abort() },
-      ],
-      stop: sidecar === null ? null : () => (sidecar as Sidecar).stop(),
-      finished: () => quit.finished(),
-      quit: () => app.quit(),
-      error: (message) => log.error('engine', message),
-    })
-  })
+  // A person's quit while a run is going is asked about first, and held
+  // until they answer (issue 552); the gate never sees a quit that is held.
+  // Then quitting ends the engine first: ask, then terminate, then kill, and
+  // only then let Electron go (specs/004, FR-014). The first pass prevents
+  // the default and comes back through here with the flag set.
+  app.on(
+    'before-quit',
+    onBeforeQuit({
+      guard: quitGuard,
+      gate: quit,
+      engineRunning: () => sidecar !== null,
+      // An export in flight is cancelled, and its capture window destroyed,
+      // before the engine is asked to stop; the first-run check's children,
+      // if any are still running, end now. One failing does not skip the
+      // others or the stop, which the gate is waiting for.
+      shutDown: () =>
+        shutDown({
+          aborts: [
+            { name: 'the export', run: () => exporter?.abortAll() },
+            { name: 'the capture', run: () => abortCaptures() },
+            { name: 'the first-run check', run: () => firstRun?.abort() },
+          ],
+          stop: sidecar === null ? null : () => (sidecar as Sidecar).stop(),
+          finished: () => quit.finished(),
+          quit: () => quitGuard.quit(),
+          error: (message) => log.error('engine', message),
+        }),
+    }),
+  )
 
   // The files close last. This runs only once the quit above has let
   // Electron go, and the supervisor's stop waits for the engine's stdio to
@@ -992,10 +1089,10 @@ if (!hasLock) {
           ? undefined
           : within(Promise.all([files.main.close(), files.engine.close()]), LOG_WAIT_MS),
       )
-      .finally(() => app.quit())
+      .finally(() => quitGuard.quit())
   })
 
   app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit()
+    if (process.platform !== 'darwin') quitGuard.quit()
   })
 }

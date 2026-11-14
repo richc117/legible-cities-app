@@ -74,8 +74,15 @@ export function defaultApi(record: () => ProjectRecord & { readOnly: boolean }):
       onLog: unsubscribed,
     },
     projects: { get: async () => record() },
-    // The app's menu (issue 554): nothing chosen.
-    app: { onMenuCommand: unsubscribed },
+    // The app's menu (issue 554): nothing chosen. And the quit's question
+    // (issue 552): none asked, and the report of running layouts heard by
+    // nobody.
+    app: {
+      onMenuCommand: unsubscribed,
+      onQuitQuestion: unsubscribed,
+      answerQuit: async () => undefined,
+      reportLayouts: async () => undefined,
+    },
   }
 }
 

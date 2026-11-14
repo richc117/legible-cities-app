@@ -62,6 +62,7 @@ import {
   sweep,
   withApp,
 } from '../support/a11y'
+import { askToQuit } from '../support/quit'
 
 test.skip(PYTHON === null, 'no python3 or python on the PATH to run the stand-in engine')
 
@@ -788,6 +789,41 @@ test('the mismatch dialog', async () => {
     },
     { ready: false },
   )
+})
+
+// The question a quit asks first while a run is going (issue 552): the same
+// confirmation as the others, with its safe button named "Keep working". A
+// layout is held in the engine so there is a run to ask about, and the quit
+// is asked for as the menu's Quit asks. What the question does - holding the
+// quit, the run going on behind it, going ahead - is quit-guard.spec.ts's.
+test('the question a quit asks during a run', async () => {
+  const p = profile({ octi_child: true, octi_ms: 240_000 })
+  await withApp(p, async (page, app) => {
+    await newProjectFromLibrary(page, 'Los Angeles')
+    await page.getByRole('button', { name: 'Open Los Angeles' }).click()
+    await expect(heading(page)).toHaveText('Los Angeles')
+    await pressWithKeyboard(page.getByRole('button', { name: 'Lay out', exact: true }))
+    await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+      'Jobs, 1 running',
+      { timeout: 20_000 },
+    )
+
+    await askToQuit(app)
+    const dialog = page.getByRole('dialog', { name: 'Quit while a layout is running?' })
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toHaveAccessibleDescription(
+      'The layout of Los Angeles has not finished. Quitting stops it, and nothing of it is kept.',
+    )
+    await expect(dialog.getByRole('button', { name: 'Keep working' })).toBeFocused()
+    await sweep(page, 'the quit question', dialog)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+    // Escape was Keep working: the layout is still going, and the app's
+    // close below ends it.
+    await expect(page.getByRole('button', { name: /^Jobs, / })).toHaveAccessibleName(
+      'Jobs, 1 running',
+    )
+  })
 })
 
 // An icon inside a filled button takes the button's ink, not the ground's.

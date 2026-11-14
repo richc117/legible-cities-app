@@ -52,6 +52,7 @@ import {
 } from '../support/project'
 import { VIEWER_SANDBOX } from '../../src/shared/viewer'
 import { EVERY_SEAM } from '../support/standInPage'
+import { quitApp } from '../support/quit'
 
 // The empty state's two sentences, as the release documents quote them
 // (`notebook/Preview.tsx`). Restated rather than imported: the component
@@ -159,7 +160,7 @@ async function withApp(
       throw error
     }
   } finally {
-    await app.close()
+    await quitApp(app)
     rmSync(h.engineHome, { recursive: true, force: true })
   }
 }

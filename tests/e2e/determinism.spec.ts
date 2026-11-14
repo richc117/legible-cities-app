@@ -103,6 +103,7 @@ import {
 } from '../support/frames'
 import { compareThroughGifs, judgeTables } from '../support/gif'
 import { cell, openCell } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const OPTED_IN = process.env.LEGIBLE_DETERMINISM_TEST === '1'
 const PYTHON = process.env.LEGIBLE_ENGINE_PYTHON ?? ''
@@ -449,7 +450,7 @@ test('the same project, exported twice, captures the same frames within the tole
     expect(pixels.problems, 'the GIFs differ only where the captures differ').toEqual([])
   } finally {
     console.log(`determinism test: ${Math.round((Date.now() - started) / 1000)} s in all`)
-    await app.close()
+    await quitApp(app)
   }
   // Kept when the test fails, for a person to look at; gone when it passed.
   rmSync(dir, { recursive: true, force: true })

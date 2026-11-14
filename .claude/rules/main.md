@@ -41,6 +41,24 @@ One deliberate exception: the box shown when the main window's renderer dies
 (`crashBox`, issue 432) is unparented, because the page is what died and a
 box hung from its window must never hold a quit.
 
+The question a quit or a close asks while an export or a layout is running
+(issue 552, `src/main/quit-guard.ts`, specs/039) is the page's dialog for
+that reason. Main decides whether to ask (`quitQuestion` in
+`window-lifecycle.ts`), holds the quit and sends the question over the
+bridge; it is never asked of a page that has not said it listens, whose
+renderer has gone or which Electron reports unresponsive, because a person
+must always be able to quit. It comes before the quit gate and never
+replaces it. **Every quit the main process makes itself goes through
+`quitGuard.quit()`, never a bare `app.quit()`**: a bare one is taken for a
+person's, and held for a question while a run is going
+(`tests/unit/quit-guard.test.ts` reads `index.ts` for one). A termination
+signal on macOS and Linux is one of the app's own (`quitOnSignals`,
+installed once the app is ready, over Electron's handlers for the same
+signals), and a second one while the quit is under way must still force
+the exit: its listener comes off and the signal is raised again. A second
+quit or close is an answer only once the question has been on the screen
+for a second: a held shortcut repeats.
+
 ## Uncaught failures
 
 `src/main/process-handlers.ts` logs an uncaught exception and quits once, and

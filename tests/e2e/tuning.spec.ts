@@ -73,6 +73,7 @@ import {
   panel,
   withoutOpened,
 } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -115,7 +116,7 @@ async function withApp(
   try {
     await run(await app.firstWindow(), app)
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 

@@ -41,6 +41,7 @@ import {
   openCell,
   openProject,
 } from '../support/project'
+import { quitApp } from '../support/quit'
 import { EXPORT_ONE, GONE, NOTHING_YET } from '../../src/renderer/src/notebook/outputWords'
 
 const repoRoot = resolve(__dirname, '../..')
@@ -92,7 +93,7 @@ async function withApp(h: Home, run: (page: Page) => Promise<void>): Promise<voi
     await page.emulateMedia({ reducedMotion: 'reduce' })
     await run(page)
   } finally {
-    await app.close()
+    await quitApp(app)
     rmSync(h.engineHome, { recursive: true, force: true })
     rmSync(h.exportFolder, { recursive: true, force: true })
   }

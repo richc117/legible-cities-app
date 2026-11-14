@@ -44,6 +44,7 @@ import {
   panel,
   withoutOpened,
 } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -85,7 +86,7 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
   try {
     await run(await app.firstWindow())
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 

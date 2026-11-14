@@ -30,6 +30,7 @@ import {
 } from '../../src/shared/project/types'
 import { compareDecoded, TOLERANCE } from '../support/frames'
 import { openCell } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const REEL = 'la-metro-rail-instagram-reel.mp4'
@@ -191,6 +192,6 @@ test('the Los Angeles reel, exported twice, decodes to the same frames within th
     expect(result.over, `channels differing by more than ${TOLERANCE}`).toBe(0)
   } finally {
     console.log(`reel test: ${Math.round((Date.now() - started) / 1000)} s in all`)
-    await app.close()
+    await quitApp(app)
   }
 })

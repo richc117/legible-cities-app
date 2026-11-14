@@ -41,6 +41,7 @@ import { _electron as electron, expect, test, type Locator, type Page } from '@p
 import { PUT_BACK_SIZES } from '../../src/renderer/src/putBackWords'
 import { FAKE_ENGINE, PINNED_ENGINE, findPython } from '../support/python'
 import { cellHeading, laidOutProject, openCell, panel, withoutOpened } from '../support/project'
+import { quitApp } from '../support/quit'
 
 const repoRoot = resolve(__dirname, '../..')
 const PYTHON = findPython()
@@ -96,7 +97,7 @@ async function withApp(engineHome: string, run: (page: Page) => Promise<void>): 
   try {
     await run(await app.firstWindow())
   } finally {
-    await app.close()
+    await quitApp(app)
   }
 }
 
