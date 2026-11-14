@@ -691,6 +691,70 @@ describe('the electron-ffmpeg-source job, for the cache', () => {
 // macOS runs the script with its own /bin/bash, which is 3.2: a construct a
 // newer bash parses (a bare case pattern inside $( ... )) is a syntax error
 // there, and every --verify on a Mac runner exits 2 before it reads a file.
+// The same rule read from the text, so it holds on a system whose bash is
+// newer and would parse the bare pattern: the mutation job runs on Ubuntu.
+describe('the script, as bash 3.2 reads it', () => {
+  // The case patterns that sit inside a $( ... ) spanning lines, and those
+  // among them that do not open with "(".
+  function casesInSubstitutions(text: string): { found: number; bare: string[] } {
+    const bare: string[] = []
+    let found = 0
+    let inside = false
+    let inCase = false
+    for (const [index, line] of text.split('\n').entries()) {
+      const code = line.replace(/^\s*#.*$/, '')
+      if (!inside) {
+        const opened = code.lastIndexOf('$(')
+        if (opened !== -1 && !code.slice(opened).includes(')')) inside = true
+        continue
+      }
+      if (/^\s*\)/.test(code) || /^\s*done\b.*\)\s*$/.test(code)) {
+        inside = false
+        inCase = false
+        continue
+      }
+      const head = /\bcase\s+\S+\s+in\b(.*)$/.exec(code)
+      const patterns: string[] = []
+      if (head) {
+        const rest = (head[1] ?? '').trim()
+        inCase = !/\besac\b/.test(rest)
+        if (rest !== '') patterns.push(rest)
+      } else if (inCase) {
+        if (/^\s*esac\b/.test(code)) inCase = false
+        else if (/^\s*[^\s;][^;]*\)/.test(code)) patterns.push(code.trim())
+      }
+      for (const pattern of patterns) {
+        found += 1
+        if (!pattern.startsWith('(')) bare.push(`line ${index + 1}: ${pattern}`)
+      }
+    }
+    return { found, bare }
+  }
+
+  it('opens every case pattern inside a $( ... ) with "("', () => {
+    const { found, bare } = casesInSubstitutions(readFileSync(SCRIPT, 'utf8'))
+    expect(found, 'the script has a case inside a command substitution').toBeGreaterThan(0)
+    expect(bare, "bash 3.2 ends the $( ... ) at these patterns' bare )").toEqual([])
+  })
+
+  it('finds a bare pattern on the case line and on the lines after it', () => {
+    const sample = [
+      'a=$(while read -r k; do',
+      '  case $k in x/*) echo "$k" ;; esac',
+      '  case $k in',
+      '    y) echo y ;;',
+      '    (z) echo z ;;',
+      '  esac',
+      'done <<< "$keys")',
+      'case $k in w) ;; esac',
+    ].join('\n')
+    expect(casesInSubstitutions(sample)).toEqual({
+      found: 3,
+      bare: ['line 2: x/*) echo "$k" ;; esac', 'line 4: y) echo y ;;'],
+    })
+  })
+})
+
 describe.skipIf(!existsSync('/bin/bash'))('the script, under /bin/bash', () => {
   it('parses under the system bash, whatever its version', () => {
     const r = spawnSync('/bin/bash', ['-n', SCRIPT], { encoding: 'utf8', timeout: 10_000 })

@@ -52,7 +52,7 @@
     "find": "    case $key in (patches/ffmpeg/*.patch) printf",
     "replace": "    case $key in patches/ffmpeg/*.patch) printf",
     "test": "tests/unit/electron-ffmpeg-source.test.ts",
-    "title": "parses under the system bash, whatever its version",
-    "why": "A bare case pattern inside $( ... ) is a syntax error to macOS's bash 3.2, so every --verify on a Mac runner exits 2."
+    "title": "opens every case pattern inside a $( ... ) with \"(\"",
+    "why": "A bare case pattern inside $( ... ) is a syntax error to macOS's bash 3.2, so every --verify on a Mac runner exits 2. Read from the text, so the mutation goes red on Linux too, where bash 5 would parse it."
   }
 ]
