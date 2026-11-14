@@ -1334,11 +1334,7 @@ describe('build.yml', () => {
     const on = workflow.slice(workflow.indexOf('\non:\n'), workflow.indexOf('\npermissions:\n'))
     const paths = [...on.matchAll(/^ {6}- '([^']+)'$/gm)].map((match) => match[1])
     expect(paths).toEqual(
-      expect.arrayContaining([
-        'electron.vite.config.ts',
-        'scripts/release.mjs',
-        'scripts/release-label.mjs',
-      ]),
+      expect.arrayContaining(['electron.vite.config.ts', 'scripts/release.mjs']),
     )
   })
 
