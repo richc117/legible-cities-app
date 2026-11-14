@@ -819,6 +819,12 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     const w = windowOf({ frameRatio: 1, svg: 1 })
     const promise = redrawnCapture(w.redrawer, crop, fresh())
     await expect(promise).rejects.toThrow(NOT_ENLARGED)
+    // And says what both routes read, the device scale's included.
+    await expect(
+      redrawnCapture(windowOf({ frameRatio: 1, svg: 1 }).redrawer, crop, fresh()),
+    ).rejects.toThrow(
+      /device scale 7\.00: the interface's devicePixelRatio read 7 and the map frame's 1;.*the browser lists 1 iframe targets; SVG transform 7\.00: the page's drawing measured 1 times its size/,
+    )
     expect(w.calls).not.toContain('window Page.captureScreenshot')
     expect(w.calls.at(-1)).toBe('frame restoreSvg')
     expect(drawnLarger(7, 7.03)).toBe(true)
@@ -845,6 +851,18 @@ describe('an enlarged picture drawn again at a higher scale', () => {
 
     const drew = windowOf({ frameRatio: 1, draws: (read) => 40 + read })
     await expect(redrawnCapture(drew.redrawer, crop, fresh())).rejects.toThrow(/page drew/)
+  })
+
+  it('says so when a picture failed and the drawing was not put back either', async () => {
+    const failing = (): Promise<unknown> => Promise.reject(new Error('target closed'))
+    const stuck = windowOf({ frameRatio: 1, back: 7, capture: failing })
+    await expect(redrawnCapture(stuck.redrawer, crop, fresh())).rejects.toThrow(
+      "target closed, and the page's drawing was not put back (it measured 7)",
+    )
+    const undone = windowOf({ frameRatio: 1, capture: failing })
+    const error = await redrawnCapture(undone.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect((error as Error).message).toBe('target closed')
+    expect(undone.calls.at(-1)).toBe('frame restoreSvg')
   })
 
   it('clears the override when the capture fails, and gives up on a call that never answers', async () => {

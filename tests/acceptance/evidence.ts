@@ -28,6 +28,7 @@ import { join } from 'node:path'
 import type { CDPSession, Frame, Page } from '@playwright/test'
 import type { Result } from './record'
 import { TOLERANCE, pixelDifference, readPngRows, writePng } from '../support/frames'
+import { restoreDrawing, scaleDrawing } from './drawing'
 
 // ------------------------------------------------------------------ thresholds
 
@@ -1147,15 +1148,14 @@ export async function redrawnCapture(
         await dl(own.send('Emulation.clearDeviceMetricsOverride')).catch(() => undefined)
     }
     state.said.push(
-      `device scale ${crop.scale.toFixed(2)}: the interface's devicePixelRatio read ${ratios?.window ?? 'nothing'} and the map frame's ${ratios?.frame ?? 'nothing'}; the frame ${own === null ? 'shares the window’s target' : 'is a target of its own'}${refused}, and the window lists ${targets ?? 'an unknown number of'} iframe targets`,
+      `device scale ${crop.scale.toFixed(2)}: the interface's devicePixelRatio read ${ratios?.window ?? 'nothing'} and the map frame's ${ratios?.frame ?? 'nothing'}; the frame ${own === null ? 'shares the window’s target' : 'is a target of its own'}${refused}, and the browser lists ${targets ?? 'an unknown number of'} iframe targets`,
     )
     if (data !== null) {
       await settledBack()
       state.route = 'device scale'
       return Buffer.from(data, 'base64')
     }
-    if (state.route === 'device scale')
-      throw new Error(`${NOT_ENLARGED}: ${state.said[state.said.length - 1]}`)
+    if (state.route === 'device scale') throw new Error(`${NOT_ENLARGED}: ${state.said.join('; ')}`)
   }
 
   const k = crop.scale
@@ -1163,19 +1163,28 @@ export async function redrawnCapture(
   const drawsBefore = await dl(r.draws()).catch(() => null)
   let data: string
   let measured: number | null | undefined
-  let back: number | null | undefined
   try {
     measured = await dl(r.scaleSvg(k, origin))
     await dl(r.repaint())
     if (!drawnLarger(k, measured))
       throw new Error(
-        `${NOT_ENLARGED}: the page's drawing measured ${measured ?? 'nothing'} times its size under a transform of ${k.toFixed(2)}`,
+        `${NOT_ENLARGED}: ${[...state.said, `SVG transform ${k.toFixed(2)}: the page's drawing measured ${measured ?? 'nothing'} times its size`].join('; ')}`,
       )
     data = await capture({ ...before, scale: 1 })
-  } finally {
-    back = await dl(r.restoreSvg()).catch(() => null)
+  } catch (error) {
+    // A drawing left scaled would be every later picture's, and would hide
+    // a change that did not happen: said with the error, never dropped.
+    const undone = await dl(r.restoreSvg()).catch(() => null)
+    const said = error instanceof Error ? error.message : String(error)
+    if (!drawnLarger(1, undone))
+      throw new Error(
+        `${said}, and the page's drawing was not put back (it measured ${undone ?? 'nothing'})`,
+        { cause: error },
+      )
+    throw error
   }
-  if (!drawnLarger(1, back ?? null))
+  const back = await dl(r.restoreSvg()).catch(() => null)
+  if (!drawnLarger(1, back))
     throw new Error(`the page's drawing was not put back: it measured ${back ?? 'nothing'}`)
   state.said.push(
     `SVG transform ${k.toFixed(2)}: the page's drawing measured ${measured} times its size`,
@@ -1296,40 +1305,8 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
             }
           },
           draws: () => readDraws(window),
-          scaleSvg: (scale, origin) =>
-            inFrame.evaluate(
-              (html, { scale, origin }) => {
-                const group = html.ownerDocument.querySelector('#linear-labels')
-                let svg = group instanceof SVGElement ? group.ownerSVGElement : null
-                while (svg?.ownerSVGElement) svg = svg.ownerSVGElement
-                if (svg === null || svg === undefined) return null
-                const box = svg.getBoundingClientRect()
-                svg.setAttribute('data-evidence-had-style', svg.hasAttribute('style') ? '1' : '0')
-                svg.setAttribute('data-evidence-style', svg.getAttribute('style') ?? '')
-                svg.setAttribute('data-evidence-width', String(box.width))
-                svg.style.transformOrigin = `${origin.x - box.left}px ${origin.y - box.top}px`
-                svg.style.transform = `scale(${scale})`
-                const now = svg.getBoundingClientRect()
-                return box.width > 0 ? now.width / box.width : null
-              },
-              { scale, origin },
-            ),
-          restoreSvg: () =>
-            inFrame.evaluate((html) => {
-              const svg = html.ownerDocument.querySelector('svg[data-evidence-style]')
-              if (svg === null) return null
-              if (svg.getAttribute('data-evidence-had-style') === '1')
-                svg.setAttribute('style', svg.getAttribute('data-evidence-style') ?? '')
-              else svg.removeAttribute('style')
-              const width = Number(svg.getAttribute('data-evidence-width'))
-              for (const name of [
-                'data-evidence-had-style',
-                'data-evidence-style',
-                'data-evidence-width',
-              ])
-                svg.removeAttribute(name)
-              return width > 0 ? svg.getBoundingClientRect().width / width : null
-            }),
+          scaleSvg: (scale, origin) => inFrame.evaluate(scaleDrawing, { scale, origin }),
+          restoreSvg: () => inFrame.evaluate(restoreDrawing),
         }
         return await redrawnCapture(redrawer, crop, state)
       } finally {

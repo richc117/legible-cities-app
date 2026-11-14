@@ -313,8 +313,8 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "    if (state.route === 'device scale')\n",
-    "replace": "    if (false)\n",
+    "find": "if (state.route === 'device scale') throw new Error(",
+    "replace": "if (false) throw new Error(",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "never switching mid-pair",
     "why": "A pair's before taken at the device scale could be followed by an after taken another way, and the two would not be alike."
@@ -329,8 +329,8 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "    back = await dl(r.restoreSvg()).catch(() => null)\n",
-    "replace": "    back = 1\n",
+    "find": "  const back = await dl(r.restoreSvg()).catch(() => null)\n",
+    "replace": "  const back = 1\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "scales the page’s drawing instead, and puts it back",
     "why": "The page's drawing would be left scaled after the picture, and every later step would see a map seven times its size."
@@ -342,5 +342,21 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "or a page that drew meanwhile",
     "why": "A picture taken while the page drew again, mid-change, would be kept as the part at those settings."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (!drawnLarger(1, undone))\n",
+    "replace": "    if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says so when a picture failed and the drawing was not put back either",
+    "why": "A picture that failed with the page's drawing left scaled would say only why it failed: every later picture would be of a scaled map, and nothing would say why."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "`${NOT_ENLARGED}: ${[...state.said, ",
+    "replace": "`${NOT_ENLARGED}: ${[",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the picture where neither route drew the map larger",
+    "why": "Where both routes failed, the record would say only what the transform measured, and not that the frame's devicePixelRatio stayed at 1 under the override, which is why."
   }
 ]
