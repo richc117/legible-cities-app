@@ -91,10 +91,13 @@ import { MINUTE, SECOND, bringToFront, inside, launchApp, real, sleep, until } f
 import {
   Evidence,
   stepResult,
+  enlarged,
   frameAt,
   judgeBlank,
   judgeTypeface,
+  mapEnlarger,
   measureLabel,
+  pauseAndRead,
   sampleTimes,
   type Check,
   type EntryInit,
@@ -135,6 +138,19 @@ const CALTRAIN_URL = 'https://data.trilliumtransit.com/gtfs/caltrain-ca-us/caltr
 
 /** The sample city step 4 opens, and the project it makes, by the name the card gives it. */
 const LA = 'LA Metro Rail'
+/**
+ * Where it runs, as the engine's registry says it (`feeds.list`): the card
+ * says "Los Angeles · Metro Rail" and step 4 holds the card to these words,
+ * and an export's title and title card draw the two, one over the other.
+ * The project's name, LA, is drawn in none of the pictures.
+ */
+const LA_CITY = 'Los Angeles'
+const LA_NETWORK = 'Metro Rail'
+/**
+ * The stations an enlarged picture of the map is centred on: two
+ * interchanges downtown, where line A, the first line, runs beside others.
+ */
+const DOWNTOWN = ['Union Station', '7th Street / Metro Center']
 /** A day as the interface writes one, "17 September 2026" (`dates.ts`, issue 559). */
 const DAY_IN_WORDS = '\\d{1,2} [A-Z][a-z]+ \\d{4}'
 /** What the checklist has typed into cell 06 in step 12 (issue 352), and the two files it names in step 13. */
@@ -636,6 +652,19 @@ interface Session {
   appVersion: string | null
 }
 
+/**
+ * A picture an entry of its own adds beside a pair, taken before the change
+ * and after it: an enlarged part of the map, a row of cell 05, the map in
+ * another view. `show` and `leave` put the window in the state the picture
+ * is of and back; `where` says what an enlarged picture was centred on.
+ */
+interface View {
+  target: Shootable
+  show?: () => Promise<void>
+  leave?: () => Promise<void>
+  where?: () => string
+}
+
 /** One step's notes and its problems: a soft check records a problem and the step goes on. */
 class StepLog {
   readonly notes: string[] = []
@@ -712,8 +741,66 @@ test('a release, installed, through docs/acceptance.md', async () => {
         window: page(),
       })
     })
-  /** An entry for a check the run made on a measurement that is not a picture difference. */
-  const measured = (init: EntryInit, check: Check): void => evidence.keep(init, [], check)
+  /**
+   * The pictures an entry of its own adds beside a pair (`View`), before the
+   * change and after it, kept as before and after for each view in turn.
+   * They carry no check: one that cannot be taken is a note in the step's
+   * record, never a problem, and an entry left with no picture and no check
+   * is not written.
+   */
+  const viewed = new Map<string, { views: readonly View[]; before: string[] }>()
+  const shootView = async (id: string, view: View): Promise<string> => {
+    await view.show?.()
+    try {
+      return (await evidence.settled(id, view.target)).path
+    } finally {
+      await view.leave?.()
+    }
+  }
+  const viewsBefore = async (log: StepLog, id: string, views: readonly View[]): Promise<void> => {
+    try {
+      const before: string[] = []
+      for (const [k, view] of views.entries())
+        before.push(await shootView(`${id}-v${k + 1}-a`, view))
+      viewed.set(id, { views, before })
+    } catch (error) {
+      log.note(`Evidence: the pictures before ${id} were not taken: ${messageOf(error)}.`)
+    }
+  }
+  const viewsAfter = async (
+    log: StepLog,
+    init: EntryInit,
+    check: Check | null = null,
+  ): Promise<void> => {
+    const held = viewed.get(init.id)
+    viewed.delete(init.id)
+    let images: string[] = []
+    if (held !== undefined) {
+      try {
+        const after: string[] = []
+        for (const [k, view] of held.views.entries())
+          after.push(await shootView(`${init.id}-v${k + 1}-b`, view))
+        images = held.before.flatMap((before, k) => [before, after[k]])
+      } catch (error) {
+        log.note(`Evidence: the pictures after ${init.id} were not taken: ${messageOf(error)}.`)
+      }
+    }
+    if (images.length === 0 && check === null) return
+    const where = (held?.views ?? []).map((view) => view.where?.() ?? '').filter((w) => w !== '')
+    const question =
+      images.length === 0
+        ? `${init.question} (Its pictures could not be taken.)`
+        : [init.question, ...where].join(' ')
+    evidence.keep({ ...init, question }, images, check)
+  }
+  /** A part of the map enlarged, centred on the stations named, the same part before and after. */
+  const mapPart = (on: Page, names: readonly string[]): View => {
+    const target = enlarged(mapEnlarger(on, names))
+    return {
+      target,
+      where: () => `The enlarged part of the map is centred on ${target.around()}.`,
+    }
+  }
   // What only the workflow knows, said as such in a local run.
   for (const name of [
     'Clean machine?',
@@ -1232,9 +1319,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         .getByRole('listitem', { name: LA, exact: true })
         .getByRole('button')
       await log.soft('the card', () =>
-        expect(card).toHaveAccessibleName(
-          'LA Metro Rail, Los Angeles · Metro Rail, not downloaded yet',
-        ),
+        expect(card).toHaveAccessibleName(`${LA}, ${LA_CITY} · ${LA_NETWORK}, not downloaded yet`),
       )
       const mark = (await saidSoFar(window)).length
       const pressed = Date.now()
@@ -1392,9 +1477,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
                 id: '4-map',
                 step: 4,
                 row: LOOKS.map,
+                // The notebook's frame draws no clock and no title: its
+                // address asks for neither (`addressFor`, viewerAddress.ts),
+                // so only the trains can be judged.
                 question:
-                  'The two pictures are the map a second apart while it plays. What has moved between them: the trains, the clock?',
-                expected: [LA],
+                  'The two pictures are the map a second apart while it plays (the map in the notebook draws no clock and no title). Have the trains moved between them?',
               },
               frameElement,
             )
@@ -2257,10 +2344,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
           step: 8,
           row: LOOKS.markers,
           question:
-            'The third picture is the map after the interchange marker was set to Square. Are the interchanges square, where the first two have rings?',
+            'The third picture is the map after the interchange marker was set to Square. Are the interchanges square, where the first two have rings? (The marks are small at this size: 8-interchange-enlarged has them enlarged.)',
         },
         { name: 'interchange-marker' },
       )
+      await viewsBefore(log, '8-interchange-enlarged', [mapPart(window, DOWNTOWN)])
       await interchangeMarker.selectOption('square')
       await until(
         async () =>
@@ -2269,6 +2357,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
         () => 'the square interchange was never written to the project',
       )
       await evAfter(log, '8-interchange')
+      await viewsAfter(log, {
+        id: '8-interchange-enlarged',
+        step: 8,
+        row: LOOKS.markers,
+        question:
+          'The two pictures are the same part of the map enlarged, before and after the interchange marker was set to Square. Are the interchanges (the larger marks where lines meet) rings in the first and squares in the second?',
+      })
       const labelBefore = await measureLabel(window).catch(() => null)
       await evBefore(
         log,
@@ -2279,11 +2374,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
           step: 8,
           row: LOOKS.markers,
           question:
-            'The third picture is the map after the label typeface was set to Inter. Are the names set in Inter, where the first two are in the system face?',
-          expected: labelBefore?.label ? [labelBefore.label] : [],
+            'The third picture is the map after the label typeface was set to Inter. Are the names set differently from the first two, with the stations where they were? (The names are small at this size: 8-typeface-label has one enlarged.)',
         },
         { name: 'typeface-pixels' },
       )
+      await viewsBefore(log, '8-typeface-label', [
+        mapPart(window, labelBefore?.label ? [labelBefore.label] : DOWNTOWN),
+      ])
       await typeface.selectOption('inter')
       await until(
         async () => ((await recordOf(window, LA)).style.labelFont === 'inter' ? true : undefined),
@@ -2297,12 +2394,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
           const now = await measureLabel(window, labelBefore?.label ?? undefined, {
             face: /inter/i,
           })
-          measured(
+          await viewsAfter(
+            log,
             {
               id: '8-typeface-label',
               step: 8,
               row: LOOKS.markers,
-              question: 'Is the name in the typeface pictures set in Inter?',
+              question:
+                'The two pictures are the same part of the map enlarged, before and after the label typeface was set to Inter. Is the name expected set in Inter in the second, in another face than the first (the system face)?',
               expected: now.label === null ? [] : [now.label],
             },
             judgeTypeface(
@@ -2330,6 +2429,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         // need not change with the dot size.
         { name: 'dot-size', noteOnly: true },
       )
+      await viewsBefore(log, '8-dot-enlarged', [mapPart(window, DOWNTOWN)])
       await dot.fill('13')
       await dot.press('Enter')
       await log.soft(
@@ -2349,6 +2449,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
         () => 'the dot size of 8 was never written to the project',
       )
       await evAfter(log, '8-dot')
+      await viewsAfter(log, {
+        id: '8-dot-enlarged',
+        step: 8,
+        row: LOOKS.markers,
+        question:
+          'The two pictures are the same part of the map enlarged, before and after the dot size was set to 8. Where a train is in view, is it drawn larger in the second? (No train need be in view at this hour: say what you see.)',
+      })
       await trail.fill('1.5')
       await trail.press('Enter')
       await until(
@@ -2433,10 +2540,11 @@ test('a release, installed, through docs/acceptance.md', async () => {
           id: '9-colour',
           step: 9,
           row: LOOKS.colour,
-          question: `The third picture is the map after line ${line} was given a colour of its own by dragging. Is line ${line} drawn in a colour it was not drawn in before, in the map and in its chip?`,
+          question: `The third picture is the map after line ${line} was given a colour of its own by dragging. Is line ${line} drawn in a colour it was not drawn in before, one that stands out from the map's ground? (Its chip is in 9-colour-chip.)`,
         },
         { name: 'line-colour' },
       )
+      await viewsBefore(log, '9-colour-chip', [{ target: rows.first() }])
 
       await panel
         .getByRole('button', { name: `Choose the colour of line ${line}`, exact: true })
@@ -2444,6 +2552,33 @@ test('a release, installed, through docs/acceptance.md', async () => {
       const picker = panel.getByRole('group', { name: `Colour for line ${line}` })
       await expect(picker).toBeVisible()
       const sliders = picker.getByRole('slider')
+      /**
+       * Where a drag is let go, outside the picker, and so the colour it
+       * leaves (react-colorful reads the pointer's place, held to the
+       * slider's edges). The colour square is left above and to the right of
+       * itself: full saturation and brightness. The hue slider is left below
+       * the picker at five sixths of its width: a hue of 300, magenta, which
+       * no LA line is drawn in. So the line ends #ff00ff, which stands out
+       * from the warm-dark and the sepia ground alike; letting go below and
+       * to the right of both, as the run did before, left it near-black,
+       * which all but vanished on the warm-dark ground. Where the window has
+       * no room below the picker, the hue is let go above it.
+       */
+      const releaseAt = async (
+        slider: Locator,
+        box: { x: number; y: number; width: number; height: number },
+      ): Promise<[number, number]> => {
+        if ((await slider.getAttribute('aria-label')) !== 'Hue')
+          return [box.x + box.width + 160, Math.max(2, box.y - 160)]
+        const panel = await picker.boundingBox()
+        const tall = await picker.evaluate(
+          (element) => (element.ownerDocument.defaultView as Window).innerHeight,
+        )
+        const x = box.x + (box.width * 5) / 6
+        if (panel === null) return [x, box.y + box.height + 160]
+        const below = panel.y + panel.height + 24
+        return [x, below < tall - 2 ? below : Math.max(2, panel.y - 24)]
+      }
       let dragged = false
       await log.soft('the picker stays open through a drag and its release', async () => {
         for (const slider of [sliders.first(), sliders.last()]) {
@@ -2490,7 +2625,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           await window.mouse.down()
           await window.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.4, { steps: 12 })
           await expect(picker).toBeVisible()
-          await window.mouse.move(box.x + box.width + 160, box.y + box.height + 160, { steps: 6 })
+          await window.mouse.move(...(await releaseAt(slider, box)), { steps: 6 })
           await expect(picker).toBeVisible()
           await window.mouse.up()
           await expect(picker).toBeVisible()
@@ -2513,6 +2648,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         REBUILD_MS,
         () => 'the dragged colour was never written to the project',
       )
+      log.note(`The drag left line ${line} at ${(await recordOf(window, LA)).colors[line]}.`)
       await log.soft('the redraw sentence', async () => {
         const said = (await saidSoFar(window)).slice(mark)
         expect(said).toContain(
@@ -2521,6 +2657,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       await evAfter(log, '9-colour', {
         colour: async () => (await recordOf(window, LA)).colors[line] as string,
+      })
+      await viewsAfter(log, {
+        id: '9-colour-chip',
+        step: 9,
+        row: LOOKS.colour,
+        question: `The two pictures are line ${line}'s row in Line colours, before and after its colour was dragged. Is its chip in the new colour in the second, and does the row say "your colour"?`,
       })
 
       // Reset is in the chip's panel (issue 284), so the chip opens it again.
@@ -2622,6 +2764,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           value: string,
           written: (now: ProjectRecord) => boolean,
           question: string,
+          enlargedQuestion?: string,
         ): Promise<void> => {
           await evBefore(
             log,
@@ -2630,6 +2773,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
             { id: key, step: 9, row: LOOKS.options, question },
             { name: key.replace(/^9-/, 'option-') },
           )
+          if (enlargedQuestion !== undefined)
+            await viewsBefore(log, `${key}-enlarged`, [mapPart(window, DOWNTOWN)])
           await group.getByRole('combobox', { name: label, exact: true }).selectOption(value)
           await until(
             async () => (written(await recordOf(window, LA)) ? true : undefined),
@@ -2637,6 +2782,13 @@ test('a release, installed, through docs/acceptance.md', async () => {
             () => `the ${label.toLowerCase()} option was never written to the project`,
           )
           await evAfter(log, key)
+          if (enlargedQuestion !== undefined)
+            await viewsAfter(log, {
+              id: `${key}-enlarged`,
+              step: 9,
+              row: LOOKS.options,
+              question: enlargedQuestion,
+            })
         }
         const of = (now: ProjectRecord): NonNullable<ProjectRecord['lines']>[string] | undefined =>
           now.lines?.[line]
@@ -2645,7 +2797,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
           'Width',
           '1.25',
           (now) => of(now)?.width === 1.25,
-          `The third picture is the map after line ${line} was made bold. Is line ${line} drawn thicker than in the first two, with its neighbours moved out to make room?`,
+          `The third picture is the map after line ${line} was made bold. Is line ${line} drawn thicker than in the first two? (The lines are thin at this size: 9-width-enlarged has them enlarged.)`,
+          `The two pictures are the same part of the map enlarged, before and after line ${line} was made bold. Is line ${line} drawn thicker in the second, with the lines beside it moved out to make room, and no station moved?`,
         )
         await choose(
           '9-casing',
@@ -2781,8 +2934,27 @@ test('a release, installed, through docs/acceptance.md', async () => {
       })
       log.note(`Dragged ${start[0]} to the last place: ${carried.join(', ')}.`)
 
-      // Then the arrows, from the order the drag left.
+      // Then the arrows, from the order the drag left. The page's line rows
+      // are its Linear view's, one row per line, in the order of the list
+      // (engine v0.12.0): so the list and the map in that view are kept,
+      // before and after, beside the schematic's pair. The map is paused
+      // first, so the view holds still for its pictures.
       const first = carried[0]
+      const map = window.frameLocator('iframe.viewer-frame')
+      const toView = (name: string) => async (): Promise<void> => {
+        const button = map.getByRole('button', { name, exact: true })
+        await button.click()
+        await expect(button).toHaveAttribute('aria-pressed', 'true')
+      }
+      await pauseAndRead(window).catch(() => undefined)
+      await viewsBefore(log, '10-order-rows', [
+        { target: list },
+        {
+          target: enlarged(mapEnlarger(window, []), { whole: true }),
+          show: toView('Linear'),
+          leave: toView('Schematic'),
+        },
+      ])
       await evBefore(
         log,
         window,
@@ -2791,7 +2963,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
           id: '10-order',
           step: 10,
           row: LOOKS.order,
-          question: `The third picture is the map after the order of the lines was changed with the arrows. Do the page's line rows stand in a different order from the first two? (The map itself need not change with the order, so a picture that looks the same is not a failure: say what you see.)`,
+          question: `The third picture is the map after the order of the lines was changed with the arrows. Where two lines share track, is a different one drawn on top than in the first two? (The schematic need not change visibly with the order, so a picture that looks the same is not a failure: say what you see. The rows are in 10-order-rows.)`,
         },
         { name: 'order-changes', noteOnly: true },
       )
@@ -2821,6 +2993,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
         )
       })
       await evAfter(log, '10-order')
+      await viewsAfter(log, {
+        id: '10-order-rows',
+        step: 10,
+        row: LOOKS.order,
+        question: `The first two pictures are cell 05's list, Lines in the order they are drawn, before and after ${first} was moved down and ${other} up with the arrows; the last two are the map's Linear view, one row per line, at the same two moments, enlarged. Do the Linear view's rows run from the top down in the order of the list, in both, so that they change order between the two?`,
+      })
       log.note(`Moved ${first} down and ${other} up: ${shown.join(', ')}.`)
       const back = panel.getByRole('button', { name: 'Back to alphabetical' })
       await back.click()
@@ -3103,9 +3281,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
             id: '11-reel',
             step: 11,
             row: LOOKS.safe,
+            // The preset's own storyboard is the engine's `tour`: the map
+            // from 05:30, the Linear view, the Time view, then four hours
+            // swept across the time chart (STORYBOARDS in its export.py).
             question:
-              'Five frames of the reel, from the start to just before the end, then its first and its last. Is each a drawn map, and do they differ as the day goes on?',
-            expected: [LA],
+              'Five frames of the reel, from the start to just before the end, then its first and its last. The reel plays the map, then the lines as rows (the Linear view), then the time chart, which it sweeps across four hours, so a frame of rows or of the chart is the storyboard and not a fault. Is every frame drawn, none blank, and does the clock go on as the day goes on? Is the title the city over the network?',
+            expected: [LA_CITY, LA_NETWORK],
           },
           sampledFrames(session.resources, done.path),
           'reel-frames',
@@ -3208,8 +3389,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
             step: 12,
             row: LOOKS.post,
             question:
-              'Is the post a still of the map, with the caption drawn under the title? Read the text in it against the expected strings.',
-            expected: [CAPTION],
+              'Is the post a still of the map, with the caption drawn under the title (the city over the network)? Read the text in it against the expected strings.',
+            expected: [LA_CITY, LA_NETWORK, CAPTION],
           },
           post.path,
           'post-blank',
@@ -3294,9 +3475,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
             id: '12-gif',
             step: 12,
             row: LOOKS.post,
+            // The preset's own storyboard is the engine's `morph` (the map
+            // at 08:00, the Linear view, the Time view, the map again),
+            // after the opening: the title card, then the network drawing in.
             question:
-              'Five frames of the GIF, from the start to just before the end, then its first and its last. Does it play as the map, with the day going on? Is the caption drawn under the title?',
-            expected: [CAPTION],
+              'Five frames of the GIF, from the start to just before the end, then its first and its last. It opens on a title card and the network drawing itself in, then plays the map, the lines as rows (the Linear view), the time chart and the map again, so a frame of rows or of the chart is the storyboard and not a fault. Is every frame after the opening drawn, and does the clock go on as the day goes on? Is the caption drawn under the title (the city over the network)?',
+            expected: [LA_CITY, LA_NETWORK, CAPTION],
           },
           sampledFrames(session.resources, gif.path),
           'gif-frames',
@@ -3323,8 +3507,8 @@ test('a release, installed, through docs/acceptance.md', async () => {
             step: 12,
             row: LOOKS.opening,
             question:
-              'Does the GIF open on a title card over bare ground, naming the city, the network, the day and the caption, and does the network then draw itself in?',
-            expected: [LA, CAPTION],
+              'Does the GIF open on a title card over bare ground, naming the city, the network (one over the other), the day and the caption, and does the network then draw itself in?',
+            expected: [LA_CITY, LA_NETWORK, CAPTION],
           },
           names,
         )
@@ -3437,7 +3621,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
             window.getByRole('list', { name: 'Projects' }).getByRole('button').first(),
           ).toHaveAccessibleName('New project')
           const entry = window.getByRole('button', { name: `Open ${LA}` })
-          await expect(entry).toContainText('Los Angeles · Metro Rail')
+          await expect(entry).toContainText(`${LA_CITY} · ${LA_NETWORK}`)
           await expect(entry).toContainText('map drawn from every cell')
           await expect(
             window
@@ -3847,7 +4031,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         for (const row of await rows.all()) {
           await expect(row).toContainText('map drawn from every cell')
         }
-        await expect(rows.nth(1)).toContainText('Los Angeles · Metro Rail')
+        await expect(rows.nth(1)).toContainText(`${LA_CITY} · ${LA_NETWORK}`)
         if (session.caltrainFeed !== null) {
           await expect(
             reopened

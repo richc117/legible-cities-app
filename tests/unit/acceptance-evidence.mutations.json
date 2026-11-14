@@ -230,5 +230,53 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "names the step’s pictures, controls included, as one sorted list",
     "why": "The record's row would list the real pictures only, and so name the controls by leaving them out."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "Math.max(ENLARGED.minScale, Math.round(ENLARGED.em / em))",
+    "replace": "Math.round(ENLARGED.em / em)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "sets a name about 18 pixels tall, within the scales allowed",
+    "why": "A large name would be drawn at a scale of nothing, and the part to enlarge would be infinitely wide."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  const x = Math.min(Math.max(cx - width / 2, 0), frame.width - width)\n",
+    "replace": "  const x = cx - width / 2\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "stays inside the frame, moved in from an edge it would run past",
+    "why": "A station near the frame's edge would be enlarged with part of the picture outside the map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    width = Math.max(width, right - left + 2 * ENLARGED.pad)\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "grows to hold every mark with room round it",
+    "why": "Two named stations further apart than the picture would be cut off at its sides."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "Math.min(wanted, ENLARGED.maxWidth / width, ENLARGED.maxHeight / height)",
+    "replace": "wanted",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "grows to hold every mark with room round it",
+    "why": "A part grown to hold its marks would be drawn at the full scale, a picture many thousand pixels wide."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      if (crop === null) {\n",
+    "replace": "      if (true) {\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps one part for every picture, following the frame",
+    "why": "The part would be chosen again for the picture after a change, so a label that moved would move the part, and before and after would not be of the same place."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const clip = { ...crop, x: frame.x + crop.x, y: frame.y + crop.y }",
+    "replace": "const clip = { ...crop }",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps one part for every picture, following the frame",
+    "why": "The part would be taken in the frame's own pixels as if they were the window's, a picture of the interface beside the map."
   }
 ]

@@ -9,13 +9,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  ENLARGED,
   Evidence,
   THRESHOLDS,
   blankness,
   contactSheet,
+  cropAround,
+  cropWhole,
   decodePng,
   difference,
   encodePng,
+  enlarged,
   failuresOf,
   judgeBlank,
   judgeChange,
@@ -27,6 +31,9 @@ import {
   sampleTimes,
   stepResult,
   thresholdFor,
+  type Box,
+  type Clip,
+  type Enlarger,
   type Pair,
   type Rgb,
   type Shootable,
@@ -557,6 +564,128 @@ describe('the manifest', () => {
     expect(names).toHaveLength(6)
     expect(names).toEqual([...names].sort())
     expect(said.match(/theme:/g)).toHaveLength(1)
+  })
+})
+
+describe('an enlarged picture of the map', () => {
+  // The notebook's frame as a runner draws it, about 740 by 315 CSS pixels,
+  // where a station's name is about 2.5 pixels tall.
+  const frame = { width: 740, height: 315 }
+  const centre = (clip: Clip): [number, number] => [
+    clip.x + clip.width / 2,
+    clip.y + clip.height / 2,
+  ]
+
+  it('sets a name about 18 pixels tall, within the scales allowed', () => {
+    expect(cropAround(frame, [], 2.5).scale).toBe(7)
+    expect(cropAround(frame, [], 100).scale).toBe(ENLARGED.minScale)
+    expect(cropAround(frame, [], 0.5).scale).toBe(ENLARGED.maxScale)
+    expect(cropAround(frame, [], null).scale).toBe(ENLARGED.fallbackScale)
+    expect(cropAround(frame, [], 0).scale).toBe(ENLARGED.fallbackScale)
+  })
+
+  it('is about 960 by 540 pixels at that scale, centred on the named marks', () => {
+    const marks: Box[] = [
+      { x: 290, y: 90, width: 20, height: 4 },
+      { x: 250, y: 100, width: 30, height: 6 },
+    ]
+    const clip = cropAround(frame, marks, 2.5)
+    expect(clip.width * clip.scale).toBeCloseTo(ENLARGED.width)
+    expect(clip.height * clip.scale).toBeCloseTo(ENLARGED.height)
+    expect(centre(clip)[0]).toBeCloseTo(280)
+    expect(centre(clip)[1]).toBeCloseTo(98)
+  })
+
+  it('centres on the middle of the frame when no mark was found', () => {
+    const clip = cropAround(frame, [], null)
+    expect(centre(clip)[0]).toBeCloseTo(370)
+    expect(centre(clip)[1]).toBeCloseTo(157.5)
+  })
+
+  it('stays inside the frame, moved in from an edge it would run past', () => {
+    const corner = cropAround(frame, [{ x: 0, y: 0, width: 4, height: 3 }], 2.5)
+    expect([corner.x, corner.y]).toEqual([0, 0])
+    const far = cropAround(frame, [{ x: 730, y: 310, width: 10, height: 5 }], 2.5)
+    expect(far.x + far.width).toBeCloseTo(frame.width)
+    expect(far.y + far.height).toBeCloseTo(frame.height)
+  })
+
+  it('grows to hold every mark with room round it, never past the frame, at a smaller scale', () => {
+    const wide = cropAround(
+      frame,
+      [
+        { x: 100, y: 100, width: 10, height: 4 },
+        { x: 500, y: 120, width: 10, height: 4 },
+      ],
+      2.5,
+    )
+    expect(wide.x).toBeLessThanOrEqual(100 - ENLARGED.pad)
+    expect(wide.x + wide.width).toBeGreaterThanOrEqual(510 + ENLARGED.pad)
+    expect(wide.width * wide.scale).toBeLessThanOrEqual(ENLARGED.maxWidth + 1e-9)
+    expect(wide.scale).toBeLessThan(7)
+    const all = cropAround(frame, [{ x: -50, y: -50, width: 900, height: 500 }], 2.5)
+    expect([all.x, all.y, all.width, all.height]).toEqual([0, 0, frame.width, frame.height])
+    expect(all.scale).toBeGreaterThanOrEqual(1)
+  })
+
+  it('takes the whole frame at twice its size, and less for one too large', () => {
+    expect(cropWhole(frame)).toEqual({ x: 0, y: 0, width: 740, height: 315, scale: 2 })
+    expect(cropWhole({ width: 1600, height: 400 }).scale).toBeCloseTo(1.2)
+  })
+
+  /** A window whose frame is at `at`, moved by each shot, and the clips asked of it. */
+  function windowOf(found: string[], at: Box | null = { x: 20, y: 400, width: 740, height: 315 }) {
+    const asked: Clip[] = []
+    let reads = 0
+    let moved = 0
+    const enlarger: Enlarger = {
+      frame: async () => (at === null ? null : { ...at, y: at.y + 100 * moved++ }),
+      marks: async () => {
+        reads++
+        return {
+          boxes: found.map((_, k) => ({ x: 200 + 40 * k, y: 100, width: 30, height: 4 })),
+          em: found.length > 0 ? 2.5 : null,
+          found,
+        }
+      },
+      capture: async (clip) => {
+        asked.push(clip)
+        return encodePng(picture(BG, 10, [255, 255, 255], [8, 4]))
+      },
+    }
+    return { enlarger, asked, reads: () => reads }
+  }
+
+  it('keeps one part for every picture, following the frame, and says what it is centred on', async () => {
+    const evidence = new Evidence(dir)
+    const window = windowOf(['Union Station', '7th Street / Metro Center'])
+    const part = enlarged(window.enlarger)
+    expect(part.around()).toBe('')
+    const path = await evidence.shot('8-x-a', part)
+    expect(evidence.open(path).width).toBe(8)
+    await evidence.shot('8-x-b', part)
+    expect(window.reads()).toBe(1)
+    const [a, b] = window.asked
+    expect([b.width, b.height, b.scale]).toEqual([a.width, a.height, a.scale])
+    expect(b.x).toBe(a.x)
+    expect(b.y - a.y).toBe(100)
+    expect(a.y).toBeGreaterThanOrEqual(400)
+    expect(part.around()).toBe('Union Station and 7th Street / Metro Center')
+  })
+
+  it('says when no named station was found, takes the whole frame when asked, and throws with no frame', async () => {
+    const evidence = new Evidence(dir)
+    const none = enlarged(windowOf([]).enlarger)
+    await evidence.shot('8-y', none)
+    expect(none.around()).toMatch(/^the middle of the map/)
+    const window = windowOf(['Union Station'])
+    const whole = enlarged(window.enlarger, { whole: true })
+    await evidence.shot('10-z', whole)
+    expect(window.reads()).toBe(0)
+    expect(window.asked[0]).toEqual({ x: 20, y: 400, width: 740, height: 315, scale: 2 })
+    expect(whole.around()).toBe('the whole map')
+    const gone = enlarged(windowOf(['Union Station'], null).enlarger)
+    await expect(evidence.shot('8-w', gone)).rejects.toThrow(/has no box/)
   })
 })
 

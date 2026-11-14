@@ -875,6 +875,214 @@ export async function measureLabel(
   }
 }
 
+// ------------------------------------------------------------ enlarged pictures
+
+/** A box in CSS pixels. */
+export interface Box {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** A part of the window to capture, in the document's CSS pixels, and the scale it is drawn at. */
+export interface Clip extends Box {
+  scale: number
+}
+
+/**
+ * The enlarged picture: a station's name stands about `em` pixels tall in it,
+ * at a scale from `minScale` to `maxScale`, and the picture is about `width`
+ * by `height` pixels and never more than `maxWidth` by `maxHeight`. A map
+ * shot of the notebook's frame on a runner is about 730 by 315 CSS pixels at
+ * a device scale of 1, where a name is about 3 pixels tall and an
+ * interchange mark about 3 across; at these sizes both can be read.
+ */
+export const ENLARGED = {
+  em: 18,
+  minScale: 2,
+  maxScale: 8,
+  /** The scale when no name was found to measure. */
+  fallbackScale: 4,
+  width: 960,
+  height: 540,
+  maxWidth: 1920,
+  maxHeight: 1080,
+  /** Room left round the named marks, in CSS pixels. */
+  pad: 12,
+} as const
+
+/**
+ * The part of the map's frame to enlarge, in the frame's own CSS pixels. The
+ * scale sets a name that is `em` CSS pixels tall at about `ENLARGED.em`
+ * pixels (`ENLARGED.fallbackScale` when no name was measured), within the
+ * allowed scales; the part is about `ENLARGED`'s picture at that scale,
+ * grown to hold every named mark with room round it, never larger than the
+ * frame, and centred on the marks (on the frame's middle when there are
+ * none), moved in where it would run past an edge. A part grown past the
+ * largest picture is drawn at a smaller scale, never below 1.
+ */
+export function cropAround(
+  frame: { width: number; height: number },
+  marks: readonly Box[],
+  em: number | null,
+): Clip {
+  const wanted =
+    em === null || !(em > 0)
+      ? ENLARGED.fallbackScale
+      : Math.min(ENLARGED.maxScale, Math.max(ENLARGED.minScale, Math.round(ENLARGED.em / em)))
+  let width = ENLARGED.width / wanted
+  let height = ENLARGED.height / wanted
+  let cx = frame.width / 2
+  let cy = frame.height / 2
+  if (marks.length > 0) {
+    const left = Math.min(...marks.map((m) => m.x))
+    const top = Math.min(...marks.map((m) => m.y))
+    const right = Math.max(...marks.map((m) => m.x + m.width))
+    const bottom = Math.max(...marks.map((m) => m.y + m.height))
+    cx = (left + right) / 2
+    cy = (top + bottom) / 2
+    width = Math.max(width, right - left + 2 * ENLARGED.pad)
+    height = Math.max(height, bottom - top + 2 * ENLARGED.pad)
+  }
+  width = Math.min(width, frame.width)
+  height = Math.min(height, frame.height)
+  const x = Math.min(Math.max(cx - width / 2, 0), frame.width - width)
+  const y = Math.min(Math.max(cy - height / 2, 0), frame.height - height)
+  const scale = Math.max(
+    1,
+    Math.min(wanted, ENLARGED.maxWidth / width, ENLARGED.maxHeight / height),
+  )
+  return { x, y, width, height, scale }
+}
+
+/** The whole frame at twice its size, or less where that would pass the largest picture. */
+export function cropWhole(frame: { width: number; height: number }): Clip {
+  const scale = Math.max(
+    1,
+    Math.min(2, ENLARGED.maxWidth / frame.width, ENLARGED.maxHeight / frame.height),
+  )
+  return { x: 0, y: 0, width: frame.width, height: frame.height, scale }
+}
+
+/** What an enlarged picture needs from the window. */
+export interface Enlarger {
+  /** Where the map's frame is now, in the document's CSS pixels; null when it has no box. */
+  frame(): Promise<Box | null>
+  /** The named marks found in the frame, in its own CSS pixels, and a name's height there. */
+  marks(): Promise<{ boxes: Box[]; em: number | null; found: string[] }>
+  /** The window's pixels in `clip`, as a PNG. */
+  capture(clip: Clip): Promise<Buffer>
+}
+
+/** A picture of part of the map, larger than the window draws it, and what it was centred on. */
+export interface Enlarged extends Shootable {
+  /** Where the part is, once the first picture has been taken; empty before. */
+  around(): string
+}
+
+/**
+ * An enlarged part of the map's frame, as a Shootable. The part is chosen at
+ * the first picture and kept, in the frame's own pixels, so the pictures
+ * before and after a change are of the same part; each picture follows the
+ * frame to where it is then. `whole` takes the whole frame instead.
+ */
+export function enlarged(enlarger: Enlarger, options: { whole?: boolean } = {}): Enlarged {
+  let crop: Clip | null = null
+  let around = ''
+  return {
+    around: () => around,
+    async screenshot({ path }: { path: string }): Promise<void> {
+      const frame = await enlarger.frame()
+      if (frame === null) throw new Error('the map’s frame has no box')
+      if (crop === null) {
+        if (options.whole === true) {
+          crop = cropWhole(frame)
+          around = 'the whole map'
+        } else {
+          const { boxes, em, found } = await enlarger.marks()
+          crop = cropAround(frame, boxes, em)
+          around =
+            found.length > 0
+              ? found.join(' and ')
+              : 'the middle of the map (no named station was found)'
+        }
+      }
+      const clip = { ...crop, x: frame.x + crop.x, y: frame.y + crop.y }
+      writeFileSync(path, await enlarger.capture(clip))
+    },
+  }
+}
+
+/**
+ * The map's frame, enlarged, in the window `window`: its box read from the
+ * interface's side, the named labels read inside it (`#linear-labels text`,
+ * the copies the page draws, as `measureLabel` reads them), and the picture
+ * taken through the DevTools protocol's `Page.captureScreenshot`, whose clip
+ * draws the part again at the scale asked for. Playwright's own screenshot
+ * takes the same path at the scale of 1 or the device's; nothing here
+ * touches the export's capture (`src/main/capture.ts`).
+ */
+export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
+  const element = window.locator('iframe.viewer-frame')
+  return {
+    async frame() {
+      await element.scrollIntoViewIfNeeded()
+      return element.evaluate((frame) => {
+        const box = frame.getBoundingClientRect()
+        const view = frame.ownerDocument.defaultView as Window
+        return {
+          x: box.left + frame.clientLeft + view.scrollX,
+          y: box.top + frame.clientTop + view.scrollY,
+          width: frame.clientWidth,
+          height: frame.clientHeight,
+        }
+      })
+    },
+    async marks() {
+      return window
+        .frameLocator('iframe.viewer-frame')
+        .locator('html')
+        .evaluate((html, wanted) => {
+          const doc = html.ownerDocument
+          const view = doc.defaultView as Window
+          const texts = Array.from(
+            doc.querySelectorAll<SVGTextElement>('#linear-labels text'),
+          ).filter((t) => t.getClientRects().length > 0)
+          const boxes: { x: number; y: number; width: number; height: number }[] = []
+          const found: string[] = []
+          let em: number | null = null
+          for (const name of wanted) {
+            const text = texts.find((t) => (t.textContent ?? '').trim() === name)
+            if (text === undefined) continue
+            const box = text.getBoundingClientRect()
+            boxes.push({ x: box.left, y: box.top, width: box.width, height: box.height })
+            found.push(name)
+            const matrix = text.getScreenCTM()
+            const size = parseFloat(view.getComputedStyle(text).fontSize)
+            if (em === null && matrix !== null && size > 0)
+              em = size * Math.hypot(matrix.a, matrix.b)
+          }
+          return { boxes, em, found }
+        }, names)
+        .catch(() => ({ boxes: [], em: null, found: [] }))
+    },
+    async capture(clip) {
+      const cdp = await window.context().newCDPSession(window)
+      try {
+        const { data } = await cdp.send('Page.captureScreenshot', {
+          format: 'png',
+          clip,
+          captureBeyondViewport: false,
+        })
+        return Buffer.from(data, 'base64')
+      } finally {
+        await cdp.detach().catch(() => undefined)
+      }
+    },
+  }
+}
+
 // ---------------------------------------------------------------- the exports
 
 /** An export's frame at `seconds`, decoded by the bundled ffmpeg to packed RGB; no PNG encoder is needed. */
