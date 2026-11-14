@@ -152,7 +152,7 @@ describe('the gate report', () => {
   it("refuses a rehearsal by its record's heading", () => {
     const heading = "## Acceptance run: REHEARSAL, not a candidate's run"
     const records = new Map([['darwin-arm64', record(STEPS, '', TAG, heading)]])
-    expect(() => report.assemble(inputs({ records }))).toThrow(/rehearsal/)
+    expect(() => report.assemble(inputs({ records }))).toThrow(/headed REHEARSAL/)
   })
 
   it('refuses an acceptance run of another tag', () => {
@@ -214,6 +214,8 @@ describe('the gate report', () => {
     const exact = run('22', { workflowName: 'acceptance', displayTitle: `acceptance ${TAG}` })
     expect(() => report.assemble(inputs({ acceptance: exact, records: new Map() }))).not.toThrow()
     expect(() => report.assemble(inputs({ records: new Map() }))).toThrow(/no record to say/)
+    const other = run('22', { workflowName: 'acceptance', displayTitle: 'acceptance of something' })
+    expect(() => report.assemble(inputs({ acceptance: other }))).toThrow(/is titled/)
   })
 
   it('refuses a record that does not say which release it is of', () => {
