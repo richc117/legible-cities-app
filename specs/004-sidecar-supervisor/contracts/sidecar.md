@@ -23,9 +23,9 @@ own), never `shell`. The interpreter is `resolveInterpreter()`'s answer
 | `starting(n)` | `engine.info` wrong version or protocol | `mismatched` | the dialog callback is called once with expected and found; the process is shut down like a quit; terminal for the run |
 | `starting(n)` | process ends, framing error, or handshake bound | `restarting(n+1, reason)` if n < 4, else `stopped(reason)` | |
 | `ready` | process ends or framing error | `restarting(2, reason)` | every request in flight rejects with `-32002` |
-| `restarting(n)` | wait elapsed (1 s, 2 s, 4 s for n = 2, 3, 4) | `starting(n)` | |
+| `restarting(n)` | wait elapsed (1 s, 2 s, 4 s for n = 2, 3, 4) | `starting(n)` | the wait begins once the old engine has gone and, on POSIX, what it left in its process group has been ended ("After an exit", issue 640): up to 1 s and 2 × `terminateMs` after its exit, where something left ignores SIGTERM |
 | any but `unavailable`/`stopped` | `stop()` (quit) | `stopped('quitting')` | the shutdown sequence; nothing restarts |
-| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched`, in every other state, and while the engine given up on is still being ended (the state says `stopped` before that ends); the bridge refuses it too while the engine's data is being reset |
+| `stopped(reason)` after giving up, or `unavailable(reason)` because the interpreter could not be spawned (both `retryable`) | `retry()` (a person's Try again, issue 562) | `starting(1)` | the failure count back to 0, so the full restart budget again; refused with a sentence while quitting, with no interpreter, for `mismatched` and in every other state, and as still stopping while the engine given up on is still being ended (the state says `stopped` before that ends), while an engine that outlived the kill is still there, and while what an exited engine left in its process group is being ended ("After an exit", issue 640); the bridge refuses it too while the engine's data is being reset |
 
 `onState` listeners are called after each transition with the new state.
 Every transition is logged with the reason.
@@ -79,8 +79,11 @@ Every transition is logged with the reason.
    <pid> /T /F` on Windows, which is already forceful); wait up to 3 s.
 4. If still running: kill (SIGKILL to the group on POSIX; nothing more on
    Windows, where step 3 was already the end).
-5. Resolve when the process has exited or the bounds are spent; log what it
-   took.
+5. Resolve when the process has exited or the bounds are spent, its pipes
+   have closed (up to 1 s after its exit, so its last stderr lines are in
+   the log), and, on POSIX, what any engine left in its process group as it
+   exited has been ended ("After an exit"): up to 2 × `terminateMs` more,
+   where something left ignores SIGTERM. Log what it took.
 
 `stop()` is idempotent and safe in every state.
 
@@ -91,7 +94,42 @@ tag `engine`, prefixed `stderr:`; the last 20 lines are kept, and when the
 process ends unexpectedly the last three of them that carry no path
 separator become part of the reason (the reason is shown on screen; the
 lines with paths are in the log). The reason is composed when the process
-has closed its pipes, or one second after it exited, whichever is first.
+has closed its pipes, or one second after it exited, whichever is first:
+that is when the exit is reported.
+
+## After an exit (issue 640)
+
+What the engine starts - `loom`, `topo`, `ffmpeg` - is in its process
+group on POSIX and does not end with it, and steps 3 and 4 of the shutdown
+reach it only while the engine itself is running. So after every exit,
+however it came (a crash, or an exit the app asked for: a framing error, a
+failed handshake, a mismatch, a quit), on POSIX:
+
+1. As the exit is seen, just after the process is reaped, the group is
+   looked at (signal 0). Nothing left: done, and nothing waits on it.
+2. Otherwise the group is looked at every 25 ms until the exit is reported,
+   so a child holding a pipe writes its last line first; done if it empties.
+3. Then SIGTERM to the group; SIGKILL once `terminateMs` has passed with
+   anything left; then one more `terminateMs` to see it go, after which the
+   supervisor stops waiting and logs that the group is still there. Each
+   step is logged; a group that has emptied (ESRCH) is not an error.
+
+A restart's wait begins only once this is done, `retry()` is refused while
+it runs, and `stop()` waits for it, including for a group added while it
+waits (an engine that outlived the kill, exiting at last). The group's id
+is the engine's pid, which no other process takes while the group has a
+member, and each signal is sent straight after a look that found the group
+there. The id could still pass to another process unseen in the moments
+the app does not see the group: from the reap to the first look, when the
+exits of other children reaped with it may be handled first; between two
+looks, 25 ms or more while the main process is busy; and between a look
+and the signal after it. Node cannot close these without native code.
+
+On Windows nothing is done: there is no group, and the engine's pid has
+gone by the time its exit is seen, so `taskkill /T` has no tree to walk.
+What an engine that exited by itself started runs to its own end there;
+reaching it would take the engine running its children in a job object,
+which is a change to the engine.
 
 ## Bounds (constructor options, so tests shorten them)
 

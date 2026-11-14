@@ -46,5 +46,77 @@
     "test": "tests/unit/sidecar.test.ts",
     "title": "is refused while that child lives",
     "why": "A retry let through beside an engine that outlived the last wait after SIGKILL (issue 562): a second engine starts on the same home while the first is still there."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    this.signalGroup(group, 'SIGTERM')\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "ends it on SIGTERM, well within terminateMs, then restarts",
+    "why": "No terminate for what an engine left running as it exited (issue 640): a tool that would have stopped cleanly runs on, writing into the home, until the kill comes a whole terminateMs later."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    this.signalGroup(group, 'SIGKILL')\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "kills it within terminateMs of the terminate when it ignores SIGTERM, before the next engine starts",
+    "why": "No kill after the terminate (issue 640): a tool the engine left that ignores SIGTERM runs on beside the next engine, and past the app."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    await this.groupsEnded()\n    // stop() may have run while the child was being ended.\n",
+    "replace": "    // stop() may have run while the child was being ended.\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "kills it within terminateMs of the terminate when it ignores SIGTERM, before the next engine starts",
+    "why": "A restart that does not wait for the old engine's group (issue 640): the new engine starts on the same home while a tool the old one left is still writing into it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.groupsEnding.size > 0) return RETRY_REFUSALS.stillStopping\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "refuses a retry, and a quit waits, while what an engine it gave up on left is ended",
+    "why": "A person's Try again let through while what the engine given up on left running is being ended (issue 640): a new engine starts beside its tools on the same home."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    // nothing outlives the app (issue 640); each bounded by its own waits.\n    await this.groupsEnded()\n",
+    "replace": "    // nothing outlives the app (issue 640); each bounded by its own waits.\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "ends, before a quit resolves, what an engine left as it stopped as asked",
+    "why": "A quit that does not wait for the engine's group (issue 640): the app exits before the kill is sent, and a tool that ignores SIGTERM outlives it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "      groupReported = this.watchGroup(child)\n",
+    "replace": "      if (this.child === child) groupReported = this.watchGroup(child)\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "ends, before a quit resolves, what an engine left as it stopped as asked",
+    "why": "Only an exit nobody asked for has its group ended (issue 640): an engine that stops as asked, on a quit or after a failure, leaves its tools running past it."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    if (this.platform === 'win32' || group === undefined || !this.groupHolds(group)) return null\n",
+    "replace": "    if (this.platform === 'win32' || group === undefined) return null\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "keeps nothing for a group that was empty, before the stdio has closed",
+    "why": "No look at the group as the exit is seen (issue 640): an empty one is kept and waited on until a later look, and its id can pass to another process before that look takes it for the engine's."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    while (this.groupsEnding.size > 0) await Promise.all(this.groupsEnding.values())\n",
+    "replace": "    await Promise.all(this.groupsEnding.values())\n",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has a quit wait too for a group added while it waits",
+    "why": "A wait that takes the groups there when it began (issue 640): an engine that outlived the kill and exits meanwhile leaves its group unwaited, and the quit resolves with it still running."
+  },
+  {
+    "file": "src/main/sidecar.ts",
+    "find": "    while ((await inTime(reported, GROUP_POLL_MS)) === LAPSED && performance.now() < deadline) {\n      if (!this.groupHolds(group)) return\n    }\n",
+    "replace": "",
+    "test": "tests/unit/sidecar.test.ts",
+    "title": "has read the last stderr line written before the pipe closed",
+    "why": "The group signalled as the exit is seen, not once it is reported (issue 640): a child of the engine still holding its stderr pipe is ended before it writes its last line, and the log loses what the engine's side printed on its way out."
   }
 ]
