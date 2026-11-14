@@ -1368,15 +1368,19 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   frame's own target too where it is one), which counts only where the
   frame's own `devicePixelRatio` reads the scale; else the page's drawing
   scaled for the moment by a CSS transform, its style put back, which
-  counts only where the drawing measures the scale, the page's draw count
-  is unchanged and the frame's box is where it was. Where neither drew the
+  counts only where the drawing measures the scale, the page's clock
+  (`state().now`) reads the same before and after, and the frame's box is
+  where it was. (The page draws on every animation frame, paused or not,
+  so its draw count is no measure of a still map: a paused map draws the
+  same instant again.) Where neither drew the
   map larger, the picture is not kept, and the step's record says "the map
   could not be drawn larger here; drawn at 1 and not enlarged" with what
   was read; where one did, the record says which and what it read. A
   drawing the transform left scaled and that could not be put back is a
   problem in the step's record, never a note, since every later picture of
   the map would be of it; and every pair puts the drawing back before A1
-  and before B, and is refused where it found the drawing still scaled, so
+  and before B, and is refused where it found the drawing still scaled,
+  or where the map's frame did not answer (that refusal a problem too), so
   no pair is judged across a scaled and an unscaled shot. None of this
   touches the export's capture. Likewise `9-colour-chip` keeps the
   first line's row in **Line colours** before and after the drag, and

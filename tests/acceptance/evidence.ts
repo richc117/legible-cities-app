@@ -790,6 +790,22 @@ export async function pauseAndRead(
   return { clock: second, steady: first !== '' && first === second, paused }
 }
 
+/** The page's clock, `state().now` in seconds of the service day, or null where it cannot be read. */
+export async function readClock(window: Page): Promise<number | null> {
+  const root = window.frameLocator('iframe.viewer-frame').locator('html')
+  return root
+    .evaluate(() => {
+      const page = window as unknown as { __present?: { state?: () => { now?: unknown } } }
+      try {
+        const now = page.__present?.state?.().now
+        return typeof now === 'number' && Number.isFinite(now) ? now : null
+      } catch {
+        return null
+      }
+    })
+    .catch(() => null)
+}
+
 /** The page's draw count (`state().draws`, as the capture reads it), or null where it has none. */
 export async function readDraws(window: Page): Promise<number | null> {
   const root = window.frameLocator('iframe.viewer-frame').locator('html')
@@ -1067,20 +1083,31 @@ export async function drawingPutBack(
     )
 }
 
+/** What a pair says when the map's frame did not answer the put-back. */
+export const FRAME_SILENT =
+  "the map's frame did not answer, so whether its drawing was still scaled is not known; the pair is not judged"
+
 /**
- * `restoreDrawing` run in the window's map frame. A window with no map
- * frame, or one that does not answer, has nothing of the test's to put back.
+ * `restoreDrawing` run in the window's map frame. A window with no map frame
+ * has nothing of the test's to put back. A frame that does not answer is
+ * never taken as clean: the deadline does not cancel the call, so a restore
+ * still queued could land later and take the marks off between A and B, and
+ * the pair would be judged across a scaled and an unscaled shot. It is
+ * refused instead, as `DrawingNotPutBack`, a problem in the step's record.
  */
 export async function putBackDrawing(
   window: Page,
+  deadline = ENLARGED_DEADLINE_MS,
 ): Promise<{ found: boolean; measured: number | null }> {
   if ((await window.locator('iframe.viewer-frame').count()) === 0)
     return { found: false, measured: 1 }
   return withDeadline(
     window.frameLocator('iframe.viewer-frame').locator('html').evaluate(restoreDrawing),
-    ENLARGED_DEADLINE_MS,
+    deadline,
     SILENT,
-  ).catch(() => ({ found: false, measured: 1 }))
+  ).catch((error: unknown) => {
+    throw new DrawingNotPutBack(FRAME_SILENT, { cause: error })
+  })
 }
 
 /** Whether the map was drawn at `wanted`: what was measured is within 1% of it. */
@@ -1104,8 +1131,8 @@ export interface Redrawer {
   repaint(): Promise<void>
   /** `devicePixelRatio` in the interface and inside the map's frame. */
   ratios(): Promise<{ window: number | null; frame: number | null }>
-  /** The page's draw count (`state().draws`). */
-  draws(): Promise<number | null>
+  /** The page's clock, `state().now` in seconds of the service day; null where it cannot be read. */
+  clock(): Promise<number | null>
   /** The page's drawing scaled by `scale` about `origin` (frame CSS pixels); the scale measured on screen, or 'still scaled' where an earlier picture left it so. */
   scaleSvg(scale: number, origin: { x: number; y: number }): Promise<number | null | 'still scaled'>
   /** The drawing put back as it was; the scale measured on screen then, against its size before. */
@@ -1136,8 +1163,11 @@ export interface Redrawn {
  *    moment of the shot by a CSS transform about the point that maps the
  *    part onto the whole frame, the frame is captured at a scale of 1, and
  *    the drawing's style is put back. It counts only where the drawing
- *    measured the scale on screen; the page's draw count and the frame's box
- *    must be the same afterwards. This is the test's alone: it sets an
+ *    measured the scale on screen; the page's clock and the frame's box
+ *    must be the same afterwards. (Not its draw count: the page draws on
+ *    every animation frame, playing or paused, so the count rises by the
+ *    frames the shot takes, as rehearsal 43592456473 showed. Paused, each
+ *    of those draws is of the same instant; a clock that moved is not.) This is the test's alone: it sets an
  *    inline style the page never reads and the app never drives (the app
  *    drives the page through `window.__present`, from the main process), and
  *    takes it off again before anything else runs.
@@ -1224,7 +1254,17 @@ export async function redrawnCapture(
 
   const k = crop.scale
   const origin = k > 1 ? { x: (k * crop.x) / (k - 1), y: (k * crop.y) / (k - 1) } : { x: 0, y: 0 }
-  const drawsBefore = await dl(r.draws()).catch(() => null)
+  const clockBefore = await dl(r.clock()).catch(() => null)
+  // Null where the drawing is back at its size; else what is wrong with it.
+  const putBack = async (): Promise<string | null> => {
+    let back: number | null
+    try {
+      back = await dl(r.restoreSvg())
+    } catch {
+      return 'could not be confirmed put back (the map’s frame did not answer)'
+    }
+    return drawnLarger(1, back) ? null : `was not put back (it measured ${back ?? 'nothing'})`
+  }
   let data: string
   let measured: number | null | undefined
   try {
@@ -1243,28 +1283,26 @@ export async function redrawnCapture(
   } catch (error) {
     // A drawing left scaled would be every later picture's, and would hide
     // a change that did not happen: said with the error, never dropped.
-    const undone = await dl(r.restoreSvg()).catch(() => null)
+    const left = await putBack()
     const said = error instanceof Error ? error.message : String(error)
-    if (!drawnLarger(1, undone))
-      throw new DrawingNotPutBack(
-        `${said}, and the page's drawing was not put back (it measured ${undone ?? 'nothing'})`,
-        { cause: error },
-      )
+    if (left !== null)
+      throw new DrawingNotPutBack(`${said}, and the page's drawing ${left}`, { cause: error })
     throw error
   }
-  const back = await dl(r.restoreSvg()).catch(() => null)
-  if (!drawnLarger(1, back))
-    throw new DrawingNotPutBack(
-      `the page's drawing was not put back: it measured ${back ?? 'nothing'}`,
-    )
+  const left = await putBack()
+  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)
   state.said.push(
     `SVG transform ${k.toFixed(2)}: the page's drawing measured ${measured} times its size`,
   )
   await settledBack()
-  const drawsAfter = await dl(r.draws()).catch(() => null)
-  if (drawsBefore !== drawsAfter)
+  const clockAfter = await dl(r.clock()).catch(() => null)
+  if (clockBefore === null || clockAfter === null)
     throw new Error(
-      `the page drew while its drawing was scaled: its draw count was ${drawsBefore ?? 'unread'}, then ${drawsAfter ?? 'unread'}`,
+      `${NOT_ENLARGED}: the page's clock could not be read, so a moving map cannot be told from a still one`,
+    )
+  if (clockBefore !== clockAfter)
+    throw new Error(
+      `${NOT_ENLARGED}: the page's clock moved while its drawing was scaled (from ${clockBefore} to ${clockAfter})`,
     )
   state.route = 'SVG transform'
   return Buffer.from(data, 'base64')
@@ -1375,7 +1413,7 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
               frame: await inFrame.evaluate(read).catch(() => null),
             }
           },
-          draws: () => readDraws(window),
+          clock: () => readClock(window),
           scaleSvg: (scale, origin) => inFrame.evaluate(scaleDrawing, { scale, origin }),
           restoreSvg: () => inFrame.evaluate(restoreDrawing).then((back) => back.measured),
         }

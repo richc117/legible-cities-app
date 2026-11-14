@@ -8,10 +8,12 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Page } from '@playwright/test'
 import {
   DrawingNotPutBack,
   DrawingStillScaled,
   ENLARGED,
+  FRAME_SILENT,
   NOT_ENLARGED,
   Evidence,
   THRESHOLDS,
@@ -32,6 +34,7 @@ import {
   judgeMovement,
   judgeTypeface,
   pixelsOfColour,
+  putBackDrawing,
   redrawnCapture,
   sampleTimes,
   stepResult,
@@ -728,8 +731,9 @@ describe('an enlarged picture drawn again at a higher scale', () => {
       own?: boolean
       svg?: number | null | 'still scaled'
       back?: number | null
+      silentRestore?: boolean
       boxes?: (read: number) => Box
-      draws?: (read: number) => number
+      clock?: (read: number) => number | null
       capture?: () => Promise<unknown>
     } = {},
   ) {
@@ -738,7 +742,7 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     const origins: { x: number; y: number }[] = []
     let ratio = 1
     let boxReads = 0
-    let drawReads = 0
+    let clockReads = 0
     const protocolOf = (who: string): Protocol => ({
       send: async (method, params) => {
         calls.push(`${who} ${method}`)
@@ -763,7 +767,7 @@ describe('an enlarged picture drawn again at a higher scale', () => {
         window: ratio,
         frame: ratio === 1 ? 1 : (options.frameRatio ?? ratio),
       }),
-      draws: async () => (options.draws === undefined ? 40 : options.draws(drawReads++)),
+      clock: async () => (options.clock === undefined ? 27000 : options.clock(clockReads++)),
       scaleSvg: async (_scale, origin) => {
         calls.push('frame scaleSvg')
         origins.push(origin)
@@ -771,6 +775,7 @@ describe('an enlarged picture drawn again at a higher scale', () => {
       },
       restoreSvg: async () => {
         calls.push('frame restoreSvg')
+        if (options.silentRestore === true) return new Promise<number>(() => undefined)
         return options.back === undefined ? 1 : options.back
       },
     }
@@ -842,7 +847,7 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     expect(w.calls).not.toContain('frame scaleSvg')
   })
 
-  it('refuses a frame that moved, a drawing not put back, or a page that drew meanwhile', async () => {
+  it('refuses a frame that moved, or a drawing not put back', async () => {
     const moved = windowOf({ boxes: (read) => ({ ...box, y: box.y + (read === 1 ? 3 : 0) }) })
     await expect(redrawnCapture(moved.redrawer, crop, fresh())).rejects.toThrow(
       /frame moved at the higher scale/,
@@ -853,9 +858,31 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     const left = await redrawnCapture(stuck.redrawer, crop, fresh()).catch((e: Error) => e)
     expect((left as Error).message).toMatch(/not put back/)
     expect(left).toBeInstanceOf(DrawingNotPutBack)
+  })
 
-    const drew = windowOf({ frameRatio: 1, draws: (read) => 40 + read })
-    await expect(redrawnCapture(drew.redrawer, crop, fresh())).rejects.toThrow(/page drew/)
+  it('keeps a transformed picture of a still clock, and refuses one whose clock moved or cannot be read', async () => {
+    // Paused, the page still draws on every frame; only the instant drawn matters.
+    const still = windowOf({ frameRatio: 1, clock: () => 27000 })
+    await expect(redrawnCapture(still.redrawer, crop, fresh())).resolves.toBeInstanceOf(Buffer)
+
+    const moved = windowOf({ frameRatio: 1, clock: (read) => 27000 + read * 4 })
+    await expect(redrawnCapture(moved.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's clock moved while its drawing was scaled (from 27000 to 27004)`,
+    )
+
+    const unread = windowOf({ frameRatio: 1, clock: (read) => (read === 0 ? 27000 : null) })
+    await expect(redrawnCapture(unread.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's clock could not be read, so a moving map cannot be told from a still one`,
+    )
+  })
+
+  it('says a drawing could not be confirmed put back where the frame did not answer', async () => {
+    const w = windowOf({ frameRatio: 1, silentRestore: true })
+    const error = await redrawnCapture(w.redrawer, crop, fresh(), 20).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+    expect((error as Error).message).toBe(
+      "the page's drawing could not be confirmed put back (the map’s frame did not answer)",
+    )
   })
 
   it('neither scales nor saves a drawing still scaled from an earlier picture, and puts it back', async () => {
@@ -917,6 +944,23 @@ describe('a pair, and a drawing an enlarged picture left scaled', () => {
   it('reports a drawing that does not measure 1 again as not put back', async () => {
     const error = await drawingPutBack(async () => ({ found: true, measured: 7 })).catch((e) => e)
     expect(error).toBeInstanceOf(DrawingNotPutBack)
+  })
+
+  it("refuses the pair where the map's frame did not answer the put-back", async () => {
+    // A frame there, whose evaluate never settles: never taken as clean.
+    const silent = {
+      locator: () => ({ count: async () => 1 }),
+      frameLocator: () => ({ locator: () => ({ evaluate: () => new Promise(() => undefined) }) }),
+    } as unknown as Page
+    const error = await putBackDrawing(silent, 20).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+    expect((error as Error).message).toBe(FRAME_SILENT)
+    expect(FRAME_SILENT).toBe(
+      "the map's frame did not answer, so whether its drawing was still scaled is not known; the pair is not judged",
+    )
+    // No frame at all: nothing of the test's to put back.
+    const none = { locator: () => ({ count: async () => 0 }) } as unknown as Page
+    await expect(putBackDrawing(none, 20)).resolves.toEqual({ found: false, measured: 1 })
   })
 
   it('takes no B, and keeps no entry, across a scaled and an unscaled shot', async () => {

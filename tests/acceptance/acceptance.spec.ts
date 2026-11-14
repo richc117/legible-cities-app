@@ -99,7 +99,6 @@ import {
   mapEnlarger,
   measureLabel,
   pauseAndRead,
-  readDraws,
   sampleTimes,
   type Check,
   type EntryInit,
@@ -751,13 +750,6 @@ test('a release, installed, through docs/acceptance.md', async () => {
         window: page(),
       })
     })
-  /**
-   * The pictures an entry of its own adds beside a pair (`View`), before the
-   * change and after it, kept as before and after for each view in turn.
-   * They carry no check: one that cannot be taken is a note in the step's
-   * record, never a problem, and an entry left with no picture and no check
-   * is not written.
-   */
   // A picture not taken is a note; a drawing an enlarged picture left
   // scaled is a problem, since every later picture of the map would be of
   // a scaled map.
@@ -766,6 +758,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
     if (error instanceof DrawingNotPutBack) log.problems.push(said)
     else log.note(said)
   }
+  /**
+   * The pictures an entry of its own adds beside a pair (`View`), before the
+   * change and after it, kept as before and after for each view in turn.
+   * They carry no check: one that cannot be taken is a note in the step's
+   * record, never a problem, except a drawing an enlarged picture could not
+   * put back (`DrawingNotPutBack`, `missed`), which is a problem; and an
+   * entry left with no picture and no check is not written.
+   */
   const viewed = new Map<string, { views: number; taken: { view: View; before: string }[] }>()
   const shootView = async (id: string, view: View): Promise<string> => {
     await view.show?.()
@@ -2707,19 +2707,12 @@ test('a release, installed, through docs/acceptance.md', async () => {
           `the row and the project never agreed on one colour for line ${line}: the row says "${await text(source)}", the project ${(await recordOf(window, LA)).colors[line] ?? 'nothing'}`,
       )
       log.note(`The drag left line ${line} at ${landed}.`)
-      // The map draws each pick in turn: the picture after is taken once
-      // its draw count has held still a moment (the map is paused), so it
-      // is of the last pick and not the one before. Never a failure.
-      await (async () => {
-        const end = Date.now() + SHORT_MS
-        let last = await readDraws(window)
-        while (Date.now() < end) {
-          await sleep(1_500)
-          const now = await readDraws(window)
-          if (now === last) return
-          last = now
-        }
-      })()
+      // No wait for the map to draw the last pick: the colour judged is the
+      // row's own, and its pixels are counted in the picture after. A
+      // picture taken before the map drew that colour can only read as
+      // "the pixels did not rise", a failure, never invent a pass. (The
+      // page's draw count is no guide: it draws on every animation frame,
+      // paused or playing.)
       await log.soft('the redraw sentence', async () => {
         const said = (await saidSoFar(window)).slice(mark)
         expect(said).toContain(
