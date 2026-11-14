@@ -358,5 +358,45 @@
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "refuses the picture where neither route drew the map larger",
     "why": "Where both routes failed, the record would say only what the transform measured, and not that the frame's devicePixelRatio stayed at 1 under the override, which is why."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (found)\n",
+    "replace": "  if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the pair where the drawing was still marked",
+    "why": "A pair whose A shots were of a map an enlarged picture left scaled would be judged against a B of the map put back: a change invented by the test."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (!drawnLarger(1, measured))\n    throw new DrawingNotPutBack(",
+    "replace": "  if (false)\n    throw new DrawingNotPutBack(",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "reports a drawing that does not measure 1 again as not put back",
+    "why": "A drawing that could not be put back before a pair would be taken as clean, and the pair judged on a scaled map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (drawing !== null) await drawingPutBack(drawing)\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "takes no B, and keeps no entry, across a scaled and an unscaled shot",
+    "why": "B would be taken of a drawing still scaled, or put back after the As were scaled, and the pair judged across the two."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      throw new DrawingNotPutBack(\n        `${said}, and the page's drawing",
+    "replace": "      throw new Error(\n        `${said}, and the page's drawing",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "says so when a picture failed and the drawing was not put back either",
+    "why": "A drawing left scaled after a failed picture would be an ordinary refusal, a note in the record, where it is a problem for every later picture."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (scaled === 'still scaled')\n      throw new Error(",
+    "replace": "    if (false)\n      throw new Error(",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "neither scales nor saves a drawing still scaled from an earlier picture",
+    "why": "The refusal would say the drawing measured nothing, not that an earlier picture left it scaled and it is now put back."
   }
 ]

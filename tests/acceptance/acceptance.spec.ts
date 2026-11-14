@@ -89,6 +89,7 @@ import {
 } from '../support/project'
 import { MINUTE, SECOND, bringToFront, inside, launchApp, real, sleep, until } from './harness'
 import {
+  DrawingNotPutBack,
   Evidence,
   stepResult,
   enlarged,
@@ -757,6 +758,14 @@ test('a release, installed, through docs/acceptance.md', async () => {
    * record, never a problem, and an entry left with no picture and no check
    * is not written.
    */
+  // A picture not taken is a note; a drawing an enlarged picture left
+  // scaled is a problem, since every later picture of the map would be of
+  // a scaled map.
+  const missed = (log: StepLog, what: string, error: unknown): void => {
+    const said = `Evidence: ${what} was not taken: ${messageOf(error)}.`
+    if (error instanceof DrawingNotPutBack) log.problems.push(said)
+    else log.note(said)
+  }
   const viewed = new Map<string, { views: number; taken: { view: View; before: string }[] }>()
   const shootView = async (id: string, view: View): Promise<string> => {
     await view.show?.()
@@ -772,7 +781,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       try {
         taken.push({ view, before: await shootView(`${id}-v${k + 1}-a`, view) })
       } catch (error) {
-        log.note(`Evidence: ${view.what} before ${id} was not taken: ${messageOf(error)}.`)
+        missed(log, `${view.what} before ${id}`, error)
       }
     }
     viewed.set(id, { views: views.length, taken })
@@ -794,7 +803,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         const said = view.where?.() ?? ''
         if (said !== '') where.push(said)
       } catch (error) {
-        log.note(`Evidence: ${view.what} after ${init.id} was not taken: ${messageOf(error)}.`)
+        missed(log, `${view.what} after ${init.id}`, error)
       }
     }
     for (const { view } of held.taken) {

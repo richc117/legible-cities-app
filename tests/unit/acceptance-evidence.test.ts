@@ -9,6 +9,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  DrawingNotPutBack,
+  DrawingStillScaled,
   ENLARGED,
   NOT_ENLARGED,
   Evidence,
@@ -16,6 +18,7 @@ import {
   blankness,
   contactSheet,
   cropAround,
+  drawingPutBack,
   drawnLarger,
   decodePng,
   difference,
@@ -723,7 +726,7 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     options: {
       frameRatio?: number
       own?: boolean
-      svg?: number | null
+      svg?: number | null | 'still scaled'
       back?: number | null
       boxes?: (read: number) => Box
       draws?: (read: number) => number
@@ -847,18 +850,32 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     expect(moved.calls.at(-1)).toBe('window Emulation.clearDeviceMetricsOverride')
 
     const stuck = windowOf({ frameRatio: 1, back: 7 })
-    await expect(redrawnCapture(stuck.redrawer, crop, fresh())).rejects.toThrow(/not put back/)
+    const left = await redrawnCapture(stuck.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect((left as Error).message).toMatch(/not put back/)
+    expect(left).toBeInstanceOf(DrawingNotPutBack)
 
     const drew = windowOf({ frameRatio: 1, draws: (read) => 40 + read })
     await expect(redrawnCapture(drew.redrawer, crop, fresh())).rejects.toThrow(/page drew/)
   })
 
+  it('neither scales nor saves a drawing still scaled from an earlier picture, and puts it back', async () => {
+    const w = windowOf({ frameRatio: 1, svg: 'still scaled' })
+    await expect(redrawnCapture(w.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's drawing was still scaled from an earlier picture; put back now`,
+    )
+    expect(w.calls.at(-1)).toBe('frame restoreSvg')
+    expect(w.calls).not.toContain('window Page.captureScreenshot')
+  })
+
   it('says so when a picture failed and the drawing was not put back either', async () => {
     const failing = (): Promise<unknown> => Promise.reject(new Error('target closed'))
     const stuck = windowOf({ frameRatio: 1, back: 7, capture: failing })
-    await expect(redrawnCapture(stuck.redrawer, crop, fresh())).rejects.toThrow(
+    const both = await redrawnCapture(stuck.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect((both as Error).message).toBe(
       "target closed, and the page's drawing was not put back (it measured 7)",
     )
+    // A problem in the step's record, not a note: the spec tells it by its class.
+    expect(both).toBeInstanceOf(DrawingNotPutBack)
     const undone = windowOf({ frameRatio: 1, capture: failing })
     const error = await redrawnCapture(undone.redrawer, crop, fresh()).catch((e: Error) => e)
     expect((error as Error).message).toBe('target closed')
@@ -879,6 +896,51 @@ describe('an enlarged picture drawn again at a higher scale', () => {
       'the enlarged capture did not answer in 0.02 s',
     )
     expect(silent.calls.at(-1)).toBe('window Emulation.clearDeviceMetricsOverride')
+  })
+})
+
+describe('a pair, and a drawing an enlarged picture left scaled', () => {
+  it('goes on where nothing of the test’s was on the drawing', async () => {
+    await expect(
+      drawingPutBack(async () => ({ found: false, measured: 1 })),
+    ).resolves.toBeUndefined()
+  })
+
+  it('refuses the pair where the drawing was still marked, once it is put back', async () => {
+    const error = await drawingPutBack(async () => ({ found: true, measured: 1 })).catch((e) => e)
+    expect(error).toBeInstanceOf(DrawingStillScaled)
+    expect((error as Error).message).toMatch(
+      /still scaled from an earlier picture and has been put back/,
+    )
+  })
+
+  it('reports a drawing that does not measure 1 again as not put back', async () => {
+    const error = await drawingPutBack(async () => ({ found: true, measured: 7 })).catch((e) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+  })
+
+  it('takes no B, and keeps no entry, across a scaled and an unscaled shot', async () => {
+    const evidence = new Evidence(dir)
+    const a = await evidence.settled('8-theme-a1', camera(picture(BG, 10)), async () => undefined)
+    const target = camera(picture(BG, 500))
+    const pair: Pair = {
+      init: { id: '8-theme', step: 8, row: 'r', question: 'q' },
+      name: 'theme',
+      target,
+      a1: a.path,
+      a2: a.path,
+      steady: true,
+      control: null,
+      controlShots: [],
+    }
+    await expect(
+      evidence.finish(pair, {
+        wait: async () => undefined,
+        drawing: async () => ({ found: true, measured: 1 }),
+      }),
+    ).rejects.toBeInstanceOf(DrawingStillScaled)
+    expect(target.taken).toBe(0)
+    expect(evidence.entries).toEqual([])
   })
 })
 

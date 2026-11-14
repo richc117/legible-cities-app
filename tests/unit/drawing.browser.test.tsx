@@ -7,15 +7,12 @@
 // they are recorded here, as the browser project's other tests record
 // theirs):
 // - scaleDrawing's `if (svg.hasAttribute('data-evidence-style')) return
-//   null` taken out: a drawing left marked is scaled again, its scaled style
-//   saved as the original, and the second test reads "expected 1 to be
-//   null";
-// - restoreDrawing's `else svg.removeAttribute('style')` taken out: a
-//   drawing that had no style keeps the transform, and the first test reads
-//   "expected 3 to be close to 1";
-// - restoreDrawing's first `svg.getAttribute('style')` taken out: the
-//   inline style is written after the removal, and the first test reads
-//   "null: expected '' to be null".
+//   'still scaled'` taken out: a drawing left marked is scaled again, its
+//   scaled style saved as the original, and the second test reads
+//   "expected 1 to be 'still scaled'";
+// - restoreDrawing's `else svg.removeAttribute('style')` taken out, or its
+//   first `svg.getAttribute('style')`: a drawing that had no style ends with
+//   `style=""`, and the first test reads "null: expected '' to be null".
 
 import { afterEach, describe, expect, it } from 'vitest'
 import { restoreDrawing, scaleDrawing } from '../acceptance/drawing'
@@ -47,7 +44,9 @@ describe('the page’s drawing, scaled and put back', () => {
       const width = svg.getBoundingClientRect().width
       expect(scaleDrawing(html, { scale: 3, origin: { x: 0, y: 0 } })).toBeCloseTo(3)
       expect(svg.getBoundingClientRect().width).toBeCloseTo(width * 3)
-      expect(restoreDrawing(html)).toBeCloseTo(1)
+      const back = restoreDrawing(html)
+      expect(back.found).toBe(true)
+      expect(back.measured).toBeCloseTo(1)
       expect(svg.getAttribute('style'), String(style)).toBe(style)
       expect(svg.getAttributeNames().filter((n) => n.startsWith('data-evidence'))).toEqual([])
       holder?.remove()
@@ -59,10 +58,12 @@ describe('the page’s drawing, scaled and put back', () => {
     const svg = drawing('color: red;')
     expect(scaleDrawing(html, { scale: 2, origin: { x: 0, y: 0 } })).toBeCloseTo(2)
     // The restore did not happen: the next picture finds the drawing marked.
-    expect(scaleDrawing(html, { scale: 2, origin: { x: 0, y: 0 } })).toBeNull()
-    expect(restoreDrawing(html)).toBeCloseTo(1)
+    expect(scaleDrawing(html, { scale: 2, origin: { x: 0, y: 0 } })).toBe('still scaled')
+    const back = restoreDrawing(html)
+    expect(back.found).toBe(true)
+    expect(back.measured).toBeCloseTo(1)
     expect(svg.getAttribute('style')).toBe('color: red;')
     // With nothing of the test's on it, putting back finds nothing to do.
-    expect(restoreDrawing(html)).toBe(1)
+    expect(restoreDrawing(html)).toEqual({ found: false, measured: 1 })
   })
 })

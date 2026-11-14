@@ -1372,8 +1372,13 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   is unchanged and the frame's box is where it was. Where neither drew the
   map larger, the picture is not kept, and the step's record says "the map
   could not be drawn larger here; drawn at 1 and not enlarged" with what
-  was read; where one did, the record says which and what it read. None of
-  this touches the export's capture. Likewise `9-colour-chip` keeps the
+  was read; where one did, the record says which and what it read. A
+  drawing the transform left scaled and that could not be put back is a
+  problem in the step's record, never a note, since every later picture of
+  the map would be of it; and every pair puts the drawing back before A1
+  and before B, and is refused where it found the drawing still scaled, so
+  no pair is judged across a scaled and an unscaled shot. None of this
+  touches the export's capture. Likewise `9-colour-chip` keeps the
   first line's row in **Line colours** before and after the drag, and
   `10-order-rows` keeps **Line order**'s list and the map's **Linear**
   view before and after the arrows. These add no check (`8-typeface-label` keeps the typeface check

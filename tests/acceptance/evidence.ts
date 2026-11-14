@@ -524,6 +524,10 @@ export class Evidence {
     init: EntryInit,
     options: { name: string; control?: string; noteOnly?: boolean } = { name: init.id },
   ): Promise<Pair> {
+    // A drawing an enlarged picture left scaled is put back before A1, and
+    // the pair refused, so no pair is judged across a scaled and an
+    // unscaled shot (`drawingPutBack`).
+    await drawingPutBack(() => putBackDrawing(window))
     const steady = (await pauseAndRead(window)).steady
     const draws = await readDraws(window)
     const a1 = await this.settled(`${init.id}-a1`, target)
@@ -551,8 +555,18 @@ export class Evidence {
   /** The shot at the changed settings, judged against the pair. Never throws for a difference: it returns the check. */
   async finish(
     pair: Pair,
-    options: { colour?: string; wait?: typeof sleep; window?: Page } = {},
+    options: {
+      colour?: string
+      wait?: typeof sleep
+      window?: Page
+      /** Puts the map's drawing back where a picture left it scaled; the window's frame by default. */
+      drawing?: () => Promise<{ found: boolean; measured: number | null }>
+    } = {},
   ): Promise<Check> {
+    // As before A1: B is never of a drawing an enlarged picture left scaled.
+    const window = options.window
+    const drawing = options.drawing ?? (window === undefined ? null : () => putBackDrawing(window))
+    if (drawing !== null) await drawingPutBack(drawing)
     // B is taken once the page has drawn again, not when the record says so.
     if (options.window !== undefined) await untilRedrawn(options.window, pair.draws ?? null)
     let b = await this.settled(`${pair.init.id}-b`, pair.target, options.wait)
@@ -1019,6 +1033,56 @@ const boxSaid = (b: Box | null): string =>
  */
 export const NOT_ENLARGED = 'the map could not be drawn larger here; drawn at 1 and not enlarged'
 
+/**
+ * The page's drawing was left scaled by an enlarged picture and could not be
+ * put back: every later picture of the map would be of a scaled map, so the
+ * step's record says it as a problem, never as a note.
+ */
+export class DrawingNotPutBack extends Error {
+  override name = 'DrawingNotPutBack'
+}
+
+/** A pair refused because the drawing was still scaled from an earlier picture (and is now put back). */
+export class DrawingStillScaled extends Error {
+  override name = 'DrawingStillScaled'
+}
+
+/**
+ * Before a pair's shots: the drawing put back where an enlarged picture left
+ * it scaled. Marks found mean the shots before this one may have been of a
+ * scaled map, so the pair is refused (`DrawingStillScaled`); a drawing that
+ * does not measure 1 again is `DrawingNotPutBack`.
+ */
+export async function drawingPutBack(
+  read: () => Promise<{ found: boolean; measured: number | null }>,
+): Promise<void> {
+  const { found, measured } = await read()
+  if (!drawnLarger(1, measured))
+    throw new DrawingNotPutBack(
+      `the page's drawing was still scaled from an earlier picture and could not be put back (it measured ${measured ?? 'nothing'}); the pair is not judged`,
+    )
+  if (found)
+    throw new DrawingStillScaled(
+      "the page's drawing was still scaled from an earlier picture and has been put back; the pair is not judged across a scaled and an unscaled shot",
+    )
+}
+
+/**
+ * `restoreDrawing` run in the window's map frame. A window with no map
+ * frame, or one that does not answer, has nothing of the test's to put back.
+ */
+export async function putBackDrawing(
+  window: Page,
+): Promise<{ found: boolean; measured: number | null }> {
+  if ((await window.locator('iframe.viewer-frame').count()) === 0)
+    return { found: false, measured: 1 }
+  return withDeadline(
+    window.frameLocator('iframe.viewer-frame').locator('html').evaluate(restoreDrawing),
+    ENLARGED_DEADLINE_MS,
+    SILENT,
+  ).catch(() => ({ found: false, measured: 1 }))
+}
+
 /** Whether the map was drawn at `wanted`: what was measured is within 1% of it. */
 export function drawnLarger(wanted: number, measured: number | null): boolean {
   return measured !== null && Math.abs(measured - wanted) <= wanted * 0.01
@@ -1042,8 +1106,8 @@ export interface Redrawer {
   ratios(): Promise<{ window: number | null; frame: number | null }>
   /** The page's draw count (`state().draws`). */
   draws(): Promise<number | null>
-  /** The page's drawing scaled by `scale` about `origin` (frame CSS pixels); the scale measured on screen. */
-  scaleSvg(scale: number, origin: { x: number; y: number }): Promise<number | null>
+  /** The page's drawing scaled by `scale` about `origin` (frame CSS pixels); the scale measured on screen, or 'still scaled' where an earlier picture left it so. */
+  scaleSvg(scale: number, origin: { x: number; y: number }): Promise<number | null | 'still scaled'>
   /** The drawing put back as it was; the scale measured on screen then, against its size before. */
   restoreSvg(): Promise<number | null>
 }
@@ -1164,7 +1228,12 @@ export async function redrawnCapture(
   let data: string
   let measured: number | null | undefined
   try {
-    measured = await dl(r.scaleSvg(k, origin))
+    const scaled = await dl(r.scaleSvg(k, origin))
+    if (scaled === 'still scaled')
+      throw new Error(
+        `${NOT_ENLARGED}: the page's drawing was still scaled from an earlier picture; put back now`,
+      )
+    measured = scaled
     await dl(r.repaint())
     if (!drawnLarger(k, measured))
       throw new Error(
@@ -1177,7 +1246,7 @@ export async function redrawnCapture(
     const undone = await dl(r.restoreSvg()).catch(() => null)
     const said = error instanceof Error ? error.message : String(error)
     if (!drawnLarger(1, undone))
-      throw new Error(
+      throw new DrawingNotPutBack(
         `${said}, and the page's drawing was not put back (it measured ${undone ?? 'nothing'})`,
         { cause: error },
       )
@@ -1185,7 +1254,9 @@ export async function redrawnCapture(
   }
   const back = await dl(r.restoreSvg()).catch(() => null)
   if (!drawnLarger(1, back))
-    throw new Error(`the page's drawing was not put back: it measured ${back ?? 'nothing'}`)
+    throw new DrawingNotPutBack(
+      `the page's drawing was not put back: it measured ${back ?? 'nothing'}`,
+    )
   state.said.push(
     `SVG transform ${k.toFixed(2)}: the page's drawing measured ${measured} times its size`,
   )
@@ -1306,7 +1377,7 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
           },
           draws: () => readDraws(window),
           scaleSvg: (scale, origin) => inFrame.evaluate(scaleDrawing, { scale, origin }),
-          restoreSvg: () => inFrame.evaluate(restoreDrawing),
+          restoreSvg: () => inFrame.evaluate(restoreDrawing).then((back) => back.measured),
         }
         return await redrawnCapture(redrawer, crop, state)
       } finally {
