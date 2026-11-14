@@ -81,7 +81,7 @@
   },
   {
     "file": "scripts/gate-report.mjs",
-    "find": "    if (acceptance.title !== 'acceptance') {",
+    "find": "  if (acceptance.title !== `acceptance ${tag}` && acceptance.title !== 'acceptance') {",
     "replace": "    if (false) {",
     "test": "tests/unit/gate-report.test.ts",
     "title": "takes a bare acceptance title only on a record that names the tag",
@@ -89,8 +89,8 @@
   },
   {
     "file": "scripts/gate-report.mjs",
-    "find": "    if (parsed.size === 0) {",
-    "replace": "    if (false) {",
+    "find": "  if (acceptance.title === 'acceptance' && parsed.size === 0) {",
+    "replace": "  if (false) {",
     "test": "tests/unit/gate-report.test.ts",
     "title": "takes a bare acceptance title only on a record that names the tag",
     "why": "A bare title accepted with no record naming the tag."
@@ -174,5 +174,21 @@
     "test": "tests/unit/gate-report.test.ts",
     "title": "refuses a tag that is not a tag before it goes into an API path",
     "why": "An unchecked tag in an API path."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "  for (const part of missing) line(`- ${part}`)",
+    "replace": "",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "names every part that reads not recorded, apart from the failures",
+    "why": "The list of parts with no record dropped: a page of None recorded would read as a clean gate."
+  },
+  {
+    "file": "scripts/gate-report.mjs",
+    "find": "    : `its notes mention ${found.map",
+    "replace": "    : `${found.map",
+    "test": "tests/unit/gate-report.test.ts",
+    "title": "only mentions an issue number in a failure's notes, never takes it as the failure's",
+    "why": "An issue number from a spec sentence in the notes shown as the failure's own issue."
   }
 ]

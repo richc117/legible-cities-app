@@ -86,7 +86,7 @@ const page = (over: Record<string, unknown> = {}) =>
 describe('the gate report', () => {
   it('lists every failed row with the issue its notes name, or says none is named', () => {
     const text = page()
-    expect(text).toContain('darwin-arm64 step 3, First run: fail; [#901]')
+    expect(text).toContain('darwin-arm64 step 3, First run: fail; its notes mention [#901]')
     expect(text).toContain('darwin-arm64 step 4, Open a sample city: fail; no issue named')
   })
 
@@ -249,13 +249,13 @@ describe('the gate report', () => {
     const text = page({ records: new Map([['darwin-arm64', record(steps)]]) })
     expect(text).toContain('darwin-arm64 step 6, Cell 02: not run; no issue named')
     expect(text).toContain(
-      'darwin-arm64 step 7, Cell 03: passed (not a result the checklist has); [#12]',
+      'darwin-arm64 step 7, Cell 03: passed (not a result the checklist has); its notes mention [#12]',
     )
     expect(text).not.toContain('step 7, Cell 03: pass,')
   })
 
   it('reports a short row and a missing step instead of dropping them', () => {
-    const text = page({ records: new Map([['darwin-arm64', record(STEPS)]]) }).replace('', '')
+    const text = page({ records: new Map([['darwin-arm64', record(STEPS)]]) })
     expect(text).toContain('darwin-arm64 step 22: missing from the record')
     const short = record(STEPS).replace(
       /^\| 1 \|.*$/m,
@@ -308,5 +308,73 @@ describe('the gate report', () => {
     expect(() =>
       report.parseArgs(['--tag', 'main/../x', '--build', '1', '--acceptance', '2']),
     ).toThrow(/neither v<X.Y.Z>/)
+  })
+
+  it('names every part that reads not recorded, apart from the failures', () => {
+    const text = page()
+    const tail = text.slice(text.indexOf('### Not recorded'))
+    expect(tail).toContain('- the scripted VoiceOver run')
+    expect(tail).toContain("- the visual review's verdicts")
+    expect(tail).toContain('- the sitting')
+    expect(tail).toContain('- win-x64 record')
+    expect(tail).not.toContain('Every part above has a record.')
+    const linked = page({
+      links: {
+        sitting: 'https://github.com/richc117/legible-cities-app/issues/3',
+        review: 'https://github.com/richc117/legible-cities-app/issues/5',
+      },
+    })
+    expect(linked.slice(linked.indexOf('### Not recorded'))).not.toContain('the sitting')
+  })
+
+  it('says every part has a record when none is missing', () => {
+    const acceptance = run('22', {
+      workflowName: 'acceptance',
+      jobs: [
+        { name: 'acceptance (darwin-arm64)', conclusion: 'success', url: '' },
+        { name: 'acceptance (win-x64)', conclusion: 'success', url: '' },
+        { name: 'reader (VoiceOver, darwin-arm64)', conclusion: 'success', url: '' },
+      ],
+    })
+    const build = run('11', {
+      jobs: [
+        RELEASE,
+        ...['attest (provenance)', 'verify (attestations)'].map((name) => ({
+          name,
+          conclusion: 'success',
+          url: '',
+        })),
+      ],
+    })
+    const records = new Map([
+      ['darwin-arm64', record(STEPS)],
+      ['win-x64', record(STEPS)],
+    ])
+    const links = {
+      sitting: 'https://github.com/richc117/legible-cities-app/issues/3',
+      review: 'https://github.com/richc117/legible-cities-app/issues/5',
+    }
+    const text = page({ acceptance, build, records, links })
+    expect(text).toContain('Every part above has a record.')
+  })
+
+  it("only mentions an issue number in a failure's notes, never takes it as the failure's", () => {
+    const steps: Array<[number, string, string, string]> = [
+      [
+        9,
+        'Cell 05',
+        'fail',
+        'Failed: the colour did not change. Not automated: the line options (issue 394): the look.',
+      ],
+    ]
+    const text = page({ records: new Map([['darwin-arm64', record(steps)]]) })
+    expect(text).toContain('its notes mention [#394]')
+    expect(text).not.toMatch(/fail; \[#394\]/)
+  })
+
+  it('refuses a wrong run before anything is downloaded', () => {
+    const args = { ...inputs(), build: run('11', { workflowName: 'ci' }) }
+    expect(() => report.refuseRun(args)).toThrow(/not build/)
+    expect(() => report.refuseRun(inputs())).not.toThrow()
   })
 })

@@ -6,18 +6,27 @@
 //     [--review <issue, comment or record url>] [--out <file>]
 //
 // The page has one section for each part the gate names: the build, the
-// automated run on each system, the scripted VoiceOver run, the assistant's
-// visual review, the sitting, Windows as a beta. It judges nothing the
-// records do not already say: a result is copied as the record wrote it, a
-// row still "not automated" is listed as it stands, a failure links the
-// issue its notes name (else says none is named), and a part with no record
-// reads "not recorded", never a pass. The visual review's verdicts stay
-// `looks right`, `looks wrong` and `cannot tell`.
+// automated run on each system (both always shown), the scripted VoiceOver
+// run, the assistant's visual review, the sitting, Windows as a beta; then
+// Failures and Not recorded. It judges nothing the records do not already
+// say: a result is copied as the record wrote it, a row still "not
+// automated" is listed as it stands, and a part with no record reads "not
+// recorded" and is named under Not recorded, never counted as a pass. A
+// failure is a build or acceptance job that is not a success, a step whose
+// result is not one the checklist counts as a pass or as not automated, a
+// short or missing step row, a missing system, or a verdict that is not
+// `looks right`, `looks wrong` or `cannot tell` (or is `looks wrong`). The
+// issue numbers in a failure's notes are only mentioned: the run writes the
+// record before a person files the failure, so none is taken as its issue.
 //
-// It refuses, in one sentence and a non-zero exit, a rehearsal's run
-// (artefacts named rehearsal-*, or a record headed REHEARSAL), an
-// acceptance run whose tag is not --tag, and a build run whose commit is
-// not the tag's.
+// It refuses, in one sentence and a non-zero exit, before downloading
+// anything: a rehearsal's run (artefacts named rehearsal-*, or a title that
+// says so), a run of the wrong workflow, an acceptance run whose title is
+// not `acceptance <tag>` (a bare `acceptance`, from before the title named
+// the tag, only on a record that names it), a build run that is not the push
+// of the tag at the tag's commit, and a build whose `release (draft)` job did
+// not succeed. Then, from the records: a rehearsal's record, a record that
+// is not an acceptance record, one that names another tag.
 //
 // Everything that decides or renders is an exported function the unit test
 // calls (tests/unit/gate-report.test.ts); only `main` runs `gh`, with
@@ -160,7 +169,7 @@ export function refuseRehearsal(acceptance, artefacts) {
  * system to its record's text; `artefacts` is every artefact name the
  * acceptance run kept; `tagCommit` is the commit the tag names.
  */
-export function assemble({ tag, build, acceptance, tagCommit, artefacts, records, links = {} }) {
+export function refuseRun({ tag, build, acceptance, tagCommit, artefacts }) {
   if (!TAG.test(tag)) throw new Error(`${tag} is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>`)
   refuseRehearsal(acceptance, artefacts)
   if (build.workflow !== 'build') {
@@ -171,6 +180,31 @@ export function assemble({ tag, build, acceptance, tagCommit, artefacts, records
       `run ${acceptance.id} is of the workflow "${acceptance.workflow}", not acceptance`,
     )
   }
+  if (acceptance.title !== `acceptance ${tag}` && acceptance.title !== 'acceptance') {
+    throw new Error(
+      `acceptance run ${acceptance.id} is titled "${acceptance.title}", not "acceptance ${tag}"`,
+    )
+  }
+  if (build.commit === '' || build.commit !== tagCommit) {
+    throw new Error(
+      `build run ${build.id} was of commit ${build.commit.slice(0, 7) || 'none'}, not ${tag}'s commit ${String(tagCommit).slice(0, 7)}`,
+    )
+  }
+  if (build.branch !== tag || build.event !== 'push') {
+    throw new Error(
+      `build run ${build.id} is not the push of ${tag} (it is ${build.event} on ${build.branch})`,
+    )
+  }
+  const draft = build.jobs.find((job) => job.name === 'release (draft)')
+  if (draft?.conclusion !== 'success') {
+    throw new Error(
+      `build run ${build.id} did not draft a release: release (draft) is ${draft?.conclusion ?? 'absent'}, and only a tag push runs it`,
+    )
+  }
+}
+
+export function assemble({ tag, build, acceptance, tagCommit, artefacts, records, links = {} }) {
+  refuseRun({ tag, build, acceptance, tagCommit, artefacts })
   const parsed = new Map()
   for (const [target, text] of records) {
     if (recordKind(text) === 'rehearsal') {
@@ -189,32 +223,9 @@ export function assemble({ tag, build, acceptance, tagCommit, artefacts, records
   }
   // acceptance.yml's run-name is `acceptance <tag>`. A run from before that
   // is titled `acceptance` alone, and is taken only on its records' word.
-  if (acceptance.title !== `acceptance ${tag}`) {
-    if (acceptance.title !== 'acceptance') {
-      throw new Error(
-        `acceptance run ${acceptance.id} is titled "${acceptance.title}", not "acceptance ${tag}"`,
-      )
-    }
-    if (parsed.size === 0) {
-      throw new Error(
-        `acceptance run ${acceptance.id} is titled "acceptance" and has no record to say which tag it is of`,
-      )
-    }
-  }
-  if (build.commit === '' || build.commit !== tagCommit) {
+  if (acceptance.title === 'acceptance' && parsed.size === 0) {
     throw new Error(
-      `build run ${build.id} was of commit ${build.commit.slice(0, 7) || 'none'}, not ${tag}'s commit ${String(tagCommit).slice(0, 7)}`,
-    )
-  }
-  if (build.branch !== tag || build.event !== 'push') {
-    throw new Error(
-      `build run ${build.id} is not the push of ${tag} (it is ${build.event} on ${build.branch})`,
-    )
-  }
-  const draft = build.jobs.find((job) => job.name === 'release (draft)')
-  if (draft?.conclusion !== 'success') {
-    throw new Error(
-      `build run ${build.id} did not draft a release: release (draft) is ${draft?.conclusion ?? 'absent'}, and only a tag push runs it`,
+      `acceptance run ${acceptance.id} is titled "acceptance" and has no record to say which tag it is of`,
     )
   }
   return {
@@ -246,7 +257,7 @@ const ISSUES = (text) => {
   const found = issuesNamed(text)
   return found.length === 0
     ? 'no issue named'
-    : found.map((n) => `[#${n}](${REPO_URL}/issues/${n})`).join(', ')
+    : `its notes mention ${found.map((n) => `[#${n}](${REPO_URL}/issues/${n})`).join(', ')}`
 }
 
 /** The page. */
@@ -254,6 +265,7 @@ export function renderReport(model) {
   const { tag, build, acceptance, links, records, artefacts, targets } = model
   const out = []
   const failures = []
+  const missing = []
   const line = (text = '') => out.push(text)
   const jobLink = (job) => (job.url === '' ? job.name : `[${job.name}](${job.url})`)
 
@@ -274,7 +286,10 @@ export function renderReport(model) {
   line('|---|---|')
   for (const job of build.jobs) line(`| ${cell(jobLink(job))} | ${cell(job.conclusion)} |`)
   for (const name of BUILD_JOBS) {
-    if (!build.jobs.some((job) => job.name === name)) line(`| ${name} | not recorded |`)
+    if (!build.jobs.some((job) => job.name === name)) {
+      line(`| ${name} | not recorded |`)
+      missing.push(`build job ${name}`)
+    }
   }
   for (const job of build.jobs) {
     if (job.conclusion !== 'success') {
@@ -298,13 +313,16 @@ export function renderReport(model) {
     line(`#### ${target}`)
     line()
     line(`Job: ${job === undefined ? 'not recorded' : `${jobLink(job)}, ${job.conclusion}`}.`)
-    if (job === undefined) failures.push(`acceptance job ${target}: not recorded; no issue named`)
-    else if (job.conclusion !== 'success') {
+    if (job === undefined) {
+      failures.push(`acceptance job ${target}: not recorded; no issue named`)
+      missing.push(`acceptance job ${target}`)
+    } else if (job.conclusion !== 'success') {
       failures.push(`acceptance job ${target}: ${job.conclusion}; no issue named`)
     }
     if (record === undefined) {
       line('Record: not recorded.')
       failures.push(`${target} record: not recorded; no issue named`)
+      missing.push(`${target} record`)
       continue
     }
     line("Record: a candidate's record, as the `candidate` check of `record-cli.mjs` reads it.")
@@ -322,7 +340,6 @@ export function renderReport(model) {
     line('|---|---|---|')
     for (const step of record.steps)
       line(`| ${step.n} | ${cell(step.title)} | ${cell(step.result)} |`)
-    if (record.steps.length === 0) line('| | no steps in the record | not recorded |')
     const open = record.steps.filter(notAutomated)
     line()
     line(`Still not automated, as the record says (${open.length}):`)
@@ -353,6 +370,7 @@ export function renderReport(model) {
   const reader = acceptance.jobs.find((j) => j.name.startsWith('reader ('))
   const transcript = artefacts.includes('reader-darwin-arm64')
   if (reader === undefined && !transcript) {
+    missing.push('the scripted VoiceOver run')
     line(
       'Not recorded: this run has no reader job, so the sitting walks the VoiceOver rows by ear (docs/releasing.md).',
     )
@@ -378,6 +396,7 @@ export function renderReport(model) {
   )
   if (links.review !== undefined) line(`The review's record: ${links.review}`)
   if (rows.length === 0) {
+    if (links.review === undefined) missing.push("the visual review's verdicts")
     line(
       links.review === undefined
         ? 'Verdicts: not recorded.'
@@ -402,6 +421,7 @@ export function renderReport(model) {
 
   line('### The sitting')
   line()
+  if (links.sitting === undefined) missing.push('the sitting')
   line(
     links.sitting === undefined
       ? 'Not recorded: no issue was given for it.'
@@ -421,6 +441,12 @@ export function renderReport(model) {
   line()
   if (failures.length === 0) line('None recorded.')
   for (const failure of failures) line(`- ${failure}`)
+  line()
+
+  line('### Not recorded')
+  line()
+  if (missing.length === 0) line('Every part above has a record.')
+  for (const part of missing) line(`- ${part}`)
   line()
   return redact(out.join('\n'))
 }
@@ -491,8 +517,8 @@ function main(argv) {
       '[.artifacts[].name]',
     ),
   )
-  // Refuse a rehearsal before downloading anything of it.
-  refuseRehearsal(acceptance, artefacts)
+  // Refuse a wrong run, a rehearsal included, before downloading anything.
+  refuseRun({ tag: opts.tag, build, acceptance, tagCommit, artefacts })
   const tmp = mkdtempSync(join(tmpdir(), 'gate-report-'))
   try {
     const records = new Map()

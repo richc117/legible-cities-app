@@ -144,7 +144,9 @@ link>] [--out <file>]` (issue 693). It copies what the runs and their
 records say, reads "not recorded" for a part with none, lists every row
 still not automated, and lists as a failure any job that is not a success,
 any result the checklist does not count as a pass or as not automated, and
-any step or system missing from the records. It refuses a rehearsal's run,
+any step or system missing from the records. A failure's notes are only
+mentioned, never taken for its issue; a part with no record is named under
+"Not recorded", never counted as a pass. It refuses a rehearsal's run,
 a run of the wrong workflow or another tag, and a build that is not the
 tag's push or did not draft a release. It does not read the visual review's
 verdicts from an issue: `--review` links them.
