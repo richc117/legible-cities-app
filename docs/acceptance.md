@@ -1358,18 +1358,25 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   entry of its own, `<id>-enlarged` (and `8-typeface-label`), keeps the same
   part of the map before and after the change, drawn again at a scale that
   sets a name about 18 pixels tall: centred on Union Station and 7th
-  Street / Metro Center where the page draws those names, or on the name the typeface is judged by, else on the
-  middle of the map, and its question says which. The page is SVG, so the
-  window is drawn again at that scale for the moment of the shot (the
-  DevTools protocol's `Emulation.setDeviceMetricsOverride`, its width and
-  height left alone, cleared after every shot whatever happened), and the
-  part is captured at it: a scaled clip alone only enlarges the pixels
-  already drawn, which smears a name. The map's frame is read before,
-  during and after, and a picture from a frame that moved is refused. None
-  of this touches the export's capture. Likewise `9-colour-chip` keeps the first line's row in **Line colours** before
-  and after the drag, and `10-order-rows` keeps **Line order**'s list and
-  the map's **Linear** view, at up to twice its size, before and after the
-  arrows. These add no check (`8-typeface-label` keeps the typeface check
+  Street / Metro Center where the page draws those names, or on the name
+  the typeface is judged by, else on the middle of the map, and its
+  question says which. The part is drawn again,
+  never the window's pixels made larger, which smears a name, by the first
+  of two routes that works for its first picture, and every later picture
+  of the part takes the same one: the window's device scale overridden for
+  the moment of the shot (`Emulation.setDeviceMetricsOverride`, on the map
+  frame's own target too where it is one), which counts only where the
+  frame's own `devicePixelRatio` reads the scale; else the page's drawing
+  scaled for the moment by a CSS transform, its style put back, which
+  counts only where the drawing measures the scale, the page's draw count
+  is unchanged and the frame's box is where it was. Where neither drew the
+  map larger, the picture is not kept, and the step's record says "the map
+  could not be drawn larger here; drawn at 1 and not enlarged" with what
+  was read; where one did, the record says which and what it read. None of
+  this touches the export's capture. Likewise `9-colour-chip` keeps the
+  first line's row in **Line colours** before and after the drag, and
+  `10-order-rows` keeps **Line order**'s list and the map's **Linear**
+  view before and after the arrows. These add no check (`8-typeface-label` keeps the typeface check
   it always had): a picture that cannot be taken, or whose call does not
   answer in 30 seconds, is a note in the step's record, never a problem, the
   pictures that were taken are kept, and the question says which are

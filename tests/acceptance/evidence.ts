@@ -25,7 +25,7 @@ import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Page } from '@playwright/test'
+import type { CDPSession, Frame, Page } from '@playwright/test'
 import type { Result } from './record'
 import { TOLERANCE, pixelDifference, readPngRows, writePng } from '../support/frames'
 
@@ -885,18 +885,17 @@ export interface Box {
   height: number
 }
 
-/** A part of the window to capture, in the document's CSS pixels, and the scale it is drawn at. */
+/** A part of the map's frame, in its own CSS pixels, and the scale it is to be drawn at. */
 export interface Clip extends Box {
   scale: number
 }
 
 /**
  * The enlarged picture: a station's name stands about `em` pixels tall in it,
- * at a scale from `minScale` to `maxScale`, and the picture is about `width`
- * by `height` pixels and never more than `maxWidth` by `maxHeight`. A map
- * shot of the notebook's frame on a runner is about 730 by 315 CSS pixels at
- * a device scale of 1, where a name is about 3 pixels tall and an
- * interchange mark about 3 across; at these sizes both can be read.
+ * at a scale from `minScale` to `maxScale`. A map shot of the notebook's
+ * frame on a runner is about 730 by 315 CSS pixels at a device scale of 1,
+ * where a name is about 3 pixels tall and an interchange mark about 3
+ * across; drawn at these sizes both can be read.
  */
 export const ENLARGED = {
   em: 18,
@@ -904,35 +903,29 @@ export const ENLARGED = {
   maxScale: 8,
   /** The scale when no name was found to measure. */
   fallbackScale: 4,
-  width: 960,
-  height: 540,
-  maxWidth: 1920,
-  maxHeight: 1080,
   /** Room left round the named marks, in CSS pixels. */
   pad: 12,
 } as const
 
 /**
- * The part of the map's frame to enlarge, in the frame's own CSS pixels. The
- * scale sets a name that is `em` CSS pixels tall at about `ENLARGED.em`
- * pixels (`ENLARGED.fallbackScale` when no name was measured), within the
- * allowed scales; the part is about `ENLARGED`'s picture at that scale,
- * grown to hold every named mark with room round it, never larger than the
- * frame, and centred on the marks (on the frame's middle when there are
- * none), moved in where it would run past an edge. A part grown past the
- * largest picture is drawn at a smaller scale, never below 1.
+ * The part of the map's frame to draw larger, in the frame's own CSS
+ * pixels. The scale sets a name that is `em` CSS pixels tall at about
+ * `ENLARGED.em` pixels (`ENLARGED.fallbackScale` when no name was measured),
+ * within the allowed scales, and lower where the named marks, with room
+ * round them, would not fit; never below 1. The part has the frame's own
+ * shape at one over the scale of its size, so drawn at the scale it fills a
+ * picture the frame's size. It is centred on the marks (on the frame's
+ * middle when there are none), moved in where it would run past an edge.
  */
 export function cropAround(
   frame: { width: number; height: number },
   marks: readonly Box[],
   em: number | null,
 ): Clip {
-  const wanted =
+  let scale =
     em === null || !(em > 0)
       ? ENLARGED.fallbackScale
       : Math.min(ENLARGED.maxScale, Math.max(ENLARGED.minScale, Math.round(ENLARGED.em / em)))
-  let width = ENLARGED.width / wanted
-  let height = ENLARGED.height / wanted
   let cx = frame.width / 2
   let cy = frame.height / 2
   if (marks.length > 0) {
@@ -942,27 +935,18 @@ export function cropAround(
     const bottom = Math.max(...marks.map((m) => m.y + m.height))
     cx = (left + right) / 2
     cy = (top + bottom) / 2
-    width = Math.max(width, right - left + 2 * ENLARGED.pad)
-    height = Math.max(height, bottom - top + 2 * ENLARGED.pad)
+    scale = Math.min(
+      scale,
+      frame.width / (right - left + 2 * ENLARGED.pad),
+      frame.height / (bottom - top + 2 * ENLARGED.pad),
+    )
   }
-  width = Math.min(width, frame.width)
-  height = Math.min(height, frame.height)
+  scale = Math.max(1, scale)
+  const width = frame.width / scale
+  const height = frame.height / scale
   const x = Math.min(Math.max(cx - width / 2, 0), frame.width - width)
   const y = Math.min(Math.max(cy - height / 2, 0), frame.height - height)
-  const scale = Math.max(
-    1,
-    Math.min(wanted, ENLARGED.maxWidth / width, ENLARGED.maxHeight / height),
-  )
   return { x, y, width, height, scale }
-}
-
-/** The whole frame at twice its size, or less where that would pass the largest picture. */
-export function cropWhole(frame: { width: number; height: number }): Clip {
-  const scale = Math.max(
-    1,
-    Math.min(2, ENLARGED.maxWidth / frame.width, ENLARGED.maxHeight / frame.height),
-  )
-  return { x: 0, y: 0, width: frame.width, height: frame.height, scale }
 }
 
 /** What an enlarged picture needs from the window. */
@@ -971,59 +955,252 @@ export interface Enlarger {
   frame(): Promise<Box | null>
   /** The named marks found in the frame, in its own CSS pixels, and a name's height there. */
   marks(): Promise<{ boxes: Box[]; em: number | null; found: string[] }>
-  /** The window's pixels in `clip`, as a PNG. */
-  capture(clip: Clip): Promise<Buffer>
+  /** The part `crop` of the frame drawn at `crop.scale`, as a PNG; throws where it cannot be. */
+  capture(crop: Clip): Promise<Buffer>
+  /** What the captures found, for the record: how the map was drawn larger, or why it was not. */
+  said(): string
 }
 
-/** A picture of part of the map, larger than the window draws it, and what it was centred on. */
+/** A picture of part of the map, drawn larger than the window draws it. */
 export interface Enlarged extends Shootable {
-  /** Where the part is, once the first picture has been taken; empty before. */
+  /** What the part is centred on, once the first picture has been taken; empty before. */
   around(): string
+  /** What the captures found (`Enlarger.said`). */
+  said(): string
 }
 
 /**
  * An enlarged part of the map's frame, as a Shootable. The part is chosen at
  * the first picture and kept, in the frame's own pixels, so the pictures
- * before and after a change are of the same part; each picture follows the
- * frame to where it is then. `whole` takes the whole frame instead.
+ * before and after a change are of the same part.
  */
-export function enlarged(enlarger: Enlarger, options: { whole?: boolean } = {}): Enlarged {
+export function enlarged(enlarger: Enlarger): Enlarged {
   let crop: Clip | null = null
   let around = ''
   return {
     around: () => around,
+    said: () => enlarger.said(),
     async screenshot({ path }: { path: string }): Promise<void> {
-      const frame = await enlarger.frame()
-      if (frame === null) throw new Error('the map’s frame has no box')
       if (crop === null) {
-        if (options.whole === true) {
-          crop = cropWhole(frame)
-          around = 'the whole map'
-        } else {
-          const { boxes, em, found } = await enlarger.marks()
-          crop = cropAround(frame, boxes, em)
-          around =
-            found.length > 0
-              ? found.join(' and ')
-              : 'the middle of the map (no named station was found)'
-        }
+        const frame = await enlarger.frame()
+        if (frame === null) throw new Error('the map’s frame has no box')
+        const { boxes, em, found } = await enlarger.marks()
+        crop = cropAround(frame, boxes, em)
+        around =
+          found.length > 0
+            ? found.join(' and ')
+            : 'the middle of the map (no named station was found)'
       }
-      const clip = { ...crop, x: frame.x + crop.x, y: frame.y + crop.y }
-      writeFileSync(path, await enlarger.capture(clip))
+      writeFileSync(path, await enlarger.capture(crop))
     },
   }
+}
+
+/** The DevTools protocol, as far as an enlarged picture uses it. */
+export interface Protocol {
+  send(method: string, params?: Record<string, unknown>): Promise<unknown>
+}
+
+/** Two boxes the same to half a CSS pixel (a layout at another scale may round differently). */
+export function sameBox(a: Box | null, b: Box | null): boolean {
+  if (a === null || b === null) return false
+  return (['x', 'y', 'width', 'height'] as const).every((k) => Math.abs(a[k] - b[k]) <= 0.5)
+}
+
+const boxSaid = (b: Box | null): string =>
+  b === null ? 'no box' : `${b.x},${b.y} ${b.width}x${b.height}`
+
+/**
+ * What a picture's entry says where the map could not be drawn larger. A
+ * bitmap painted at the window's own scale and stretched is never kept as a
+ * close-up: rehearsal 43586166710 kept such pictures, a smear of names with
+ * Windows' ClearType fringes magnified seven times.
+ */
+export const NOT_ENLARGED = 'the map could not be drawn larger here; drawn at 1 and not enlarged'
+
+/** Whether the map was drawn at `wanted`: what was measured is within 1% of it. */
+export function drawnLarger(wanted: number, measured: number | null): boolean {
+  return measured !== null && Math.abs(measured - wanted) <= wanted * 0.01
+}
+
+/** How a part of the map was drawn larger; null until one has worked. */
+export type Route = 'device scale' | 'SVG transform'
+
+/** What the window offers `redrawnCapture`. */
+export interface Redrawer {
+  /** The interface window's own session. */
+  window: Protocol
+  /** The map frame's own session where the frame is a target of its own (out of process); null where it shares the window's. */
+  frameSession(): Promise<Protocol | null>
+  /** How many targets of type "iframe" the window's session lists; null where it cannot say. */
+  iframeTargets(): Promise<number | null>
+  frame(): Promise<Box | null>
+  /** Two animation frames in the interface and two in the page, and a moment. */
+  repaint(): Promise<void>
+  /** `devicePixelRatio` in the interface and inside the map's frame. */
+  ratios(): Promise<{ window: number | null; frame: number | null }>
+  /** The page's draw count (`state().draws`). */
+  draws(): Promise<number | null>
+  /** The page's drawing scaled by `scale` about `origin` (frame CSS pixels); the scale measured on screen. */
+  scaleSvg(scale: number, origin: { x: number; y: number }): Promise<number | null>
+  /** The drawing put back as it was; the scale measured on screen then, against its size before. */
+  restoreSvg(): Promise<number | null>
+}
+
+/** What one enlarger keeps across its pictures: the route that worked, and what each capture found. */
+export interface Redrawn {
+  route: Route | null
+  said: string[]
+}
+
+/**
+ * `crop` of the map's frame drawn again at `crop.scale`, never the bitmap
+ * already painted made larger, by the first of two routes that works; the
+ * one that worked for the first picture is the one every later picture of
+ * the enlarger takes, so before and after are taken the same way.
+ *
+ * 1. **Device scale.** The window's device scale is overridden
+ *    (`Emulation.setDeviceMetricsOverride`, width and height 0, which leave
+ *    the window's size alone, `mobile` off), and the map frame's own target
+ *    too where it is one; the part is captured at a scale of 1, and the
+ *    overrides are cleared whatever happened. It counts only where the
+ *    frame's own `devicePixelRatio` read the scale during the override: in
+ *    rehearsal 43586166710 the interface's did and the frame's did not, and
+ *    the map was painted at 1 and stretched.
+ * 2. **SVG transform.** The page's drawing, its root SVG, is scaled for the
+ *    moment of the shot by a CSS transform about the point that maps the
+ *    part onto the whole frame, the frame is captured at a scale of 1, and
+ *    the drawing's style is put back. It counts only where the drawing
+ *    measured the scale on screen; the page's draw count and the frame's box
+ *    must be the same afterwards. This is the test's alone: it sets an
+ *    inline style the page never reads and the app never drives (the app
+ *    drives the page through `window.__present`, from the main process), and
+ *    takes it off again before anything else runs.
+ *
+ * Where neither drew the map larger, the picture is refused with
+ * `NOT_ENLARGED` and what was read. The frame's box is read before, during
+ * and after, and a picture from a frame that moved is refused. Every call is
+ * raced against `deadline`.
+ */
+export async function redrawnCapture(
+  r: Redrawer,
+  crop: Clip,
+  state: Redrawn,
+  deadline = ENLARGED_DEADLINE_MS,
+): Promise<Buffer> {
+  const late = `the enlarged capture did not answer in ${deadline / 1000} s`
+  const dl = <T>(work: Promise<T>): Promise<T> => withDeadline(work, deadline, late)
+  const before = await dl(r.frame())
+  if (before === null) throw new Error('the map’s frame has no box')
+  const settledBack = async (): Promise<void> => {
+    await dl(r.repaint()).catch(() => undefined)
+    const after = await dl(r.frame())
+    if (!sameBox(before, after))
+      throw new Error(
+        `the map’s frame did not come back after the enlarged picture: ${boxSaid(before)}, then ${boxSaid(after)}`,
+      )
+  }
+  const capture = async (clip: Clip): Promise<string> => {
+    const answer = (await dl(
+      r.window.send('Page.captureScreenshot', {
+        format: 'png',
+        clip,
+        captureBeyondViewport: false,
+      }),
+    )) as { data?: unknown } | undefined
+    if (typeof answer?.data !== 'string') throw new Error('the capture gave no picture')
+    return answer.data
+  }
+
+  if (state.route !== 'SVG transform') {
+    const own = await dl(r.frameSession()).catch(() => null)
+    const targets = await dl(r.iframeTargets()).catch(() => null)
+    const metrics = { width: 0, height: 0, deviceScaleFactor: crop.scale, mobile: false }
+    let ratios: { window: number | null; frame: number | null } | undefined
+    let refused = ''
+    let data: string | null = null
+    try {
+      await dl(r.window.send('Emulation.setDeviceMetricsOverride', metrics))
+      if (own !== null)
+        await dl(own.send('Emulation.setDeviceMetricsOverride', metrics)).catch((error) => {
+          refused = ` (the override on the frame's own target was refused: ${error instanceof Error ? error.message : String(error)})`
+        })
+      await dl(r.repaint())
+      ratios = await dl(r.ratios())
+      if (drawnLarger(crop.scale, ratios.frame)) {
+        const during = await dl(r.frame())
+        if (!sameBox(before, during))
+          throw new Error(
+            `the map’s frame moved at the higher scale: ${boxSaid(before)}, then ${boxSaid(during)}`,
+          )
+        data = await capture({
+          x: before.x + crop.x,
+          y: before.y + crop.y,
+          width: crop.width,
+          height: crop.height,
+          scale: 1,
+        })
+      }
+    } finally {
+      await dl(r.window.send('Emulation.clearDeviceMetricsOverride')).catch(() => undefined)
+      if (own !== null)
+        await dl(own.send('Emulation.clearDeviceMetricsOverride')).catch(() => undefined)
+    }
+    state.said.push(
+      `device scale ${crop.scale.toFixed(2)}: the interface's devicePixelRatio read ${ratios?.window ?? 'nothing'} and the map frame's ${ratios?.frame ?? 'nothing'}; the frame ${own === null ? 'shares the window’s target' : 'is a target of its own'}${refused}, and the window lists ${targets ?? 'an unknown number of'} iframe targets`,
+    )
+    if (data !== null) {
+      await settledBack()
+      state.route = 'device scale'
+      return Buffer.from(data, 'base64')
+    }
+    if (state.route === 'device scale')
+      throw new Error(`${NOT_ENLARGED}: ${state.said[state.said.length - 1]}`)
+  }
+
+  const k = crop.scale
+  const origin = k > 1 ? { x: (k * crop.x) / (k - 1), y: (k * crop.y) / (k - 1) } : { x: 0, y: 0 }
+  const drawsBefore = await dl(r.draws()).catch(() => null)
+  let data: string
+  let measured: number | null | undefined
+  let back: number | null | undefined
+  try {
+    measured = await dl(r.scaleSvg(k, origin))
+    await dl(r.repaint())
+    if (!drawnLarger(k, measured))
+      throw new Error(
+        `${NOT_ENLARGED}: the page's drawing measured ${measured ?? 'nothing'} times its size under a transform of ${k.toFixed(2)}`,
+      )
+    data = await capture({ ...before, scale: 1 })
+  } finally {
+    back = await dl(r.restoreSvg()).catch(() => null)
+  }
+  if (!drawnLarger(1, back ?? null))
+    throw new Error(`the page's drawing was not put back: it measured ${back ?? 'nothing'}`)
+  state.said.push(
+    `SVG transform ${k.toFixed(2)}: the page's drawing measured ${measured} times its size`,
+  )
+  await settledBack()
+  const drawsAfter = await dl(r.draws()).catch(() => null)
+  if (drawsBefore !== drawsAfter)
+    throw new Error(
+      `the page drew while its drawing was scaled: its draw count was ${drawsBefore ?? 'unread'}, then ${drawsAfter ?? 'unread'}`,
+    )
+  state.route = 'SVG transform'
+  return Buffer.from(data, 'base64')
 }
 
 /**
  * The map's frame, enlarged, in the window `window`: its box read from the
  * interface's side, the named labels read inside it (`#linear-labels text`,
- * the copies the page draws, as `measureLabel` reads them), and the picture
- * taken by `redrawnCapture`, which has the window drawn again at a higher
- * device scale for the moment of the shot. Nothing here touches the
- * export's capture (`src/main/capture.ts`).
+ * the copies the page draws, as `measureLabel` reads them), and each picture
+ * taken by `redrawnCapture`. Nothing here touches the export's capture
+ * (`src/main/capture.ts`).
  */
 export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
   const element = window.locator('iframe.viewer-frame')
+  const inFrame = window.frameLocator('iframe.viewer-frame').locator('html')
+  const state: Redrawn = { route: null, said: [] }
   const frame = async (): Promise<Box | null> => {
     await element.scrollIntoViewIfNeeded()
     return element.evaluate((node) => {
@@ -1039,20 +1216,15 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
   }
   const twoFrames = (): Promise<void> =>
     new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))
-  // Two animation frames in the interface and two in the page, then a
-  // moment: the page is SVG, which Chromium rasterises again at the new
-  // scale on its next paint.
-  const repaint = async (): Promise<void> => {
-    await window.evaluate(twoFrames)
-    await window.frameLocator('iframe.viewer-frame').locator('html').evaluate(twoFrames)
-    await sleep(250)
-  }
+  const asProtocol = (session: CDPSession): Protocol => ({
+    send: (method, params) =>
+      (session.send as unknown as Protocol['send']).call(session, method, params),
+  })
   return {
     frame,
+    said: () => [...new Set(state.said)].join('; '),
     async marks() {
-      return window
-        .frameLocator('iframe.viewer-frame')
-        .locator('html')
+      return inFrame
         .evaluate((html, wanted) => {
           const doc = html.ownerDocument
           const view = doc.defaultView as Window
@@ -1077,105 +1249,95 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
         }, names)
         .catch(() => ({ boxes: [], em: null, found: [] }))
     },
-    async capture(clip) {
+    async capture(crop) {
       // An occluded window can leave a call unanswered: each is raced
       // against a deadline, so a picture that cannot be taken is a note in
       // a moment and never a run stalled to its own timeout.
-      const opening = window.context().newCDPSession(window)
-      let cdp: Awaited<typeof opening> | null = null
-      try {
-        cdp = await withDeadline(opening, ENLARGED_DEADLINE_MS, SILENT)
-        const session = cdp
-        const protocol: Protocol = {
-          send: (method, params) =>
-            (session.send as unknown as Protocol['send']).call(session, method, params),
+      const sessions: CDPSession[] = []
+      const open = async (target: Page | Frame): Promise<CDPSession> => {
+        const opening = window.context().newCDPSession(target)
+        try {
+          const session = await withDeadline(opening, ENLARGED_DEADLINE_MS, SILENT)
+          sessions.push(session)
+          return session
+        } catch (error) {
+          void opening.then((late) => late.detach()).catch(() => undefined)
+          throw error
         }
-        return await redrawnCapture(protocol, clip, { frame, repaint })
+      }
+      try {
+        const main = asProtocol(await open(window))
+        const redrawer: Redrawer = {
+          window: main,
+          // Playwright opens a session on a frame only where the frame is a
+          // target of its own, and refuses one that shares its page's.
+          async frameSession() {
+            const handle = await element.elementHandle()
+            const content = await handle?.contentFrame()
+            if (content === null || content === undefined) return null
+            return asProtocol(await open(content))
+          },
+          async iframeTargets() {
+            const answer = (await main.send('Target.getTargets')) as
+              { targetInfos?: { type?: string }[] } | undefined
+            return answer?.targetInfos?.filter((t) => t.type === 'iframe').length ?? null
+          },
+          frame,
+          async repaint() {
+            await window.evaluate(twoFrames)
+            await inFrame.evaluate(twoFrames)
+            await sleep(250)
+          },
+          async ratios() {
+            const read = (): number => globalThis.devicePixelRatio
+            return {
+              window: await window.evaluate(read).catch(() => null),
+              frame: await inFrame.evaluate(read).catch(() => null),
+            }
+          },
+          draws: () => readDraws(window),
+          scaleSvg: (scale, origin) =>
+            inFrame.evaluate(
+              (html, { scale, origin }) => {
+                const group = html.ownerDocument.querySelector('#linear-labels')
+                let svg = group instanceof SVGElement ? group.ownerSVGElement : null
+                while (svg?.ownerSVGElement) svg = svg.ownerSVGElement
+                if (svg === null || svg === undefined) return null
+                const box = svg.getBoundingClientRect()
+                svg.setAttribute('data-evidence-had-style', svg.hasAttribute('style') ? '1' : '0')
+                svg.setAttribute('data-evidence-style', svg.getAttribute('style') ?? '')
+                svg.setAttribute('data-evidence-width', String(box.width))
+                svg.style.transformOrigin = `${origin.x - box.left}px ${origin.y - box.top}px`
+                svg.style.transform = `scale(${scale})`
+                const now = svg.getBoundingClientRect()
+                return box.width > 0 ? now.width / box.width : null
+              },
+              { scale, origin },
+            ),
+          restoreSvg: () =>
+            inFrame.evaluate((html) => {
+              const svg = html.ownerDocument.querySelector('svg[data-evidence-style]')
+              if (svg === null) return null
+              if (svg.getAttribute('data-evidence-had-style') === '1')
+                svg.setAttribute('style', svg.getAttribute('data-evidence-style') ?? '')
+              else svg.removeAttribute('style')
+              const width = Number(svg.getAttribute('data-evidence-width'))
+              for (const name of [
+                'data-evidence-had-style',
+                'data-evidence-style',
+                'data-evidence-width',
+              ])
+                svg.removeAttribute(name)
+              return width > 0 ? svg.getBoundingClientRect().width / width : null
+            }),
+        }
+        return await redrawnCapture(redrawer, crop, state)
       } finally {
-        if (cdp !== null)
-          await withDeadline(cdp.detach(), ENLARGED_DEADLINE_MS, SILENT).catch(() => undefined)
-        else void opening.then((late) => late.detach()).catch(() => undefined)
+        for (const session of sessions)
+          await withDeadline(session.detach(), ENLARGED_DEADLINE_MS, SILENT).catch(() => undefined)
       }
     },
   }
-}
-
-/** The DevTools protocol, as far as an enlarged picture uses it. */
-export interface Protocol {
-  send(method: string, params?: Record<string, unknown>): Promise<unknown>
-}
-
-/** Two boxes the same to half a CSS pixel (a layout at another scale may round differently). */
-export function sameBox(a: Box | null, b: Box | null): boolean {
-  if (a === null || b === null) return false
-  return (['x', 'y', 'width', 'height'] as const).every((k) => Math.abs(a[k] - b[k]) <= 0.5)
-}
-
-const boxSaid = (b: Box | null): string =>
-  b === null ? 'no box' : `${b.x},${b.y} ${b.width}x${b.height}`
-
-/**
- * `clip` drawn again at `clip.scale`, not the bitmap already drawn made
- * larger. `Page.captureScreenshot` with a scaled clip only enlarges what the
- * window has painted, which smears a three-pixel name; so the window's
- * device scale is overridden for the moment of the shot
- * (`Emulation.setDeviceMetricsOverride`, with a width and height of 0, which
- * leave the window's own size alone, and `mobile` off), the page is let
- * repaint, the clip is captured at a scale of 1 (the protocol multiplies it
- * by the device scale), and the override is cleared, whatever happened. The
- * map's frame is read before, during and after: a frame that moved means the
- * layout changed, and the picture is refused, never kept. Every call is
- * raced against `deadline`.
- */
-export async function redrawnCapture(
-  protocol: Protocol,
-  clip: Clip,
-  hooks: { frame: () => Promise<Box | null>; repaint: () => Promise<void> },
-  deadline = ENLARGED_DEADLINE_MS,
-): Promise<Buffer> {
-  const said = `the enlarged capture did not answer in ${deadline / 1000} s`
-  const before = await withDeadline(hooks.frame(), deadline, said)
-  let data: string
-  try {
-    await withDeadline(
-      protocol.send('Emulation.setDeviceMetricsOverride', {
-        width: 0,
-        height: 0,
-        deviceScaleFactor: clip.scale,
-        mobile: false,
-      }),
-      deadline,
-      said,
-    )
-    await withDeadline(hooks.repaint(), deadline, said)
-    const during = await withDeadline(hooks.frame(), deadline, said)
-    if (!sameBox(before, during))
-      throw new Error(
-        `the map’s frame moved at the higher scale: ${boxSaid(before)}, then ${boxSaid(during)}`,
-      )
-    const answer = (await withDeadline(
-      protocol.send('Page.captureScreenshot', {
-        format: 'png',
-        clip: { x: clip.x, y: clip.y, width: clip.width, height: clip.height, scale: 1 },
-        captureBeyondViewport: false,
-      }),
-      deadline,
-      said,
-    )) as { data?: unknown } | undefined
-    if (typeof answer?.data !== 'string') throw new Error('the capture gave no picture')
-    data = answer.data
-  } finally {
-    await withDeadline(protocol.send('Emulation.clearDeviceMetricsOverride'), deadline, said).catch(
-      () => undefined,
-    )
-  }
-  await withDeadline(hooks.repaint(), deadline, said).catch(() => undefined)
-  const after = await withDeadline(hooks.frame(), deadline, said)
-  if (!sameBox(before, after))
-    throw new Error(
-      `the map’s frame did not come back after the higher scale: ${boxSaid(before)}, then ${boxSaid(after)}`,
-    )
-  return Buffer.from(data, 'base64')
 }
 
 /** How long one call of an enlarged picture may take before it is given up as a note. */

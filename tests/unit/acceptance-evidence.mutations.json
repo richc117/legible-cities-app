@@ -233,54 +233,6 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "Math.max(ENLARGED.minScale, Math.round(ENLARGED.em / em))",
-    "replace": "Math.round(ENLARGED.em / em)",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "sets a name about 18 pixels tall, within the scales allowed",
-    "why": "A large name would round to a scale of nothing, held at 1: the picture would be no larger than the window draws it."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
-    "find": "  const x = Math.min(Math.max(cx - width / 2, 0), frame.width - width)\n",
-    "replace": "  const x = cx - width / 2\n",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "stays inside the frame, moved in from an edge it would run past",
-    "why": "A station near the frame's edge would be enlarged with part of the picture outside the map."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
-    "find": "    width = Math.max(width, right - left + 2 * ENLARGED.pad)\n",
-    "replace": "",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "grows to hold every mark with room round it",
-    "why": "Two named stations further apart than the picture would be cut off at its sides."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
-    "find": "Math.min(wanted, ENLARGED.maxWidth / width, ENLARGED.maxHeight / height)",
-    "replace": "wanted",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "grows to hold every mark with room round it",
-    "why": "A part grown to hold its marks would be drawn at the full scale, a picture many thousand pixels wide."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
-    "find": "      if (crop === null) {\n",
-    "replace": "      if (true) {\n",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "keeps one part for every picture, following the frame",
-    "why": "The part would be chosen again for the picture after a change, so a label that moved would move the part, and before and after would not be of the same place."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
-    "find": "const clip = { ...crop, x: frame.x + crop.x, y: frame.y + crop.y }",
-    "replace": "const clip = { ...crop }",
-    "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "keeps one part for every picture, following the frame",
-    "why": "The part would be taken in the frame's own pixels as if they were the window's, a picture of the interface beside the map."
-  },
-  {
-    "file": "tests/acceptance/evidence.ts",
     "find": "    clearTimeout(timer)\n",
     "replace": "    void timer\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
@@ -297,34 +249,98 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "protocol.send('Emulation.clearDeviceMetricsOverride')",
-    "replace": "Promise.resolve()",
+    "find": "Math.max(ENLARGED.minScale, Math.round(ENLARGED.em / em))",
+    "replace": "Math.round(ENLARGED.em / em)",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "sets a name about 18 pixels tall, within the scales allowed",
+    "why": "A large name would round to a scale of nothing, held at 1: the picture would be no larger than the window draws it."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  const x = Math.min(Math.max(cx - width / 2, 0), frame.width - width)\n",
+    "replace": "  const x = cx - width / 2\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "stays inside the frame, moved in from an edge it would run past",
+    "why": "A station near the frame's edge would be enlarged with part of the picture outside the map."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      frame.width / (right - left + 2 * ENLARGED.pad),\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "grows to hold every mark with room round it",
+    "why": "Two named stations further apart than the part would be cut off at its sides."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "      if (crop === null) {\n",
+    "replace": "      if (true) {\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "keeps one part for every picture",
+    "why": "The part would be chosen again for the picture after a change, so a label that moved would move the part, and before and after would not be of the same place."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "return measured !== null && Math.abs(measured - wanted) <= wanted * 0.01",
+    "replace": "return true",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses the picture where neither route drew the map larger",
+    "why": "A frame painted at a device scale of 1 would pass as drawn larger, and its stretched bitmap be kept as a close-up: the smear rehearsal 43586166710 kept."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "await dl(r.window.send('Emulation.clearDeviceMetricsOverride'))",
+    "replace": "await Promise.resolve()",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "clears the override when the capture fails",
     "why": "The interface window would be left drawn at seven times its scale for the rest of the run, and every later picture and step with it."
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "    if (!sameBox(before, during))\n",
-    "replace": "    if (false)\n",
+    "find": "        if (!sameBox(before, during))\n",
+    "replace": "        if (false)\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "clears the override when the capture fails, and refuses a frame that moved",
+    "title": "refuses a frame that moved",
     "why": "A layout that moved under the higher scale would be captured and kept as if it were the same part of the map."
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "width: clip.width, height: clip.height, scale: 1 },",
-    "replace": "width: clip.width, height: clip.height, scale: clip.scale },",
+    "find": "          scale: 1,\n        })\n",
+    "replace": "          scale: crop.scale,\n        })\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "overrides the device scale, captures at a scale of 1",
-    "why": "The scale would be applied twice, once by the device scale and again by the clip: a picture 49 times the area, enlarged past what was drawn."
+    "title": "takes the device scale where the frame draws at it",
+    "why": "The scale would be applied twice, by the device scale and again by the clip: a picture enlarged past what was drawn."
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "        deviceScaleFactor: clip.scale,\n",
-    "replace": "        deviceScaleFactor: 1,\n",
+    "find": "    if (state.route === 'device scale')\n",
+    "replace": "    if (false)\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
-    "title": "overrides the device scale, captures at a scale of 1",
-    "why": "The window would not be drawn again at the higher scale, and the picture would be the one the window already has, no larger."
+    "title": "never switching mid-pair",
+    "why": "A pair's before taken at the device scale could be followed by an after taken another way, and the two would not be alike."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "const origin = k > 1 ? { x: (k * crop.x) / (k - 1), y: (k * crop.y) / (k - 1) } : { x: 0, y: 0 }",
+    "replace": "const origin = { x: crop.x, y: crop.y }",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "scales the page’s drawing instead, and puts it back",
+    "why": "The drawing would be scaled about the part's corner, which does not stay in place: the picture would show a different part of the map from the one asked for."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    back = await dl(r.restoreSvg()).catch(() => null)\n",
+    "replace": "    back = 1\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "scales the page’s drawing instead, and puts it back",
+    "why": "The page's drawing would be left scaled after the picture, and every later step would see a map seven times its size."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (drawsBefore !== drawsAfter)\n",
+    "replace": "  if (false)\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "or a page that drew meanwhile",
+    "why": "A picture taken while the page drew again, mid-change, would be kept as the part at those settings."
   }
 ]

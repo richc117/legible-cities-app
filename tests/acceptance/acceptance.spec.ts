@@ -660,7 +660,9 @@ interface Session {
  * A picture an entry of its own adds beside a pair, taken before the change
  * and after it: an enlarged part of the map, a row of cell 05, the map in
  * another view. `show` and `leave` put the window in the state the picture
- * is of and back; `where` says what an enlarged picture was centred on.
+ * is of and back; `where` says what an enlarged picture was centred on, and
+ * `found` what its captures read (how the map was drawn larger), for the
+ * step's record.
  */
 interface View {
   /** What the picture is of, for a sentence that says it was not taken. */
@@ -669,6 +671,7 @@ interface View {
   show?: () => Promise<void>
   leave?: () => Promise<void>
   where?: () => string
+  found?: () => string
 }
 
 /** One step's notes and its problems: a soft check records a problem and the step goes on. */
@@ -794,6 +797,10 @@ test('a release, installed, through docs/acceptance.md', async () => {
         log.note(`Evidence: ${view.what} after ${init.id} was not taken: ${messageOf(error)}.`)
       }
     }
+    for (const { view } of held.taken) {
+      const found = view.found?.() ?? ''
+      if (found !== '') log.note(`Evidence: ${view.what} for ${init.id}: ${found}.`)
+    }
     if (images.length === 0 && check === null) return
     // A view whose pictures were not taken is said in the question, so the
     // pictures there are never read as the ones it describes.
@@ -816,6 +823,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
       what: 'the enlarged part of the map',
       target,
       where: () => `The enlarged part of the map is centred on ${target.around()}.`,
+      found: () => target.said(),
     }
   }
   // What only the workflow knows, said as such in a local run.
@@ -3003,7 +3011,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         { what: 'the list', target: list },
         {
           what: 'the Linear view',
-          target: enlarged(mapEnlarger(window, []), { whole: true }),
+          target: mapOf(window),
           show: toView('Linear'),
           leave: toView('Schematic'),
         },
@@ -3050,7 +3058,7 @@ test('a release, installed, through docs/acceptance.md', async () => {
         id: '10-order-rows',
         step: 10,
         row: LOOKS.order,
-        question: `The first two pictures are cell 05's list, Lines in the order they are drawn, before and after ${first} was moved down and ${other} up with the arrows; the last two are the map's Linear view, one row per line, at the same two moments, enlarged. Do the Linear view's rows run from the top down in the order of the list, in both, so that they change order between the two?`,
+        question: `The first two pictures are cell 05's list, Lines in the order they are drawn, before and after ${first} was moved down and ${other} up with the arrows; the last two are the map's Linear view, one row per line, at the same two moments. Do the Linear view's rows run from the top down in the order of the list, in both, so that they change order between the two?`,
       })
       log.note(`Moved ${first} down and ${other} up: ${shown.join(', ')}.`)
       const back = panel.getByRole('button', { name: 'Back to alphabetical' })
