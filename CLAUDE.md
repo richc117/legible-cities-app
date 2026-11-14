@@ -100,8 +100,8 @@ npm run dist                          # electron-builder --dir; installers come 
 npm run dist:check <target>           # are the vendored components for a target present, current and the right architecture
 npm run test:acceptance               # the acceptance checklist over the installed app LEGIBLE_ACCEPTANCE_APP names
 npm run test:reader                   # the walkthrough heard with VoiceOver over the installed app LEGIBLE_READER_APP names: acceptance.yml's reader job; locally only with LEGIBLE_READER_HERE=1, after `npx @guidepup/setup`, and it quits and restarts your own VoiceOver and mounts Guidepup's VoiceOver preferences; never with CI=true exported by hand
-node scripts/mutations.mjs --check    # every tests/unit/*.mutations.json entry is well formed (npm test runs it)
 node scripts/gate-report.mjs --tag T --build ID --acceptance ID   # the gate issue's page from a candidate's runs and records; refuses a rehearsal
+node scripts/mutations.mjs --check    # every tests/unit/*.mutations.json entry is well formed (npm test runs it)
 node scripts/mutations.mjs            # each mutation applied to a clean tree, its test run, the file restored; every test must go red
 node scripts/vuln-watch.mjs           # OSV asked about the pinned components it can name, ratings checked against the CVE records, the answer judged against vendor/vuln-triage.json (SECURITY.md); vuln-watch.yml runs it weekly
 ```

@@ -43,9 +43,11 @@ const STEPS: Array<[number, string, string, string]> = [
   [5, 'Cell 01', 'pass, part not automated', 'Not automated: the look.'],
 ]
 
+const RELEASE = { name: 'release (draft)', conclusion: 'success', url: '' }
 const run = (id: string, over: Record<string, unknown> = {}) =>
   report.parseRun({
     databaseId: Number(id),
+    workflowName: 'build',
     displayTitle: 'acceptance',
     event: 'push',
     status: 'completed',
@@ -67,7 +69,11 @@ const run = (id: string, over: Record<string, unknown> = {}) =>
 const inputs = (over: Record<string, unknown> = {}) => ({
   tag: TAG,
   build: run('11'),
-  acceptance: run('22', { event: 'workflow_dispatch', headBranch: 'main' }),
+  acceptance: run('22', {
+    workflowName: 'acceptance',
+    event: 'workflow_dispatch',
+    headBranch: 'main',
+  }),
   tagCommit: COMMIT,
   artefacts: ['acceptance-darwin-arm64'],
   records: new Map([['darwin-arm64', record(STEPS)]]),
@@ -113,7 +119,7 @@ describe('the gate report', () => {
       '|---|---|---|',
       '| a | a map | looks right |',
       '| b | a blank page | looks wrong |',
-      '| c | smudged | pass |',
+      '| c | smudged | |',
       '| d | far | cannot tell |',
       '',
     ].join('\n')
@@ -124,7 +130,7 @@ describe('the gate report', () => {
 
   it('names a failed job of the build', () => {
     const build = run('11', {
-      jobs: [{ name: 'verify (attestations)', conclusion: 'failure', url: '' }],
+      jobs: [RELEASE, { name: 'verify (attestations)', conclusion: 'failure', url: '' }],
     })
     expect(page({ build })).toContain('build job verify (attestations): failure; no issue named')
   })
@@ -133,6 +139,14 @@ describe('the gate report', () => {
     expect(() =>
       report.assemble(inputs({ artefacts: ['rehearsal-acceptance-darwin-arm64'] })),
     ).toThrow(/rehearsal/)
+  })
+
+  it('refuses a rehearsal by its title alone', () => {
+    const acceptance = run('22', {
+      workflowName: 'acceptance',
+      displayTitle: 'acceptance REHEARSAL of build run 7',
+    })
+    expect(() => report.assemble(inputs({ acceptance }))).toThrow(/its title says REHEARSAL/)
   })
 
   it("refuses a rehearsal by its record's heading", () => {
@@ -144,8 +158,13 @@ describe('the gate report', () => {
   it('refuses an acceptance run of another tag', () => {
     const records = new Map([['darwin-arm64', record(STEPS, '', 'v1.0.0-rc.8')]])
     expect(() => report.assemble(inputs({ records }))).toThrow(/v1\.0\.0-rc\.8, not v1\.0\.0-rc\.9/)
-    const acceptance = run('22', { displayTitle: 'acceptance v1.0.0-rc.8' })
-    expect(() => report.assemble(inputs({ acceptance }))).toThrow(/is of v1\.0\.0-rc\.8/)
+    const acceptance = run('22', {
+      workflowName: 'acceptance',
+      displayTitle: 'acceptance v1.0.0-rc.8',
+    })
+    expect(() => report.assemble(inputs({ acceptance }))).toThrow(
+      /is titled "acceptance v1\.0\.0-rc\.8"/,
+    )
   })
 
   it("refuses a build run that is not the tag's commit", () => {
@@ -174,5 +193,118 @@ describe('the gate report', () => {
 
   it('reads a cell with an escaped pipe whole', () => {
     expect(report.splitRow('| 1 | a \\| b | pass | |')).toEqual(['1', 'a | b', 'pass', ''])
+  })
+
+  it('refuses a build run that is not a push of the tag', () => {
+    const branch = run('11', { headBranch: 'some-branch' })
+    expect(() => report.assemble(inputs({ build: branch }))).toThrow(/not the push of/)
+    const dispatched = run('11', { event: 'workflow_dispatch' })
+    expect(() => report.assemble(inputs({ build: dispatched }))).toThrow(/not the push of/)
+  })
+
+  it('refuses a run of the wrong workflow', () => {
+    expect(() => report.assemble(inputs({ build: run('11', { workflowName: 'ci' }) }))).toThrow(
+      /not build/,
+    )
+    const acceptance = run('22', { workflowName: 'build' })
+    expect(() => report.assemble(inputs({ acceptance }))).toThrow(/not acceptance/)
+  })
+
+  it('takes a bare acceptance title only on a record that names the tag', () => {
+    const exact = run('22', { workflowName: 'acceptance', displayTitle: `acceptance ${TAG}` })
+    expect(() => report.assemble(inputs({ acceptance: exact, records: new Map() }))).not.toThrow()
+    expect(() => report.assemble(inputs({ records: new Map() }))).toThrow(/no record to say/)
+  })
+
+  it('refuses a record that does not say which release it is of', () => {
+    const text = record(STEPS).replace(/- The release under test: .*\n/, '')
+    const records = new Map([['darwin-arm64', text]])
+    expect(() => report.assemble(inputs({ records }))).toThrow(/says no tag/)
+  })
+
+  it('refuses a build whose release (draft) did not succeed', () => {
+    const skipped = run('11', {
+      jobs: [{ name: 'release (draft)', conclusion: 'skipped', url: '' }],
+    })
+    expect(() => report.assemble(inputs({ build: skipped }))).toThrow(
+      /release \(draft\) is skipped/,
+    )
+    expect(() => report.assemble(inputs({ build: run('11', { jobs: [] }) }))).toThrow(/absent/)
+  })
+
+  it('counts a skipped or cancelled build job as a failure', () => {
+    const build = run('11', {
+      jobs: [RELEASE, { name: 'attest (provenance)', conclusion: 'skipped', url: '' }],
+    })
+    expect(page({ build })).toContain('build job attest (provenance): skipped')
+  })
+
+  it('lists a not run row and a result the checklist does not have as failures', () => {
+    const steps: Array<[number, string, string, string]> = [
+      [6, 'Cell 02', 'not run', ''],
+      [7, 'Cell 03', 'passed', 'see issue 12'],
+    ]
+    const text = page({ records: new Map([['darwin-arm64', record(steps)]]) })
+    expect(text).toContain('darwin-arm64 step 6, Cell 02: not run; no issue named')
+    expect(text).toContain(
+      'darwin-arm64 step 7, Cell 03: passed (not a result the checklist has); [#12]',
+    )
+    expect(text).not.toContain('step 7, Cell 03: pass,')
+  })
+
+  it('reports a short row and a missing step instead of dropping them', () => {
+    const text = page({ records: new Map([['darwin-arm64', record(STEPS)]]) }).replace('', '')
+    expect(text).toContain('darwin-arm64 step 22: missing from the record')
+    const short = record(STEPS).replace(
+      /^\| 1 \|.*$/m,
+      '| 1 | Download and check the installer | pass |',
+    )
+    const shortText = page({ records: new Map([['darwin-arm64', short]]) })
+    expect(shortText).toContain('step 1, Download and check the installer: the row has fewer cells')
+  })
+
+  it('renders both systems, and a system with no job or record is not recorded and a failure', () => {
+    const text = page()
+    expect(text).toContain('#### win-x64')
+    expect(text).toContain('Job: not recorded.')
+    expect(text).toContain('win-x64 record: not recorded; no issue named')
+    expect(text).toContain('acceptance job win-x64: not recorded; no issue named')
+    expect(text).toContain('job not recorded, record not recorded')
+  })
+
+  it('lists a verdict outside the three words as a failure, and points at a linked review', () => {
+    const evidence = [
+      '## Visual evidence',
+      '',
+      '| Entry | What is visible | Verdict |',
+      '|---|---|---|',
+      '| a | a map | pass |',
+      '',
+    ].join('\n')
+    const text = page({ records: new Map([['darwin-arm64', record(STEPS, evidence)]]) })
+    expect(text).toContain('evidence a: "pass" is not one of looks right')
+    const linked = page({
+      links: { review: 'https://github.com/richc117/legible-cities-app/issues/5' },
+    })
+    expect(linked).toContain(
+      "Verdicts: in the review's record linked above; this page does not read them.",
+    )
+  })
+
+  it('reads an issue only as "issue N", "issues N" or an issues link, never a bare #N', () => {
+    expect(report.issuesNamed('a colour #123456 in a message')).toEqual([])
+    expect(report.issuesNamed('see issue 12, issues 13 and /issues/14')).toEqual([12, 13, 14])
+  })
+
+  it('merges the pages of a paginated artefact list', () => {
+    expect(report.mergeArtefactPages('["a","b"]\n["c"]')).toEqual(['a', 'b', 'c'])
+    expect(report.mergeArtefactPages('[]\n["c"]')).toEqual(['c'])
+    expect(report.mergeArtefactPages('[\n  "a"\n]')).toEqual(['a'])
+  })
+
+  it('refuses a tag that is not a tag before it goes into an API path', () => {
+    expect(() =>
+      report.parseArgs(['--tag', 'main/../x', '--build', '1', '--acceptance', '2']),
+    ).toThrow(/neither v<X.Y.Z>/)
   })
 })

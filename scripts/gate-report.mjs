@@ -31,13 +31,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
-import { cell, recordKind, redact, requireCandidateRecord } from '../tests/acceptance/pure.mjs'
+import {
+  cell,
+  recordKind,
+  redact,
+  requireCandidateRecord,
+  RESULTS,
+} from '../tests/acceptance/pure.mjs'
 
 export const REPO = 'richc117/legible-cities-app'
 export const REPO_URL = `https://github.com/${REPO}`
 export const VERDICTS = ['looks right', 'looks wrong', 'cannot tell']
 /** The build.yml jobs docs/releasing.md names beside the packages. */
 export const BUILD_JOBS = ['release (draft)', 'attest (provenance)', 'verify (attestations)']
+/** The two systems the automated run covers; both are always on the page. */
+export const SYSTEMS = ['darwin-arm64', 'win-x64']
+/** The results that are not failures: every result the checklist has but these two. */
+export const NOT_FAILURES = RESULTS.filter((r) => r !== 'fail' && r !== 'not run')
 const TAG = /^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$/
 
 /** A run, read with `gh run view <id> --json ...`, as the page needs it. */
@@ -49,6 +59,7 @@ export function parseRun(json) {
     id,
     url:
       typeof json.url === 'string' && json.url !== '' ? json.url : `${REPO_URL}/actions/runs/${id}`,
+    workflow: String(json.workflowName ?? ''),
     title: String(json.displayTitle ?? ''),
     event: String(json.event ?? ''),
     branch: String(json.headBranch ?? ''),
@@ -68,10 +79,10 @@ export function splitRow(line) {
   return trimmed.split(/(?<!\\)\|/).map((part) => part.replace(/\\\|/g, '|').trim())
 }
 
-/** The numbers of the issues a text names: `#12`, `issue 12`, or an issues link. */
+/** The numbers of the issues a text names: `issue 12`, `issues 12` or an issues link; never a bare `#12`, which a colour or a hash can be. */
 export function issuesNamed(text) {
   const found = new Set()
-  for (const match of String(text).matchAll(/(?:issues\/|#|\bissues? )(\d+)\b/gi)) {
+  for (const match of String(text).matchAll(/(?:\/issues\/|\bissues? )(\d+)\b/gi)) {
     found.add(Number(match[1]))
   }
   return [...found]
@@ -101,12 +112,13 @@ export function parseRecord(markdown) {
     if (name !== '') fields.set(name, value)
   }
   const steps = dataRows(section(md, 'Steps'))
-    .filter((row) => /^[0-9]+$/.test(row[0]) && row.length >= 4)
-    .map(([n, title, result, ...notes]) => ({
+    .filter((row) => /^[0-9]+$/.test(row[0]))
+    .map(([n, title = '', result = '', ...notes]) => ({
       n: Number(n),
       title,
       result,
       notes: notes.join(' | '),
+      short: notes.length === 0,
     }))
   const evidence = dataRows(section(md, 'Visual evidence'))
     .slice(1)
@@ -114,7 +126,8 @@ export function parseRecord(markdown) {
     .map(([entry, visible, verdict]) => ({
       entry,
       visible,
-      verdict: VERDICTS.includes(verdict) ? verdict : null,
+      // A blank cell or the template's own "a / b / c" is not yet a verdict.
+      verdict: verdict === '' || verdict.includes(' / ') ? null : verdict,
     }))
   const tag = /The release under test: (v[0-9][^\s,;]*?)\.?\s*$/m.exec(md)
   return { kind: recordKind(md), fields, steps, evidence, tag: tag === null ? null : tag[1] }
@@ -132,6 +145,16 @@ export function repoLink(value, kind = 'issues') {
   throw new Error(`${text} is neither an issue number nor a link into ${REPO_URL}`)
 }
 
+export function refuseRehearsal(acceptance, artefacts) {
+  const said = `acceptance run ${acceptance.id} is a rehearsal's, not a candidate's run`
+  if (artefacts.some((name) => name.startsWith('rehearsal-'))) {
+    throw new Error(`${said}: its artefacts are named rehearsal-*`)
+  }
+  if (/REHEARSAL/.test(acceptance.title)) {
+    throw new Error(`${said}: its title says REHEARSAL`)
+  }
+}
+
 /**
  * The model of the page, or the sentence refusing it. `records` maps a
  * system to its record's text; `artefacts` is every artefact name the
@@ -139,10 +162,13 @@ export function repoLink(value, kind = 'issues') {
  */
 export function assemble({ tag, build, acceptance, tagCommit, artefacts, records, links = {} }) {
   if (!TAG.test(tag)) throw new Error(`${tag} is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>`)
-  const rehearsalArtefact = artefacts.find((name) => name.startsWith('rehearsal-'))
-  if (rehearsalArtefact !== undefined || /REHEARSAL/.test(acceptance.title)) {
+  refuseRehearsal(acceptance, artefacts)
+  if (build.workflow !== 'build') {
+    throw new Error(`run ${build.id} is of the workflow "${build.workflow}", not build`)
+  }
+  if (acceptance.workflow !== 'acceptance') {
     throw new Error(
-      `acceptance run ${acceptance.id} is a rehearsal's, not a candidate's run: its artefacts are named rehearsal-*`,
+      `run ${acceptance.id} is of the workflow "${acceptance.workflow}", not acceptance`,
     )
   }
   const parsed = new Map()
@@ -161,9 +187,19 @@ export function assemble({ tag, build, acceptance, tagCommit, artefacts, records
     }
     parsed.set(target, record)
   }
-  const titled = /\bv[0-9]+\.[0-9]+\.[0-9]+(?:-rc\.[0-9]+)?\b/.exec(acceptance.title)
-  if (titled !== null && titled[0] !== tag) {
-    throw new Error(`acceptance run ${acceptance.id} is of ${titled[0]}, not ${tag}`)
+  // acceptance.yml's run-name is `acceptance <tag>`. A run from before that
+  // is titled `acceptance` alone, and is taken only on its records' word.
+  if (acceptance.title !== `acceptance ${tag}`) {
+    if (acceptance.title !== 'acceptance') {
+      throw new Error(
+        `acceptance run ${acceptance.id} is titled "${acceptance.title}", not "acceptance ${tag}"`,
+      )
+    }
+    if (parsed.size === 0) {
+      throw new Error(
+        `acceptance run ${acceptance.id} is titled "acceptance" and has no record to say which tag it is of`,
+      )
+    }
   }
   if (build.commit === '' || build.commit !== tagCommit) {
     throw new Error(
@@ -175,6 +211,12 @@ export function assemble({ tag, build, acceptance, tagCommit, artefacts, records
       `build run ${build.id} is not the push of ${tag} (it is ${build.event} on ${build.branch})`,
     )
   }
+  const draft = build.jobs.find((job) => job.name === 'release (draft)')
+  if (draft?.conclusion !== 'success') {
+    throw new Error(
+      `build run ${build.id} did not draft a release: release (draft) is ${draft?.conclusion ?? 'absent'}, and only a tag push runs it`,
+    )
+  }
   return {
     tag,
     build,
@@ -182,13 +224,20 @@ export function assemble({ tag, build, acceptance, tagCommit, artefacts, records
     links,
     records: parsed,
     artefacts,
-    targets: [
-      ...new Set([
-        ...parsed.keys(),
-        ...acceptance.jobs.map((j) => /^acceptance \((.+)\)$/.exec(j.name)?.[1]).filter(Boolean),
-      ]),
-    ].sort(),
+    targets: [...new Set([...SYSTEMS, ...parsed.keys()])].sort(),
   }
+}
+
+/** The artefact names of `gh api --paginate --jq '[...names]'`, one array a page. */
+export function mergeArtefactPages(text) {
+  const names = text
+    .trim()
+    .split(/(?<=\])\s*(?=\[)/)
+    .flatMap((page) => JSON.parse(page))
+  if (names.some((n) => typeof n !== 'string')) {
+    throw new Error('the artefact list is not a list of names')
+  }
+  return names
 }
 
 const notAutomated = (step) =>
@@ -228,8 +277,13 @@ export function renderReport(model) {
     if (!build.jobs.some((job) => job.name === name)) line(`| ${name} | not recorded |`)
   }
   for (const job of build.jobs) {
-    if (job.conclusion !== 'success' && job.conclusion !== 'skipped') {
+    if (job.conclusion !== 'success') {
       failures.push(`build job ${job.name}: ${job.conclusion}; no issue named`)
+    }
+  }
+  for (const name of BUILD_JOBS) {
+    if (!build.jobs.some((job) => job.name === name)) {
+      failures.push(`build job ${name}: not recorded; no issue named`)
     }
   }
   line()
@@ -244,11 +298,16 @@ export function renderReport(model) {
     line(`#### ${target}`)
     line()
     line(`Job: ${job === undefined ? 'not recorded' : `${jobLink(job)}, ${job.conclusion}`}.`)
+    if (job === undefined) failures.push(`acceptance job ${target}: not recorded; no issue named`)
+    else if (job.conclusion !== 'success') {
+      failures.push(`acceptance job ${target}: ${job.conclusion}; no issue named`)
+    }
     if (record === undefined) {
       line('Record: not recorded.')
+      failures.push(`${target} record: not recorded; no issue named`)
       continue
     }
-    line("Record: a candidate's record (the `candidate` check of `record-cli.mjs` passes it).")
+    line("Record: a candidate's record, as the `candidate` check of `record-cli.mjs` reads it.")
     for (const key of [
       'App version',
       'Engine version',
@@ -269,14 +328,22 @@ export function renderReport(model) {
     line(`Still not automated, as the record says (${open.length}):`)
     for (const step of open) line(`- ${step.n}. ${step.title}: ${step.result}`)
     for (const step of record.steps) {
-      if (step.result === 'fail' || step.result === 'not run') {
+      if (step.short) {
         failures.push(
-          `${target} step ${step.n}, ${step.title}: ${step.result}; ${ISSUES(step.notes)}`,
+          `${target} step ${step.n}, ${step.title}: the row has fewer cells than the template's`,
+        )
+      }
+      if (!NOT_FAILURES.includes(step.result)) {
+        const unknown = RESULTS.includes(step.result) ? '' : ' (not a result the checklist has)'
+        failures.push(
+          `${target} step ${step.n}, ${step.title}: ${step.result || 'no result'}${unknown}; ${ISSUES(step.notes)}`,
         )
       }
     }
-    if (job !== undefined && job.conclusion !== 'success') {
-      failures.push(`acceptance job ${target}: ${job.conclusion}; no issue named`)
+    for (let n = 1; n <= 22; n++) {
+      if (!record.steps.some((step) => step.n === n)) {
+        failures.push(`${target} step ${n}: missing from the record; no issue named`)
+      }
     }
   }
   line()
@@ -311,14 +378,24 @@ export function renderReport(model) {
   )
   if (links.review !== undefined) line(`The review's record: ${links.review}`)
   if (rows.length === 0) {
-    line('Verdicts: not recorded.')
+    line(
+      links.review === undefined
+        ? 'Verdicts: not recorded.'
+        : "Verdicts: in the review's record linked above; this page does not read them.",
+    )
   } else {
     const count = (v) => rows.filter(([, r]) => r.verdict === v).length
     line(
       `Verdicts: ${VERDICTS.map((v) => `${count(v)} ${v}`).join(', ')}, ${rows.filter(([, r]) => r.verdict === null).length} not recorded.`,
     )
-    for (const [target, row] of rows.filter(([, r]) => r.verdict === 'looks wrong')) {
-      failures.push(`${target} evidence ${row.entry}: looks wrong; ${ISSUES(row.visible)}`)
+    for (const [target, row] of rows) {
+      if (row.verdict === 'looks wrong') {
+        failures.push(`${target} evidence ${row.entry}: looks wrong; ${ISSUES(row.visible)}`)
+      } else if (row.verdict !== null && !VERDICTS.includes(row.verdict)) {
+        failures.push(
+          `${target} evidence ${row.entry}: "${row.verdict}" is not one of ${VERDICTS.join(', ')}`,
+        )
+      }
     }
   }
   line()
@@ -334,8 +411,9 @@ export function renderReport(model) {
 
   line('### Windows')
   line()
+  const winJob = acceptance.jobs.find((j) => j.name === 'acceptance (win-x64)')
   line(
-    'A beta, accepted on its automated results alone (docs/releasing.md): see its job and record above. No person run, SmartScreen check or Narrator walk is recorded here.',
+    `Windows is a beta; docs/releasing.md accepts it on its automated results alone, which are win-x64 above: job ${winJob?.conclusion ?? 'not recorded'}, record ${records.has('win-x64') ? 'present' : 'not recorded'}.`,
   )
   line()
 
@@ -366,7 +444,7 @@ const ghApi = (path, ...extra) =>
     stdio: ['ignore', 'pipe', 'pipe'],
   })
 
-function parseArgs(args) {
+export function parseArgs(args) {
   const out = {}
   for (let i = 0; i < args.length; i += 2) {
     const name = args[i]
@@ -380,6 +458,9 @@ function parseArgs(args) {
     }
     out[name.slice(2)] = args[i + 1]
   }
+  if (out.tag !== undefined && !TAG.test(out.tag)) {
+    throw new Error(`${out.tag} is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>`)
+  }
   for (const need of ['tag', 'build', 'acceptance']) {
     if (out[need] === undefined) throw new Error(`--${need} is required`)
   }
@@ -389,7 +470,8 @@ function parseArgs(args) {
   return out
 }
 
-const RUN_FIELDS = 'databaseId,displayTitle,event,status,conclusion,headSha,headBranch,jobs,url'
+const RUN_FIELDS =
+  'databaseId,workflowName,displayTitle,event,status,conclusion,headSha,headBranch,jobs,url'
 
 function main(argv) {
   const opts = parseArgs(argv)
@@ -401,16 +483,16 @@ function main(argv) {
     JSON.parse(gh(['run', 'view', opts.acceptance, '--json', RUN_FIELDS])),
   )
   const tagCommit = ghApi(`repos/${REPO}/commits/${opts.tag}`, '--jq', '.sha').trim()
-  const artefacts = JSON.parse(
+  const artefacts = mergeArtefactPages(
     ghApi(
       `repos/${REPO}/actions/runs/${opts.acceptance}/artifacts`,
       '--paginate',
       '--jq',
       '[.artifacts[].name]',
-    ).replace(/\]\s*\[/g, ','),
+    ),
   )
   // Refuse a rehearsal before downloading anything of it.
-  assemble({ tag: opts.tag, build, acceptance, tagCommit, artefacts, records: new Map(), links })
+  refuseRehearsal(acceptance, artefacts)
   const tmp = mkdtempSync(join(tmpdir(), 'gate-report-'))
   try {
     const records = new Map()
@@ -438,7 +520,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = main(process.argv.slice(2))
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
-    process.stderr.write(`gate-report: ${redact(text.split('\n')[0])}\n`)
+    const first = (t) =>
+      String(t ?? '')
+        .split('\n')
+        .find((l) => l.trim() !== '') ?? ''
+    const said = first(error?.stderr)
+    process.stderr.write(
+      `gate-report: ${redact(first(text))}${said === '' ? '' : `: ${redact(said.trim())}`}\n`,
+    )
     process.exitCode = 1
   }
 }
