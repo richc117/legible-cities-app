@@ -626,7 +626,11 @@ async function holdKey(
   return { gaps: gapsBetween((await heardOf()).slice(before)) }
 }
 
-/** The hue, in degrees, of a #rrggbb colour. */
+/**
+ * The hue, in degrees, of a #rrggbb colour. Only for a saturated colour, as
+ * this test's are: a grey has no hue, and a dim one rounds by more than a
+ * degree.
+ */
 function hueOf(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
   const max = Math.max(r, g, b)
