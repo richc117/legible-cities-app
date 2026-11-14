@@ -633,8 +633,7 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
   const engineHome = home({ progress_delay_ms: 50 })
   await withApp(engineHome, async (page, app) => {
     await laidOutProject(page, 'LA Metro Rail', 'Los Angeles')
-    // The field is read once it has held its text across two frames, and a
-    // window the page reports hidden draws none (issue 373).
+    // A window the page reports hidden draws none (issue 373).
     await showIfHidden(app, page, 'a held arrow key')
     const panel = cell(page, 'lines')
     const drawnBefore = buildsOf(engineHome)
@@ -644,23 +643,41 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     const field = picker.getByLabel('Hex value')
     await watchKeys(page)
 
-    // Held: the key goes down and repeats, and nothing has come up. Its
-    // colour is read after the page has heard every repeat and the field has
-    // drawn the last of them: two of four repeats can be on the field for
-    // longer than a poll when the runner is starved (issue 380).
+    // Held: the key goes down and repeats, and nothing has come up. The
+    // field is only checked to have moved, not read for the colour the
+    // gesture ends on: react-colorful's changes run at continuous priority, so
+    // on a starved runner the field can still be drawing an earlier repeat
+    // while the key is down (issues 380 and 733).
     await hue.focus()
     const heldKey = await holdKey(page, 'ArrowRight', 4, 'a held arrow key')
     await expect(field, 'the field follows the held key').not.toHaveValue('#0072bc')
-    const held = await steadyText(
-      page,
-      () => field.inputValue(),
-      'the hex field once the held key had repeated four times',
-    )
     await page.waitForTimeout(LONGER_THAN_ANY_INTERVAL)
     expect(buildsOf(engineHome), 'a key held down builds nothing, however long it is held').toBe(
       drawnBefore,
     )
     await page.keyboard.up('ArrowRight')
+    // The colour the gesture ended on is read once the key is up, the build
+    // has come and gone and the section is no longer busy: every repeat has
+    // been drawn by then, so the field holds the last of them, and the text
+    // is then read steady across two frames and settled across a poll. What
+    // the build carries is judged against that, not against the app's record.
+    await expect
+      .poll(() => buildsOf(engineHome), {
+        message: 'a held arrow key is one build, on its release',
+        timeout: 30_000,
+      })
+      .toBe(drawnBefore + 1)
+    await expect(
+      panel.getByRole('region', { name: 'Line colours' }),
+      'no build is left in flight after the held key',
+    ).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 })
+    await steadyText(
+      page,
+      () => field.inputValue(),
+      'the hex field once the held key was up and its build drawn',
+    )
+    const held = await settledValue(field)
+    expect(held, 'the held key moved the colour').not.toBe('#0072bc')
     await drawnIn(
       page,
       engineHome,
@@ -692,11 +709,15 @@ test('a held arrow key is one gesture and one build, and each tap is a build of 
     // person saw: the swatch is what they chose, and the map follows it.
     await hue.focus()
     const heldAgain = await holdKey(page, 'ArrowRight', 2, 'a key held under a closing panel')
-    const seen = await steadyText(
+    // The panel is closed under the key, so the field cannot be read after
+    // the key is up; it is read steady across two frames and then settled
+    // across a poll, once the page has heard both repeats.
+    await steadyText(
       page,
       () => field.inputValue(),
       'the hex field once the held key had repeated twice',
     )
+    const seen = await settledValue(field)
     expect(seen, 'the held key moved the colour').not.toBe(colour)
     await panel.getByText(/^A line is drawn in the colour its feed publishes/).click()
     await expect(picker).toBeHidden()
