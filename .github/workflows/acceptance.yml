@@ -12,9 +12,13 @@
 # On request only, with the Release's tag, or - a rehearsal - with the id of
 # a build.yml run, whose installers it downloads from the run's artefacts
 # before any tag exists: `gh workflow run acceptance.yml --ref main -f
-# run=<id>`. Exactly one of the two. A rehearsal's record and summary say so,
-# it skips what needs a published Release (the checksums file, the
-# attestations), and it never counts as a candidate's run of the gate.
+# run=<id>`. Exactly one of the two. A rehearsal runs everything a tag's
+# run does on the build run's own installers - steps 2 to 21, step 22 over
+# 0.1.0 (from v0.1.0's own Release, as ever), the evidence, and the reader
+# job's walk - but what needs a published Release, the checksums file and
+# the attestations, it records as not checked and not verified, never yes.
+# Its record and summaries say REHEARSAL, the reader job writes no clause,
+# and it never counts as a candidate's run of the gate.
 #
 # The spec and its tooling come from the ref the run is dispatched on,
 # since a tag cut before the spec existed does not carry it; what the app
@@ -194,8 +198,10 @@ jobs:
 
       # A rehearsal's step 1: the build run's own artefact for this target,
       # in place of a Release's asset. There is no Release, so no
-      # SHA256SUMS.txt to match and no attestation to verify; each is
-      # recorded as skipped, never as passed.
+      # SHA256SUMS.txt to match and no attestation to verify, and step 1 is
+      # not judged: its row is not automated, its two fields say not checked
+      # and not verified, never yes. ASSET then names the artefact's file,
+      # which step 2 installs and step 22 installs over 0.1.0.
       - name: Step 1, rehearsal, download the build run's installer
         if: ${{ env.KIND == 'rehearsal' }}
         env:
@@ -219,22 +225,26 @@ jobs:
             echo "::error::expected one .$ext in installer-$TARGET, found ${#found[@]}"
             exit 1
           fi
-          # Step 2 reads $DOWNLOAD/$ASSET: the file sits where the artefact put it.
+          # Steps 2 and 22 read $DOWNLOAD/$ASSET: the file sits where the artefact put it.
           rel="${found[0]#"$DOWNLOAD"/}"
           actual=$(node "$cli" sha256 "${found[0]}")
+          sums='not checked (a rehearsal; no Release, so no SHA256SUMS.txt)'
+          attestation='not verified (a rehearsal; no attestation)'
           node "$cli" prior "$PRIOR" field 'Installer file name' "$rel"
           node "$cli" prior "$PRIOR" field 'Its SHA-256' "$actual"
-          node "$cli" prior "$PRIOR" field 'Matches SHA256SUMS.txt?' 'skipped: rehearsal, no Release'
-          node "$cli" prior "$PRIOR" field 'Attestation verified?' 'skipped: rehearsal, no Release'
-          node "$cli" prior "$PRIOR" step 1 'pass, part not automated' "REHEARSAL: $rel, SHA-256 $actual, from build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}, downloaded with the GitHub CLI. skipped: rehearsal, no Release (SHA256SUMS.txt and the attestation exist only for a published Release)."
+          node "$cli" prior "$PRIOR" field 'Matches SHA256SUMS.txt?' "$sums"
+          node "$cli" prior "$PRIOR" field 'Attestation verified?' "$attestation"
+          node "$cli" prior "$PRIOR" step 1 'not automated' "REHEARSAL: $rel, SHA-256 $actual, from build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}, downloaded with the GitHub CLI. Not judged: with no Release there is no SHA256SUMS.txt to match and no attestation to verify, so only a tagged run's step 1 can pass."
           echo "ASSET=$rel" >> "$GITHUB_ENV"
           {
-            echo "### Rehearsal"
+            echo "### REHEARSAL, not a candidate's run"
             echo
-            echo "Build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}: not a candidate's run of the gate."
+            echo "Build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}, its artefact installer-$TARGET: $rel, SHA-256 $actual."
             echo
-            echo "- Matches SHA256SUMS.txt? skipped: rehearsal, no Release"
-            echo "- Attestation verified? skipped: rehearsal, no Release"
+            echo "- Matches SHA256SUMS.txt? $sums"
+            echo "- Attestation verified? $attestation"
+            echo "- Step 22, if it runs, installs this artefact over 0.1.0, which comes from v0.1.0's own Release as in a tagged run."
+            echo "- The evidence artefacts are this rehearsal's: a review of them is practice, and its verdicts go in this record, never a candidate's."
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ATTESTED_SINCE is the commit that brought the attest job (pull request
@@ -572,6 +582,9 @@ jobs:
           npm run test:acceptance -- tests/acceptance/upgrade.spec.ts
 
       # Over the 0.1.0 the seed quit, once nothing of it is still running.
+      # $DOWNLOAD/$ASSET is what step 1 downloaded: the Release's installer,
+      # or in a rehearsal the build run's own artefact, so a rehearsal makes
+      # the update with the installer it rehearses.
       - name: Step 22, install the release over 0.1.0 on macOS
         id: over_mac
         if: ${{ !cancelled() && runner.os == 'macOS' && steps.seed.outcome == 'success' }}
@@ -602,6 +615,9 @@ jobs:
             throw "the installer exited $($process.ExitCode); no $env:UPGRADE_APP"
           }
 
+      # The version Electron reports is package.json's, at the tag or, in a
+      # rehearsal, at the build run's commit; the build's label
+      # (X.Y.Z-rc.<N>, X.Y.Z+<sha7>) is the Versions row's alone.
       - name: Step 22, after the update
         id: after
         if: ${{ !cancelled() && (steps.over_mac.outcome == 'success' || steps.over_win.outcome == 'success') }}
@@ -695,7 +711,7 @@ jobs:
               if [ "$KIND" = rehearsal ]; then
                 echo "**REHEARSAL, not a candidate's run:** build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}. It does not go on the gate's issue as a candidate's run."
                 echo
-                echo "Issue title: none; a rehearsal has no issue. Skipped: rehearsal, no Release."
+                echo "Issue title: none; a rehearsal has no issue. Its evidence and its VoiceOver transcript are a rehearsal's too, never the gate's."
               else
                 echo "Issue title: \`A6-04 run: $([ "$PLATFORM" = macos ] && echo macOS || echo Windows) ${TAG#v}, $(date -u +%F)\`"
               fi
@@ -754,15 +770,22 @@ jobs:
   # to read and commit. Hosted macOS only: on a person's Mac the setup asks
   # for a checkbox ticked by hand and takes over their VoiceOver. The method
   # is the spike's (docs/adr/spikes/gate-tools-on-hosted-macos.md).
+  #
+  # A rehearsal walks the build run's own Mac app, with nothing to check it
+  # against (no SHA256SUMS.txt, no attestation), and writes the transcript
+  # and no clause: what it heard is not the candidate's, so nothing of it
+  # can be committed to docs/accessibility.md as though it were.
   reader:
     name: reader (VoiceOver, darwin-arm64)
     runs-on: macos-15
     # Two real layouts, an export and some seventy rows; the spec's own limit
     # is two hours, and the two setup steps may take three tries each. The
-    # steps' own limits add up to 243 minutes, and the job's covers them.
+    # steps' own limits add up to 244 minutes, one of the two Mac app steps
+    # running, and the job's covers them.
     timeout-minutes: 250
     env:
       TAG: ${{ inputs.tag }}
+      BUILD_RUN: ${{ inputs.run }}
     steps:
       # The setup below rewrites VoiceOver's and the system's accessibility
       # settings and takes over the keyboard: never on a person's machine,
@@ -775,20 +798,37 @@ jobs:
             exit 1
           fi
 
-      - name: Refuse a tag that names no Release
-        timeout-minutes: 1
-        run: |
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
-            echo "::error::$TAG is neither v<X.Y.Z> nor v<X.Y.Z>-rc.<N>"
-            exit 1
-          fi
-
       # The whole history and every tag, for the attestation check below.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         timeout-minutes: 10
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # As the acceptance job asks it: a tag, or a build.yml run (by its
+      # workflow's id) whose package jobs all succeeded.
+      - name: Refuse a dispatch that names no Release and no build run
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          if ! kind=$(node "$cli" dispatch "$TAG" "$BUILD_RUN"); then
+            echo "::error::see above: $TAG / $BUILD_RUN"
+            exit 1
+          fi
+          echo "KIND=$kind" >> "$GITHUB_ENV"
+          if [ "$kind" = rehearsal ]; then
+            gh run view "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" \
+              --json workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs > "$RUNNER_TEMP/build-run.json"
+            build_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/build.yml" --jq .id)
+            if ! read -r sha ref < <(node "$cli" build-run "$RUNNER_TEMP/build-run.json" "$build_id"); then
+              echo "::error::run $BUILD_RUN cannot be rehearsed: see above"
+              exit 1
+            fi
+            echo "REHEARSAL_SHA=$sha" >> "$GITHUB_ENV"
+          fi
 
       # Node 24, as the spike ran Guidepup's setup (its record names Node 24
       # for the setup step; Node 22 was not tried there).
@@ -807,6 +847,7 @@ jobs:
       # attestations (ATTESTED_SINCE, ADR-057), by gh attestation verify for
       # this repository's build workflow and this tag.
       - name: The Mac app
+        if: ${{ env.KIND == 'tag' }}
         timeout-minutes: 10
         env:
           GH_TOKEN: ${{ github.token }}
@@ -857,6 +898,50 @@ jobs:
           hdiutil detach "$mount"
           echo "LEGIBLE_READER_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
 
+      # A rehearsal's Mac app: the build run's own installer-darwin-arm64.
+      # Nothing to check it against, so the summary says so, never yes.
+      - name: The Mac app, rehearsal
+        if: ${{ env.KIND == 'rehearsal' }}
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cli=tests/acceptance/record-cli.mjs
+          download="$RUNNER_TEMP/download"
+          mount="$RUNNER_TEMP/dmg"
+          apps="$RUNNER_TEMP/apps"
+          mkdir -p "$download" "$mount" "$apps"
+          gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name installer-darwin-arm64 --dir "$download"
+          # No bash 4 array builtin: the macOS runner's bash may be 3.2.
+          found=()
+          while IFS= read -r file; do found+=("$file"); done < <(find "$download" -type f -name '*.dmg')
+          if [ "${#found[@]}" -ne 1 ]; then
+            echo "::error::expected one .dmg in installer-darwin-arm64 of build run $BUILD_RUN, found ${#found[@]}"
+            exit 1
+          fi
+          dmg="${found[0]}"
+          actual=$(node "$cli" sha256 "$dmg")
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+          if [ ! -d "$mount/Legible Cities.app" ]; then
+            hdiutil detach "$mount"
+            echo "::error::the disk image holds no Legible Cities.app"
+            exit 1
+          fi
+          ditto "$mount/Legible Cities.app" "$apps/Legible Cities.app"
+          hdiutil detach "$mount"
+          echo "LEGIBLE_READER_APP=$apps/Legible Cities.app" >> "$GITHUB_ENV"
+          {
+            echo "### REHEARSAL, not a candidate's run"
+            echo
+            echo "Build run $BUILD_RUN at ${REHEARSAL_SHA:0:7}, its artefact installer-darwin-arm64: $(basename "$dmg"), SHA-256 $actual."
+            echo
+            echo "- Matches SHA256SUMS.txt? not checked (a rehearsal; no Release, so no SHA256SUMS.txt)"
+            echo "- Attestation verified? not verified (a rehearsal; no attestation)"
+            echo "- No clause is written: the walk runs without the run's id, so its transcript is for reading, and nothing of it goes into docs/accessibility.md."
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Up to three tries, a pause between: its AppleScript for the
       # system's settings has failed once on a runner where it passed
       # before (error -2700, Do Not Disturb in Control Center). Each try is
@@ -889,13 +974,17 @@ jobs:
 
       # Fails only when a row's script stopped: a row not heard is a
       # finding (ADR-063), listed at the top of the summary, whose clause
-      # carries #<issue> until a person files one.
+      # carries #<issue> until a person files one. A clause names the run by
+      # GITHUB_RUN_ID, and without it the spec writes the transcript and no
+      # clause: a rehearsal's walk is withheld its id, so nothing it heard
+      # can be committed as the candidate's.
       - name: The walkthrough, heard
         timeout-minutes: 130
         env:
           CI: 'true'
         run: |
           export LEGIBLE_READER_OUT="$RUNNER_TEMP/reader"
+          if [ "$KIND" != tag ]; then unset GITHUB_RUN_ID; fi
           npm run test:reader
 
       - name: The transcript, as the job's summary
@@ -912,7 +1001,11 @@ jobs:
               cat "$notheard"
               echo
             fi
-            echo "Heard is not a pass: no one listened. Before any clause in this run's accessibility.md or clauses.md is committed, replace each \`#<issue>\` with the number of an issue filed for what was not heard; the record's test refuses the cell until then."
+            if [ "${KIND:-}" = rehearsal ]; then
+              echo "**REHEARSAL, not a candidate's run:** heard is not a pass, and this walk wrote no clause: nothing of it goes into docs/accessibility.md."
+            else
+              echo "Heard is not a pass: no one listened. Before any clause in this run's accessibility.md or clauses.md is committed, replace each \`#<issue>\` with the number of an issue filed for what was not heard; the record's test refuses the cell until then."
+            fi
             echo
             if [ -f "$transcript" ]; then
               cat "$transcript"

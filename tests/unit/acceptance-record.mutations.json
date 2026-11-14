@@ -1,7 +1,7 @@
 [
   {
     "file": "docs/acceptance.md",
-    "find": "| Attestation verified? | yes / no / not attested (before 1.0) |\n",
+    "find": "| Attestation verified? | yes / no / not attested (before 1.0) / not verified (a rehearsal; no attestation) |\n",
     "replace": "",
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "is the results template's run table, row for row",
@@ -225,10 +225,82 @@
   },
   {
     "file": ".github/workflows/acceptance.yml",
-    "find": "          found=()\n          while IFS= read -r file; do found+=(\"$file\"); done < <(",
-    "replace": "          mapfile -t found < <(",
+    "find": "          found=()\n          while IFS= read -r file; do found+=(\"$file\"); done < <(find \"$DOWNLOAD\"",
+    "replace": "          mapfile -t found < <(find \"$DOWNLOAD\"",
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "has no bash 4 construct, for the macOS runner may have 3.2",
     "why": "mapfile on a bash 3.2 runner dies at step 1."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: The Mac app\n        if: ${{ env.KIND == 'tag' }}\n",
+    "replace": "      - name: The Mac app\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "finds the app by the Release's tag only in a step that runs for a tag alone",
+    "why": "The reader job's Release download and attestation check run in a rehearsal, where there is no Release, and fail the job or, worse, find an older one."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "node \"$cli\" build-run \"$RUNNER_TEMP/build-run.json\" \"$build_id\"); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            echo \"REHEARSAL_SHA=$sha\" >> \"$GITHUB_ENV\"",
+    "replace": "echo \"$build_id\" HEAD); then\n              echo \"::error::run $BUILD_RUN cannot be rehearsed: see above\"\n              exit 1\n            fi\n            echo \"REHEARSAL_SHA=$sha\" >> \"$GITHUB_ENV\"",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "checks the dispatch and the build run in both jobs, the run by its workflow id",
+    "why": "The reader job walks the artefact of any run, of any workflow or with a failed package job, as though it were a build's."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "echo \"- Attestation verified? not verified (a rehearsal; no attestation)\"",
+    "replace": "echo \"- Attestation verified? yes\"",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "gives the reader the build run's own Mac app in a rehearsal, and never says it is attested",
+    "why": "A rehearsal's reader summary says the app it walked was attested, which nothing checked."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          if [ \"$KIND\" != tag ]; then unset GITHUB_RUN_ID; fi\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "withholds the run's id from a rehearsal's walk, so it writes no clause",
+    "why": "A rehearsal writes VoiceOver clauses naming the app's version and a run, ready to be committed to the record as though a candidate had been heard."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "step 1 'not automated' \"REHEARSAL:",
+    "replace": "step 1 'pass, part not automated' \"REHEARSAL:",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "never records a rehearsal's step 1 as a pass, nor its checksum or attestation as yes",
+    "why": "A rehearsal's step 1 recorded as passed, though it checked neither the checksum nor the attestation a tagged run's step 1 is passed on."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "attestation='not verified (a rehearsal; no attestation)'",
+    "replace": "attestation='yes'",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "never records a rehearsal's step 1 as a pass, nor its checksum or attestation as yes",
+    "why": "A rehearsal's record says its installer's attestation was verified, when there was none to verify."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          echo \"ASSET=$rel\" >> \"$GITHUB_ENV\"\n",
+    "replace": "",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "makes step 22's update with the build run's own installer",
+    "why": "Steps 2 and 22 look for a Release's file name that a rehearsal never downloaded, and step 22 installs nothing over 0.1.0."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "            exit 1\n          fi\n          case \"$PLATFORM\" in macos) ext=dmg ;; *) ext=exe ;; esac\n",
+    "replace": "            exit 1\n          case \"$PLATFORM\" in macos) ext=dmg ;; *) ext=exe ;; esac\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "parses every bash step",
+    "why": "A step the runner's bash cannot parse dies before its first line; on macOS a bare case pattern inside $( ) does that under bash 3.2."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "      - name: Refuse a dispatch that names no Release and no build run\n        timeout-minutes: 2\n",
+    "replace": "      - name: Refuse a dispatch that names no Release and no build run\n        timeout-minutes: 9\n",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "gives the reader job time for every step of either kind",
+    "why": "The reader job's steps may take longer together than the job is given, and a slow walk is cut off with nothing written."
   }
 ]

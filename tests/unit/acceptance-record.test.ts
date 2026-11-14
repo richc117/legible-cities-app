@@ -5,7 +5,7 @@
 // itself launches an installed app and is never part of `npm test`.
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, posix, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -607,6 +607,45 @@ describe('a rehearsal and its record', () => {
   })
 })
 
+/** What a rehearsal says of the attestation it has none of, in the record and the summaries. */
+const NOT_ATTESTED = 'not verified (a rehearsal; no attestation)'
+
+interface Step {
+  job: string
+  name: string
+  text: string
+  if: string
+  shell: string
+  run: string
+  minutes: number
+}
+
+/** The steps of each job in a workflow, read by indentation as the workflow is written. */
+function stepsOf(workflow: string): Step[] {
+  const jobs = workflow.slice(workflow.indexOf('\njobs:\n'))
+  const out: Step[] = []
+  for (const section of jobs.split(/\n(?= {2}[a-z][\w-]*:\n)/)) {
+    const job = /^ {2}([a-z][\w-]*):\n/.exec(section)?.[1]
+    if (job === undefined) continue
+    for (const text of section.split(/\n(?= {6}- )/).filter((b) => b.startsWith('      - '))) {
+      const block = /^ {8}run: \|\n((?:(?: {10}[^\n]*)?\n)*)/m.exec(`${text}\n`)
+      out.push({
+        job,
+        name: /^ {6}- (?:name|uses): (.+)$/m.exec(text)?.[1] ?? '',
+        text,
+        if: /^ {8}if: (.+)$/m.exec(text)?.[1] ?? '',
+        shell: /^ {8}shell: (\w+)$/m.exec(text)?.[1] ?? 'bash',
+        run:
+          block !== null
+            ? block[1].replace(/^ {10}/gm, '')
+            : (/^ {8}run: (.+)$/m.exec(text)?.[1] ?? ''),
+        minutes: Number(/^ {8}timeout-minutes: (\d+)$/m.exec(text)?.[1] ?? NaN),
+      })
+    }
+  }
+  return out
+}
+
 describe('acceptance.yml, dispatched with a run', () => {
   const workflow = readFileSync(
     resolve(__dirname, '../../.github/workflows/acceptance.yml'),
@@ -624,10 +663,24 @@ describe('acceptance.yml, dispatched with a run', () => {
     expect(workflow).toContain('node "$cli" dispatch "$TAG" "$BUILD_RUN"')
   })
 
-  it('downloads the installers of the run, and says what it skipped', () => {
+  it('downloads the installers of the run, and says what it could not check', () => {
     expect(rehearsalStep).toContain('gh run download "$BUILD_RUN"')
     expect(rehearsalStep).toContain('--name "installer-$TARGET"')
-    expect(rehearsalStep.match(/skipped: rehearsal, no Release/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(rehearsalStep).toContain('field \'Matches SHA256SUMS.txt?\' "$sums"')
+    expect(rehearsalStep).toContain(
+      "sums='not checked (a rehearsal; no Release, so no SHA256SUMS.txt)'",
+    )
+  })
+
+  it("never records a rehearsal's step 1 as a pass, nor its checksum or attestation as yes", () => {
+    expect(rehearsalStep).toContain(`attestation='${NOT_ATTESTED}'`)
+    expect(rehearsalStep).toContain('field \'Attestation verified?\' "$attestation"')
+    const results = [...rehearsalStep.matchAll(/ step 1 '?([a-z, ]+?)'? "/g)].map(([, r]) => r)
+    expect(results).toEqual(['fail', 'fail', 'not automated'])
+    expect(rehearsalStep).not.toMatch(/\? '?yes'?\n/)
+    // The checklist quotes the record's words.
+    const checklist = readFileSync(resolve(__dirname, '../../docs/acceptance.md'), 'utf8')
+    expect(checklist.replace(/\s+/g, ' ')).toContain(NOT_ATTESTED)
   })
 
   it('keys both checkouts of at-tag on the dispatch result, never on the raw inputs', () => {
@@ -650,4 +703,134 @@ describe('acceptance.yml, dispatched with a run', () => {
     expect(workflow).toContain('gh attestation verify "$subject"')
     expect(rehearsalStep).not.toContain('gh attestation verify')
   })
+
+  const steps = stepsOf(workflow)
+  const step = (job: string, name: string): Step => {
+    const found = steps.filter((s) => s.job === job && s.name === name)
+    expect(found, `${job} has one step named ${name}`).toHaveLength(1)
+    return found[0]!
+  }
+
+  it('reads both jobs and their steps', () => {
+    expect([...new Set(steps.map((s) => s.job))]).toEqual(['acceptance', 'reader'])
+    expect(steps.length).toBeGreaterThan(30)
+  })
+
+  it("finds the app by the Release's tag only in a step that runs for a tag alone", () => {
+    // A step that reads the Release, its tag or its attestation has nothing
+    // to read in a rehearsal: it runs on the dispatch's own result, a tag.
+    const byTag =
+      /gh release download "\$TAG"|refs\/tags\/\$\{?TAG|gh attestation verify|refs\/tags\/\$\{\{ inputs\.tag/
+    const reading = steps.filter((s) => byTag.test(s.text.replace(/^\s*#.*$/gm, '')))
+    expect(reading.map((s) => `${s.job}: ${s.name}`)).toEqual([
+      'acceptance: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+      'acceptance: Step 1, download the installer and check it',
+      'reader: The Mac app',
+    ])
+    for (const s of reading) expect(s.if, `${s.job}: ${s.name}`).toBe("${{ env.KIND == 'tag' }}")
+  })
+
+  it('checks the dispatch and the build run in both jobs, the run by its workflow id', () => {
+    for (const job of ['acceptance', 'reader']) {
+      const check = step(job, 'Refuse a dispatch that names no Release and no build run')
+      expect(check.if, job).toBe('')
+      expect(check.run, job).toContain('node "$cli" dispatch "$TAG" "$BUILD_RUN"')
+      expect(check.run, job).toContain('echo "KIND=$kind" >> "$GITHUB_ENV"')
+      expect(check.run, job).toContain('--json workflowDatabaseId,')
+      expect(check.run, job).toContain('actions/workflows/build.yml" --jq .id')
+      expect(check.run, job).toContain(
+        'node "$cli" build-run "$RUNNER_TEMP/build-run.json" "$build_id"',
+      )
+      // Before any step that asks which it was.
+      const mine = steps.filter((s) => s.job === job)
+      const first = mine.findIndex((s) => s.if.includes('env.KIND'))
+      expect(mine.indexOf(check), job).toBeLessThan(first)
+    }
+    expect(workflow.match(/^ {6}BUILD_RUN: \$\{\{ inputs\.run \}\}$/gm)).toHaveLength(2)
+  })
+
+  it("gives the reader the build run's own Mac app in a rehearsal, and never says it is attested", () => {
+    const app = step('reader', 'The Mac app, rehearsal')
+    expect(app.if).toBe("${{ env.KIND == 'rehearsal' }}")
+    expect(app.run).toContain(
+      'gh run download "$BUILD_RUN" --repo "$GITHUB_REPOSITORY" --name installer-darwin-arm64',
+    )
+    expect(app.run).toContain('echo "LEGIBLE_READER_APP=$apps/Legible Cities.app"')
+    expect(app.run).toContain(`Attestation verified? ${NOT_ATTESTED}`)
+    expect(app.run).not.toMatch(/gh release download|gh attestation verify|\? yes/)
+  })
+
+  it("withholds the run's id from a rehearsal's walk, so it writes no clause", () => {
+    const walk = step('reader', 'The walkthrough, heard')
+    const unset = walk.run.indexOf('if [ "$KIND" != tag ]; then unset GITHUB_RUN_ID; fi')
+    expect(unset).toBeGreaterThan(-1)
+    expect(unset).toBeLessThan(walk.run.indexOf('npm run test:reader'))
+    // What that relies on: the spec writes a clause only when every fact,
+    // the run's id among them, was read.
+    const spec = readFileSync(resolve(__dirname, '../reader/voiceover.spec.ts'), 'utf8')
+    expect(spec).toContain("run: process.env.GITHUB_RUN_ID ?? '',")
+    expect(spec).toContain("if (Object.values(read).every((v) => v !== null && v !== '')) facts")
+    expect(spec).toMatch(/if \(facts !== null\) \{\n {4}const clauses = clausesByTable/)
+    expect(step('reader', "The transcript, as the job's summary").run).toContain(
+      'if [ "${KIND:-}" = rehearsal ]; then',
+    )
+  })
+
+  it("makes step 22's update with the build run's own installer", () => {
+    expect(rehearsalStep).toContain('echo "ASSET=$rel" >> "$GITHUB_ENV"')
+    expect(step('acceptance', 'Step 22, install the release over 0.1.0 on macOS').run).toContain(
+      '"$DOWNLOAD/$ASSET"',
+    )
+    expect(step('acceptance', 'Step 22, install the release over 0.1.0 on Windows').run).toContain(
+      '(Join-Path $env:DOWNLOAD $env:ASSET)',
+    )
+    for (const s of steps.filter((s) => s.name.startsWith('Step 22, '))) {
+      expect(s.text, s.name).not.toMatch(/\$TAG|\$env:TAG|inputs\.tag|env\.KIND/)
+    }
+  })
+
+  it('gives the reader job time for every step of either kind', () => {
+    const limit = Number(
+      /\n {2}reader:\n[\s\S]*?\n {4}timeout-minutes: (\d+)\n/.exec(workflow)?.[1],
+    )
+    const reader = steps.filter((s) => s.job === 'reader')
+    for (const s of reader) expect(s.minutes, s.name).toBeGreaterThan(0)
+    for (const kind of ['tag', 'rehearsal']) {
+      const other = kind === 'tag' ? 'rehearsal' : 'tag'
+      const total = reader
+        .filter((s) => !s.if.includes(`env.KIND == '${other}'`))
+        .reduce((sum, s) => sum + s.minutes, 0)
+      expect(total, kind).toBeLessThanOrEqual(limit)
+    }
+  })
 })
+
+// macOS runs a workflow's bash steps with a bash that may be 3.2, where a
+// construct a newer bash parses (a bare case pattern inside $( ... )) is a
+// syntax error and the step dies before it runs a line.
+describe.skipIf(process.platform === 'win32' || !existsSync('/bin/bash'))(
+  "acceptance.yml's bash, under /bin/bash",
+  () => {
+    it('parses every bash step', () => {
+      const workflow = readFileSync(
+        resolve(__dirname, '../../.github/workflows/acceptance.yml'),
+        'utf8',
+      )
+      const bash = stepsOf(workflow).filter((s) => s.shell === 'bash' && s.run !== '')
+      expect(bash.length).toBeGreaterThan(20)
+      const dir = scratch()
+      for (const [i, s] of bash.entries()) {
+        const file = join(dir, `step-${i}.sh`)
+        // GitHub fills in each expression before bash reads the script.
+        writeFileSync(file, s.run.replace(/\$\{\{[^}]*\}\}/g, 'X'))
+        const r = spawnSync('/bin/bash', ['-n', file], {
+          encoding: 'utf8',
+          timeout: 10_000,
+          windowsHide: true,
+        })
+        expect(r.stderr, `${s.job}: ${s.name}`).toBe('')
+        expect(r.status, `${s.job}: ${s.name}`).toBe(0)
+      }
+    })
+  },
+)
