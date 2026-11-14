@@ -1101,12 +1101,18 @@ export async function putBackDrawing(
 ): Promise<{ found: boolean; measured: number | null }> {
   if ((await window.locator('iframe.viewer-frame').count()) === 0)
     return { found: false, measured: 1 }
-  return withDeadline(
-    window.frameLocator('iframe.viewer-frame').locator('html').evaluate(restoreDrawing),
-    deadline,
-    SILENT,
+  return askTwice(() =>
+    withDeadline(
+      window.frameLocator('iframe.viewer-frame').locator('html').evaluate(restoreDrawing),
+      deadline,
+      SILENT,
+    ),
   ).catch((error: unknown) => {
-    throw new DrawingNotPutBack(FRAME_SILENT, { cause: error })
+    if (error instanceof DeadlinePassed) throw new DrawingNotPutBack(FRAME_SILENT, { cause: error })
+    throw new DrawingNotPutBack(
+      `the put-back in the map's frame failed twice (${error instanceof Error ? error.message : String(error)}), so whether its drawing was still scaled is not known; the pair is not judged`,
+      { cause: error },
+    )
   })
 }
 
@@ -1135,8 +1141,8 @@ export interface Redrawer {
   clock(): Promise<number | null>
   /** The page's drawing scaled by `scale` about `origin` (frame CSS pixels); the scale measured on screen, or 'still scaled' where an earlier picture left it so. */
   scaleSvg(scale: number, origin: { x: number; y: number }): Promise<number | null | 'still scaled'>
-  /** The drawing put back as it was; the scale measured on screen then, against its size before. */
-  restoreSvg(): Promise<number | null>
+  /** The drawing put back as it was: whether the test's marks were on it, and the scale it measured then. */
+  restoreSvg(): Promise<{ found: boolean; measured: number | null }>
 }
 
 /** What one enlarger keeps across its pictures: the route that worked, and what each capture found. */
@@ -1256,14 +1262,27 @@ export async function redrawnCapture(
   const origin = k > 1 ? { x: (k * crop.x) / (k - 1), y: (k * crop.y) / (k - 1) } : { x: 0, y: 0 }
   const clockBefore = await dl(r.clock()).catch(() => null)
   // Null where the drawing is back at its size; else what is wrong with it.
-  const putBack = async (): Promise<string | null> => {
-    let back: number | null
+  // `left` is null where the drawing is back at its size, else what is
+  // wrong with it; `found`, whether the test's marks were still on it.
+  const putBack = async (): Promise<{ left: string | null; found: boolean }> => {
+    let back: { found: boolean; measured: number | null }
     try {
-      back = await dl(r.restoreSvg())
-    } catch {
-      return 'could not be confirmed put back (the map’s frame did not answer)'
+      back = await askTwice(() => dl(r.restoreSvg()))
+    } catch (error) {
+      return {
+        left:
+          error instanceof DeadlinePassed
+            ? 'could not be confirmed put back (the map’s frame did not answer)'
+            : `could not be confirmed put back (the put-back failed twice: ${error instanceof Error ? error.message : String(error)})`,
+        found: true,
+      }
     }
-    return drawnLarger(1, back) ? null : `was not put back (it measured ${back ?? 'nothing'})`
+    return {
+      left: drawnLarger(1, back.measured)
+        ? null
+        : `was not put back (it measured ${back.measured ?? 'nothing'})`,
+      found: back.found,
+    }
   }
   let data: string
   let measured: number | null | undefined
@@ -1283,14 +1302,22 @@ export async function redrawnCapture(
   } catch (error) {
     // A drawing left scaled would be every later picture's, and would hide
     // a change that did not happen: said with the error, never dropped.
-    const left = await putBack()
+    const { left } = await putBack()
     const said = error instanceof Error ? error.message : String(error)
     if (left !== null)
       throw new DrawingNotPutBack(`${said}, and the page's drawing ${left}`, { cause: error })
     throw error
   }
-  const left = await putBack()
+  const { left, found } = await putBack()
   if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)
+  // Scaled, yet no mark of the test's to take off: the frame was moved to a
+  // page drawn anew while the picture was taken (a redraw run hands the new
+  // page the remembered state, its clock included), so the picture is of
+  // the whole map at its own size.
+  if (!found)
+    throw new Error(
+      `${NOT_ENLARGED}: the page's drawing was replaced while it was scaled (the frame was sent to a page drawn anew), so the picture is of the whole map at its own size`,
+    )
   state.said.push(
     `SVG transform ${k.toFixed(2)}: the page's drawing measured ${measured} times its size`,
   )
@@ -1415,7 +1442,7 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
           },
           clock: () => readClock(window),
           scaleSvg: (scale, origin) => inFrame.evaluate(scaleDrawing, { scale, origin }),
-          restoreSvg: () => inFrame.evaluate(restoreDrawing).then((back) => back.measured),
+          restoreSvg: () => inFrame.evaluate(restoreDrawing),
         }
         return await redrawnCapture(redrawer, crop, state)
       } finally {
@@ -1423,6 +1450,26 @@ export function mapEnlarger(window: Page, names: readonly string[]): Enlarger {
           await withDeadline(session.detach(), ENLARGED_DEADLINE_MS, SILENT).catch(() => undefined)
       }
     },
+  }
+}
+
+/** A call that did not answer by its deadline (`withDeadline`): silence, told apart from a call that failed. */
+export class DeadlinePassed extends Error {
+  override name = 'DeadlinePassed'
+}
+
+/**
+ * `ask()` once, and once more where it failed for any reason but silence: a
+ * redraw navigates the map's frame, and a call made just then fails with the
+ * page's context gone, which says nothing of the drawing. A deadline passed
+ * is not asked again (`DeadlinePassed` comes back as it is).
+ */
+export async function askTwice<T>(ask: () => Promise<T>): Promise<T> {
+  try {
+    return await ask()
+  } catch (error) {
+    if (error instanceof DeadlinePassed) throw error
+    return ask()
   }
 }
 
@@ -1437,7 +1484,7 @@ const SILENT = `the enlarged capture did not answer in ${ENLARGED_DEADLINE_MS / 
 export async function withDeadline<T>(work: Promise<T>, ms: number, said: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(said)), ms)
+    timer = setTimeout(() => reject(new DeadlinePassed(said)), ms)
   })
   try {
     return await Promise.race([work, late])

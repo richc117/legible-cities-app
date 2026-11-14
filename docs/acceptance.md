@@ -1380,8 +1380,11 @@ must exist. The record's row gains "Evidence kept: <names>. Measured:
   problem in the step's record, never a note, since every later picture of
   the map would be of it; and every pair puts the drawing back before A1
   and before B, and is refused where it found the drawing still scaled,
-  or where the map's frame did not answer (that refusal a problem too), so
-  no pair is judged across a scaled and an unscaled shot. None of this
+  or where the map's frame did not answer (that refusal a problem too; a
+  put-back that fails as a redraw navigates the frame is asked again once
+  first), so no pair is judged across a scaled and an unscaled shot. A
+  picture whose page was drawn anew while it was scaled (the put-back finds
+  none of the test's marks) is refused as not enlarged. None of this
   touches the export's capture. Likewise `9-colour-chip` keeps the
   first line's row in **Line colours** before and after the drag, and
   `10-order-rows` keeps **Line order**'s list and the map's **Linear**

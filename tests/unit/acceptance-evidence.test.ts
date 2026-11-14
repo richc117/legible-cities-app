@@ -732,6 +732,10 @@ describe('an enlarged picture drawn again at a higher scale', () => {
       svg?: number | null | 'still scaled'
       back?: number | null
       silentRestore?: boolean
+      /** The put-back finds no mark: the page was drawn anew while scaled. */
+      replaced?: boolean
+      /** How many put-backs fail, as a navigation fails them, before one answers. */
+      restoreFails?: number
       boxes?: (read: number) => Box
       clock?: (read: number) => number | null
       capture?: () => Promise<unknown>
@@ -743,6 +747,7 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     let ratio = 1
     let boxReads = 0
     let clockReads = 0
+    let restoreFailed = 0
     const protocolOf = (who: string): Protocol => ({
       send: async (method, params) => {
         calls.push(`${who} ${method}`)
@@ -775,8 +780,16 @@ describe('an enlarged picture drawn again at a higher scale', () => {
       },
       restoreSvg: async () => {
         calls.push('frame restoreSvg')
-        if (options.silentRestore === true) return new Promise<number>(() => undefined)
-        return options.back === undefined ? 1 : options.back
+        if (options.silentRestore === true)
+          return new Promise<{ found: boolean; measured: number | null }>(() => undefined)
+        if ((options.restoreFails ?? 0) > restoreFailed) {
+          restoreFailed++
+          throw new Error('Execution context was destroyed')
+        }
+        return {
+          found: options.replaced !== true,
+          measured: options.back === undefined ? 1 : options.back,
+        }
       },
     }
     return { redrawer, calls, clips, origins }
@@ -885,6 +898,24 @@ describe('an enlarged picture drawn again at a higher scale', () => {
     )
   })
 
+  it('refuses a picture of a page drawn anew while its drawing was scaled', async () => {
+    const w = windowOf({ frameRatio: 1, replaced: true })
+    await expect(redrawnCapture(w.redrawer, crop, fresh())).rejects.toThrow(
+      `${NOT_ENLARGED}: the page's drawing was replaced while it was scaled (the frame was sent to a page drawn anew), so the picture is of the whole map at its own size`,
+    )
+  })
+
+  it('asks a put-back that failed once again, and says when it failed twice', async () => {
+    const once = windowOf({ frameRatio: 1, restoreFails: 1 })
+    await expect(redrawnCapture(once.redrawer, crop, fresh())).resolves.toBeInstanceOf(Buffer)
+    const twice = windowOf({ frameRatio: 1, restoreFails: 2 })
+    const error = await redrawnCapture(twice.redrawer, crop, fresh()).catch((e: Error) => e)
+    expect(error).toBeInstanceOf(DrawingNotPutBack)
+    expect((error as Error).message).toBe(
+      "the page's drawing could not be confirmed put back (the put-back failed twice: Execution context was destroyed)",
+    )
+  })
+
   it('neither scales nor saves a drawing still scaled from an earlier picture, and puts it back', async () => {
     const w = windowOf({ frameRatio: 1, svg: 'still scaled' })
     await expect(redrawnCapture(w.redrawer, crop, fresh())).rejects.toThrow(
@@ -957,6 +988,28 @@ describe('a pair, and a drawing an enlarged picture left scaled', () => {
     expect((error as Error).message).toBe(FRAME_SILENT)
     expect(FRAME_SILENT).toBe(
       "the map's frame did not answer, so whether its drawing was still scaled is not known; the pair is not judged",
+    )
+    // A navigation is not silence: asked again, and said apart where it fails twice.
+    let asked = 0
+    const navigating = (fails: number): Page =>
+      ({
+        locator: () => ({ count: async () => 1 }),
+        frameLocator: () => ({
+          locator: () => ({
+            evaluate: async () => {
+              asked++
+              if (asked <= fails) throw new Error('Execution context was destroyed')
+              return { found: false, measured: 1 }
+            },
+          }),
+        }),
+      }) as unknown as Page
+    await expect(putBackDrawing(navigating(1), 20)).resolves.toEqual({ found: false, measured: 1 })
+    asked = 0
+    const failed = await putBackDrawing(navigating(2), 20).catch((e: Error) => e)
+    expect(failed).toBeInstanceOf(DrawingNotPutBack)
+    expect((failed as Error).message).toBe(
+      "the put-back in the map's frame failed twice (Execution context was destroyed), so whether its drawing was still scaled is not known; the pair is not judged",
     )
     // No frame at all: nothing of the test's to put back.
     const none = { locator: () => ({ count: async () => 0 }) } as unknown as Page

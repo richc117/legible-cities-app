@@ -329,8 +329,8 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "  const left = await putBack()\n  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)\n",
-    "replace": "  const left = null\n  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)\n",
+    "find": "  const { left, found } = await putBack()\n  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)\n",
+    "replace": "  const { left, found } = { left: null, found: true }\n  if (left !== null) throw new DrawingNotPutBack(`the page's drawing ${left}`)\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "scales the page’s drawing instead, and puts it back",
     "why": "The page's drawing would be left scaled after the picture, and every later step would see a map seven times its size."
@@ -409,18 +409,34 @@
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "  ).catch((error: unknown) => {\n    throw new DrawingNotPutBack(FRAME_SILENT, { cause: error })\n  })",
-    "replace": "  ).catch(() => ({ found: false, measured: 1 }))",
+    "find": "    if (error instanceof DeadlinePassed) throw new DrawingNotPutBack(FRAME_SILENT, { cause: error })\n",
+    "replace": "    if (error instanceof DeadlinePassed) return { found: false, measured: 1 }\n",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "refuses the pair where the map's frame did not answer the put-back",
     "why": "A frame that did not answer would be taken as clean: A1 and A2 could be of a scaled drawing that a restore landing later puts back before B, and the pair would be judged as changed."
   },
   {
     "file": "tests/acceptance/evidence.ts",
-    "find": "      return 'could not be confirmed put back (the map’s frame did not answer)'",
-    "replace": "      return null",
+    "find": "            ? 'could not be confirmed put back (the map’s frame did not answer)'",
+    "replace": "            ? 'could not be confirmed put back (the put-back failed twice)'",
     "test": "tests/unit/acceptance-evidence.test.ts",
     "title": "says a drawing could not be confirmed put back where the frame did not answer",
     "why": "A restore that timed out would pass as a drawing put back, and the next pair would meet a scaled map with nothing in the record."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "  if (!found)\n    throw new Error(\n",
+    "replace": "  if (false)\n    throw new Error(\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "refuses a picture of a page drawn anew while its drawing was scaled",
+    "why": "A redraw landing between the scale and the capture would give the whole map at its own size, kept as an enlarged picture."
+  },
+  {
+    "file": "tests/acceptance/evidence.ts",
+    "find": "    if (error instanceof DeadlinePassed) throw error\n    return ask()\n",
+    "replace": "    throw error\n",
+    "test": "tests/unit/acceptance-evidence.test.ts",
+    "title": "asks a put-back that failed once again",
+    "why": "A put-back made as a redraw navigated the frame would fail once and be taken as silence: a pair refused as a problem, on dozens of pairs, for nothing."
   }
 ]
