@@ -150,5 +150,477 @@
     "test": "tests/unit/release.test.ts",
     "title": "builds a branch that changes what the app reports as its version",
     "why": "A branch that changes only how the version label is built packages no installer, so nothing shows what the change makes the app report."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        type: boolean\n        default: false\n",
+    "replace": "        type: boolean\n        default: true\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "is asked for on a dispatch by a boolean input that is off unless ticked",
+    "why": "Signing asked for by default: every plain dispatch from a branch is a request to sign."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      - 'electron-builder.release.yml'\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "builds a branch that changes the release config or either script",
+    "why": "The release config left out of the path filter: a branch that changes only how the signed build is made packages nothing to show it still builds."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "inputs.sign == true)) }}\n    steps:",
+    "replace": "inputs.sign)) }}\n    steps:",
+    "test": "tests/unit/release.test.ts",
+    "title": "writes one condition wherever a job decides whether it signs",
+    "why": "The copies of the condition drifting apart: a job signs outside the environment and finds no secret, or sits in it, approved, without signing."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ",
+    "replace": "    environment: ${{ startsWith(matrix.target, 'darwin-') && ",
+    "test": "tests/unit/release.test.ts",
+    "title": "signs a Mac target only with the variable on, on a v tag or a dispatch that asked",
+    "why": "The variable left out: every v tag asks for the environment and waits on Apple, and a candidate cannot be cut before there is a certificate."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || '' }}",
+    "replace": "    environment: ${{ startsWith(matrix.target, 'darwin-') && vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-signing' || 'release-signing' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "signs a Mac target only with the variable on, on a v tag or a dispatch that asked",
+    "why": "Every packaging job in the environment: each branch build becomes a deployment that waits for a reviewer, and the Windows job is in reach of the certificate."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-notarize' || '' }}",
+    "replace": "    environment: ${{ vars.MAC_SIGNING == 'on' && ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.sign == true)) && 'release-notarize' || 'release-notarize' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises only in a signing run whose every packaging job succeeded",
+    "why": "The notarising job naming the environment on every run: a branch build has GitHub make it, with no rule and no reviewer, before the maintainer does."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && needs.package.result == 'success' && vars.MAC_SIGNING == 'on'",
+    "replace": " && vars.MAC_SIGNING == 'on'",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises only in a signing run whose every packaging job succeeded",
+    "why": "Notarising without waiting on the packaging jobs' result: a reviewer is asked, and Apple sent an image, for a run that cannot be released whole."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && inputs.sign == true && vars.MAC_SIGNING != 'on' }}",
+    "replace": " && inputs.sign == true }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses a dispatch that asks to sign while the variable is off, and only that",
+    "why": "The refusal no longer reading the variable: every dispatch that asks to sign is refused, the ones that could be signed among them."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "or dispatch without sign\"\n          exit 1\n",
+    "replace": "or dispatch without sign\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the refused dispatch says what to do, and fails",
+    "why": "A dispatch that asks to sign with signing off goes on and builds ad hoc: the person asked for a signed build and is handed one that is not, in silence."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "(needs.notarize.result == 'skipped' && vars.MAC_SIGNING != 'on')",
+    "replace": "needs.notarize.result == 'skipped'",
+    "test": "tests/unit/release.test.ts",
+    "title": "drafts a Release only when notarising succeeded, or was skipped with signing off",
+    "why": "A skipped notarising job let through whatever the reason: a signing run drafts a Release with no Mac installer notarised."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "    needs: [vendor, package, notarize]\n",
+    "replace": "    needs: [vendor, package]\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "drafts a Release only when notarising succeeded, or was skipped with signing off",
+    "why": "The release job not waiting for the notarising jobs: it downloads installers they have not uploaded yet, or drafts before the staple."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      TARGET: ${{ matrix.target }}\n      # 'true' in signing mode",
+    "replace": "      TARGET: ${{ matrix.target }}\n      NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n      # 'true' in signing mode",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The notary's key named in the packaging job's own env: the job that runs npm's code, in the certificate's environment, asks for a secret of the other one. Where a secret of that name exists within its reach, every step is handed it."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n",
+    "replace": "          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The notary's key in the packaging step: it sits in the environment of the one step that runs the packager and its hooks."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}\n",
+    "replace": "          HAS_MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD != '' }}\n          HAS_NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 != '' }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The packaging job asking whether the notary's key exists: a secret a job names at all is a secret its runner is sent."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          BUILDER_ARGS: ${{ matrix.builder }}\n          MAC_CERT_P12_BASE64:",
+    "replace": "          BUILDER_ARGS: ${{ matrix.builder }}\n          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}\n          MAC_CERT_P12_BASE64:",
+    "test": "tests/unit/release.test.ts",
+    "title": "never gives electron-builder a certificate or a notary variable under its own name at a step",
+    "why": "CSC_LINK set at the step: outside signing mode it is empty, which electron-builder reads as a certificate to load, and every ad-hoc Mac build fails."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          name: ${{ env.SIGN == 'true' && 'unnotarised' || 'installer' }}-${{ matrix.target }}\n",
+    "replace": "          name: installer-${{ matrix.target }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "refuses in the packaging job before anything is installed, and hands a signed image on under another name",
+    "why": "A signed, unnotarised image uploaded as the installer: anything that takes installer-<target> can take it for the finished one."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      - name: Download the signed disk image\n",
+    "replace": "      - name: Install\n        run: npm ci\n\n      - name: Download the signed disk image\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises on a runner that checks out three files and runs no npm code",
+    "why": "npm ci in the notarising job: every package the app depends on runs on the runner that holds the notary's key."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            electron-builder.release.yml\n          sparse-checkout-cone-mode: false\n",
+    "replace": "            electron-builder.release.yml\n            package.json\n          sparse-checkout-cone-mode: false\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarises on a runner that checks out three files and runs no npm code",
+    "why": "The notarising job's checkout widened: with a package.json there, an install is one line away, and the job's promise is that there is nothing to install from."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          name: unnotarised-${{ matrix.target }}\n",
+    "replace": "          name: installer-${{ matrix.target }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "takes the signed image from the packaging job and gives the release job the installer",
+    "why": "The notarising job looking for an artefact a signing run does not make: it fails after the reviewer has approved it."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        if: ${{ always() }}\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "uploads the notary's log whatever happened",
+    "why": "The log uploaded only on success: when the notary refuses the image, the one record of why is lost with the runner."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "        timeout-minutes: 90\n",
+    "replace": "        timeout-minutes: 75\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "gives each step longer than its script's own worst case, and the job longer than both",
+    "why": "A step limit inside the script's worst case: the runner stops the script before notarytool gives up, and the submission's id is never printed."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD; do\n            has=\"HAS_$name\"\n            if [ \"${!has:-}\" != true ]; then missing=\"$missing $name\"; fi\n",
+    "replace": "          for name in MAC_CERT_P12_BASE64 MAC_CERT_PASSWORD; do\n            has=\"HAS_$name\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "each refusal names every secret that is empty, and only those",
+    "why": "An empty certificate not refused up front: the run builds everything and fails inside electron-builder, on an error that names no secret."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          for name in NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID; do\n            has=\"HAS_$name\"\n            if [ \"${!has:-}\" != true ]; then missing=\"$missing $name\"; fi\n",
+    "replace": "          for name in NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER_ID; do\n            has=\"HAS_$name\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "each refusal names every secret that is empty, and only those",
+    "why": "An empty notary secret not refused up front: the image is downloaded and the script fails on notarytool's authentication error, which names nothing."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          echo \"signing mode: every secret this job is given has a value, and the identity is team $team\"\n",
+    "replace": "          echo \"ok\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "each refusal passes with every secret its job is given",
+    "why": "The passing refusal no longer saying which team it found: a run's log does not show what identity the build was about to ask for."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"$team\" = TEAMID_TBD ]; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the packaging job refuses the placeholder, and an identity that is not a Team ID",
+    "why": "The placeholder with no sentence of its own: it is refused as a malformed Team ID, which does not say what to do."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if ! LC_ALL=C grep -Eq '^[A-Z0-9]{10}$' <<< \"$team\"; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the packaging job refuses the placeholder, and an identity that is not a Team ID",
+    "why": "Any identity let through: a mistyped team matches no certificate, and the build fails late, in electron-builder, after everything was built."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"$SIGN\" = true ]; then\n            export CSC_LINK=\"$MAC_CERT_P12_BASE64\" CSC_KEY_PASSWORD=\"$MAC_CERT_PASSWORD\"\n",
+    "replace": "          export CSC_LINK=\"$MAC_CERT_P12_BASE64\" CSC_KEY_PASSWORD=\"$MAC_CERT_PASSWORD\"\n          if [ \"$SIGN\" = true ]; then\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "packaging sets no certificate variable at all outside signing mode, not even an empty one",
+    "why": "The certificate's variables exported before the branch: an ad-hoc build hands electron-builder an empty CSC_LINK and fails."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            npx electron-builder $BUILDER_ARGS --config electron-builder.release.yml --publish never\n",
+    "replace": "            npx electron-builder $BUILDER_ARGS --publish never\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "packaging gives electron-builder the certificate and the release config in signing mode",
+    "why": "Signing mode packaged with the base config: the certificate is loaded and the app is signed ad hoc all the same."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            node scripts/verify-mac-signing.mjs developer-id \"$app\" --team-from electron-builder.release.yml\n",
+    "replace": "            node scripts/verify-mac-signing.mjs adhoc \"$app\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the verify step checks the seal, then ad hoc or the Developer ID by the mode",
+    "why": "A signed build checked as an ad-hoc one: the wrong check fails a good build, or with the modes swapped passes an unsigned one on to be notarised."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          echo \"Gatekeeper on this runner: $(spctl --status 2>&1 || true)\"\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the verify step says whether Gatekeeper is on, and fails on neither answer",
+    "why": "The runner's Gatekeeper setting no longer said in every Mac build: whether the hosted runners come with assessments on is first learnt in a signing run."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            sudo spctl --global-enable || sudo spctl --master-enable || true\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising turns a Gatekeeper that is off on, by whichever spelling the runner takes",
+    "why": "A runner that comes with assessments off fails the signing run for its own setting, which says nothing about the image."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " || sudo spctl --master-enable",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising turns a Gatekeeper that is off on, by whichever spelling the runner takes",
+    "why": "One spelling of the option only: a runner whose macOS takes the other is left with assessments off, and fails."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's",
+    "replace": "          if false; then\n            echo \"::error::Gatekeeper's",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising fails, with a sentence, only where Gatekeeper will not come on",
+    "why": "Gatekeeper's status after not read: the checks run on a runner that accepts everything, and their verdicts are the machine's setting, not the image's."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "replace": "          umask 077\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising refuses no image, or two, before the key is written",
+    "why": "The count of images not checked: with none the key is written and the script run on nothing, and with two one is notarised and the other uploaded beside it."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          umask 077\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising hands the key over as a file nobody else can read, and removes it",
+    "why": "The key written under the default mask: any other account on the machine can read it while the step runs."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          unset NOTARY_KEY_P8\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising hands the key over as a file nobody else can read, and removes it",
+    "why": "The key's text left in the script's environment as well as on disk: a second copy, which the script's own children inherit."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          trap 'rm -f \"$key\"' EXIT\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising removes the key when the script fails too, and fails the step",
+    "why": "The trap taken out: the notary's key outlives the step that needs it, readable by every step after."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          node scripts/verify-mac-signing.mjs dmg \"${images[0]}\" --team-from electron-builder.release.yml",
+    "replace": "          node scripts/verify-mac-signing.mjs developer-id \"${images[0]}\" --team-from electron-builder.release.yml",
+    "test": "tests/unit/release.test.ts",
+    "title": "the last check is the dmg mode over the one image, by the config's team",
+    "why": "The image checked as if it were an app: its staple and Gatekeeper's verdict on the file a person downloads are never asked for."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable",
+    "replace": "          if true; then\n            sudo spctl --global-enable",
+    "test": "tests/unit/release.test.ts",
+    "title": "notarising leaves a Gatekeeper that is on alone, and says so twice",
+    "why": "A setting of the machine's changed with sudo on every signing run, needed or not: the one use of root in the job would run where nothing asked for it."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": " && 'release-notarize' || '' }}",
+    "replace": " && 'release-signing' || '' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The notarising job put in the certificate's environment: with one environment for both halves, the notary's key is within the packaging job's reach again, kept from it only by what that job names."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "inputs.sign == true)) && 'release-signing' || '' }}",
+    "replace": "inputs.sign == true)) && 'release-notarize' || '' }}",
+    "test": "tests/unit/release.test.ts",
+    "title": "names ten secrets in all, each half in the one job that joins its environment",
+    "why": "The packaging job put in the notary's environment: the job that runs npm's code is in reach of the notary's key, and finds no certificate there to sign with."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          name: unnotarised-${{ matrix.target }}\n          path: ${{ runner.temp }}/signed\n",
+    "replace": "          name: unnotarised-${{ matrix.target }}\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The download left to land in the workspace: a file named like one of this job's scripts, shipped by a packaging step that has turned hostile, replaces the script and is run with the notary's key."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      # And it is held to exactly what the packaging job uploads, before\n      # anything of it is used and before the notary's key exists: one disk\n      # image in release/, the target's manifest in vendor/, both plain\n      # files, and nothing else. No link, no third file, no other folder. A\n      # name is shown quoted, so that nothing it holds is read by the runner\n      # as a command.\n      - name: Refuse a download that holds anything but the image and its manifest\n        shell: bash\n        run: |\n          export LC_ALL=C\n          root=\"$RUNNER_TEMP/signed\"\n          if [ -L \"$root\" ] || [ ! -d \"$root\" ]; then\n            echo \"::error::there is no folder where the signed image is unpacked, so there is nothing to notarise\"\n            exit 1\n          fi\n          image='^release/[A-Za-z0-9 ._-]+\\.dmg$'\n          images=0\n          manifests=0\n          refused=''\n          while IFS= read -r -d '' entry; do\n            name=\"${entry#\"$root\"/}\"\n            printf -v quoted '%q' \"$name\"\n            if [ -L \"$entry\" ]; then\n              refused=\"$refused $quoted (a link)\"\n            elif [ -d \"$entry\" ]; then\n              case \"$name\" in\n                release|vendor) ;;\n                *) refused=\"$refused $quoted (a folder)\" ;;\n              esac\n            elif [ ! -f \"$entry\" ]; then\n              refused=\"$refused $quoted (neither a file nor a folder)\"\n            elif [ \"$name\" = \"vendor/manifest-$TARGET.json\" ]; then\n              manifests=$((manifests + 1))\n            elif [[ \"$name\" =~ $image ]]; then\n              images=$((images + 1))\n            else\n              refused=\"$refused $quoted\"\n            fi\n          done < <(find \"$root\" -mindepth 1 -print0)\n          if [ -n \"$refused\" ] || [ \"$images\" -ne 1 ] || [ \"$manifests\" -ne 1 ]; then\n            echo \"::error::the download is not what the packaging job uploads, which is one disk image in release/ and vendor/manifest-$TARGET.json: it holds $images disk image(s) and $manifests manifest(s)${refused:+, and besides them:$refused}. Nothing of it was used, and the notary's key was not written\"\n            exit 1\n          fi\n          echo \"the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else\"\n\n      # The refusal above sees only what landed in the download's own\n      # folder. This holds the workspace itself to the checkout, still\n      # before the key exists: at this run's commit, the checked-out files\n      # as that commit has them, and nothing beside them, ignored names\n      # included. A file that reached the workspace by any road, an archive\n      # unpacked outside its folder among them, stops the job here. Git is\n      # told to take nothing from the folder it is judging that would run a\n      # program: no file-system monitor, no external diff, no conversion.\n      - name: Refuse a workspace that is not this run's checkout\n        shell: bash\n        run: |\n          git() { command git -c core.fsmonitor=false \"$@\"; }\n          head=$(git rev-parse --verify HEAD)\n          if [ \"$head\" != \"$GITHUB_SHA\" ]; then\n            echo \"::error::the workspace is at commit ${head:0:12} and this run is for ${GITHUB_SHA:0:12}: it is not this run's checkout. Nothing was run, and the notary's key was not written\"\n            exit 1\n          fi\n          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then\n            git status --porcelain --untracked-files=all --ignored\n            echo \"::error::a checked-out file is not as the commit has it: something wrote over a script or the config this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          stray=$(git status --porcelain --untracked-files=all --ignored)\n          if [ -n \"$stray\" ]; then\n            printf '%s\\n' \"$stray\"\n            echo \"::error::the workspace holds what the checkout did not put there (listed above), beside the files this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          echo \"the workspace is the checkout of ${GITHUB_SHA:0:12}: its files as committed, and nothing beside them\"\n\n      # spctl's verdicts mean nothing on a machine where Gatekeeper's\n      # assessments are off: everything is accepted, signed or not. A runner\n      # image can come that way, so they are turned on here if they are off,\n      # the status is said before and after, and only a runner where they\n      # will not come on fails. macOS has spelt the option two ways.\n      - name: Turn Gatekeeper's assessments on if they are off\n        shell: bash\n        run: |\n          before=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper before: $before\"\n          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable || sudo spctl --master-enable || true\n          fi\n          after=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper after: $after\"\n          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image\"\n            exit 1\n          fi\n\n      # The notary's key exists in this step alone: written to a file nobody\n      # else can read, handed to the script by path, and removed when the\n      # shell exits normally or fails; on a cancelled or timed-out step the\n      # hosted runner is discarded with the file. The limit is past the\n      # script's own worst case, so the script gives up first and says why:\n      # 70 minutes for the submission (notarytool's 60 of waiting and the\n      # upload before it), three tries of the log and three of the staple at\n      # 2 minutes each with a quarter of a minute between tries, and 1 for\n      # the validation, which is 84.\n      - name: Notarise and staple the disk image\n        timeout-minutes: 90\n        shell: bash\n        env:\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}\n          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}\n        run: |\n          shopt -s nullglob\n          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n          key=\"$RUNNER_TEMP/notary-key.p8\"\n          trap 'rm -f \"$key\"' EXIT\n          trap 'exit 1' INT TERM HUP\n          printf '%s\\n' \"$NOTARY_KEY_P8\" > \"$key\"\n          unset NOTARY_KEY_P8\n          NOTARY_KEY_PATH=\"$key\" node scripts/notarize-dmg.mjs \"${images[0]}\" --log \"$RUNNER_TEMP/notary-log/notary-log-$TARGET.json\"\n\n",
+    "replace": "      # The refusal above sees only what landed in the download's own\n      # folder. This holds the workspace itself to the checkout, still\n      # before the key exists: at this run's commit, the checked-out files\n      # as that commit has them, and nothing beside them, ignored names\n      # included. A file that reached the workspace by any road, an archive\n      # unpacked outside its folder among them, stops the job here. Git is\n      # told to take nothing from the folder it is judging that would run a\n      # program: no file-system monitor, no external diff, no conversion.\n      - name: Refuse a workspace that is not this run's checkout\n        shell: bash\n        run: |\n          git() { command git -c core.fsmonitor=false \"$@\"; }\n          head=$(git rev-parse --verify HEAD)\n          if [ \"$head\" != \"$GITHUB_SHA\" ]; then\n            echo \"::error::the workspace is at commit ${head:0:12} and this run is for ${GITHUB_SHA:0:12}: it is not this run's checkout. Nothing was run, and the notary's key was not written\"\n            exit 1\n          fi\n          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then\n            git status --porcelain --untracked-files=all --ignored\n            echo \"::error::a checked-out file is not as the commit has it: something wrote over a script or the config this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          stray=$(git status --porcelain --untracked-files=all --ignored)\n          if [ -n \"$stray\" ]; then\n            printf '%s\\n' \"$stray\"\n            echo \"::error::the workspace holds what the checkout did not put there (listed above), beside the files this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          echo \"the workspace is the checkout of ${GITHUB_SHA:0:12}: its files as committed, and nothing beside them\"\n\n      # spctl's verdicts mean nothing on a machine where Gatekeeper's\n      # assessments are off: everything is accepted, signed or not. A runner\n      # image can come that way, so they are turned on here if they are off,\n      # the status is said before and after, and only a runner where they\n      # will not come on fails. macOS has spelt the option two ways.\n      - name: Turn Gatekeeper's assessments on if they are off\n        shell: bash\n        run: |\n          before=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper before: $before\"\n          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable || sudo spctl --master-enable || true\n          fi\n          after=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper after: $after\"\n          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image\"\n            exit 1\n          fi\n\n      # The notary's key exists in this step alone: written to a file nobody\n      # else can read, handed to the script by path, and removed when the\n      # shell exits normally or fails; on a cancelled or timed-out step the\n      # hosted runner is discarded with the file. The limit is past the\n      # script's own worst case, so the script gives up first and says why:\n      # 70 minutes for the submission (notarytool's 60 of waiting and the\n      # upload before it), three tries of the log and three of the staple at\n      # 2 minutes each with a quarter of a minute between tries, and 1 for\n      # the validation, which is 84.\n      - name: Notarise and staple the disk image\n        timeout-minutes: 90\n        shell: bash\n        env:\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}\n          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}\n        run: |\n          shopt -s nullglob\n          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n          key=\"$RUNNER_TEMP/notary-key.p8\"\n          trap 'rm -f \"$key\"' EXIT\n          trap 'exit 1' INT TERM HUP\n          printf '%s\\n' \"$NOTARY_KEY_P8\" > \"$key\"\n          unset NOTARY_KEY_P8\n          NOTARY_KEY_PATH=\"$key\" node scripts/notarize-dmg.mjs \"${images[0]}\" --log \"$RUNNER_TEMP/notary-log/notary-log-$TARGET.json\"\n\n      # And it is held to exactly what the packaging job uploads, before\n      # anything of it is used and before the notary's key exists: one disk\n      # image in release/, the target's manifest in vendor/, both plain\n      # files, and nothing else. No link, no third file, no other folder. A\n      # name is shown quoted, so that nothing it holds is read by the runner\n      # as a command.\n      - name: Refuse a download that holds anything but the image and its manifest\n        shell: bash\n        run: |\n          export LC_ALL=C\n          root=\"$RUNNER_TEMP/signed\"\n          if [ -L \"$root\" ] || [ ! -d \"$root\" ]; then\n            echo \"::error::there is no folder where the signed image is unpacked, so there is nothing to notarise\"\n            exit 1\n          fi\n          image='^release/[A-Za-z0-9 ._-]+\\.dmg$'\n          images=0\n          manifests=0\n          refused=''\n          while IFS= read -r -d '' entry; do\n            name=\"${entry#\"$root\"/}\"\n            printf -v quoted '%q' \"$name\"\n            if [ -L \"$entry\" ]; then\n              refused=\"$refused $quoted (a link)\"\n            elif [ -d \"$entry\" ]; then\n              case \"$name\" in\n                release|vendor) ;;\n                *) refused=\"$refused $quoted (a folder)\" ;;\n              esac\n            elif [ ! -f \"$entry\" ]; then\n              refused=\"$refused $quoted (neither a file nor a folder)\"\n            elif [ \"$name\" = \"vendor/manifest-$TARGET.json\" ]; then\n              manifests=$((manifests + 1))\n            elif [[ \"$name\" =~ $image ]]; then\n              images=$((images + 1))\n            else\n              refused=\"$refused $quoted\"\n            fi\n          done < <(find \"$root\" -mindepth 1 -print0)\n          if [ -n \"$refused\" ] || [ \"$images\" -ne 1 ] || [ \"$manifests\" -ne 1 ]; then\n            echo \"::error::the download is not what the packaging job uploads, which is one disk image in release/ and vendor/manifest-$TARGET.json: it holds $images disk image(s) and $manifests manifest(s)${refused:+, and besides them:$refused}. Nothing of it was used, and the notary's key was not written\"\n            exit 1\n          fi\n          echo \"the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else\"\n\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The refusal moved to after the step that writes the key: whatever the download holds has already been handed to the script, with the key, by the time it is looked at."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "replace": "          images=(release/*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The notarising step looking in the workspace for its image: it finds none, or one that was never held to what the packaging job uploads."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            ${{ runner.temp }}/signed/release/*.dmg\n",
+    "replace": "            release/*.dmg\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "takes the signed image from the packaging job and gives the release job the installer",
+    "why": "The installer uploaded from the workspace, where the image no longer is: the job notarises one file and uploads nothing, or another."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            else\n              refused=\"$refused $quoted\"\n            fi\n          done",
+    "replace": "            fi\n          done",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused when it holds a file this job would run or trust",
+    "why": "A file that is neither the image nor the manifest let through: a planted script or config rides along with the download, one move away from being used."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            if [ -L \"$entry\" ]; then\n              refused=\"$refused $quoted (a link)\"\n            elif [ -d \"$entry\" ]; then",
+    "replace": "            if [ -d \"$entry\" ]; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "Links followed: an image that is a link is taken for a file, and what is notarised, or read, is whatever it points at on the runner."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "                *) refused=\"$refused $quoted (a folder)\" ;;",
+    "replace": "                *) ;;",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "A folder the packaging job does not make let through: the download is no longer held to exactly its two."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "[ \"$images\" -ne 1 ] || ",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "The count of images not held to one: with two, one is notarised and the other uploaded beside it as the installer."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            elif [ \"$name\" = \"vendor/manifest-$TARGET.json\" ]; then",
+    "replace": "            elif [[ \"$name\" == vendor/manifest-*.json ]]; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for any third file, folder or link, and for a count that is not one",
+    "why": "Any target's manifest taken for this one's: the installer goes up with a manifest that describes another build."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          image='^release/[A-Za-z0-9 ._-]+\\.dmg$'\n",
+    "replace": "          image='\\.dmg$'\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for a name that is not a plain one, shown so that it is not read as a command",
+    "why": "Any name ending in .dmg taken for the image: one with a line break in it reaches the steps that print it, where its second line is a workflow command."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "            printf -v quoted '%q' \"$name\"\n",
+    "replace": "            quoted=\"$name\"\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download is refused for a name that is not a plain one, shown so that it is not read as a command",
+    "why": "A refused name printed as it is: one with a line break in it puts a line of its own choosing into the job's log, where the runner reads commands."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          echo \"the download holds one disk image and vendor/manifest-$TARGET.json, and nothing else\"\n",
+    "replace": "",
+    "test": "tests/unit/release.test.ts",
+    "title": "the download passes when it is one image and the manifest of its target",
+    "why": "A download that passed says nothing: the log of a signing run does not show that it was held to anything."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "      # The refusal above sees only what landed in the download's own\n      # folder. This holds the workspace itself to the checkout, still\n      # before the key exists: at this run's commit, the checked-out files\n      # as that commit has them, and nothing beside them, ignored names\n      # included. A file that reached the workspace by any road, an archive\n      # unpacked outside its folder among them, stops the job here. Git is\n      # told to take nothing from the folder it is judging that would run a\n      # program: no file-system monitor, no external diff, no conversion.\n      - name: Refuse a workspace that is not this run's checkout\n        shell: bash\n        run: |\n          git() { command git -c core.fsmonitor=false \"$@\"; }\n          head=$(git rev-parse --verify HEAD)\n          if [ \"$head\" != \"$GITHUB_SHA\" ]; then\n            echo \"::error::the workspace is at commit ${head:0:12} and this run is for ${GITHUB_SHA:0:12}: it is not this run's checkout. Nothing was run, and the notary's key was not written\"\n            exit 1\n          fi\n          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then\n            git status --porcelain --untracked-files=all --ignored\n            echo \"::error::a checked-out file is not as the commit has it: something wrote over a script or the config this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          stray=$(git status --porcelain --untracked-files=all --ignored)\n          if [ -n \"$stray\" ]; then\n            printf '%s\\n' \"$stray\"\n            echo \"::error::the workspace holds what the checkout did not put there (listed above), beside the files this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          echo \"the workspace is the checkout of ${GITHUB_SHA:0:12}: its files as committed, and nothing beside them\"\n\n      # spctl's verdicts mean nothing on a machine where Gatekeeper's\n      # assessments are off: everything is accepted, signed or not. A runner\n      # image can come that way, so they are turned on here if they are off,\n      # the status is said before and after, and only a runner where they\n      # will not come on fails. macOS has spelt the option two ways.\n      - name: Turn Gatekeeper's assessments on if they are off\n        shell: bash\n        run: |\n          before=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper before: $before\"\n          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable || sudo spctl --master-enable || true\n          fi\n          after=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper after: $after\"\n          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image\"\n            exit 1\n          fi\n\n      # The notary's key exists in this step alone: written to a file nobody\n      # else can read, handed to the script by path, and removed when the\n      # shell exits normally or fails; on a cancelled or timed-out step the\n      # hosted runner is discarded with the file. The limit is past the\n      # script's own worst case, so the script gives up first and says why:\n      # 70 minutes for the submission (notarytool's 60 of waiting and the\n      # upload before it), three tries of the log and three of the staple at\n      # 2 minutes each with a quarter of a minute between tries, and 1 for\n      # the validation, which is 84.\n      - name: Notarise and staple the disk image\n        timeout-minutes: 90\n        shell: bash\n        env:\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}\n          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}\n        run: |\n          shopt -s nullglob\n          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n          key=\"$RUNNER_TEMP/notary-key.p8\"\n          trap 'rm -f \"$key\"' EXIT\n          trap 'exit 1' INT TERM HUP\n          printf '%s\\n' \"$NOTARY_KEY_P8\" > \"$key\"\n          unset NOTARY_KEY_P8\n          NOTARY_KEY_PATH=\"$key\" node scripts/notarize-dmg.mjs \"${images[0]}\" --log \"$RUNNER_TEMP/notary-log/notary-log-$TARGET.json\"\n\n",
+    "replace": "      # spctl's verdicts mean nothing on a machine where Gatekeeper's\n      # assessments are off: everything is accepted, signed or not. A runner\n      # image can come that way, so they are turned on here if they are off,\n      # the status is said before and after, and only a runner where they\n      # will not come on fails. macOS has spelt the option two ways.\n      - name: Turn Gatekeeper's assessments on if they are off\n        shell: bash\n        run: |\n          before=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper before: $before\"\n          if [[ \"$before\" != *'assessments enabled'* ]]; then\n            sudo spctl --global-enable || sudo spctl --master-enable || true\n          fi\n          after=$(spctl --status 2>&1 || true)\n          echo \"Gatekeeper after: $after\"\n          if [[ \"$after\" != *'assessments enabled'* ]]; then\n            echo \"::error::Gatekeeper's assessments are off on this runner and could not be turned on, so spctl's verdicts here would prove nothing about the image\"\n            exit 1\n          fi\n\n      # The notary's key exists in this step alone: written to a file nobody\n      # else can read, handed to the script by path, and removed when the\n      # shell exits normally or fails; on a cancelled or timed-out step the\n      # hosted runner is discarded with the file. The limit is past the\n      # script's own worst case, so the script gives up first and says why:\n      # 70 minutes for the submission (notarytool's 60 of waiting and the\n      # upload before it), three tries of the log and three of the staple at\n      # 2 minutes each with a quarter of a minute between tries, and 1 for\n      # the validation, which is 84.\n      - name: Notarise and staple the disk image\n        timeout-minutes: 90\n        shell: bash\n        env:\n          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}\n          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}\n          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}\n        run: |\n          shopt -s nullglob\n          images=(\"$RUNNER_TEMP/signed/release/\"*.dmg)\n          if [ \"${#images[@]}\" -ne 1 ]; then\n            echo \"::error::expected one disk image in the download's release folder, found ${#images[@]}\"\n            exit 1\n          fi\n          umask 077\n          key=\"$RUNNER_TEMP/notary-key.p8\"\n          trap 'rm -f \"$key\"' EXIT\n          trap 'exit 1' INT TERM HUP\n          printf '%s\\n' \"$NOTARY_KEY_P8\" > \"$key\"\n          unset NOTARY_KEY_P8\n          NOTARY_KEY_PATH=\"$key\" node scripts/notarize-dmg.mjs \"${images[0]}\" --log \"$RUNNER_TEMP/notary-log/notary-log-$TARGET.json\"\n\n      # The refusal above sees only what landed in the download's own\n      # folder. This holds the workspace itself to the checkout, still\n      # before the key exists: at this run's commit, the checked-out files\n      # as that commit has them, and nothing beside them, ignored names\n      # included. A file that reached the workspace by any road, an archive\n      # unpacked outside its folder among them, stops the job here. Git is\n      # told to take nothing from the folder it is judging that would run a\n      # program: no file-system monitor, no external diff, no conversion.\n      - name: Refuse a workspace that is not this run's checkout\n        shell: bash\n        run: |\n          git() { command git -c core.fsmonitor=false \"$@\"; }\n          head=$(git rev-parse --verify HEAD)\n          if [ \"$head\" != \"$GITHUB_SHA\" ]; then\n            echo \"::error::the workspace is at commit ${head:0:12} and this run is for ${GITHUB_SHA:0:12}: it is not this run's checkout. Nothing was run, and the notary's key was not written\"\n            exit 1\n          fi\n          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then\n            git status --porcelain --untracked-files=all --ignored\n            echo \"::error::a checked-out file is not as the commit has it: something wrote over a script or the config this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          stray=$(git status --porcelain --untracked-files=all --ignored)\n          if [ -n \"$stray\" ]; then\n            printf '%s\\n' \"$stray\"\n            echo \"::error::the workspace holds what the checkout did not put there (listed above), beside the files this job is about to use with the notary's key. Nothing was run, and the key was not written\"\n            exit 1\n          fi\n          echo \"the workspace is the checkout of ${GITHUB_SHA:0:12}: its files as committed, and nothing beside them\"\n\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "unpacks the signed image beside nothing, and refuses it before the key exists unless it is that and its manifest",
+    "why": "The check of the workspace moved to after the step that writes the key: a file planted over a script has been run with the key by the time the workspace is looked at."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          git() { command git -c core.fsmonitor=false \"$@\"; }\n",
+    "replace": "          git() { command git \"$@\"; }\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "judging the workspace runs no program the workspace names",
+    "why": "Git left to read a file-system monitor from the folder it is judging: a planted .git/config runs a program of its choosing in the step before the key is written."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if ! git diff --quiet --no-ext-diff --no-textconv HEAD --; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the workspace is refused when a checked-out file is not as the commit has it",
+    "why": "A checked-out file written over in place not named as that: the very script about to be run with the key is reported, at best, as one stray among others."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ -n \"$stray\" ]; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the workspace is refused when a file has been planted in it, ignored names included",
+    "why": "The workspace not held to the checkout: a file that reached it from outside the download's folder sits beside the scripts, and nothing says so."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          stray=$(git status --porcelain --untracked-files=all --ignored)",
+    "replace": "          stray=$(git status --porcelain --untracked-files=all)",
+    "test": "tests/unit/release.test.ts",
+    "title": "the workspace is refused when a file has been planted in it, ignored names included",
+    "why": "Ignored names passed over: a file planted under a name the repository ignores, node_modules among them, is in the workspace unseen."
+  },
+  {
+    "file": ".github/workflows/build.yml",
+    "find": "          if [ \"$head\" != \"$GITHUB_SHA\" ]; then",
+    "replace": "          if false; then",
+    "test": "tests/unit/release.test.ts",
+    "title": "the workspace is refused when it is at another commit than the run's",
+    "why": "The workspace's commit not held to the run's: files compared against whatever HEAD has been made to name pass as the checkout."
   }
 ]

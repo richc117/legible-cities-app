@@ -21,16 +21,20 @@
 # missing; without it, a build that carries no component at all is let
 # through and says it is not an installer.
 #
-# Unsigned (ADR-037, ADR-054). On macOS the app
-# is signed ad hoc, which needs no identity: the packager changes the bundle
-# after Electron's own signature was made, and an Apple-silicon Mac refuses
-# a bundle whose signature is broken where it runs one signed ad hoc once a
-# person allows it. A Developer ID replaces the `identity` line; nothing
-# about the layout changes. `forceCodeSigning` does nothing while the
-# identity is `-`: electron-builder 26 builds the ad-hoc identity before the
-# only branch that reads the flag. It is kept for when a real identity
-# replaces `-`, where a missing certificate then fails the build. What
-# checks the ad-hoc signature is build.yml's `codesign --verify` step.
+# Signing. This file signs the Mac app ad hoc (`identity: '-'`), which needs
+# no certificate: the packager changes the bundle after Electron's own
+# signature was made, and an Apple-silicon Mac refuses a bundle whose
+# signature is broken where it runs one signed ad hoc once a person allows
+# it. Every branch and pull-request build is this one, and so are `npm run
+# dist` and a release tag pushed while signing is switched off. The
+# Developer ID build is electron-builder.release.yml, which extends this
+# file, replaces the identity and signs the disk image, and changes nothing
+# about the layout (ADR-062). The Windows installer is not
+# signed (ADR-054). `forceCodeSigning` does nothing while the identity is
+# `-`: electron-builder 26 builds the ad-hoc identity before the only branch
+# that reads the flag. Under the release config's identity it is what fails
+# the build when no certificate in the keychain matches. What checks either
+# signature is build.yml's verify step (scripts/verify-mac-signing.mjs).
 appId: com.richardcaballero.legiblecities
 productName: Legible Cities
 directories:
@@ -63,6 +67,15 @@ mac:
   icon: assets/brand/macos/icon.icns
   identity: '-'
   forceCodeSigning: true
+  # The runtime's compiled bytecode is sealed as a resource of the bundle,
+  # never signed file by file. @electron/osx-sign runs `codesign` once for
+  # every file its detector calls binary, and bytecode is most of what it
+  # flags in the vendored trees; under a Developer ID each of those calls
+  # also asks Apple's timestamp server. A `.pyc` is data, not code: the
+  # bundle's own signature still covers it, so one changed after signing
+  # breaks the seal as before (ADR-062). A regular expression, tried
+  # against each file's path.
+  signIgnore: '\.pyc$'
   extraResources:
     - from: vendor/python/darwin-${arch}/python
       to: python

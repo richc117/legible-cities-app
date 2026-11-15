@@ -406,5 +406,13 @@
     "test": "tests/unit/acceptance-record.test.ts",
     "title": "lists both specs under Playwright, with no app to run them on",
     "why": "The acceptance spec imports a module that uses import.meta: Playwright cannot load it, and steps 3 to 20 never start (the first rehearsal's failure)."
+  },
+  {
+    "file": "tests/acceptance/pure.mjs",
+    "find": "  if (unnotarised.length > 0) {",
+    "replace": "  if (false) {",
+    "test": "tests/unit/acceptance-record.test.ts",
+    "title": "refuses a signing run whose notarize job did not succeed, naming it, and takes a skipped one",
+    "why": "The notarize jobs not read: a signing run whose notarising failed or was never approved uploaded no Mac installer, is rehearsed anyway, and fails later with a sentence that says the artefact may have expired."
   }
 ]

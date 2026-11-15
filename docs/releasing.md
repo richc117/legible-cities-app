@@ -91,6 +91,28 @@ in Copy diagnostics, as the notes' banner says; an installer built from
 `main` or a branch reports `X.Y.Z+<sha7>`, the commit it was built from
 (issue 558).
 
+**The Mac build is signed only while `MAC_SIGNING` is on** (ADR-062). While
+that repository variable is off or unset, a tag's Mac installers are ad
+hoc, as they always were: the run asks nobody for anything, its two
+`notarize` jobs are skipped, and the candidate can be cut before there is
+a certificate at all. With it on, which `docs/repository-settings.md` says
+what must exist before, the tag's run is a signing run, and it **waits for
+the maintainer's approval twice**, on the run's page ("Review
+deployments"):
+
+1. for the two Mac packaging jobs, which enter `release-signing` to sign.
+   The Windows job does not wait;
+2. once all three packaging jobs are green, for the two `notarize` jobs,
+   which enter `release-notarize`, send each signed image to Apple's
+   notary and staple it.
+
+So a candidate's Mac jobs sit waiting until each is approved, and nothing
+is drafted until both approvals are given and the notary has answered,
+which is usually a matter of minutes; the job gives it an hour. A run
+nobody approves drafts nothing. To cut a candidate without Apple, turn the
+variable off first: the tag then builds ad hoc, and the gate records it as
+that ("The gate").
+
 **The final release** is a tag `vX.Y.Z`, cut the same way once a candidate
 has passed the gate. Its pull request also dates the section, `## [X.Y.Z] -
 YYYY-MM-DD` with the day it is published, gives it a `### Security`, which
@@ -128,6 +150,24 @@ landed, the record says that part is not automated.
   It exits with a sentence and a failure on a rehearsal's record, or on
   anything that is not an acceptance record, and nothing runs it for you:
   a record goes on only once it has passed.
+  The run's step 2 tells which Mac build it was given by the disk image,
+  which only a signing run signs, and records it either way as "not
+  automated", since a runner's download is never quarantined and macOS
+  asks nothing:
+  - **a signed image** is held to the Developer ID checks
+    (`scripts/verify-mac-signing.mjs`), and the step fails on any of them.
+    Passing, the record says "the disk image is signed with the Developer
+    ID, notarised and stapled, and Gatekeeper's assessment accepts the
+    image, the app inside it and the copy as Notarized Developer ID";
+  - **an ad-hoc image** is recorded as before, "its ad-hoc signature
+    verifies", and for a build made since ADR-062 the record adds "The disk
+    image has no signature of its own, so this tag was built ad hoc, with
+    signing off (the MAC_SIGNING variable)." The run also warns if signing
+    is on for the repository by then, in case that candidate was meant to
+    be signed. A rehearsal's record says instead "The disk image has no
+    signature of its own: build run <id> was not a signing run.", and
+    never warns. The step fails if the app inside an unsigned image is not
+    itself signed ad hoc: that is neither build this repository makes.
 - **The scripted VoiceOver run** on the macOS runner (issue 691), its
   cells worded as [`docs/accessibility.md`](accessibility.md#results-by-screen)'s
   reader legend says. What it hears is not a pass. If it is not recorded
@@ -159,7 +199,9 @@ rehearsal; no attestation)" and never yes. Its record and summaries say
 REHEARSAL, its artefacts are named `rehearsal-<name>`, and it never
 counts as the candidate's run of any part of the gate: the `candidate`
 check made before a record goes on the gate issue, above, refuses its
-record.
+record. A rehearsal is held to the Developer ID checks only when its build
+run was a dispatch with `sign`, both approvals given; a push build's
+rehearsal is ad hoc, and step 2 records it so.
 
 **After the release**, the stranger's timed run,
 [`docs/acceptance-stranger.md`](acceptance-stranger.md), is feedback on
@@ -187,7 +229,14 @@ change is fixed on `main`, and the fix goes out as the next candidate.
 
 1. The tag's `build` run is green in every job, `release (draft)`, `attest
    (provenance)` and `verify (attestations)` among them. Nothing is
-   published before the attestations are made and verified.
+   published before the attestations are made and verified. Read which Mac
+   build the draft holds from the two `notarize` jobs: green, each after
+   its approval, and the Mac installers are signed with the Developer ID,
+   notarised and stapled; skipped, which is not a failure, and
+   `MAC_SIGNING` was off, so they are ad hoc. A signing run got here only
+   through the maintainer's two approvals, for packaging and then for
+   notarising ("Cutting a candidate"); a final is signed only if the
+   variable was on when its tag was pushed.
 2. Read the draft's notes. A candidate's open with its banner. "What
    changed", "Known issues" and, for a final, "Security" say what
    `CHANGELOG.md` says; the components table names the pins. A draft's

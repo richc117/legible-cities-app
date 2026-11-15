@@ -215,7 +215,8 @@ export function checkDispatch({ tag = '', run = '' }) {
  * Whether a run, read with `gh run view <id> --json
  * workflowDatabaseId,event,status,conclusion,headSha,headBranch,jobs`, is a
  * run of the workflow whose id is `buildWorkflowId` (build.yml, by id, not
- * by its display name) and whose package jobs all succeeded. Returns its
+ * by its display name) whose package jobs all succeeded and whose notarize
+ * jobs, if it has any, each succeeded or were skipped. Returns its
  * commit and the ref it built, as GitHub names a ref (`refs/tags/<tag>` for
  * a tag push, else `refs/heads/<branch>`), or throws the sentence that says
  * what is wrong with it. A run dispatched on a ref named like a tag is
@@ -240,6 +241,20 @@ export function checkBuildRun(info, buildWorkflowId) {
   if (failed.length > 0) {
     throw new Error(
       `the run's package jobs did not all succeed: ${failed.map((j) => `${j.name} is ${j.conclusion || 'not finished'}`).join(', ')}`,
+    )
+  }
+  // In signing mode (ADR-062) the Mac installers are uploaded by the
+  // notarize jobs, not the package jobs: one that failed, or was never
+  // approved, uploaded nothing. Outside it they are skipped.
+  const unnotarised = (info.jobs ?? []).filter(
+    (job) =>
+      String(job.name).startsWith('notarize (') &&
+      job.conclusion !== 'success' &&
+      job.conclusion !== 'skipped',
+  )
+  if (unnotarised.length > 0) {
+    throw new Error(
+      `the run's notarize jobs did not all succeed or skip, so its Mac installers were never uploaded: ${unnotarised.map((j) => `${j.name} is ${j.conclusion || 'not finished'}`).join(', ')}`,
     )
   }
   const branch = String(info.headBranch ?? '')
