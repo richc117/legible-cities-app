@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Cut and publish a release candidate (docs/releasing.md), and only a
+# candidate: every tag this makes is v<version>-rc.<N>, and there is no way
+# to ask for a final.
+#
+#   bin/candidate tag <N> [--dry-run] [--flaky-accepted N,N]
+#   bin/candidate publish <N> [--dry-run]
+#
+# tag      checks main is green, the notes would draft, dispatches the vendor
+#          workflow and waits, then tags origin/main (lightweight) and pushes
+#          that tag alone.
+# publish  acts only when every job of the tag's build run succeeded and the
+#          Release is a draft; publishes it as a pre-release, never Latest,
+#          then dispatches the acceptance run.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: bin/candidate tag <N> [--dry-run] [--flaky-accepted N,N]
+       bin/candidate publish <N> [--dry-run]
+  tag      tag v<version>-rc.<N> on origin/main, after the checks a machine can make
+  publish  publish that tag's draft Release as a pre-release and dispatch acceptance
+  --dry-run  print each step; change nothing
+  --flaky-accepted N,N  issues labelled flaky that name an acceptance spec and
+                        that the maintainer has accepted in writing on the issue
+USAGE
+}
+die() { echo "candidate: $*" >&2; exit 1; }
+
+cmd='' n='' dry=0 accepted=''
+while [ $# -gt 0 ]; do
+  arg=$1; shift
+  case "$arg" in
+    -h|--help) usage; exit 0 ;;
+    --dry-run) dry=1 ;;
+    --flaky-accepted)
+      [ $# -ge 1 ] || { usage; exit 2; }
+      accepted=$1; shift
+      case "$accepted" in ''|*[!0-9,]*) usage; exit 2 ;; esac ;;
+    -*) echo "candidate: unknown option: $arg" >&2; usage; exit 2 ;;
+    *) if [ -z "$cmd" ]; then cmd=$arg; elif [ -z "$n" ]; then n=$arg; else usage; exit 2; fi ;;
+  esac
+done
+case "$cmd" in tag|publish) ;; *) usage; exit 2 ;; esac
+case "$n" in ''|*[!0-9]*|0*) usage; exit 2 ;; esac
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+quote() { printf '%q ' "$@"; }
+# Run a command, killing it when it outlives <seconds>; 124 says it did.
+deadline_run() {
+  local secs=$1 rc=0; shift
+  "$@" & wpid=$!
+  # The watcher's output goes nowhere, or an orphaned sleep would hold open
+  # the pipe of whoever captures this tool's output.
+  ( sleep "$secs"; kill "$wpid" 2>/dev/null ) >/dev/null 2>&1 & wwatcher=$!
+  wait "$wpid" || rc=$?
+  # The watched command has exited and is reaped; stop the watcher at once,
+  # before its subshell can kill a process number that has been reused.
+  pkill -P "$wwatcher" 2>/dev/null || true
+  kill "$wwatcher" 2>/dev/null || true
+  wait "$wwatcher" 2>/dev/null || true
+  wpid='' wwatcher=''
+  [ "$rc" -ne 143 ] || rc=124
+  return "$rc"
+}
+# One trap for every way out, an interrupt included: the watched command
+# and the watcher do not outlive this script, and the scratch files go.
+wpid='' wwatcher='' tmp=''
+cleanup() {
+  [ -z "$wwatcher" ] || { pkill -P "$wwatcher" 2>/dev/null || true; kill "$wwatcher" 2>/dev/null || true; }
+  [ -z "$wpid" ] || kill "$wpid" 2>/dev/null || true
+  [ -z "$tmp" ] || rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+act() {
+  if [ "$dry" = 1 ]; then printf 'would run: %s\n' "$(quote "$@")"
+  else printf 'running: %s\n' "$(quote "$@")"; "$@"; fi
+}
+
+version=$(jq -r .version package.json)
+tag="v$version-rc.$n"
+# The one gate on what this can make: a release candidate, nothing else.
+[[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] \
+  || die "refusing $tag: only v<X.Y.Z>-rc.<N> can be cut here, never a final."
+echo "candidate: $tag"
+
+if [ "$cmd" = tag ]; then
+  git fetch origin main
+  git rev-parse -q --verify "refs/tags/$tag" >/dev/null && die "tag $tag already exists locally."
+  [ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ] || die "tag $tag already exists on origin."
+  sha=$(git rev-parse origin/main)
+  [ "$(git rev-parse HEAD)" = "$sha" ] || die "this checkout is not at origin/main ($sha); pull first, the notes are checked on this tree."
+  ci=$(gh run list --workflow ci.yml --branch main --limit 1 --json conclusion,headSha --jq '.[0] | "\(.conclusion) \(.headSha)"')
+  [ "$ci" = "success $sha" ] || die "main is not green on $sha (latest ci run: $ci)."
+  flaky=$(gh issue list --label flaky --state open --limit 100 --json number,title,body)
+  blocking=$(printf '%s' "$flaky" | jq -r --arg acc ",$accepted," \
+    '.[] | . as $i
+         | select((($i.title // "") + " " + ($i.body // "")) | contains("tests/acceptance/"))
+         | select(($acc | contains("," + ($i.number | tostring) + ",")) | not)
+         | "  #\($i.number) \($i.title)"')
+  if [ -n "$blocking" ]; then
+    printf '%s\n' "$blocking" >&2
+    die "open flaky issues name an acceptance spec (above); fix them, or accept each in writing on the issue and pass --flaky-accepted <N,...>."
+  fi
+  echo "candidate: open flaky issues: $(printf '%s' "$flaky" | jq -r '[.[] | "#\(.number)"] | join(" ") | if . == "" then "none" else . end')"
+  tmp=$(mktemp -d)
+  node scripts/release.mjs notes "$tag" "$tmp/notes.md" || die "the release notes for $tag would be refused; fix the changelog first."
+  echo "candidate: main is green on $sha and the notes for $tag draft"
+  started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  act gh workflow run vendor.yml --ref main
+  if [ "$dry" = 0 ]; then
+    # The run this dispatch made: on main's commit, created after the
+    # dispatch, not merely the newest one.
+    run=0
+    for _ in $(seq 1 40); do
+      run=$(gh run list --workflow vendor.yml --branch main --event workflow_dispatch --limit 10 --json databaseId,headSha,createdAt \
+        --jq "[.[] | select(.headSha == \"$sha\" and .createdAt >= \"$started\")] | .[0].databaseId // 0")
+      [ "$run" != 0 ] && break
+      sleep "${CANDIDATE_POLL:-3}"
+    done
+    [ "$run" != 0 ] || die "the vendor run for this dispatch did not appear (it is matched on $sha; main may have moved since the check)."
+    rc=0
+    deadline_run "${CANDIDATE_DEADLINE:-7200}" gh run watch "$run" --exit-status || rc=$?
+    [ "$rc" -ne 124 ] || die "the vendor run $run did not finish before the deadline (CANDIDATE_DEADLINE)."
+    [ "$rc" -eq 0 ] || die "the vendor run $run failed."
+    [ "$(gh run view "$run" --json conclusion --jq .conclusion)" = success ] || die "the vendor run $run did not conclude in success."
+  fi
+  act git -c tag.gpgSign=false tag "$tag" "$sha"
+  act git push --no-follow-tags origin "refs/tags/$tag"
+else
+  run=$(gh run list --workflow build.yml --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+  [ -n "$run" ] || die "no build run for $tag."
+  built=$(gh run view "$run" --json status,conclusion,headSha,jobs)
+  [ "$(printf '%s' "$built" | jq -r .status)" = completed ] || die "the build run $run for $tag has not completed."
+  [ "$(printf '%s' "$built" | jq -r .conclusion)" = success ] || die "the build run $run for $tag did not conclude in success."
+  [ "$(printf '%s' "$built" | jq '.jobs | length')" -gt 0 ] || die "the build run $run for $tag lists no jobs."
+  tagged=$(git rev-parse "$tag^{commit}") || die "tag $tag is not here; git fetch origin tag $tag first."
+  [ "$(printf '%s' "$built" | jq -r .headSha)" = "$tagged" ] || die "the build run $run was not made on $tag's commit $tagged."
+  bad=$(printf '%s' "$built" | jq -r '.jobs[] | select(.conclusion != "success") | "  \(.name): \(.conclusion)"')
+  if [ -n "$bad" ]; then echo "$bad" >&2; die "jobs of build run $run did not succeed."; fi
+  local_sha=$(git rev-parse "refs/tags/$tag") || die "tag $tag is not here; git fetch origin tag $tag first."
+  remote_sha=$(git ls-remote origin "refs/tags/$tag" | cut -f1)
+  [ "$remote_sha" = "$local_sha" ] || die "tag $tag on origin (${remote_sha:-absent}) is not the local tag ($local_sha)."
+  [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ] || die "the Release for $tag is not a draft."
+  echo "candidate: every job of build run $run succeeded; the Release is a draft"
+  act gh release edit "$tag" --draft=false --prerelease --latest=false
+  act gh workflow run acceptance.yml --ref main -f "tag=$tag"
+fi
+echo "candidate: done"

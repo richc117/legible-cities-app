@@ -1,0 +1,241 @@
+#!/usr/bin/env bash
+# Land one pull request: the steps of /lanes 7 to 9, as a tool that cannot
+# forget one. Run it from the main checkout, on main.
+#
+#   bin/land <pr> [--dry-run] [--allow-dependabot]
+#
+# It refuses a draft, an author who is neither the signed-in account nor
+# Dependabot (and Dependabot unless --allow-dependabot), a head branch with
+# no worktree beside this checkout (lc-*), a worktree whose HEAD is not the
+# pull request's head, and a dirty worktree. Then it rebases onto the
+# fetched origin/main if the branch is behind, rebuilds, pushes with a
+# lease, waits for the required checks, merges (only the head it checked)
+# with a message it has scanned (no closing keyword), confirms the merge and
+# the head, and cleans up. Never `gh pr update-branch`, never --admin, --auto or --delete-branch.
+# --dry-run reads what it needs and prints each step it would take.
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'USAGE'
+usage: bin/land <pr> [--dry-run] [--allow-dependabot]
+  Merge pull request <pr> the way /lanes step 9 says, from the main checkout.
+  --dry-run           print each step with the values read; change nothing
+  --allow-dependabot  accept a Dependabot pull request (no worktree needed)
+USAGE
+}
+die() { echo "land: $*" >&2; exit 1; }
+
+pr='' dry=0 dependabot_ok=0
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help) usage; exit 0 ;;
+    --dry-run) dry=1 ;;
+    --allow-dependabot) dependabot_ok=1 ;;
+    -*) echo "land: unknown option: $arg" >&2; usage; exit 2 ;;
+    *) [ -z "$pr" ] || { usage; exit 2; }; pr=$arg ;;
+  esac
+done
+case "$pr" in ''|*[!0-9]*) usage; exit 2 ;; esac
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+cd "$root"
+
+# Print a command; unless this is a dry run, run it.
+quote() { printf '%q ' "$@"; }
+act() {
+  if [ "$dry" = 1 ]; then printf 'would run: %s\n' "$(quote "$@")"
+  else printf 'running: %s\n' "$(quote "$@")"; "$@"; fi
+}
+# The same, from inside a directory (a push is made from the worktree).
+act_in() {
+  local dir=$1; shift
+  if [ "$dry" = 1 ]; then printf 'would run in %s: %s\n' "$dir" "$(quote "$@")"
+  else printf 'running in %s: %s\n' "$dir" "$(quote "$@")"; ( cd "$dir" && "$@" ); fi
+}
+
+# Run a command, killing it when it outlives <seconds>; 124 says it did.
+deadline_run() {
+  local secs=$1 rc=0; shift
+  "$@" & wpid=$!
+  # The watcher's output goes nowhere, or an orphaned sleep would hold open
+  # the pipe of whoever captures this tool's output.
+  ( sleep "$secs"; kill "$wpid" 2>/dev/null ) >/dev/null 2>&1 & wwatcher=$!
+  wait "$wpid" || rc=$?
+  # The watched command has exited and is reaped; stop the watcher at once,
+  # before its subshell can kill a process number that has been reused.
+  pkill -P "$wwatcher" 2>/dev/null || true
+  kill "$wwatcher" 2>/dev/null || true
+  wait "$wwatcher" 2>/dev/null || true
+  wpid='' wwatcher=''
+  [ "$rc" -ne 143 ] || rc=124
+  return "$rc"
+}
+# One trap for every way out, an interrupt included: the watched command
+# and the watcher do not outlive this script, and the scratch files go.
+wpid='' wwatcher='' tmp=''
+cleanup() {
+  [ -z "$wwatcher" ] || { pkill -P "$wwatcher" 2>/dev/null || true; kill "$wwatcher" 2>/dev/null || true; }
+  [ -z "$wpid" ] || kill "$wpid" 2>/dev/null || true
+  [ -z "$tmp" ] || rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+[ "$(git branch --show-current)" = main ] || die "run this from the main checkout, on main."
+[ "$(git rev-parse --absolute-git-dir)" = "$(git rev-parse --path-format=absolute --git-common-dir)" ] \
+  || die "this is a linked worktree; run it from the main checkout."
+
+dirty_main=$(git status --porcelain)
+if [ -n "$dirty_main" ]; then
+  printf '%s\n' "$dirty_main" >&2
+  die "the main checkout has uncommitted changes (above); commit or stash them first."
+fi
+
+me=$(gh api user --jq .login)
+[ -n "$me" ] || die "could not read the signed-in account."
+info=$(gh pr view "$pr" --json isDraft,author,headRefName,headRefOid,title,body,state,mergeStateStatus)
+field() { printf '%s' "$info" | jq -r "$1"; }
+state=$(field .state); draft=$(field .isDraft); author=$(field .author.login)
+branch=$(field .headRefName); head=$(field .headRefOid); title=$(field .title)
+[ "$state" = OPEN ] || die "pull request $pr is $state, not open."
+[ "$draft" = false ] || die "pull request $pr is a draft."
+is_dependabot=0
+if [ "$author" = app/dependabot ]; then
+  [ "$dependabot_ok" = 1 ] || die "pull request $pr is Dependabot's; pass --allow-dependabot to land it."
+  is_dependabot=1
+elif [ "$author" != "$me" ]; then
+  die "pull request $pr is by $author, neither $me nor app/dependabot."
+fi
+[ -n "$title" ] || die "pull request $pr has no title."
+echo "land: #$pr \"$title\" by $author, branch $branch, head $head"
+
+# The worktree of the head branch, beside this checkout.
+wt=''
+while IFS= read -r line; do
+  case "$line" in
+    "worktree "*) cur=${line#worktree } ;;
+    "branch refs/heads/$branch")
+      case "$(basename "$cur")" in lc-*) [ "$(dirname "$cur")" = "$(dirname "$root")" ] && wt=$cur ;; esac ;;
+  esac
+done < <(git worktree list --porcelain)
+if [ -z "$wt" ] && [ "$is_dependabot" = 0 ]; then
+  die "branch $branch has no worktree at ../lc-*."
+fi
+
+if [ -n "$wt" ]; then
+  wt_head=$(git -C "$wt" rev-parse HEAD)
+  [ "$wt_head" = "$head" ] || die "worktree $wt is at $wt_head, not the pull request's head $head."
+  [ -z "$(git -C "$wt" status --porcelain)" ] || die "worktree $wt is dirty."
+  echo "land: worktree $wt at $wt_head"
+  act git fetch origin main
+  if ! git -C "$wt" merge-base --is-ancestor origin/main HEAD; then
+    base=$(git -C "$wt" merge-base HEAD origin/main)
+    both=$(comm -12 <(git -C "$wt" diff --name-only "$base" HEAD | sort) \
+                    <(git -C "$wt" diff --name-only "$base" origin/main | sort))
+    echo "land: behind origin/main; files both sides touched:"
+    if [ -n "$both" ]; then printf '%s\n' "$both" | sed 's/^/  /'; else echo "  none"; fi
+    act git -C "$wt" rebase origin/main || die "the rebase stopped; resolve it in $wt."
+    act git -C "$wt" diff --check origin/main HEAD || die "git diff --check found conflict markers or whitespace errors."
+    act_in "$wt" npm run build || die "the build failed after the rebase."
+    act_in "$wt" git push --force-with-lease="refs/heads/$branch:$head" origin "$branch" \
+      || die "the push with a lease was refused."
+    if [ "$dry" = 0 ]; then
+      wt_head=$(git -C "$wt" rev-parse HEAD)
+      # Checks are watched on the head GitHub reports, not on a guess at
+      # how long it takes to learn of the push.
+      until_=$((SECONDS + ${LAND_HEAD_DEADLINE:-300}))
+      while [ "$(gh pr view "$pr" --json headRefOid --jq .headRefOid)" != "$wt_head" ]; do
+        [ "$SECONDS" -lt "$until_" ] || die "GitHub still does not report $wt_head as the head of pull request $pr."
+        sleep "${LAND_POLL:-3}"
+      done
+      # The required checks are created a moment after the push; watching
+      # before they exist reports none and would refuse a good pull request.
+      while [ "$(gh pr checks "$pr" --required --json name --jq length)" != 7 ]; do
+        [ "$SECONDS" -lt "$until_" ] || die "the 7 required checks of pull request $pr have not appeared."
+        sleep "${LAND_POLL:-3}"
+      done
+    else
+      echo "would wait until GitHub reports the pushed head as the head of pull request $pr, and its 7 required checks"
+    fi
+  else
+    echo "land: up to date with origin/main"
+  fi
+elif [ "$(field .mergeStateStatus)" = BEHIND ]; then
+  die "Dependabot's pull request $pr is behind main; ask it to rebase."
+fi
+
+if [ "$dry" = 1 ]; then
+  printf 'would run: %s\n' "$(quote gh pr checks "$pr" --required --watch --fail-fast)"
+else
+  printf 'running: %s\n' "$(quote gh pr checks "$pr" --required --watch --fail-fast)"
+  rc=0
+  deadline_run "${LAND_CHECKS_DEADLINE:-7200}" gh pr checks "$pr" --required --watch --fail-fast || rc=$?
+  [ "$rc" -ne 124 ] || die "the required checks did not finish before the deadline (LAND_CHECKS_DEADLINE)."
+  [ "$rc" -eq 0 ] || die "a required check did not pass."
+  checks=$(gh pr checks "$pr" --required --json name,state)
+  total=$(printf '%s' "$checks" | jq 'length')
+  passed=$(printf '%s' "$checks" | jq '[.[] | select(.state == "SUCCESS")] | length')
+  # Seven required checks (ADR-030's board); a different count is a change
+  # of the protection that this tool should be told about, not guessed at.
+  [ "$total" = 7 ] && [ "$passed" = 7 ] || die "$passed of $total required checks passed; want all 7."
+fi
+
+# The squash message: the title, and the body without a closing keyword.
+tmp=$(mktemp -d)
+body="$tmp/body.txt"; scan="$tmp/scan.txt"
+# NUL and CR out before anything reads it, so what is scanned is what is sent.
+field .body | tr -d '\r\000' > "$tmp/raw.txt"
+# The pattern bin/preflight refuses a message for, so a body that passes
+# this filter cannot be refused for a keyword: a line that names an issue
+# the way it would close one is dropped, whole.
+closing='(^|[^A-Za-z0-9_/])(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]*:?[[:space:]]*(#[0-9]+|[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+|https?://[^[:space:]]+/issues/[0-9]+)'
+# grep exits 1 when nothing is selected, which is no fault; 2 is one.
+grc=0; grep -aviE "$closing" "$tmp/raw.txt" > "$body" || grc=$?
+[ "$grc" -le 1 ] || die "grep failed filtering the pull request body."
+grc=0; removed=$(grep -aciE "$closing" "$tmp/raw.txt") || grc=$?
+[ "$grc" -le 1 ] || die "grep failed counting the closing keywords."
+if ! test -s "$body" || ! grep -q '[^[:space:]]' "$body"; then die "the pull request body is empty, so is the merge message."; fi
+subject="$title (#$pr)"
+{ printf '%s\n' "$subject"; cat "$body"; } > "$scan"
+"$root/bin/preflight" --message-file "$scan" || die "preflight refused the merge message."
+echo "land: merge message: $(wc -l < "$body" | tr -d ' ') lines, $removed closing-keyword line(s) removed, scanned"
+
+expected=${wt_head:-$head}
+if [ "$dry" = 0 ]; then
+  now=$(gh pr view "$pr" --json headRefOid --jq .headRefOid)
+  [ "$now" = "$expected" ] || die "the head of pull request $pr moved to $now after it was checked ($expected); not merging."
+fi
+act gh pr merge "$pr" --squash --subject "$subject" --body-file "$body" --match-head-commit "$expected"
+
+if [ "$dry" = 1 ]; then
+  echo "would check: gh pr view $pr --json state,headRefOid says MERGED and ${wt_head:-the head}"
+else
+  after=$(gh pr view "$pr" --json state,headRefOid)
+  [ "$(printf '%s' "$after" | jq -r .state)" = MERGED ] || die "pull request $pr is not MERGED; stopping before any cleanup."
+  if [ -n "$wt" ]; then
+    [ "$(printf '%s' "$after" | jq -r .headRefOid)" = "$wt_head" ] \
+      || die "the merged head is not the worktree's HEAD $wt_head; stopping before any cleanup."
+  fi
+fi
+
+act git pull --ff-only
+if [ -n "$wt" ]; then
+  if [ "$dry" = 1 ]; then
+    printf 'would run: %s\n' "$(quote git worktree remove "$wt")"
+  elif [ "$(git -C "$wt" rev-parse HEAD)" != "$wt_head" ]; then
+    die "the worktree's HEAD moved since it was checked ($wt_head); leaving $wt and its branch alone."
+  elif ! git worktree remove "$wt"; then
+    echo "land: what is left in $wt:" >&2
+    git -C "$wt" status --short >&2 || true
+    die "git refused to remove $wt (never --force); look before anything else."
+  fi
+  act git worktree prune
+  # A squash merge leaves the branch unmerged, so -d refuses; delete the ref
+  # only if it still names the commit that was merged.
+  act git update-ref -d "refs/heads/$branch" "$wt_head"
+fi
+if [ "$is_dependabot" = 0 ]; then
+  act git push --force-with-lease="refs/heads/$branch:${wt_head:-$head}" origin --delete "$branch"
+fi
+echo "land: done"

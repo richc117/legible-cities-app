@@ -104,6 +104,11 @@ jobs:
       - name: The assistant's allow and refuse tables
         run: bin/test-hooks
 
+      # The landing tools decide what is merged and tagged, so they are
+      # tested like the hooks: against stand-in gh, git, npm and lockf.
+      - name: The landing tools' refusal tables
+        run: bin/test-landing
+
       # The commits this pull request adds, read for three things: the never
       # list in their messages, a keyword that closes an issue, and where
       # every symbolic link they add points.

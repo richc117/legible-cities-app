@@ -9,6 +9,7 @@
       "Bash(git ls-files*)",
       "Bash(git branch --show-current)",
       "Bash(bin/preflight*)",
+      "Bash(bin/test-landing)",
       "Bash(gitleaks dir*)",
       "Bash(gitleaks git*)",
       "Bash(pre-commit run)",

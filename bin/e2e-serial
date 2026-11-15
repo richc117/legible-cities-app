@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Run the end-to-end suite under one machine-wide lock, so two worktrees
+# never launch the app at once (a second launch quits, and breaks the first
+# run). macOS desktop session only: Electron cannot open a window from a
+# background session.
+#
+#   bin/e2e-serial [playwright args...]
+set -euo pipefail
+
+case "${1:-}" in
+  -h|--help)
+    cat >&2 <<'USAGE'
+usage: bin/e2e-serial [playwright args...]
+  npm run test:e2e under /tmp/legible-cities-e2e.lock (lockf); needs a macOS desktop session
+USAGE
+    exit 0 ;;
+esac
+
+[ "$(uname -s)" = Darwin ] || { echo "e2e-serial: this is a macOS desktop tool; run the suite where you can open a window." >&2; exit 1; }
+session=$(launchctl managername)
+[ "$session" = Aqua ] || { echo "e2e-serial: this shell is in a $session session, not the desktop (Aqua); Electron cannot open a window here." >&2; exit 1; }
+
+lock=/tmp/legible-cities-e2e.lock
+if ! lockf -k -s -t 0 "$lock" true; then
+  echo "e2e-serial: another run holds $lock; waiting for it."
+fi
+exec lockf -k "$lock" npm run test:e2e -- "$@"
