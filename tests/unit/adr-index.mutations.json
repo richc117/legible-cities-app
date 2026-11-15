@@ -1,10 +1,10 @@
 [
   {
     "file": "docs/adr/README.md",
-    "find": "| 060 | Reserved: issue 556's record, written in its own pull request | - | - |\n",
-    "replace": "| 060 | Reserved: issue 556's record, written in its own pull request | - | - |\n| 060 | Reserved: issue 556's record, written in its own pull request | - | - |\n",
+    "find": "| 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its \"no undo stack\" |\n",
+    "replace": "| 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its \"no undo stack\" |\n| 061 | [Put back is one step, held in the screen](061-put-back-is-one-step-held-in-the-screen.md) | Accepted | Amends A5.5-12, its \"no undo stack\" |\n",
     "test": "tests/unit/adr-index.test.ts",
     "title": "has one row for each number",
-    "why": "Two rows for one number, as two pull requests that each reserve it would leave: the index says two things and the test read only the last."
+    "why": "Two rows for one number, as two pull requests that each reserve or take it would leave: the index says two things and the test read only the last."
   }
 ]
