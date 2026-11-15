@@ -32,8 +32,9 @@
 // This is an attestation, not a lock. The author fields are whatever git was
 // told, and GitHub links a commit to an account by its address, so the
 // exemptions can be claimed by a commit that says so. The maintainer reads
-// every pull request; the check is there so that nobody certifies by
-// accident, or fails to by accident (ADR-058).
+// every contributor's pull request (ADR-064 leaves that so); the check is
+// there so that nobody certifies by accident, or fails to by accident
+// (ADR-058).
 //
 // The rule is a function the unit test calls (tests/unit/dco-check.test.ts);
 // nothing here talks to GitHub.

@@ -40,7 +40,8 @@
 # v<version> or v<version>-rc.<N> for package.json's version, that has been
 # moved or deleted since the push that started the run, or whose commit is
 # not on main, before anything is drafted; it drafts, and never publishes:
-# the maintainer reads the draft and publishes it by hand. An -rc.N tag's
+# the maintainer reads the draft and publishes it by hand (a candidate's may be
+# the coordinating session's, ADR-064). An -rc.N tag's
 # draft is a prerelease. A rerun updates the draft in place and keeps its
 # notes; a published Release for the tag fails the job and is not touched. The
 # assets are the three installers renamed for their machine, one archive of
