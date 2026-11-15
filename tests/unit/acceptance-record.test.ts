@@ -526,6 +526,28 @@ describe('checkBuildRun', () => {
     )
   })
 
+  it('refuses a signing run whose notarize job did not succeed, naming it, and takes a skipped one', () => {
+    // Mutation: the notarize jobs not read, so a signing run whose Mac
+    // installer was never uploaded is rehearsed and fails later as expired.
+    const notarize = (conclusion: string) => [
+      ...good.jobs,
+      { name: 'notarize (darwin-arm64)', conclusion },
+    ]
+    for (const conclusion of ['failure', 'cancelled', '']) {
+      expect(
+        () => checkBuildRun({ ...good, jobs: notarize(conclusion) }, 1234),
+        conclusion,
+      ).toThrow(
+        `the run's notarize jobs did not all succeed or skip, so its Mac installers were never uploaded: notarize (darwin-arm64) is ${conclusion || 'not finished'}`,
+      )
+    }
+    for (const conclusion of ['success', 'skipped']) {
+      expect(checkBuildRun({ ...good, jobs: notarize(conclusion) }, 1234).commit, conclusion).toBe(
+        sha,
+      )
+    }
+  })
+
   it('refuses a run with no package jobs, and one that names no commit', () => {
     expect(() => checkBuildRun({ ...good, jobs: [good.jobs[0]] }, 1234)).toThrow(/no package jobs/)
     expect(() => checkBuildRun({ ...good, headSha: '' }, 1234)).toThrow(/no commit/)
