@@ -42,20 +42,25 @@ describe("acceptance.yml's step 2 on macOS", () => {
     workflow.indexOf('- name: Step 2, install on Windows'),
   )
 
-  it("takes the release config from the tag, beside the tag's other files", () => {
-    const sparse = /sparse-checkout: \|\n((?: {12}\S[^\n]*\n)+)/.exec(workflow)
-    expect(sparse).not.toBeNull()
-    expect(
-      (sparse as RegExpExecArray)[1]
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean),
-    ).toEqual([
-      'vendor/pins.json',
-      'package.json',
-      'electron-builder.yml',
-      'electron-builder.release.yml',
-    ])
+  it("takes the release config from the tag, or a rehearsal's commit, beside its other files", () => {
+    // Mutation: the config left out of the rehearsal's checkout, so a
+    // rehearsal of a signed build run is recorded as an ad-hoc build.
+    const sparse = [...workflow.matchAll(/sparse-checkout: \|\n((?: {12}\S[^\n]*\n)+)/g)]
+    // The tag's checkout, and the rehearsal's at the build run's commit.
+    expect(sparse).toHaveLength(2)
+    for (const [, files] of sparse) {
+      expect(
+        files!
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean),
+      ).toEqual([
+        'vendor/pins.json',
+        'package.json',
+        'electron-builder.yml',
+        'electron-builder.release.yml',
+      ])
+    }
   })
 
   it('never asks the stapler about the copied app, and names no team of its own', () => {

@@ -70,5 +70,13 @@
     "test": "tests/unit/acceptance-signing.test.ts",
     "title": "fails an unsigned image whose app is not signed ad hoc, whatever the tag",
     "why": "The ad-hoc mark taken on its own: an app signed with a certificate, whose executable's name puts a Signature=adhoc line into the display, is recorded as an ad-hoc build."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "          ref: ${{ env.REHEARSAL_SHA }}\n          path: at-tag\n          persist-credentials: false\n          sparse-checkout: |\n            vendor/pins.json\n            package.json\n            electron-builder.yml\n            electron-builder.release.yml\n",
+    "replace": "          ref: ${{ env.REHEARSAL_SHA }}\n          path: at-tag\n          persist-credentials: false\n          sparse-checkout: |\n            vendor/pins.json\n            package.json\n            electron-builder.yml\n",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "takes the release config from the tag, or a rehearsal's commit, beside its other files",
+    "why": "The release config left out of the rehearsal's checkout: a rehearsal of a signed build run finds no config, holds the image to no Developer ID check, and records it as an ad-hoc build."
   }
 ]
