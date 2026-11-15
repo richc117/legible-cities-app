@@ -29,7 +29,7 @@
     "@eslint/js": "10.0.1",
     "@guidepup/guidepup": "0.40.0",
     "@playwright/test": "1.65.0",
-    "@rogieking/figui3": "11.11.5",
+    "@rogieking/figui3": "11.3.2",
     "@swc/core": "1.16.22",
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
