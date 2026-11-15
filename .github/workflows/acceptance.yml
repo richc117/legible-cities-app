@@ -431,12 +431,19 @@ jobs:
             # it always was. One that has the config and an unsigned image
             # was built with signing off, and the record says so; if signing
             # is on now, the run says that too, since somebody may have
-            # expected this one signed.
+            # expected this one signed. A rehearsal's build run signs only
+            # when it was dispatched with sign, whatever the variable says,
+            # so an unsigned one is said to be no signing run, and never
+            # warned about.
             built=''
             if [ -f at-tag/electron-builder.release.yml ]; then
-              built=' The disk image has no signature of its own, so this tag was built ad hoc, with signing off (the MAC_SIGNING variable).'
-              if [ "${MAC_SIGNING:-}" = on ]; then
-                echo "::warning::signing is on for this repository now, and this tag's Mac image is not signed: it was built ad hoc, while the MAC_SIGNING variable was off"
+              if [ "${KIND:-}" = rehearsal ]; then
+                built=" The disk image has no signature of its own: build run $BUILD_RUN was not a signing run."
+              else
+                built=' The disk image has no signature of its own, so this tag was built ad hoc, with signing off (the MAC_SIGNING variable).'
+                if [ "${MAC_SIGNING:-}" = on ]; then
+                  echo "::warning::signing is on for this repository now, and this tag's Mac image is not signed: it was built ad hoc, while the MAC_SIGNING variable was off"
+                fi
               fi
             fi
             node "$cli" prior "$PRIOR" step 2 'not automated' "Not a person's install: the dmg was mounted read-only and Legible Cities.app copied to a temporary folder, not dragged to Applications; the download has $quarantine, so Gatekeeper never asked and the way past its warning was not exercised; $signature.$built The app is opened by the spec in step 3."

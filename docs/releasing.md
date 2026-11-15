@@ -150,9 +150,10 @@ landed, the record says that part is not automated.
   It exits with a sentence and a failure on a rehearsal's record, or on
   anything that is not an acceptance record, and nothing runs it for you:
   a record goes on only once it has passed.
-  Its step 2 tells which Mac build it was given by the disk image, which
-  only a signing run signs, and records it either way as "not automated",
-  since a runner's download is never quarantined and macOS asks nothing:
+  The run's step 2 tells which Mac build it was given by the disk image,
+  which only a signing run signs, and records it either way as "not
+  automated", since a runner's download is never quarantined and macOS
+  asks nothing:
   - **a signed image** is held to the Developer ID checks
     (`scripts/verify-mac-signing.mjs`), and the step fails on any of them.
     Passing, the record says "the disk image is signed with the Developer
@@ -163,7 +164,9 @@ landed, the record says that part is not automated.
     image has no signature of its own, so this tag was built ad hoc, with
     signing off (the MAC_SIGNING variable)." The run also warns if signing
     is on for the repository by then, in case that candidate was meant to
-    be signed. The step fails if the app inside an unsigned image is not
+    be signed. A rehearsal's record says instead "The disk image has no
+    signature of its own: build run <id> was not a signing run.", and
+    never warns. The step fails if the app inside an unsigned image is not
     itself signed ad hoc: that is neither build this repository makes.
 - **The scripted VoiceOver run** on the macOS runner (issue 691), its
   cells worded as [`docs/accessibility.md`](accessibility.md#results-by-screen)'s
@@ -196,7 +199,9 @@ rehearsal; no attestation)" and never yes. Its record and summaries say
 REHEARSAL, its artefacts are named `rehearsal-<name>`, and it never
 counts as the candidate's run of any part of the gate: the `candidate`
 check made before a record goes on the gate issue, above, refuses its
-record.
+record. A rehearsal is held to the Developer ID checks only when its build
+run was a dispatch with `sign`, both approvals given; a push build's
+rehearsal is ad hoc, and step 2 records it so.
 
 **After the release**, the stranger's timed run,
 [`docs/acceptance-stranger.md`](acceptance-stranger.md), is feedback on

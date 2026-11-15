@@ -41,8 +41,8 @@
   },
   {
     "file": ".github/workflows/acceptance.yml",
-    "find": "              if [ \"${MAC_SIGNING:-}\" = on ]; then",
-    "replace": "              if false; then",
+    "find": "                if [ \"${MAC_SIGNING:-}\" = on ]; then",
+    "replace": "                if false; then",
     "test": "tests/unit/acceptance-signing.test.ts",
     "title": "warns when signing is on now and the tag was built without it",
     "why": "An unsigned tag accepted in silence while signing is on: a release meant to be signed and built with the variable off is recorded as ad hoc, and nobody is told to look."
@@ -78,5 +78,13 @@
     "test": "tests/unit/acceptance-signing.test.ts",
     "title": "takes the release config from the tag, or a rehearsal's commit, beside its other files",
     "why": "The release config left out of the rehearsal's checkout: a rehearsal of a signed build run finds no config, holds the image to no Developer ID check, and records it as an ad-hoc build."
+  },
+  {
+    "file": ".github/workflows/acceptance.yml",
+    "find": "              if [ \"${KIND:-}\" = rehearsal ]; then",
+    "replace": "              if false; then",
+    "test": "tests/unit/acceptance-signing.test.ts",
+    "title": "records a rehearsal's unsigned image as no signing run, and never warns",
+    "why": "A rehearsal taken for a tag: a push build's rehearsal is recorded as a tag built with the variable off, and once signing is on the run warns that a candidate meant to be signed was not."
   }
 ]

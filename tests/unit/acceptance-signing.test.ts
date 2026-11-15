@@ -86,6 +86,9 @@ describe("acceptance.yml's step 2 on macOS", () => {
       "the disk image is signed with the Developer ID, notarised and stapled, and Gatekeeper's assessment accepts the image, the app inside it and the copy as Notarized Developer ID",
       'its ad-hoc signature verifies',
       'The disk image has no signature of its own, so this tag was built ad hoc, with signing off (the MAC_SIGNING variable).',
+      // A rehearsal's, around the build run's id.
+      'The disk image has no signature of its own: build run',
+      'was not a signing run.',
     ]) {
       expect(step, quoted).toContain(quoted)
       expect(releasing, quoted).toContain(quoted)
@@ -374,6 +377,32 @@ describe("acceptance.yml's step 2 on macOS", () => {
       // And never for a tag that could not have been signed.
       const older = run({ config: false, env: { MAC_SIGNING: 'on' } })
       expect(older.result.stdout).not.toContain('::warning::')
+    })
+
+    it("records a rehearsal's unsigned image as no signing run, and never warns", () => {
+      // Mutation: the rehearsal taken for a tag, so a push build's rehearsal
+      // is said to be a tag built with the variable off, and once signing is
+      // on the run warns that a candidate meant to be signed was not.
+      const { result, records, checks } = run({
+        config: true,
+        env: {
+          STUB_IMAGE_UNSIGNED: '1',
+          MAC_SIGNING: 'on',
+          KIND: 'rehearsal',
+          BUILD_RUN: '4242',
+        },
+      })
+      expect(result.status).toBe(0)
+      expect(checks).toEqual([])
+      expect(result.stdout).not.toContain('::warning::')
+      expect(records).toHaveLength(1)
+      expect(records[0].slice(4)).toEqual([
+        'step',
+        '2',
+        'not automated',
+        `${AD_HOC} The disk image has no signature of its own: build run 4242 was not a signing run. The app is opened by the spec in step 3.`,
+      ])
+      expect(records[0][7]).not.toContain('this tag')
     })
 
     it('records a tag from before the release config as ad hoc, in the words it always used', () => {
