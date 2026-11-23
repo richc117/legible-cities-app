@@ -254,5 +254,29 @@
     "test": "tests/unit/window-lifecycle.test.ts",
     "title": "index.ts makes every window after the first through windowMaker",
     "why": "The Dock icon makes its window directly: it opens during a quit."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "const openAppWindow = windowMaker({\n  quitting: () => quit.quitting,\n",
+    "replace": "const openAppWindow = windowMaker({\n  quitting: () => false,\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "index.ts makes every window after the first through windowMaker",
+    "why": "The gate not handed to windowMaker: it never sees a quit and every window is made during one."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "    if (deps.quitting()) {\n      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n",
+    "replace": "      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n    if (deps.quitting()) {\n      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "makes a window and says nothing when no quit is under way",
+    "why": "The refusal line said every time: the trail claims a window was refused when one was made."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        if (!openAppWindow('a menu command')) return\n",
+    "replace": "        mainWindow = createWindow()\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "index.ts makes every window after the first through windowMaker",
+    "why": "The menu command makes its window directly: it opens during a quit."
   }
 ]

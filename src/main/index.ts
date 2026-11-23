@@ -587,7 +587,8 @@ const menuCommands = new MenuCommands({
  * src/main/menu.ts). Set before the first window, so no window ever shows
  * the default. The page's commands go to the app's window; with none open,
  * which only macOS allows, the command opens one, as the Dock icon does, and
- * is held until the new page listens.
+ * is held until the new page listens; during a quit none is made and the
+ * command is dropped (issue 753).
  */
 function setAppMenu(help: HelpIpcDeps): void {
   if (process.platform === 'darwin') {
@@ -627,7 +628,8 @@ if (!hasLock) {
 } else {
   app.on('second-instance', () => {
     // A second launch focuses the existing window (FR-035); on macOS, where
-    // closing every window leaves the app running, it opens one again.
+    // closing every window leaves the app running, it opens one again; during
+    // a quit none is made and the request is dropped (issue 753).
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()

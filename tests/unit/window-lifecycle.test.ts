@@ -146,6 +146,9 @@ describe('windowMaker', () => {
       .join('\n')
     // The declaration, the one inside windowMaker's make, the first window's.
     expect(code.match(/createWindow\(\)/g)).toHaveLength(3)
+    expect(code).toMatch(
+      /const openAppWindow = windowMaker\(\{\s*quitting: \(\) => quit\.quitting,/,
+    )
     expect(code).toContain("openAppWindow('a second launch')")
     expect(code).toContain("openAppWindow('the Dock icon')")
     expect(code).toContain("openAppWindow('a menu command')")
