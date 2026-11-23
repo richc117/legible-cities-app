@@ -225,14 +225,6 @@
   },
   {
     "file": "src/main/quit-trail.ts",
-    "find": "      if (fd !== null) {\n        deps.write(fd, text, dropped)\n        return\n      }\n",
-    "replace": "",
-    "test": "tests/unit/quit-trail.test.ts",
-    "title": "writes a line at once when the file is open: stamped, tagged, one write for the lines it is handed",
-    "why": "A line held though the file is open: nothing writes it, and the lines after the files close are lost again."
-  },
-  {
-    "file": "src/main/quit-trail.ts",
     "find": "      if (held.length < LATE_HELD) held.push(text)\n",
     "replace": "      held.push(text)\n",
     "test": "tests/unit/quit-trail.test.ts",
@@ -260,7 +252,7 @@
     "find": "    } catch {\n      opening = false\n      failed = true\n      held = []\n    }\n",
     "replace": "    } catch (error) {\n      throw error\n    }\n",
     "test": "tests/unit/quit-trail.test.ts",
-    "title": "never throws into the quit: not when the open throws, the write throws, or the clock does",
+    "title": "never throws into the quit: not when the open throws, the write throws, the clock does, or the turn’s end cannot be asked for",
     "why": "An open that throws is thrown on: into will-quit, before the files are closed and the app's last quit is asked for."
   },
   {
@@ -342,5 +334,93 @@
     "test": "tests/unit/quit-trail.test.ts",
     "title": "says the window closed, every window gone, and Electron’s own quit",
     "why": "Electron's own quit event not said: a process held after it cannot be told from one that never reached it."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      atTurnsEnd()\n",
+    "replace": "      pump()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes what one turn said as one write when the turn ends, in the order said: stamped and tagged",
+    "why": "Each line written as it is said: the lines of a quit's last turn are one write and then four that wait for an answer the loop may never turn to hear, and the last of them - Electron's own quit - is the one that is lost."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      atTurnsEnd()\n",
+    "replace": "      pump()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "returns at once and waits for nothing: a write that never answers holds up no caller and grows no list",
+    "why": "The write asked for inside the call that says the line, not as the turn ends."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (due) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes what one turn said as one write when the turn ends, in the order said: stamped and tagged",
+    "why": "The end of the turn asked for at every line: one look for each line a turn said, where one serves them all."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (fd === null || writing || held.length === 0) return\n",
+    "replace": "    if (fd === null || held.length === 0) return\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "asks for one write at a time, and keeps the order when the file answers late and out of turn",
+    "why": "A second write asked for beside one in flight: two requests on one descriptor go to two threads and land in either order, and lines stamped the same millisecond then say a quit did what it did not."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      if (answered) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "asks for one write at a time, and keeps the order when the file answers late and out of turn",
+    "why": "An answer heard twice taken for the next write's: the writer thinks nothing is in flight while something is, and asks for a second write beside it."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      deps.write(fd, text, next)\n",
+    "replace": "      deps.write(fd, text, (error) => {\n        if (error === null) next()\n      })\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "goes on to the lines after a write that failed, and after one that threw",
+    "why": "The next write asked for only when the last succeeded: one failed write, and nothing the quit says afterwards is written."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    } catch {\n      next()\n    }\n",
+    "replace": "    } catch {\n      // Lost.\n    }\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "goes on to the lines after a write that failed, and after one that threw",
+    "why": "A write that throws leaves the writer waiting for an answer that will not come: nothing after it is written."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (fd === null || writing || held.length === 0) return\n",
+    "replace": "    if (fd === null || held.length === 0) return\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "returns at once and waits for nothing: a write that never answers holds up no caller and grows no list",
+    "why": "The same, where the write never answers: every later line is its own request, and they pile up in flight as the process tries to leave."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "        fd = opened\n        pump()\n",
+    "replace": "        fd = opened\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "opens the file for a line said before anyone asked, holds the line, and writes it when the file answers",
+    "why": "Nothing written as the file opens: the lines held for it wait for a later line to be said, and after a quit's last turn none is."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    } catch {\n      // No end of turn to wait for: now, then.\n      look()\n    }\n",
+    "replace": "    } catch {\n      // No end of turn to wait for.\n    }\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws into the quit: not when the open throws, the write throws, the clock does, or the turn’s end cannot be asked for",
+    "why": "A turn's end that cannot be asked for costs every line: none is ever looked at again."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        quitTrail.say('the quit goes on in this file by a handle of its own')\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
+    "why": "No line said by the late handle while the files are still closing: every late line is then in the quit's last turn, and none has time to land on a quit that finishes, so nothing in the built app can check the late path."
   }
 ]

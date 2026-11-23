@@ -1163,6 +1163,10 @@ if (!hasLock) {
         // The last line the files themselves carry.
         quitTrail.say('closing the log files; the quit says the rest straight into this one')
         quitTrail.filesClosing()
+        // The first line by the trail's own handle, and the one with time to
+        // land on a quit that finishes: the files' close is still to come.
+        // The lines after it are said in this quit's last turn.
+        quitTrail.say('the quit goes on in this file by a handle of its own')
         closed = `did not close within ${LOG_WAIT_MS} ms, and the quit goes on`
         const closing = Promise.all([files.main.close(), files.engine.close()])
         void closing.then(

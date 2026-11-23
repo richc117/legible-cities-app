@@ -19,7 +19,8 @@
 //   reached standard error in development and nowhere else. From the moment
 //   the files are closing, the trail's lines are appended to `main.log`
 //   through a way in of this module's own (`lateLog`): one handle, opened as
-//   `will-quit` begins, and one write a line, asked for as the line is said.
+//   `will-quit` begins, and one writer, so the lines land in the order they
+//   were said; what is said in one turn goes as one write as the turn ends.
 //   A write is not waited for, so the very last lines can lose a race with
 //   the process ending; a quit that stalls has all the time they need.
 // - **The report.** From the moment the quit is let go on to Electron - the
@@ -357,7 +358,10 @@ export class QuitTrail {
 const OPEN_FLAGS =
   constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0)
 
-/** The most text held while the file is being opened: lines said before it answers. */
+/**
+ * The most pieces held while they cannot be written: lines said before the
+ * file has opened, or while the write before them has not answered.
+ */
 export const LATE_HELD = 200
 
 /** A way into a log file for the lines that come after it has closed. */
@@ -366,13 +370,19 @@ export interface LateLog {
   open(): void
   /**
    * Append these lines, each stamped and tagged as the log's own are and its
-   * URLs redacted, as one write. Before the file has opened they wait for it;
-   * if it cannot be opened they are dropped. Never throws, never waits.
+   * URLs redacted, after every line handed over before them. They are
+   * written when the turn they were said in ends, with whatever else was said
+   * in it, as one write; before the file has opened, or while an earlier
+   * write has not answered, they wait their turn, and if the file cannot be
+   * opened they are dropped. Never throws, never waits.
    */
   append(lines: readonly string[]): void
 }
 
-/** The file calls a late log makes: `fs.open` and `fs.write`, with callbacks, and a clock. */
+/**
+ * What a late log is handed: `fs.open` and `fs.write`, with callbacks, a
+ * clock, and the way to run something as the turn ends (`queueMicrotask`).
+ */
 export interface LateLogDeps {
   open: (
     path: string,
@@ -382,32 +392,78 @@ export interface LateLogDeps {
   ) => void
   write: (fd: number, text: string, done: (error: Error | null) => void) => void
   now: () => Date
+  defer: (run: () => void) => void
 }
 
 const FILE: LateLogDeps = {
   open: (path, flags, mode, done) => openFile(path, flags, mode, done),
   write: (fd, text, done) => writeFile(fd, text, (error) => done(error)),
   now: () => new Date(),
+  defer: (run) => queueMicrotask(run),
 }
 
 /**
  * `path` - `main.log`, as the log file names it itself - opened for
  * appending when first asked or first written to, and kept open: the process
- * is on its way out, and a close would be one more thing in flight.
+ * is on its way out, and a close would be one more thing in flight. The
+ * handle is on the file, not on its name: should the log's own last write
+ * cross the cap and rotate after this has opened, these lines follow the
+ * file into `main.old.log`.
  *
  * Asynchronous on purpose. A synchronous write would be on the disk before
  * the next step of the quit, but a disk that does not answer would then hold
- * the quit itself, which is the one thing this may not do; so each line is a
- * write asked for at once and never waited for. The handle is the app's
- * second on the file, beside the log's own while that is still open: both
- * append, so neither writes over the other.
+ * the quit itself, which is the one thing this may not do; so nothing here
+ * is waited for by whoever says a line.
+ *
+ * **One writer, as log-file.ts has one.** Two writes asked for back to back
+ * on one descriptor go to two threads and can land in either order, and the
+ * lines of a quit's last turn are all stamped the same millisecond: out of
+ * order they would say a quit did what it did not. So one write is in flight
+ * at a time, and the next is asked for from its answer, whichever way it
+ * answered. And the lines said in one turn - `will-quit`'s last, where the
+ * app asks itself to quit and Electron passes `before-quit`, `will-quit` and
+ * `quit` before the turn is over - are held until the turn ends and go as
+ * one write, in the order said: a write asked for from an answer needs the
+ * loop to turn again, and after that turn it may not. What that costs: a
+ * line is asked of the disk as its turn ends, not as it is said, as a line
+ * of the log's own is; and lines said while an earlier write has not
+ * answered are written only if it does.
+ *
+ * The handle is the app's second on the file, beside the log's own while
+ * that is still open: both append, so neither writes over the other.
  */
 export function lateLog(path: string, tag: string, deps: LateLogDeps = FILE): LateLog {
   let fd: number | null = null
   let opening = false
   let failed = false
+  /** The pieces not yet handed to a write, oldest first. */
   let held: string[] = []
-  const dropped = (): void => undefined
+  /** A write has been asked for and has not answered. */
+  let writing = false
+  /** A look at `held` is due as this turn ends. */
+  let due = false
+
+  /** Hand everything held to one write, unless one is in flight or the file is not open. */
+  const pump = (): void => {
+    if (fd === null || writing || held.length === 0) return
+    const text = held.join('')
+    held = []
+    writing = true
+    let answered = false
+    // The answer, once, and however it came: a write that failed has lost
+    // its own lines and must not cost the ones behind it.
+    const next = (): void => {
+      if (answered) return
+      answered = true
+      writing = false
+      pump()
+    }
+    try {
+      deps.write(fd, text, next)
+    } catch {
+      next()
+    }
+  }
 
   const open = (): void => {
     if (fd !== null || opening || failed) return
@@ -421,14 +477,7 @@ export function lateLog(path: string, tag: string, deps: LateLogDeps = FILE): La
           return
         }
         fd = opened
-        const text = held.join('')
-        held = []
-        if (text === '') return
-        try {
-          deps.write(opened, text, dropped)
-        } catch {
-          // Those lines are lost; the quit is not.
-        }
+        pump()
       })
     } catch {
       opening = false
@@ -437,17 +486,30 @@ export function lateLog(path: string, tag: string, deps: LateLogDeps = FILE): La
     }
   }
 
+  /** Look at `held` once this turn is over, so that all it said goes together. */
+  const atTurnsEnd = (): void => {
+    if (due) return
+    due = true
+    const look = (): void => {
+      due = false
+      pump()
+    }
+    try {
+      deps.defer(look)
+    } catch {
+      // No end of turn to wait for: now, then.
+      look()
+    }
+  }
+
   const append = (lines: readonly string[]): void => {
     try {
       if (failed || lines.length === 0) return
       const at = deps.now().toISOString()
       const text = lines.map((line) => `${at} [${tag}] ${redactUrls(line)}\n`).join('')
-      if (fd !== null) {
-        deps.write(fd, text, dropped)
-        return
-      }
       if (held.length < LATE_HELD) held.push(text)
       open()
+      atTurnsEnd()
     } catch {
       // The line is lost; the quit is not.
     }

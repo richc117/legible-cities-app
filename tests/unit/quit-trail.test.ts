@@ -10,7 +10,9 @@
 // its own line and no other; that the report is written once for each bound
 // and never throws; that the timers are armed once, when the watch begins,
 // and unref'd; that a line said after the log files have closed goes
-// straight to the file, appended, stamped and never through a link; and,
+// straight to the file, appended, stamped and never through a link, one
+// write in flight at a time so the lines land in the order they were said,
+// with what one turn said as one write and nothing waited for; and,
 // read from its text, that index.ts hands the one trail to the guard, the
 // gate and the shutdown and says Electron's own events into it. The lines
 // the guard, the gate and the shutdown say are in `quit-guard.test.ts` and
@@ -477,25 +479,50 @@ describe('the trail', () => {
   })
 })
 
-/** A late log over file calls a test answers when it chooses. */
-function late() {
+/**
+ * A late log over file calls a test answers when it chooses: the open, each
+ * write where `answers` says so, and the end of a turn.
+ */
+function late(answers: 'at once' | 'when told' = 'at once') {
   const opens: {
     path: string
     flags: number
     mode: number
     done: (error: Error | null, fd: number) => void
   }[] = []
-  const writes: { fd: number; text: string }[] = []
+  const writes: { fd: number; text: string; done: (error: Error | null) => void }[] = []
+  /** What was put off until the turn ends, and how often that was asked for. */
+  const due: (() => void)[] = []
+  const deferred = { times: 0 }
   const deps: LateLogDeps = {
     open: (path, flags, mode, done) => opens.push({ path, flags, mode, done }),
     write: (fd, text, done) => {
-      writes.push({ fd, text })
-      done(null)
+      writes.push({ fd, text, done })
+      if (answers === 'at once') done(null)
     },
     now: () => new Date('2026-11-22T10:00:00.000Z'),
+    defer: (run) => {
+      deferred.times += 1
+      due.push(run)
+    },
   }
-  return { log: lateLog('/logs/main.log', QUIT_TAG, deps), opens, writes }
+  /** The turn ends. */
+  const turn = (): void => {
+    for (const run of due.splice(0)) run()
+  }
+  /** The writes asked for so far: which handle, what text. */
+  const asked = (): { fd: number; text: string }[] => writes.map(({ fd, text }) => ({ fd, text }))
+  const log = lateLog('/logs/main.log', QUIT_TAG, deps)
+  /** One line, said in a turn of its own. */
+  const say = (line: string): void => {
+    log.append([line])
+    turn()
+  }
+  return { log, opens, writes, asked, turn, say, deferred }
 }
+
+/** A line as the late log writes it. */
+const stamped = (line: string): string => `2026-11-22T10:00:00.000Z [quit] ${line}\n`
 
 const roots: string[] = []
 /**
@@ -545,6 +572,7 @@ function realFile() {
       })
     },
     now: () => new Date('2026-11-22T10:00:00.000Z'),
+    defer: (run) => queueMicrotask(run),
   }
   return { deps, whenOpened, whenWritten, asked }
 }
@@ -569,71 +597,184 @@ describe('the late log', () => {
     expect(opens, 'and not again once it is open').toHaveLength(1)
   })
 
-  it('writes a line at once when the file is open: stamped, tagged, one write for the lines it is handed', () => {
-    const { log, opens, writes } = late()
+  it('writes what one turn said as one write when the turn ends, in the order said: stamped and tagged', () => {
+    const { log, opens, asked, turn, deferred } = late()
     log.open()
     opens[0].done(null, 7)
+    // will-quit's last turn: the files closed, the app's quit asked, and
+    // Electron's events, with nothing between them but the calls.
     log.append(['the log files are closed'])
-    log.append(['the quit has not finished: …', '  windows: none'])
-    expect(writes).toEqual([
-      { fd: 7, text: '2026-11-22T10:00:00.000Z [quit] the log files are closed\n' },
+    log.append(["the app's own quit is asked"])
+    log.append(['before-quit again: let through', 'quit: Electron is ending the process'])
+    expect(asked(), 'nothing is asked of the disk until the turn ends').toEqual([])
+    expect(deferred.times, 'the end of the turn is asked for once').toBe(1)
+    turn()
+    expect(asked()).toEqual([
       {
         fd: 7,
         text:
-          '2026-11-22T10:00:00.000Z [quit] the quit has not finished: …\n' +
-          '2026-11-22T10:00:00.000Z [quit]   windows: none\n',
+          stamped('the log files are closed') +
+          stamped("the app's own quit is asked") +
+          stamped('before-quit again: let through') +
+          stamped('quit: Electron is ending the process'),
       },
     ])
+    // The next turn's lines are the next write.
+    log.append(['the quit has not finished: …', '  windows: none'])
+    turn()
+    expect(asked()[1]).toEqual({
+      fd: 7,
+      text: stamped('the quit has not finished: …') + stamped('  windows: none'),
+    })
+    expect(deferred.times).toBe(2)
   })
 
   it('opens the file for a line said before anyone asked, holds the line, and writes it when the file answers', () => {
-    const { log, opens, writes } = late()
+    const { log, opens, asked, turn, say } = late()
     log.append(['one'])
+    turn()
     log.append(['two'])
+    turn()
     expect(opens, 'one open, for both').toHaveLength(1)
-    expect(writes).toEqual([])
+    expect(asked()).toEqual([])
     opens[0].done(null, 9)
-    expect(writes).toEqual([
-      { fd: 9, text: '2026-11-22T10:00:00.000Z [quit] one\n2026-11-22T10:00:00.000Z [quit] two\n' },
+    expect(asked()).toEqual([{ fd: 9, text: stamped('one') + stamped('two') }])
+    say('three')
+    expect(asked()[1]).toEqual({ fd: 9, text: stamped('three') })
+  })
+
+  it('asks for one write at a time, and keeps the order when the file answers late and out of turn', () => {
+    const { log, opens, writes, asked, say } = late('when told')
+    log.open()
+    opens[0].done(null, 7)
+    say('one')
+    expect(asked()).toEqual([{ fd: 7, text: stamped('one') }])
+    // Said while the first write has not answered: they wait, in order.
+    say('two')
+    say('three')
+    expect(asked(), 'one write in flight, and no second beside it').toHaveLength(1)
+    writes[0].done(null)
+    expect(asked()).toEqual([
+      { fd: 7, text: stamped('one') },
+      { fd: 7, text: stamped('two') + stamped('three') },
     ])
-    log.append(['three'])
-    expect(writes[1]).toEqual({ fd: 9, text: '2026-11-22T10:00:00.000Z [quit] three\n' })
+    // The first write answers again, out of turn, while the second is in
+    // flight: it is not taken for the second's answer.
+    writes[0].done(null)
+    say('four')
+    expect(asked(), 'still one in flight').toHaveLength(2)
+    writes[1].done(null)
+    expect(asked().map((write) => write.text)).toEqual([
+      stamped('one'),
+      stamped('two') + stamped('three'),
+      stamped('four'),
+    ])
+  })
+
+  it('goes on to the lines after a write that failed, and after one that threw', () => {
+    const failing = late('when told')
+    failing.log.open()
+    failing.opens[0].done(null, 7)
+    failing.say('lost')
+    failing.say('kept')
+    failing.writes[0].done(Object.assign(new Error('the disk is full'), { code: 'ENOSPC' }))
+    expect(failing.asked()[1]).toEqual({ fd: 7, text: stamped('kept') })
+
+    const texts: string[] = []
+    let turnEnds: () => void = () => undefined
+    let answer!: (error: Error | null, fd: number) => void
+    const throwing = lateLog('/logs/main.log', QUIT_TAG, {
+      open: (_path, _flags, _mode, done) => {
+        answer = done
+      },
+      write: (_fd, text, done) => {
+        texts.push(text)
+        if (texts.length === 1) throw new Error('no such handle')
+        done(null)
+      },
+      now: () => new Date('2026-11-22T10:00:00.000Z'),
+      defer: (run) => {
+        turnEnds = run
+      },
+    })
+    throwing.open()
+    answer(null, 7)
+    throwing.append(['lost'])
+    expect(() => turnEnds()).not.toThrow()
+    throwing.append(['kept'])
+    turnEnds()
+    expect(texts).toEqual([stamped('lost'), stamped('kept')])
+  })
+
+  it('returns at once and waits for nothing: a write that never answers holds up no caller and grows no list', () => {
+    const { log, opens, writes, asked, turn, say } = late('when told')
+    log.open()
+    opens[0].done(null, 7)
+    expect(log.append(['one']), 'nothing to wait on is handed back').toBeUndefined()
+    expect(asked(), 'and the write is not asked for inside the call').toEqual([])
+    turn()
+    expect(asked()).toHaveLength(1)
+    // The disk never answers that write. Every later line returns as fast,
+    // and only so many are kept behind it.
+    expect(() => {
+      for (let i = 0; i < LATE_HELD + 50; i += 1) say(`line ${i}`)
+    }).not.toThrow()
+    expect(asked(), 'no second write beside the first').toHaveLength(1)
+    writes[0].done(null)
+    expect(asked()).toHaveLength(2)
+    expect(
+      asked()[1]
+        .text.split('\n')
+        .filter((line) => line !== ''),
+    ).toHaveLength(LATE_HELD)
+    expect(asked()[1].text).toContain(`line ${LATE_HELD - 1}\n`)
+    expect(asked()[1].text).not.toContain(`line ${LATE_HELD}\n`)
   })
 
   it('holds no more than a bounded number of pieces while the file does not answer', () => {
-    const { log, opens, writes } = late()
-    for (let i = 0; i < LATE_HELD + 50; i += 1) log.append([`line ${i}`])
+    const { opens, asked, say } = late()
+    for (let i = 0; i < LATE_HELD + 50; i += 1) say(`line ${i}`)
     opens[0].done(null, 3)
-    expect(writes).toHaveLength(1)
-    expect(writes[0].text.split('\n').filter((line) => line !== '')).toHaveLength(LATE_HELD)
-    expect(writes[0].text).toContain(`line ${LATE_HELD - 1}\n`)
-    expect(writes[0].text).not.toContain(`line ${LATE_HELD}\n`)
+    expect(asked()).toHaveLength(1)
+    expect(
+      asked()[0]
+        .text.split('\n')
+        .filter((line) => line !== ''),
+    ).toHaveLength(LATE_HELD)
+    expect(asked()[0].text).toContain(`line ${LATE_HELD - 1}\n`)
+    expect(asked()[0].text).not.toContain(`line ${LATE_HELD}\n`)
   })
 
   it('drops its lines when the file cannot be opened, and does not ask again', () => {
-    const { log, opens, writes } = late()
-    log.append(['one'])
+    const { log, opens, asked, say } = late()
+    say('one')
     opens[0].done(Object.assign(new Error('a link'), { code: 'ELOOP' }), -1)
-    log.append(['two'])
+    say('two')
     log.open()
     expect(opens).toHaveLength(1)
-    expect(writes).toEqual([])
+    expect(asked()).toEqual([])
   })
 
   it('redacts an address in a line, as every log line has it', () => {
-    const { log, opens, writes } = late()
+    const { log, opens, asked, say } = late()
     log.open()
     opens[0].done(null, 7)
-    log.append(['fetched https://agency.example/gtfs.zip?api_key=secret'])
-    expect(writes[0].text).toBe(
-      '2026-11-22T10:00:00.000Z [quit] fetched https://agency.example/gtfs.zip?api_key=<redacted>\n',
+    say('fetched https://agency.example/gtfs.zip?api_key=secret')
+    expect(asked()[0].text).toBe(
+      stamped('fetched https://agency.example/gtfs.zip?api_key=<redacted>'),
     )
   })
 
-  it('never throws into the quit: not when the open throws, the write throws, or the clock does', () => {
+  it('never throws into the quit: not when the open throws, the write throws, the clock does, or the turn’s end cannot be asked for', () => {
     const broke = never('a file call')
     const clock = (): Date => new Date('2026-11-22T10:00:00.000Z')
-    const noOpen = lateLog('/logs/main.log', QUIT_TAG, { open: broke, write: broke, now: clock })
+    const now = (run: () => void): void => run()
+    const noOpen = lateLog('/logs/main.log', QUIT_TAG, {
+      open: broke,
+      write: broke,
+      now: clock,
+      defer: now,
+    })
     expect(() => {
       noOpen.open()
       noOpen.append(['one'])
@@ -646,6 +787,7 @@ describe('the late log', () => {
       },
       write: broke,
       now: clock,
+      defer: now,
     })
     noWrite.append(['held'])
     expect(() => answer(null, 4)).not.toThrow()
@@ -655,8 +797,24 @@ describe('the late log', () => {
       open: () => undefined,
       write: broke,
       now: broke,
+      defer: now,
     })
     expect(() => noClock.append(['one'])).not.toThrow()
+
+    // With no end of turn to wait for, the line is written there and then.
+    const texts: string[] = []
+    const noTurn = lateLog('/logs/main.log', QUIT_TAG, {
+      open: (_path, _flags, _mode, done) => done(null, 5),
+      write: (_fd, text, done) => {
+        texts.push(text)
+        done(null)
+      },
+      now: clock,
+      defer: broke,
+    })
+    expect(() => noTurn.append(['one'])).not.toThrow()
+    expect(() => noTurn.append(['two'])).not.toThrow()
+    expect(texts).toEqual([stamped('one'), stamped('two')])
   })
 
   it('appends to the real file after what the log left there, and makes it where there is none', async () => {
@@ -665,11 +823,15 @@ describe('the late log', () => {
     await writeFile(path, '2026-11-22T09:59:59.000Z [quit] closing the log files\n')
     const file = realFile()
     const log = lateLog(path, QUIT_TAG, file.deps)
+    // Two lines of one turn: one write, with nothing here waiting on it.
     log.append(['the log files are closed'])
+    log.append(["the app's own quit is asked"])
     await file.whenWritten
+    expect(file.asked.writes).toBe(1)
     expect(await readFile(path, 'utf8')).toBe(
       '2026-11-22T09:59:59.000Z [quit] closing the log files\n' +
-        '2026-11-22T10:00:00.000Z [quit] the log files are closed\n',
+        stamped('the log files are closed') +
+        stamped("the app's own quit is asked"),
     )
 
     const fresh = realFile()
@@ -707,6 +869,9 @@ describe('the late log', () => {
       "import { constants, open as openFile, write as writeFile } from 'node:fs'",
     )
     expect(source).not.toMatch(/\b(?:open|write|append|appendFile|close|mkdir)Sync\b/)
+    // And the end of a turn is the microtask queue's: it runs before the
+    // loop is given back, which is the last moment a quit's last turn has.
+    expect(source).toContain('  defer: (run) => queueMicrotask(run),\n')
     expect(source).not.toMatch(/from 'electron'/)
   })
 })
@@ -762,17 +927,16 @@ describe('the trail in index.ts', () => {
     const place = index.indexOf("quitTrail.say(`the window's place: ${place}`)", waited)
     const closing = index.indexOf("quitTrail.say('closing the log files;", place)
     const turned = index.indexOf('quitTrail.filesClosing()', closing)
-    const closed = index.indexOf('files.main.close()', turned)
-    for (const at of [entered, again, held, lateOpened, waited, place, closing, turned, closed])
-      expect(at).toBeGreaterThan(-1)
-    expect(
-      [entered, again, held, lateOpened, waited, place, closing, turned, closed],
-      'in that order',
-    ).toEqual(
-      [entered, again, held, lateOpened, waited, place, closing, turned, closed].sort(
-        (a, b) => a - b,
-      ),
+    // The first line by the late handle, said while the files' close is still
+    // to come: the one late line a quit that finishes has time to land.
+    const first = index.indexOf(
+      "quitTrail.say('the quit goes on in this file by a handle of its own')",
+      turned,
     )
+    const closed = index.indexOf('files.main.close()', first)
+    const steps = [entered, again, held, lateOpened, waited, place, closing, turned, first, closed]
+    for (const at of steps) expect(at).toBeGreaterThan(-1)
+    expect(steps, 'in that order').toEqual([...steps].sort((a, b) => a - b))
     expect(index.match(/quitTrail\.filesClosing\(\)/g)).toHaveLength(1)
   })
 

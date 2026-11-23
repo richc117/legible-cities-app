@@ -2654,15 +2654,30 @@ more, passes `before-quit` and `will-quit` again, and is then Electron's to
 end - and its own lines about that, and its report where it does not
 finish ("Quitting during a run"), are the one thing written to `main.log`
 after the close. They go through `lateLog` in `src/main/quit-trail.ts`: a
-second handle on `main.log` itself, never another file, opened as
-`will-quit` begins with the flags the log file opens it with, `O_NOFOLLOW`
-among them, each line stamped and redacted as the log's own are and
-appended by one write asked for as the line is said. The write is not
-waited for, because a synchronous one would let a disk that does not
-answer hold the quit; so on a quit that finishes, the very last lines can
-lose to the process ending, and a line that is missing there is not
-evidence. A quit that stalls has time for all of them. A file that cannot
-be opened drops them, and is not asked again.
+second handle, never a third file, opened on `main.log` as `will-quit`
+begins with the flags the log file opens it with, `O_NOFOLLOW` among them,
+each line stamped and redacted as the log's own are. The handle is on the
+file and not on its name: if the log's own last write crosses the cap after
+the handle has opened, the rotation renames the file under it, and the
+quit's late lines are then at the end of `main.old.log`. It has one writer,
+as the log file has: one write in flight, the next asked for from its
+answer, whichever way it answered, so the lines land in the order they
+were said, which lines stamped the same millisecond could not otherwise
+show. What is said in one turn goes as one write as the turn ends
+(`queueMicrotask`), because a quit's last turn says five lines - the files
+closed, the app's own quit, `before-quit`, `will-quit` and `quit` - and a
+write asked for from another's answer needs the loop to turn again, which
+after that turn it may not. Nothing is waited for, because a synchronous
+write would let a disk that does not answer hold the quit; so on a quit
+that finishes, that last write can lose to the process ending, and its
+five lines are there together or not at all: their absence there is not
+evidence. The first late line, `the quit goes on in this file by a handle
+of its own`, is said as the files begin to close and has the whole of
+their close to land, and `tests/e2e/settings.spec.ts` reads it after a
+quit. A quit that stalls has time for all of them. Lines said while an
+earlier write has not answered are written only if it does, two hundred
+pieces are held at most, and a file that cannot be opened drops them and
+is not asked again.
 
 The log may contain paths - the configuration lines by contract, and
 Electron's own report of a failed bridge call, which prints the underlying
