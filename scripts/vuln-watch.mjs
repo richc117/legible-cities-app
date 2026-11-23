@@ -249,8 +249,8 @@ export const UNWATCHED = [
   },
   {
     component:
-      "The macOS system's bzip2 (/usr/lib/libbz2), which the LOOM tools topo, loom and octi link there, and its libedit (/usr/lib/libedit), which the Python runtime's readline links",
-    why: "As for its zlib: libraries of other projects that macOS supplies, not shipped in the installers and patched by Apple's updates. The operating system's own runtime (libSystem and libc++ on macOS, the Universal C Runtime on Windows) is not a component in this sense and is not listed.",
+      "The macOS system's bzip2 (/usr/lib/libbz2), which the LOOM tools topo, loom and octi link there, and its libedit and ncurses (/usr/lib/libedit, /usr/lib/libncurses and libpanel), which the Python runtime links",
+    why: "As for its zlib: libraries that macOS supplies, not shipped in the installers and patched by Apple's updates. The operating system's own C and C++ runtime, frameworks and system DLLs (libSystem, libc++ and Apple's frameworks on macOS; the Universal C Runtime and Windows' own DLLs, kernel32 among them, on Windows) are not components in this sense and are not listed.",
   },
   {
     component: 'Chromium, inside Electron',

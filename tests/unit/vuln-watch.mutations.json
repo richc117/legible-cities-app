@@ -377,11 +377,11 @@
   },
   {
     "file": "scripts/vuln-watch.mjs",
-    "find": "  {\n    component:\n      \"The macOS system's bzip2 (/usr/lib/libbz2), which the LOOM tools topo, loom and octi link there, and its libedit (/usr/lib/libedit), which the Python runtime's readline links\",\n    why: \"As for its zlib: libraries of other projects that macOS supplies, not shipped in the installers and patched by Apple's updates. The operating system's own runtime (libSystem and libc++ on macOS, the Universal C Runtime on Windows) is not a component in this sense and is not listed.\",\n  },\n",
+    "find": "  {\n    component:\n      \"The macOS system's bzip2 (/usr/lib/libbz2), which the LOOM tools topo, loom and octi link there, and its libedit and ncurses (/usr/lib/libedit, /usr/lib/libncurses and libpanel), which the Python runtime links\",\n    why: \"As for its zlib: libraries that macOS supplies, not shipped in the installers and patched by Apple's updates. The operating system's own C and C++ runtime, frameworks and system DLLs (libSystem, libc++ and Apple's frameworks on macOS; the Universal C Runtime and Windows' own DLLs, kernel32 among them, on Windows) are not components in this sense and are not listed.\",\n  },\n",
     "replace": "",
     "test": "tests/unit/vuln-watch.test.ts",
-    "title": "names the macOS system's bzip2 and libedit",
-    "why": "The bzip2 and libedit row dropped: two system libraries the macOS installers link go unnamed."
+    "title": "names the macOS system's bzip2, libedit and ncurses",
+    "why": "The bzip2, libedit and ncurses row dropped: system libraries the macOS installers link go unnamed."
   },
   {
     "file": "scripts/vuln-watch.mjs",
@@ -393,7 +393,7 @@
   },
   {
     "file": "SECURITY.md",
-    "find": "the\nzlib that FFmpeg, Python and the LOOM tools link on macOS, and the bzip2\nand libedit that LOOM and Python link there, which are the system's own,\nnot shipped in the installers and patched by Apple's updates; bzip2",
+    "find": "the\nzlib that FFmpeg, Python and the LOOM tools link on macOS, and the bzip2,\nlibedit and ncurses that LOOM and Python link there, which are the system's\nown, not shipped in the installers and patched by Apple's updates; bzip2",
     "replace": "bzip2",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "SECURITY.md names every row of it",
@@ -401,10 +401,18 @@
   },
   {
     "file": "SECURITY.md",
-    "find": "and the bzip2\nand libedit that LOOM and Python link there",
-    "replace": "and the zlib\nthat LOOM and Python link there",
+    "find": "and the bzip2,\nlibedit and ncurses that LOOM and Python link there",
+    "replace": "and the zlib,\nlibedit and ncurses that LOOM and Python link there",
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "SECURITY.md names every row of it",
     "why": "A row pointing at the wrong phrase: the bzip2 and libedit row is no longer what SECURITY.md says."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "and ncurses (/usr/lib/libedit, /usr/lib/libncurses and libpanel)",
+    "replace": "(/usr/lib/libedit)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "names the macOS system's bzip2, libedit and ncurses",
+    "why": "ncurses dropped from the row's component: the libraries the Python runtime links from the system go unnamed again."
   }
 ]
