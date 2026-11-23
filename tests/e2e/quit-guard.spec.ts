@@ -500,7 +500,7 @@ test('closing the window with nothing running closes it at once', async () => {
   })
 })
 
-// Written, not run (issue 753). Mutation: the `quitting()` check taken out of
+// Issue 753. Mutation: the `quitting()` check taken out of
 // `windowMaker` (src/main/window-lifecycle.ts) - the Dock press makes a window
 // in the app that is quitting, and the log has no line saying none was made.
 test('a press on the Dock icon during a quit makes no window', async () => {
