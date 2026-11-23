@@ -170,7 +170,12 @@ export interface QuitGate {
   finished(): void
 }
 
-export function quitGate(): QuitGate {
+/**
+ * The gate. `say` is the quit's trail (issue 749, quit-trail.ts): each pass
+ * says which it was and whether it was held, before it acts, and a line that
+ * cannot be said is dropped.
+ */
+export function quitGate(say: (line: string) => void = () => undefined): QuitGate {
   let quitting = false
   let stopped = false
   return {
@@ -179,15 +184,26 @@ export function quitGate(): QuitGate {
     },
     beforeQuit(event, engineRunning) {
       if (quitting) {
+        sayQuietly(say, () =>
+          stopped
+            ? 'before-quit again: let through'
+            : 'before-quit again: held, the engine is still being stopped',
+        )
         if (!stopped) event.preventDefault()
         return 'later'
       }
       quitting = true
+      sayQuietly(say, () =>
+        engineRunning
+          ? "before-quit, the gate's first pass: held while the engine is stopped"
+          : "before-quit, the gate's first pass: let through, there is no engine to stop",
+      )
       if (engineRunning) event.preventDefault()
       else stopped = true
       return 'first'
     },
     finished() {
+      sayQuietly(say, () => 'the gate is finished: the next quit is let through')
       stopped = true
     },
   }
@@ -203,6 +219,13 @@ export interface ShutdownDeps {
   /** The app's own quit, asked again once the stop has ended. */
   quit: () => void
   error: (message: string) => void
+  /** The quit's trail (issue 749, quit-trail.ts): each step, said before it is taken. */
+  say: (line: string) => void
+  /**
+   * The quit is Electron's from here: the trail starts its clock, and reports
+   * what is left if the process is still there when it runs out.
+   */
+  watch: () => void
 }
 
 /**
@@ -218,15 +241,26 @@ function sayQuietly(error: (message: string) => void, message: () => string): vo
   }
 }
 
+/** A step of the trail's that cannot throw into the quit either. */
+function quietly(step: () => void): void {
+  try {
+    step()
+  } catch {
+    // The quit goes on without it.
+  }
+}
+
 /**
  * The first pass of a quit, after the gate has cancelled it: end what runs,
  * stop the engine, then let go. The gate keeps cancelling until `finished`,
  * so nothing here may throw past the stop: each abort has its own try, a
  * failing one is logged and the others still run, and the stop is always
  * reached, however it ends, because a throw that skipped it would leave a
- * windowless process that no quit could end.
+ * windowless process that no quit could end. The trail's lines and its
+ * watch are said the same way: one that throws is dropped.
  */
 export function shutDown(deps: ShutdownDeps): void {
+  sayQuietly(deps.say, () => `ending ${deps.aborts.map((abort) => abort.name).join(', ')}`)
   for (const abort of deps.aborts) {
     try {
       abort.run()
@@ -234,17 +268,29 @@ export function shutDown(deps: ShutdownDeps): void {
       sayQuietly(deps.error, () => `${abort.name} did not end on quit: ${messageOf(error)}`)
     }
   }
-  if (deps.stop === null) return
+  if (deps.stop === null) {
+    // The gate did not cancel this pass, so Electron is already going on.
+    sayQuietly(deps.say, () => 'no engine to stop: the quit goes on')
+    quietly(deps.watch)
+    return
+  }
+  sayQuietly(deps.say, () => 'asking the engine to stop')
   let stopping: Promise<void>
   try {
     stopping = deps.stop()
   } catch (error) {
     stopping = Promise.reject(error)
   }
+  let ended = 'resolved'
   void stopping
-    .catch((error: unknown) => sayQuietly(deps.error, () => `stop failed: ${messageOf(error)}`))
+    .catch((error: unknown) => {
+      ended = 'rejected'
+      sayQuietly(deps.error, () => `stop failed: ${messageOf(error)}`)
+    })
     .finally(() => {
+      sayQuietly(deps.say, () => `the engine's stop ended (${ended})`)
       deps.finished()
+      quietly(deps.watch)
       deps.quit()
     })
 }

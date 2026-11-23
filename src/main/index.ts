@@ -21,7 +21,7 @@ import pins from '../../vendor/pins.json'
 import { CHANNELS } from '../shared/api'
 import { isSettled } from '../shared/engine'
 import type { AppSettings, FolderSource } from '../shared/settings'
-import { abortCaptures, capture, configureCapture } from './capture-window'
+import { abortCaptures, capture, configureCapture, liveCaptures } from './capture-window'
 import {
   describeConfig,
   EXPORT_FOLDER_NAME,
@@ -68,6 +68,7 @@ import {
   quitOnSignals,
   registerQuitHandlers,
 } from './quit-guard'
+import { lateLog, QUIT_TAG, QuitTrail, whatIsLeft, type LateLog } from './quit-trail'
 import { keepBounds, MINIMUM_WINDOW_SIZE, placeWindow } from './window-bounds'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
@@ -175,6 +176,8 @@ async function openLogs(): Promise<void> {
   const main = openLogFile(folder, 'main', options)
   const engine = openLogFile(folder, 'engine', options)
   logFiles = { main, engine }
+  // The quit's own way into main.log, for its lines after the files close.
+  lateQuitLog = lateLog(main.path, QUIT_TAG)
   const toFiles = byTag(
     (line, _tag, at) => main.write(line, at),
     (line, _tag, at) => engine.write(line, at),
@@ -216,7 +219,30 @@ let firstRun: FirstRunCheck | null = null
 // Held at this scope because the handlers registered before it exists ask
 // it whether a reset is under way; it is assigned once, during startup.
 let settings: SettingsService | null = null
-const quit = quitGate()
+/**
+ * What a quit says of itself in `main.log`, step by step, and what is left
+ * when it does not finish (issue 749, src/main/quit-trail.ts). It records
+ * and changes nothing. Its lines after the log files have closed go to
+ * `main.log` through `lateQuitLog`, made when the files are; with no log
+ * folder there is none, and they reach standard error as any line does.
+ */
+let lateQuitLog: LateLog | null = null
+const quitTrail = new QuitTrail({
+  log: (line) => log.info(QUIT_TAG, line),
+  late: (lines) => lateQuitLog?.append(lines),
+  left: () =>
+    whatIsLeft({
+      windows: () => BrowserWindow.getAllWindows(),
+      appWindow: () => mainWindow,
+      captures: () => liveCaptures(),
+      exports: () =>
+        exporter === null ? null : { live: exporter.live, running: exporter.running().length },
+      resources: () => process.getActiveResourcesInfo(),
+    }),
+  now: () => performance.now(),
+  timer: (run, ms) => setTimeout(run, ms),
+})
+const quit = quitGate((line) => quitTrail.say(line))
 /** The app window's last place being written as it closed; a quit waits for it (issue 549). */
 let windowKept: Promise<void> = Promise.resolve()
 /**
@@ -253,6 +279,7 @@ const quitGuard = new QuitGuard({
   quit: () => app.quit(),
   // How old the open question is: a clock that never goes back.
   now: () => performance.now(),
+  say: (line) => quitTrail.say(line),
 })
 
 /** Why nothing may write under the engine's home right now, or null. */
@@ -382,6 +409,12 @@ function createWindow(): BrowserWindow {
   // asked of it until it answers again.
   window.on('unresponsive', () => quitGuard.unresponsive())
   window.on('responsive', () => quitGuard.responsive())
+  // For the quit's trail (issue 749), during a quit only: a page that has
+  // stopped answering is one way a window asked to close might not, and
+  // this is Electron's word for it.
+  window.on('unresponsive', () => {
+    if (quit.quitting) quitTrail.say('the window is reported unresponsive')
+  })
   // The page must not rename the window; the title is a contract (FR-003).
   window.on('page-title-updated', (event) => event.preventDefault())
   // Windows and Linux quit when the app's own window closes, whatever else
@@ -396,6 +429,9 @@ function createWindow(): BrowserWindow {
     },
   })
   window.on('closed', () => {
+    quitTrail.say(
+      mainWindow === window ? 'the window is closed' : 'a window the app no longer held is closed',
+    )
     if (mainWindow !== window) return
     mainWindow = null
     menuCommands.gone()
@@ -414,6 +450,10 @@ function createWindow(): BrowserWindow {
   window.webContents.on('render-process-gone', () => {
     menuCommands.crashed()
     quitGuard.gone()
+  })
+  // For the quit's trail, during a quit only: how the renderer went.
+  window.webContents.on('render-process-gone', (_event, details) => {
+    if (quit.quitting) quitTrail.say(`the window's renderer is gone (${details.reason})`)
   })
   // A state that changed before the page existed would otherwise be missed.
   window.webContents.on('did-finish-load', () => {
@@ -1071,6 +1111,10 @@ if (!hasLock) {
           finished: () => quit.finished(),
           quit: () => quitGuard.quit(),
           error: (message) => log.error('engine', message),
+          // The trail's lines, and its clock on the rest of the quit, which
+          // is Electron's once the engine has stopped (issue 749).
+          say: (line) => quitTrail.say(line),
+          watch: () => quitTrail.watch(),
         }),
     }),
   )
@@ -1079,26 +1123,76 @@ if (!hasLock) {
   // Electron go, and the supervisor's stop waits for the engine's stdio to
   // close (bounded at a second), so the engine's shutdown lines and what it
   // printed on the way out are queued by then. Lines logged after this
-  // reach standard error in development and nowhere else.
+  // reach standard error in development and nowhere else - but for the
+  // quit's own trail (issue 749), whose lines from here on are appended to
+  // main.log through a handle of its own, opened now so that each is one
+  // write away: what the quit does after the files close is otherwise
+  // nowhere, and a quit that stopped there could not be told from one that
+  // never came this far.
   app.on('will-quit', (event) => {
-    if (logsClosed) return
+    if (logsClosed) {
+      quitTrail.say('will-quit again: let through, nothing is left to wait for')
+      return
+    }
     event.preventDefault()
     logsClosed = true
+    quitTrail.say("will-quit: held while the window's place is kept and the log files close")
+    lateQuitLog?.open()
     const files = logFiles
+    // How each bounded wait ended, for the trail. Each is noted on the
+    // promise itself, ahead of the wait's own look at it, so the wait finds
+    // the word already there.
+    let place = `not kept within ${LOG_WAIT_MS} ms, and the quit goes on without it`
+    void windowKept.then(
+      () => {
+        place = 'kept'
+      },
+      () => {
+        place = 'not kept: the write failed'
+      },
+    )
+    let closed: string | null = null
     // The window's last place first, begun as it closed, so it lands before
     // the process goes and its log lines reach the files. Bounded, both: a
     // disk that does not answer costs the place and the last lines, not the
     // quit.
     void within(windowKept, LOG_WAIT_MS)
-      .then(() =>
-        files === null
-          ? undefined
-          : within(Promise.all([files.main.close(), files.engine.close()]), LOG_WAIT_MS),
-      )
-      .finally(() => quitGuard.quit())
+      .then(() => {
+        quitTrail.say(`the window's place: ${place}`)
+        if (files === null) return undefined
+        // The last line the files themselves carry.
+        quitTrail.say('closing the log files; the quit says the rest straight into this one')
+        quitTrail.filesClosing()
+        closed = `did not close within ${LOG_WAIT_MS} ms, and the quit goes on`
+        const closing = Promise.all([files.main.close(), files.engine.close()])
+        void closing.then(
+          () => {
+            closed = 'are closed'
+          },
+          () => {
+            closed = 'could not be closed'
+          },
+        )
+        return within(closing, LOG_WAIT_MS)
+      })
+      .finally(() => {
+        if (closed !== null) quitTrail.say(`the log files ${closed}`)
+        quitGuard.quit()
+      })
   })
 
   app.on('window-all-closed', () => {
+    // Electron sends this only while it is not itself quitting: after the
+    // app's own quit has been let through, it says that quit was dropped.
+    quitTrail.say(
+      quit.quitting
+        ? 'window-all-closed, with a quit under way: Electron is not quitting'
+        : 'window-all-closed',
+    )
     if (process.platform !== 'darwin') quitGuard.quit()
   })
+
+  // The last of a quit the main process hears; the process's end is
+  // Electron's own from here.
+  app.on('quit', () => quitTrail.say('quit: Electron is ending the process'))
 }

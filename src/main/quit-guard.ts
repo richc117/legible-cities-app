@@ -32,6 +32,11 @@
 //   while the quit is under way forces the exit), the quit that follows the
 //   window on Windows and Linux, and the one the person has just confirmed.
 //
+// - **The trail.** Which of these a quit or a close was given is said, as a
+//   line of `main.log`, before it is carried out (issue 749, quit-trail.ts):
+//   the guard is handed `say` as it is handed everything else, and a line
+//   holds a state and never a project's name.
+//
 // The question comes before the quit gate and never replaces it
 // (`onBeforeQuit`): a quit that is asked about has not begun, so the gate
 // has not seen it, and the quit the person confirms is the gate's first
@@ -100,6 +105,12 @@ export interface QuitGuardDeps {
   quit: () => void
   /** A clock that only goes forward, in milliseconds: how old the open question is. */
   now: () => number
+  /**
+   * The quit's trail (issue 749, quit-trail.ts): which of its answers a quit
+   * or a close was given, said before it is carried out. Never a project's
+   * name: the trail holds states.
+   */
+  say: (line: string) => void
 }
 
 export class QuitGuard {
@@ -126,7 +137,54 @@ export class QuitGuard {
   /** The app's own quit, for every quit it makes itself: never asked about. */
   quit(): void {
     this.#own = true
+    this.#say("the app's own quit is asked")
     this.#deps.quit()
+  }
+
+  /** A line for the trail. One that cannot be said is dropped: nothing here may stop a quit. */
+  #say(line: string): void {
+    try {
+      this.#deps.say(line)
+    } catch {
+      // Nowhere left to say it.
+    }
+  }
+
+  /**
+   * What a quit or a close was given, for the trail, before it is acted on:
+   * asked about, held as too soon, or let through with the question still on
+   * the screen - as its answer, or as a quit of the app's own, which waits
+   * for none. One that simply goes ahead says `plain`, where it is given.
+   */
+  #sayWhich(what: string, decision: QuitDecision, underWay: boolean, plain: string | null): void {
+    if (decision.ask) {
+      const { exports, layouts } = decision.question
+      this.#say(
+        `${what} is held and asked about: ${exports} export(s), ${layouts} layout(s) running`,
+      )
+    } else if (decision.hold) {
+      this.#say(`${what} is held: it came too soon after the question to be its answer`)
+    } else if (this.#open !== null) {
+      const past = this.#own || underWay ? 'own' : this.#pageNow()
+      this.#say(
+        past === 'own'
+          ? `${what} is let through as the app's own, past the question on the screen`
+          : past === 'ready'
+            ? `${what} is let through as the answer to the question on the screen`
+            : `${what} is let through past the question: its page can no longer be asked`,
+      )
+    } else if (plain !== null) {
+      this.#say(plain)
+    }
+  }
+
+  /** The page's state for a line of the trail: asked again here, so guarded here. */
+  #pageNow(): RendererState {
+    try {
+      return this.#renderer()
+    } catch {
+      return 'gone'
+    }
   }
 
   #renderer(): RendererState {
@@ -166,6 +224,8 @@ export class QuitGuard {
    */
   beforeQuit(event: Cancellable, underWay: boolean): boolean {
     const decision = this.#decide('quit', underWay)
+    // The gate speaks next for a quit that simply goes on.
+    this.#sayWhich('a quit', decision, underWay, null)
     if (decision.ask) {
       event.preventDefault()
       this.#ask(decision.question)
@@ -192,10 +252,19 @@ export class QuitGuard {
   closing(event: Cancellable, underWay: boolean): boolean {
     // The close the guard itself makes, once the person has said so.
     if (this.#passing) {
+      this.#say("the window's close is let through: it is the one Close anyway asked for")
       this.#passing = false
       return false
     }
     const decision = this.#decide('close', underWay)
+    this.#sayWhich(
+      "the window's close",
+      decision,
+      underWay,
+      underWay
+        ? "the window's close is let through, by the quit under way"
+        : "the window's close is let through",
+    )
     if (decision.ask) {
       event.preventDefault()
       this.#ask(decision.question)
@@ -254,6 +323,9 @@ export class QuitGuard {
     const open = this.#open
     if (open === null || open.id !== id) return
     this.#open = null
+    this.#say(
+      `the question is answered in the page: ${answer === 'keep' ? 'keep working' : `${open.kind} anyway`}`,
+    )
     if (answer === 'keep') return
     if (open.kind === 'quit') {
       this.quit()

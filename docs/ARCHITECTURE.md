@@ -326,6 +326,60 @@ request the page has with the engine, as the page's own Cancel cancels one
 among them, and whatever else that page was waiting for, since no page is
 left to hear any of it.
 
+**A quit says its steps, and what is left when it does not finish** (issue
+749, `src/main/quit-trail.ts`, which has no Electron import). An end-to-end
+repeat once found the app still running twenty seconds after it had
+accepted a quit and stopped its engine, with nothing in `main.log` to say
+where the quit had stopped. So each step is now one line under `[quit]`,
+said where it happens and before it acts, a state and never a project's
+name, a path or an address:
+
+- the guard's: a quit, or the window's close, held and asked about (with
+  how many exports and layouts), held as too soon to be an answer, let
+  through as the answer, let through past a question as the app's own or
+  because its page can no longer be asked; the answer given in the page;
+  the app's own quit, as it is asked for; and every close of the window,
+  held or let through;
+- the gate's: its first pass, held or with no engine to stop, every later
+  `before-quit` and whether it was let through, and `finished`;
+- the shutdown's: what it is about to end, by the names in `aborts`, the
+  stop asked for, and how the stop ended, resolved or rejected;
+- and Electron's events as `index.ts` hears them: the window's `closed`,
+  `window-all-closed` (which Electron sends only while it is not itself
+  quitting, so after the app's own quit it says that quit was dropped),
+  `will-quit` entered, how the wait for the window's place ended, the files
+  about to close and how that ended, `will-quit` again, and `quit`. During
+  a quit only, a window reported unresponsive and a renderer gone are said
+  too.
+
+The guard, the gate and the shutdown are handed `say` as they are handed
+everything else, each guards its own call, and a line that cannot be said
+is dropped: nothing here may throw into a quit, and nothing changes what a
+quit does, in what order, or when.
+
+From the moment the quit is let go on to Electron - the engine stopped and
+the app about to ask itself to quit, or no engine to stop - the trail
+keeps a clock (`shutDown`'s `watch`). A process still there after five
+seconds (`QUIT_OVERDUE_MS`: the two waits `will-quit` allows itself, and a
+second over) writes what is left: every `BrowserWindow`, as destroyed or
+not, visible or hidden, its web contents destroyed or not and its renderer
+crashed or not, and which kind it is - the app's own, another of the
+interface's, a capture's, any other - judged from whether it is the window
+the app holds, where its page lives and whether it draws offscreen, the
+address compared and never written; the captures still running and the
+exporter's two counts; every line the quit has said, each with when it
+was said against that moment; and what Node's loop holds, by kind
+(`process.getActiveResourcesInfo`). It writes once more at fifteen seconds,
+inside the twenty the end-to-end suite gives a quit, so that a slow quit
+and a stuck one can be told apart. **It reports and does nothing else**: no
+window is closed and no exit is forced. A destroyed window is asked
+nothing but whether it is destroyed, and web contents nothing before
+whether they are; every read is guarded, and one that throws costs its own
+words. The two timers are unref'd, so they are never what keeps the
+process. Not covered: a process held after Electron's own `quit` event no
+longer runs the main process's timers, so it writes no report, and the
+trail's last lines are what say it came that far.
+
 ## The engine process
 
 The engine is `python -m schematic.serve` from the pinned engine
@@ -2592,6 +2646,21 @@ was asked, so a steady stream from the engine cannot hold it. Under
 `LEGIBLE_USER_DATA` the logs move to `<userData>/logs`, and under
 `LEGIBLE_LOGS` to the folder it names, with `app.setAppLogsPath`, because
 on macOS they would otherwise stay in a person's own log folder.
+
+A quit goes on after the files have closed - it asks itself to quit once
+more, passes `before-quit` and `will-quit` again, and is then Electron's to
+end - and its own lines about that, and its report where it does not
+finish ("Quitting during a run"), are the one thing written to `main.log`
+after the close. They go through `lateLog` in `src/main/quit-trail.ts`: a
+second handle on `main.log` itself, never another file, opened as
+`will-quit` begins with the flags the log file opens it with, `O_NOFOLLOW`
+among them, each line stamped and redacted as the log's own are and
+appended by one write asked for as the line is said. The write is not
+waited for, because a synchronous one would let a disk that does not
+answer hold the quit; so on a quit that finishes, the very last lines can
+lose to the process ending, and a line that is missing there is not
+evidence. A quit that stalls has time for all of them. A file that cannot
+be opened drops them, and is not asked again.
 
 The log may contain paths - the configuration lines by contract, and
 Electron's own report of a failed bridge call, which prints the underlying

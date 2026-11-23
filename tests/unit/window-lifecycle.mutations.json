@@ -102,5 +102,101 @@
     "test": "tests/unit/window-lifecycle.test.ts",
     "title": "does not hold a second quit for a page that can no longer show the question",
     "why": "A second quit held for a page that has gone or stopped answering: for a second after a question it cannot show, the app cannot be quit."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "          stopped\n            ? 'before-quit again: let through'\n            : 'before-quit again: held, the engine is still being stopped',\n",
+    "replace": "          'before-quit again: let through',\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "says each pass for the trail: the first, one held while the engine stops, and one let through",
+    "why": "Every later pass said as let through: a quit the gate is still holding for the engine's stop reads as one Electron was handed and lost."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "        engineRunning\n          ? \"before-quit, the gate's first pass: held while the engine is stopped\"\n          : \"before-quit, the gate's first pass: let through, there is no engine to stop\",\n",
+    "replace": "        \"before-quit, the gate's first pass: held while the engine is stopped\",\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "says a first pass with no engine as let through",
+    "why": "A first pass with no engine said as held: the log waits for a stop that was never asked for."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      sayQuietly(say, () =>\n        engineRunning\n          ? \"before-quit, the gate's first pass: held while the engine is stopped\"\n          : \"before-quit, the gate's first pass: let through, there is no engine to stop\",\n      )\n      if (engineRunning) event.preventDefault()\n      else stopped = true\n",
+    "replace": "      if (engineRunning) event.preventDefault()\n      else stopped = true\n      sayQuietly(say, () =>\n        engineRunning\n          ? \"before-quit, the gate's first pass: held while the engine is stopped\"\n          : \"before-quit, the gate's first pass: let through, there is no engine to stop\",\n      )\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "says its line before it cancels the quit",
+    "why": "The gate's line said after it acts: the trail's rule is that a step is said before it is taken, so that a step which never returns has still been named."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      sayQuietly(say, () => 'the gate is finished: the next quit is let through')\n",
+    "replace": "      say('the gate is finished: the next quit is let through')\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "holds and lets go exactly as it did when the trail cannot be said",
+    "why": "The gate's line no longer guarded: a log that throws stops `finished`, the gate cancels every quit for ever, and the app cannot be quit."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  sayQuietly(deps.say, () => 'asking the engine to stop')\n",
+    "replace": "",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "says each step before it is taken: what it ends, the stop asked for, and how the stop ended",
+    "why": "The stop not said as it is asked for: a quit stuck in the engine's stop and one stuck before it leave the same lines."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  sayQuietly(deps.say, () => `ending ${deps.aborts.map((abort) => abort.name).join(', ')}`)\n  for (const abort of deps.aborts) {\n    try {\n      abort.run()\n    } catch (error) {\n      sayQuietly(deps.error, () => `${abort.name} did not end on quit: ${messageOf(error)}`)\n    }\n  }\n",
+    "replace": "  for (const abort of deps.aborts) {\n    try {\n      abort.run()\n    } catch (error) {\n      sayQuietly(deps.error, () => `${abort.name} did not end on quit: ${messageOf(error)}`)\n    }\n  }\n  sayQuietly(deps.say, () => `ending ${deps.aborts.map((abort) => abort.name).join(', ')}`)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "says each step before it is taken: what it ends, the stop asked for, and how the stop ended",
+    "why": "What the shutdown ends said after it has ended it: an abort that never returns is never named."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      ended = 'rejected'\n",
+    "replace": "",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "says a stop that failed as rejected, after the failure itself",
+    "why": "A stop that failed said as resolved: the log says the engine stopped when the supervisor said it could not stop it."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      deps.finished()\n      quietly(deps.watch)\n      deps.quit()\n",
+    "replace": "      deps.finished()\n      deps.quit()\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "starts the trail’s watch once, as the quit is let go on to Electron: the gate finished, the app not yet asked",
+    "why": "The watch never begun: a quit that does not finish writes no report, and nothing says what was left."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      deps.finished()\n      quietly(deps.watch)\n      deps.quit()\n",
+    "replace": "      deps.finished()\n      deps.quit()\n      quietly(deps.watch)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "starts the trail’s watch once, as the quit is let go on to Electron: the gate finished, the app not yet asked",
+    "why": "The watch begun after the app's quit is asked for: a quit that never comes back from Electron never starts the clock that would report it."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  sayQuietly(deps.say, () => 'asking the engine to stop')\n",
+    "replace": "  sayQuietly(deps.say, () => 'asking the engine to stop')\n  quietly(deps.watch)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "starts the trail’s watch once, as the quit is let go on to Electron: the gate finished, the app not yet asked",
+    "why": "The watch begun as the stop is asked for, and again after it: the report's clock counts the engine's own three seconds, and a healthy quit is reported late."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "    quietly(deps.watch)\n    return\n",
+    "replace": "    return\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "starts the watch with no engine to stop too, where Electron is already going on",
+    "why": "No watch where there is no engine: a quit made before the engine exists that does not finish writes no report."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "function quietly(step: () => void): void {\n  try {\n    step()\n  } catch {\n    // The quit goes on without it.\n  }\n}\n",
+    "replace": "function quietly(step: () => void): void {\n  step()\n}\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "stops the engine, lets the gate go and quits though the trail and its watch throw",
+    "why": "The watch no longer guarded: one that throws skips the app's own quit after the engine has stopped, and leaves a process no quit ends."
   }
 ]
