@@ -12,7 +12,9 @@
 // and unref'd; that a line said after the log files have closed goes
 // straight to the file, appended, stamped and never through a link, one
 // write in flight at a time so the lines land in the order they were said,
-// with what one turn said as one write and nothing waited for; and,
+// with what one turn said as one write and nothing waited for; that a line
+// said once the log file is told to close is written once, by that handle
+// alone, and would be written twice if said any sooner; and,
 // read from its text, that index.ts hands the one trail to the guard, the
 // gate and the shutdown and says Electron's own events into it. The lines
 // the guard, the gate and the shutdown say are in `quit-guard.test.ts` and
@@ -24,7 +26,7 @@ import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { LOG_WAIT_MS } from '../../src/main/log-file'
+import { LOG_WAIT_MS, openLogFile } from '../../src/main/log-file'
 import {
   LATE_HELD,
   lateLog,
@@ -860,6 +862,53 @@ describe('the late log', () => {
     },
   )
 
+  // The log file itself, the trail and the late log together, in the order
+  // `will-quit` uses them (index.ts): what makes a late line the late
+  // handle's alone is that the log file has already been told to close.
+  /** One quit's last lines over a real log file; `first` says the first late line before or after the close. */
+  async function closingTheFiles(first: 'after the close' | 'before the close'): Promise<string[]> {
+    const dir = await folder()
+    // Mirrored, as in development: a line the closed file refuses is not
+    // sent on to standard error by the file.
+    const main = openLogFile(dir, 'main', { mirrored: true })
+    const file = realFile()
+    const late = lateLog(main.path, QUIT_TAG, file.deps)
+    const t = new QuitTrail({
+      log: (line) => main.write(`[${QUIT_TAG}] ${line}`),
+      late: (lines) => late.append(lines),
+      left: () => [],
+      now: () => 0,
+      timer: () => ({ unref: () => undefined }),
+    })
+    late.open()
+    t.say('closing the log files')
+    t.filesClosing()
+    if (first === 'before the close') t.say('by a handle of its own')
+    const closing = main.close()
+    if (first === 'after the close') t.say('by a handle of its own')
+    await closing
+    await file.whenWritten
+    return (await readFile(main.path, 'utf8')).split('\n').filter((line) => line !== '')
+  }
+  const saying = (lines: string[], what: string): string[] =>
+    lines.filter((line) => line.endsWith(`[${QUIT_TAG}] ${what}`))
+
+  it('writes a line said once the log file is told to close exactly once: the late handle’s alone', async () => {
+    const lines = await closingTheFiles('after the close')
+    expect(saying(lines, 'by a handle of its own')).toHaveLength(1)
+    // The file's own last line is the file's alone, too. The two can land in
+    // either order: two handles, each appending whole lines.
+    expect(saying(lines, 'closing the log files')).toHaveLength(1)
+    expect(lines).toHaveLength(2)
+  })
+
+  it('would write that line twice were it said before the close: the log file still takes it', async () => {
+    // What index.ts must not do, and why a line said there proves nothing of
+    // the late handle: the file is as ready to write it as the handle is.
+    const lines = await closingTheFiles('before the close')
+    expect(saying(lines, 'by a handle of its own')).toHaveLength(2)
+  })
+
   it('is the file module’s own open and write unless it is handed others', () => {
     // The defaults are Node's two calls with callbacks, read from the text:
     // a synchronous write here would let a disk that does not answer hold
@@ -927,17 +976,50 @@ describe('the trail in index.ts', () => {
     const place = index.indexOf("quitTrail.say(`the window's place: ${place}`)", waited)
     const closing = index.indexOf("quitTrail.say('closing the log files;", place)
     const turned = index.indexOf('quitTrail.filesClosing()', closing)
-    // The first line by the late handle, said while the files' close is still
-    // to come: the one late line a quit that finishes has time to land.
+    const closed = index.indexOf(
+      'const closing = Promise.all([files.main.close(), files.engine.close()])',
+      turned,
+    )
+    // The first line by the late handle, said once both files have been told
+    // to close and so refuse it: the handle alone writes it, and it has the
+    // whole of their close to land in.
     const first = index.indexOf(
       "quitTrail.say('the quit goes on in this file by a handle of its own')",
       turned,
     )
-    const closed = index.indexOf('files.main.close()', first)
-    const steps = [entered, again, held, lateOpened, waited, place, closing, turned, first, closed]
+    const waitedFor = index.indexOf('return within(closing, LOG_WAIT_MS)', closed)
+    const steps = [
+      entered,
+      again,
+      held,
+      lateOpened,
+      waited,
+      place,
+      closing,
+      turned,
+      closed,
+      first,
+      waitedFor,
+    ]
     for (const at of steps) expect(at).toBeGreaterThan(-1)
     expect(steps, 'in that order').toEqual([...steps].sort((a, b) => a - b))
     expect(index.match(/quitTrail\.filesClosing\(\)/g)).toHaveLength(1)
+  })
+
+  it('says nothing between turning to the late log and telling the files to close, or the line is written twice', () => {
+    // The log file takes a line until its `close()` is called, and the trail
+    // sends every line to the late handle from `filesClosing()` on: a line
+    // said between the two is in main.log twice, and one that was meant to
+    // prove the late handle proves nothing, the log file having written it.
+    const turned = index.indexOf('quitTrail.filesClosing()')
+    const closed = index.indexOf('files.main.close()', turned)
+    expect(turned).toBeGreaterThan(-1)
+    expect(closed).toBeGreaterThan(turned)
+    const between = index.slice(turned + 'quitTrail.filesClosing()'.length, closed)
+    expect(between).not.toMatch(/\.say\(|log\.(?:info|warn|error)\(/)
+    // And both files are told in the one statement, so none is still taking
+    // lines when the first late line is said.
+    expect(index.slice(closed).startsWith('files.main.close(), files.engine.close()])')).toBe(true)
   })
 
   it('still ends will-quit by asking the guard to quit, whatever the trail said', () => {

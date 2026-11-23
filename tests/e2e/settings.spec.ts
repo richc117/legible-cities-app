@@ -690,10 +690,18 @@ test('keeps main.log and engine.log, and copies diagnostics without the home fol
   expect(main).not.toContain('[engine]')
   // The quit's own lines go on after the files have closed, through a handle
   // of the trail's own (issue 749, src/main/quit-trail.ts). This is the
-  // first of them, said while the files are still closing, so a quit that
-  // finishes has had time to write it; the ones after it are said in the
-  // quit's last turn and can lose to the process ending.
-  expect(main).toContain('[quit] the quit goes on in this file by a handle of its own')
+  // first of them, said once the log files have been told to close, so they
+  // refuse it and the handle alone writes it, with the whole of their close
+  // to land in; the ones after it are said in the quit's last turn and can
+  // lose to the process ending. Exactly once: no line means the handle did
+  // not open or its first write lost to the exit, and two that the log file
+  // took the line as well, which proves nothing of the handle. The profile
+  // is this test's own and it launched once, so no other quit wrote here.
+  const late = '[quit] the quit goes on in this file by a handle of its own'
+  expect(
+    main.split('\n').filter((line) => line.endsWith(late)),
+    'the first line by the quit’s own handle, once',
+  ).toHaveLength(1)
   expect(engine).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z \[engine\] /m)
   expect(engine).toMatch(
     /\[engine\] (ended on request|ended on terminate|did not end on terminate)/,

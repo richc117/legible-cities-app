@@ -422,5 +422,37 @@
     "test": "tests/unit/quit-trail.test.ts",
     "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
     "why": "No line said by the late handle while the files are still closing: every late line is then in the quit's last turn, and none has time to land on a quit that finishes, so nothing in the built app can check the late path."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        const closing = Promise.all([files.main.close(), files.engine.close()])\n        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n",
+    "replace": "        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n        const closing = Promise.all([files.main.close(), files.engine.close()])\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
+    "why": "The first late line said before the files are told to close: the log file takes it too, it is in main.log twice, and the end-to-end check that reads it passes with the late handle gone."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        const closing = Promise.all([files.main.close(), files.engine.close()])\n        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n",
+    "replace": "        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n        const closing = Promise.all([files.main.close(), files.engine.close()])\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says nothing between turning to the late log and telling the files to close, or the line is written twice",
+    "why": "The same, read as the rule it breaks: nothing is said between the trail turning to its own handle and the files' close."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (!this.#late) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes a line said once the log file is told to close exactly once: the late handle’s alone",
+    "why": "Every line sent to the late handle whether or not the files are closing: the file's own last line is in main.log twice."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  #write(lines: readonly string[]): void {\n    for (const line of lines) {\n",
+    "replace": "  #write(lines: readonly string[]): void {\n    for (const line of this.#late ? [] : lines) {\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "would write that line twice were it said before the close: the log file still takes it",
+    "why": "The trail no longer hands a late line to the log: standard error loses the quit's last lines, which is where they go when the late handle cannot be opened; the order in index.ts, not this, is what keeps a late line single."
   }
 ]

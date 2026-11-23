@@ -2670,14 +2670,27 @@ write asked for from another's answer needs the loop to turn again, which
 after that turn it may not. Nothing is waited for, because a synchronous
 write would let a disk that does not answer hold the quit; so on a quit
 that finishes, that last write can lose to the process ending, and its
-five lines are there together or not at all: their absence there is not
-evidence. The first late line, `the quit goes on in this file by a handle
-of its own`, is said as the files begin to close and has the whole of
-their close to land, and `tests/e2e/settings.spec.ts` reads it after a
-quit. A quit that stalls has time for all of them. Lines said while an
-earlier write has not answered are written only if it does, two hundred
-pieces are held at most, and a file that cannot be opened drops them and
-is not asked again.
+five lines are there together or not at all. **Not at all may be the
+common case on a fast machine**: where the quit is quick, the handle's
+open, or the first late write, can still be unanswered when the last turn
+comes, and the five lines then wait behind an answer that needs one more
+turn of the loop, which a process that is leaving does not take. So their
+absence from the log of a quit that finished is never evidence; only their
+presence is. The first late line, `the quit goes on in this file by a
+handle of its own`, is said in `will-quit` once both log files have been
+told to close: a log file takes lines until then, so a line said any
+sooner would be written twice, by the file and by the handle, and would
+prove nothing of the handle. Said there, the file refuses it and the
+handle alone writes it, with the whole of the files' close to land in, and
+`tests/e2e/settings.spec.ts` reads it after a quit, exactly once. It can
+land ahead of the log's own last lines, which are being written out by
+the other handle at the same moment; each appends whole lines, and the
+order between the two says nothing. Like every line logged after the
+close, a late line also reaches standard error, once: the trail still
+hands it to the log, which is what has it there. A quit that stalls has
+time for all of them. Lines said while an earlier write has not answered
+are written only if it does, two hundred pieces are held at most, and a
+file that cannot be opened drops them and is not asked again.
 
 The log may contain paths - the configuration lines by contract, and
 Electron's own report of a failed bridge call, which prints the underlying

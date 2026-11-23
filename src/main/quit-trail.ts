@@ -21,8 +21,11 @@
 //   through a way in of this module's own (`lateLog`): one handle, opened as
 //   `will-quit` begins, and one writer, so the lines land in the order they
 //   were said; what is said in one turn goes as one write as the turn ends.
-//   A write is not waited for, so the very last lines can lose a race with
-//   the process ending; a quit that stalls has all the time they need.
+//   A write is not waited for, so the lines of the quit's last turn can lose
+//   to the process ending, and on a quick quit commonly do: their absence
+//   is never evidence. The first late line is said once the files have been
+//   told to close, has the whole of their close to land in, and is the one
+//   a finished quit should carry. A quit that stalls has time for them all.
 // - **The report.** From the moment the quit is let go on to Electron - the
 //   engine stopped and the app asking itself to quit, or no engine to stop -
 //   a process still there after `QUIT_OVERDUE_MS[0]` writes once what is
@@ -260,8 +263,10 @@ export class QuitTrail {
   }
 
   /**
-   * The log files are about to be closed, and take no line after this: from
-   * here every line goes straight to `main.log` as well.
+   * The log files are closed by the caller's next statement: from here every
+   * line goes straight to `main.log` as well as to the log. The log refuses
+   * a line only once its file has been told to close, so a line said between
+   * this and that close is written twice, and the caller says none there.
    */
   filesClosing(): void {
     this.#late = true

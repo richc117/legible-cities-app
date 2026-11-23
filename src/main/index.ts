@@ -1160,15 +1160,18 @@ if (!hasLock) {
       .then(() => {
         quitTrail.say(`the window's place: ${place}`)
         if (files === null) return undefined
-        // The last line the files themselves carry.
+        // The last line the files themselves carry, and nothing is said
+        // between here and their close: a file takes lines until it is told
+        // to close, so a line said in between would be written twice, once
+        // by the file and once by the trail's own handle.
         quitTrail.say('closing the log files; the quit says the rest straight into this one')
         quitTrail.filesClosing()
-        // The first line by the trail's own handle, and the one with time to
-        // land on a quit that finishes: the files' close is still to come.
-        // The lines after it are said in this quit's last turn.
-        quitTrail.say('the quit goes on in this file by a handle of its own')
         closed = `did not close within ${LOG_WAIT_MS} ms, and the quit goes on`
         const closing = Promise.all([files.main.close(), files.engine.close()])
+        // The first line by the trail's own handle alone: the files have been
+        // told to close and take no more. It has the whole of their close to
+        // land in, where the lines after it are said in this quit's last turn.
+        quitTrail.say('the quit goes on in this file by a handle of its own')
         void closing.then(
           () => {
             closed = 'are closed'
