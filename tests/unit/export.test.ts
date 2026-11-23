@@ -752,10 +752,25 @@ describe('cancelling', () => {
     // The cancel has to land after the plan's own check and before the
     // capture starts, which is while the frames folder is claimed: that
     // claim is real file work, so a callback queued now runs during it.
+    let ended = false
+    result.then(
+      () => (ended = true),
+      () => (ended = true),
+    )
     setImmediate(() => h.exporter.abortAll())
     h.eng.requests[0].resolve(plan())
-    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    await until('the export to end or a capture to start', () => ended || h.cap.calls.length > 0)
     expect(h.cap.calls, 'no capture was started').toHaveLength(0)
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+
+    // The check sits before the file is claimed: a cancel here leaves the
+    // destination free, so the same export can be started again.
+    const second = h.exporter.start('tok-2', 'abcdefghijk1', REEL)
+    await settle()
+    h.eng.requests[1].resolve(plan())
+    await until('the second capture', () => h.cap.calls.length === 1)
+    h.exporter.cancel('tok-2')
+    await expect(second.result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
   })
 
   it('a quit cancels every export', async () => {

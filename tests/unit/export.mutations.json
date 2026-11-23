@@ -38,5 +38,13 @@
     "test": "tests/unit/export.test.ts",
     "title": "while the frames folder is claimed never starts the capture",
     "why": "The check after the folder's claim dropped: a cancel that lands during the claim still starts a capture and makes its window."
+  },
+  {
+    "file": "src/main/export.ts",
+    "find": "    // A cancel that landed while the folder was claimed: no capture is\n    // started for it, and no window made (issue 754). Before the file is\n    // claimed below, so there is nothing yet for the `finally` to release.\n    this.#stopIfCancelled(control)\n    this.#writing.add(dest)\n",
+    "replace": "    // A cancel that landed while the folder was claimed: no capture is\n    // started for it, and no window made (issue 754). Before the file is\n    // claimed below, so there is nothing yet for the `finally` to release.\n    this.#writing.add(dest)\n    this.#stopIfCancelled(control)\n",
+    "test": "tests/unit/export.test.ts",
+    "title": "while the frames folder is claimed never starts the capture",
+    "why": "The check moved below the file's claim: a cancel during the folder's claim leaves the destination claimed for the life of the process, and every later export of that file is refused."
   }
 ]

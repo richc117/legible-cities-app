@@ -13,6 +13,14 @@
     "replace": "  const page = new ElectronCapturePage(job)\n  if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)\n",
     "test": "tests/unit/capture-cancelled.test.ts",
     "title": "capture() refuses a signal already aborted before it makes a window",
-    "why": "The check after the window is made: the window exists, if briefly, for a run already cancelled."
+    "why": "The check after the window is made: the window is made for a run already cancelled and, outside `live` and the `try`, never destroyed."
+  },
+  {
+    "file": "src/main/capture-window.ts",
+    "find": "  if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)\n",
+    "replace": "  // if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)\n",
+    "test": "tests/unit/capture-cancelled.test.ts",
+    "title": "capture() refuses a signal already aborted before it makes a window",
+    "why": "The check turned into a comment: the text is still in the function, but nothing refuses a run already cancelled."
   }
 ]
