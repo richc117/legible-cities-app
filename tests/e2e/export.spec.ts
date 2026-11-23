@@ -546,11 +546,21 @@ async function closeAnyway(page: Page): Promise<void> {
   await pressAndLetTheWindowGo(asked.getByRole('button', { name: 'Close anyway', exact: true }))
 }
 
-/** Close the app's own window, not the capture's. */
+/**
+ * Close the app's own window, not the capture's. A window on its way out is
+ * still listed for a moment after its web contents are destroyed, and reading
+ * the address of those throws (issue 742), so here and in the two polls below
+ * such a window is left out before anything of it is read.
+ */
 function closeAppWindow(app: ElectronApplication): Promise<void> {
   return app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows())
-      if (window.webContents.getURL().startsWith('app://local/ui/')) window.close()
+      if (
+        !window.isDestroyed() &&
+        !window.webContents.isDestroyed() &&
+        window.webContents.getURL().startsWith('app://local/ui/')
+      )
+        window.close()
   })
 }
 
@@ -618,8 +628,11 @@ test('closing the window during an export on macOS stops it once the person says
     await expect
       .poll(() =>
         app.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows().some((w) =>
-            w.webContents.getURL().startsWith('app://local/ui/'),
+          BrowserWindow.getAllWindows().some(
+            (w) =>
+              !w.isDestroyed() &&
+              !w.webContents.isDestroyed() &&
+              w.webContents.getURL().startsWith('app://local/ui/'),
           ),
         ),
       )
@@ -649,8 +662,11 @@ test('closing the window during an export on macOS stops it once the person says
         () =>
           app.evaluate(
             ({ BrowserWindow }) =>
-              BrowserWindow.getAllWindows().filter((w) =>
-                w.webContents.getURL().startsWith('app://local/ui/'),
+              BrowserWindow.getAllWindows().filter(
+                (w) =>
+                  !w.isDestroyed() &&
+                  !w.webContents.isDestroyed() &&
+                  w.webContents.getURL().startsWith('app://local/ui/'),
               ).length,
           ),
         { timeout: 15_000, message: 'one window of the interface came back' },
