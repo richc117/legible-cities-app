@@ -456,7 +456,7 @@ describe.skipIf(lacking)(
 
     it('refuses a wait that is not a whole number of seconds, before anything is fetched', () => {
       // The script itself, which stops here long before it reaches a network:
-      // without the check it goes on to refuse the folder as no engine checkout.
+      // without the check it goes on, reads the pins, and refuses the folder as not a git checkout.
       const engine = scratch()
       const env = { ...process.env, VENDOR_PLACE_BACKOFF: 'soon' }
       const result = tool(BASH, [PYTHON, 'darwin-arm64', engine, join(engine, 'vendor')], env)
