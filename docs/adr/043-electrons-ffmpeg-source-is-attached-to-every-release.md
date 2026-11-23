@@ -99,6 +99,8 @@ three FFmpeg cherry-picks besides `link_with_loader_path.patch` - and the
 source script refuses a list that names a patch the pins do not, or a pinned
 patch the list does not name; each changes the compiled library and is packed
 beside it.)
+(Amended 2026-11-22: Electron 45.4.1 lists a fourth cherry-pick,
+`cherry-pick-42a2a7a2b2ce.patch`, pinned the same way.)
 
 **What goes in** is what FFmpeg's `BUILD.gn` and the `.gni` files it imports
 name outside themselves, read at the pinned commit: `//build` (compiler,

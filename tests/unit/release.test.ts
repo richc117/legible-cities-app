@@ -2625,6 +2625,7 @@ describe("the source of Electron's FFmpeg library", () => {
       'patches/ffmpeg/cherry-pick-f4bee18dadeb.patch',
       'patches/ffmpeg/cherry-pick-5eed87f44b0a.patch',
       'patches/ffmpeg/cherry-pick-fb424c4f78d1.patch',
+      'patches/ffmpeg/cherry-pick-42a2a7a2b2ce.patch',
       'build/args/all.gn',
       'build/args/release.gn',
       'patches/chromium/.patches',
@@ -2632,7 +2633,7 @@ describe("the source of Electron's FFmpeg library", () => {
       expect(files).toContain(required)
     }
     // Electron's patches to Chromium's build/, eight at Electron 44.2.0, 44.3.0, 44.5.1, 44.7.0,
-    // 44.7.1 and 44.9.1, and eight at 45.0.0, 45.2.3 and 45.3.2, one of them another patch.
+    // 44.7.1 and 44.9.1, and eight at 45.0.0, 45.2.3, 45.3.2 and 45.4.1, one of them another patch.
     expect(files.filter((file) => /^patches\/chromium\/.+\.patch$/.test(file))).toHaveLength(8)
   })
 
