@@ -806,6 +806,8 @@ describe('the script, as bash 3.2 reads it', () => {
 describe('the script, in the wording of a missing patch list', () => {
   // The fetch cannot run offline here, so the sentence each caller gets is
   // read from the script: the one under each word of check_patch_list's case.
+  // That holds each sentence to its own arm; it cannot show the fetch reaching
+  // the pins arm at run time, which needs upstream.
   const text = readFileSync(SCRIPT, 'utf8')
   const arm = (word: string): string | undefined =>
     new RegExp(`^\\s*${word}\\) fail "([^"]*)" ;;$`, 'm').exec(text)?.[1]

@@ -359,6 +359,10 @@ pack_archive() {
 # time, which the fetch reads from the commit and the pins do not hold, so
 # --verify cannot learn it offline: it accepts the one time the archive
 # carries, and packs with it again.
+# Python's tarfile takes a bad header after the first entry for the end of
+# the archive, so the listing ends cleanly there and says nothing of what
+# follows; that is why the unpack's own status and the repack's comparison
+# are both needed after it.
 check_listing() {
   local entry part path allowed expected parts exact listed
   listed=$(python3 - "$1" "$archive" <<'PY'
