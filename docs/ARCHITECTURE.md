@@ -358,6 +358,14 @@ everything else, each guards its own call, and a line that cannot be said
 is dropped: nothing here may throw into a quit, and nothing changes what a
 quit does, in what order, or when.
 
+**No window is made once a quit is under way** (issue 753). On macOS the app
+can be in the quit's wait with no window at all, and a menu command, a
+second launch or the Dock icon would each make one, whose page would talk
+to an engine being stopped. Every window after the first is made through
+`windowMaker` (`src/main/window-lifecycle.ts`), which asks the gate
+whether it is quitting; if so the request is dropped, a menu command with
+it, and the trail says so in one line naming who asked.
+
 From the moment the quit is let go on to Electron - the engine stopped and
 the app about to ask itself to quit, or no engine to stop - the trail
 keeps a clock (`shutDown`'s `watch`). A process still there after five

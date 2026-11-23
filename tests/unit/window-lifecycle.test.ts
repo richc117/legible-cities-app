@@ -8,6 +8,8 @@
 // And the rule for the question a quit or a close asks first while a run is
 // going (issue 552): `quitQuestion`, further down, with its own note.
 
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import {
   onActivate,
@@ -18,6 +20,7 @@ import {
   shutDown,
   type QuitFacts,
   type Run,
+  windowMaker,
 } from '../../src/main/window-lifecycle'
 
 /** The app as the handlers see it: the windows open, and which one is the app's own. */
@@ -85,6 +88,67 @@ describe('onActivate', () => {
     const handler = onActivate({ appWindow: () => world.appWindow, open: make })
     handler()
     expect(world.windowsMade).toBe(0)
+  })
+})
+
+// No window is made while a quit is under way (issue 753): a menu command, a
+// second launch and the Dock icon all ask through `windowMaker`.
+describe('windowMaker', () => {
+  it('makes a window and says nothing when no quit is under way', () => {
+    const make = vi.fn()
+    const say = vi.fn()
+    const open = windowMaker({ quitting: () => false, make, say })
+    expect(open('the Dock icon')).toBe(true)
+    expect(make).toHaveBeenCalledTimes(1)
+    expect(say).not.toHaveBeenCalled()
+  })
+
+  it('makes none during a quit, and says who asked', () => {
+    const make = vi.fn()
+    const say = vi.fn()
+    const open = windowMaker({ quitting: () => true, make, say })
+    expect(open('the Dock icon')).toBe(false)
+    expect(make).not.toHaveBeenCalled()
+    expect(say).toHaveBeenCalledTimes(1)
+    expect(say).toHaveBeenCalledWith(
+      'a window is asked for during the quit (the Dock icon): none is made',
+    )
+  })
+
+  it('asks the gate each time, not once', () => {
+    const make = vi.fn()
+    const answers = [false, true]
+    const open = windowMaker({ quitting: () => answers.shift() ?? true, make, say: vi.fn() })
+    expect(open('a menu command')).toBe(true)
+    expect(open('a menu command')).toBe(false)
+    expect(make).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not throw when the line cannot be said', () => {
+    const make = vi.fn()
+    const open = windowMaker({
+      quitting: () => true,
+      make,
+      say: () => {
+        throw new Error('the log is closed')
+      },
+    })
+    expect(() => open('a second launch')).not.toThrow()
+    expect(open('a second launch')).toBe(false)
+    expect(make).not.toHaveBeenCalled()
+  })
+
+  it('index.ts makes every window after the first through windowMaker', () => {
+    const index = readFileSync(join(__dirname, '..', '..', 'src', 'main', 'index.ts'), 'utf8')
+    const code = index
+      .split('\n')
+      .filter((line) => !/^\s*(?:\/\/|\/\*|\*)/.test(line))
+      .join('\n')
+    // The declaration, the one inside windowMaker's make, the first window's.
+    expect(code.match(/createWindow\(\)/g)).toHaveLength(3)
+    expect(code).toContain("openAppWindow('a second launch')")
+    expect(code).toContain("openAppWindow('the Dock icon')")
+    expect(code).toContain("openAppWindow('a menu command')")
   })
 })
 

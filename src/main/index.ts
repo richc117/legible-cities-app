@@ -60,7 +60,7 @@ import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
-import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
+import { onActivate, onAppWindowClosed, quitGate, shutDown, windowMaker } from './window-lifecycle'
 import {
   onAppWindowClose,
   onBeforeQuit,
@@ -243,6 +243,15 @@ const quitTrail = new QuitTrail({
   timer: (run, ms) => setTimeout(run, ms),
 })
 const quit = quitGate((line) => quitTrail.say(line))
+// Every window after the first is made through this, so none is made
+// while a quit is under way (issue 753).
+const openAppWindow = windowMaker({
+  quitting: () => quit.quitting,
+  make: () => {
+    mainWindow = createWindow()
+  },
+  say: (line) => quitTrail.say(line),
+})
 /** The app window's last place being written as it closed; a quit waits for it (issue 549). */
 let windowKept: Promise<void> = Promise.resolve()
 /**
@@ -603,7 +612,9 @@ function setAppMenu(help: HelpIpcDeps): void {
         )
         return
       }
-      if (mainWindow === null || mainWindow.isDestroyed()) mainWindow = createWindow()
+      if (mainWindow === null || mainWindow.isDestroyed()) {
+        if (!openAppWindow('a menu command')) return
+      }
       menuCommands.command(action.command)
     },
   })
@@ -621,7 +632,7 @@ if (!hasLock) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     } else {
-      mainWindow = createWindow()
+      openAppWindow('a second launch')
     }
   })
 
@@ -1079,7 +1090,7 @@ if (!hasLock) {
       onActivate({
         appWindow: () => mainWindow,
         open: () => {
-          mainWindow = createWindow()
+          openAppWindow('the Dock icon')
         },
       }),
     )

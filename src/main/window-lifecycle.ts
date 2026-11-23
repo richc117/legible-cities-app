@@ -51,6 +51,32 @@ export function onActivate(deps: ActivateDeps): () => void {
   }
 }
 
+/** What `windowMaker` needs. */
+export interface WindowMakerDeps {
+  /** Whether a quit is under way: the gate's `quitting`. */
+  quitting: () => boolean
+  /** Make the app's window. */
+  make: () => void
+  /** A line for the quit's trail, said when a window is refused. */
+  say: (line: string) => void
+}
+
+/**
+ * The one way the app makes its window after the first: never while a quit
+ * is under way (issue 753). Answers whether it made one. `why` is who asked,
+ * for the line: 'a menu command', 'a second launch', 'the Dock icon'.
+ */
+export function windowMaker(deps: WindowMakerDeps): (why: string) => boolean {
+  return (why) => {
+    if (deps.quitting()) {
+      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)
+      return false
+    }
+    deps.make()
+    return true
+  }
+}
+
 /** The slice of Electron's event the gate needs. */
 export interface Cancellable {
   preventDefault(): void
