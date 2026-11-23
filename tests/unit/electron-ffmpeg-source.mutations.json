@@ -78,5 +78,21 @@
     "test": "tests/unit/electron-ffmpeg-source.test.ts",
     "title": "finds a bare pattern on the case line and on the lines after it, and nothing else",
     "why": "A case on the same line as its $( unread, so its bare pattern goes unseen."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses an archive that does not unpack, by that name",
+    "find": "--no-same-owner || status=$?",
+    "replace": "--no-same-owner || true",
+    "why": "A tar that refuses the archive read as having unpacked: a damaged archive goes on to the later checks and is refused, if at all, for some other reason."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses an archive that does not unpack, by that name",
+    "find": "  return \"$status\"\n}",
+    "replace": "  return 0\n}",
+    "why": "The unpack's own status dropped: the sentence that names the archive as unreadable is never said."
   }
 ]

@@ -564,6 +564,25 @@ describe.skipIf(lacking)(
       refused(join(stream, ARCHIVE), pinsFile, message)
     })
 
+    it('refuses an archive that does not unpack, by that name', () => {
+      const { good, pinsFile } = fixture()
+      const dir = join(scratch(), 'damaged')
+      mkdirSync(dir)
+      copyFileSync(good, join(dir, ARCHIVE))
+      expect(tool('xz', ['-d', join(dir, ARCHIVE)]).status).toBe(0)
+      const tarPath = join(dir, `${NAME}.tar`)
+      const bytes = readFileSync(tarPath)
+      let end = bytes.length
+      while (end > 0 && bytes[end - 1] === 0) end -= 1
+      end = Math.ceil(end / 512) * 512
+      // A block of junk after the last entry: Python's tarfile, which lists
+      // the entries, takes a bad header there for the end, and GNU tar will not.
+      const junk = Buffer.alloc(512, 0x78)
+      writeFileSync(tarPath, Buffer.concat([bytes.subarray(0, end), junk, Buffer.alloc(1024)]))
+      expect(tool('xz', ['-z', '-T1', tarPath]).status).toBe(0)
+      refused(join(dir, ARCHIVE), pinsFile, `${ARCHIVE} does not unpack`)
+    })
+
     it('refuses an archive by another name, and a lock for another Electron', () => {
       const { base, pinsFile, pack } = fixture()
       const archive = pack(base)
