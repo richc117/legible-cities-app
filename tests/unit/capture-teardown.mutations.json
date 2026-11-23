@@ -1,0 +1,106 @@
+[
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "    if (!contents.isDestroyed()) {\n      const dbg = contents.debugger\n      if (dbg.isAttached()) dbg.detach()\n    }\n",
+    "replace": "    const dbg = contents.debugger\n    if (dbg.isAttached()) dbg.detach()\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "destroys a window whose web contents are already gone",
+    "why": "The web-contents check dropped: the debugger of gone contents is read, it throws, and the window is left to the swallow rather than asked not to read."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n  window.destroy()\n",
+    "replace": "  } catch (error) {\n    throw error\n  }\n  window.destroy()\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "destroys the window when reading its web contents throws",
+    "why": "The swallow dropped (the throw rethrown): a throw from a dying page stops the teardown before window.destroy()."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "      if (dbg.isAttached()) dbg.detach()\n    }\n  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n  window.destroy()\n",
+    "replace": "      if (dbg.isAttached()) dbg.detach()\n    }\n    window.destroy()\n  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "destroys the window when the detach throws",
+    "why": "window.destroy() moved into the try, so a refused detach leaves the window alive."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "      if (dbg.isAttached()) dbg.detach()\n    }\n  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n  window.destroy()\n",
+    "replace": "    }\n    window.destroy()\n    if (contents.debugger.isAttached()) contents.debugger.detach()\n  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "detaches an attached debugger before it destroys the window",
+    "why": "Detach after destroy: the debugger is detached from a window already gone."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "  if (window.isDestroyed()) return\n",
+    "replace": "",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "asks a destroyed window nothing more",
+    "why": "The early return dropped: a destroyed window is read and destroyed again."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "    try {\n      page.destroy()\n    } catch (error) {",
+    "replace": "    {\n      page.destroy()\n    }\n    if (false as boolean) {\n      const error: unknown = null",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "goes on to the next capture when one throws, and says so once",
+    "why": "The per-page try dropped: one capture that throws ends the walk."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "        say(`a capture did not end on quit: ${message}`)\n",
+    "replace": "        say(`a capture did not end on quit: ${message}`)\n        say(`a capture did not end on quit: ${message}`)\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "goes on to the next capture when one throws, and says so once",
+    "why": "say called twice for one failure."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "        say(`a capture did not end on quit: ${message}`)\n",
+    "replace": "",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "goes on to the next capture when one throws, and says so once",
+    "why": "say never called: a failed capture is silent."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "for (const page of [...pages])",
+    "replace": "for (const page of pages)",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "walks a copy: a page that empties the set as it ends skips nobody",
+    "why": "The copy dropped: a capture that empties the set as it ends stops the walk."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "      try {\n        const message = error instanceof Error ? error.message : String(error)\n        say(`a capture did not end on quit: ${message}`)\n      } catch {\n        // A logger that throws, or an error that cannot be put into words, must not stop the walk.\n      }\n",
+    "replace": "      const message = error instanceof Error ? error.message : String(error)\n      say(`a capture did not end on quit: ${message}`)\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "goes on when the logger throws",
+    "why": "The try around say dropped: a throwing logger stops the walk."
+  },
+  {
+    "file": "src/main/capture-window.ts",
+    "find": "  destroyEach(live, (message) => log.warn('capture', message))",
+    "replace": "  for (const page of live) page.destroy()",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "ends its captures through the two functions",
+    "why": "The bare loop put back: one capture that throws ends the walk on a quit."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "      try {\n        const message = error instanceof Error ? error.message : String(error)\n        say(",
+    "replace": "      const message = error instanceof Error ? error.message : String(error)\n      try {\n        say(",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "goes on when the error cannot be put into words",
+    "why": "The message built outside the inner try: an error that cannot be turned into a string escapes and ends the walk."
+  },
+  {
+    "file": "src/main/capture-window.ts",
+    "find": "    destroyCaptureWindow(this.#window)\n",
+    "replace": "    const dbg = this.#window.webContents.debugger\n    if (dbg.isAttached()) dbg.detach()\n    destroyCaptureWindow(this.#window)\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "ends its captures through the two functions",
+    "why": "The old unguarded debugger read put back ahead of the call: it throws on gone web contents before the window is destroyed."
+  }
+]
