@@ -301,35 +301,99 @@ describe('quitGate', () => {
     gate.beforeQuit(event(), true)
     expect(gate.quitting).toBe(true)
   })
+
+  // The quit's trail (issue 749): the gate says each pass, and whether it
+  // held it, so `main.log` shows how far a quit that stopped had come.
+  it('says each pass for the trail: the first, one held while the engine stops, and one let through', () => {
+    const said: string[] = []
+    const gate = quitGate((line) => said.push(line))
+    gate.beforeQuit(event(), true)
+    gate.beforeQuit(event(), true)
+    gate.finished()
+    gate.beforeQuit(event(), true)
+    expect(said).toEqual([
+      "before-quit, the gate's first pass: held while the engine is stopped",
+      'before-quit again: held, the engine is still being stopped',
+      'the gate is finished: the next quit is let through',
+      'before-quit again: let through',
+    ])
+  })
+
+  it('says a first pass with no engine as let through', () => {
+    const said: string[] = []
+    const gate = quitGate((line) => said.push(line))
+    gate.beforeQuit(event(), false)
+    gate.beforeQuit(event(), false)
+    expect(said).toEqual([
+      "before-quit, the gate's first pass: let through, there is no engine to stop",
+      'before-quit again: let through',
+    ])
+  })
+
+  it('says its line before it cancels the quit', () => {
+    const order: string[] = []
+    const gate = quitGate(() => order.push('said'))
+    gate.beforeQuit({ preventDefault: () => order.push('cancelled') }, true)
+    expect(order).toEqual(['said', 'cancelled'])
+  })
+
+  it('holds and lets go exactly as it did when the trail cannot be said', () => {
+    const gate = quitGate(() => {
+      throw new Error('the log is gone')
+    })
+    const first = event()
+    expect(gate.beforeQuit(first, true)).toBe('first')
+    expect(first.preventDefault).toHaveBeenCalledTimes(1)
+    const held = event()
+    expect(gate.beforeQuit(held, true)).toBe('later')
+    expect(held.preventDefault).toHaveBeenCalledTimes(1)
+    expect(() => gate.finished()).not.toThrow()
+    const last = event()
+    expect(gate.beforeQuit(last, true)).toBe('later')
+    expect(last.preventDefault, 'the stop is done: Electron goes').not.toHaveBeenCalled()
+  })
 })
 
 describe('shutDown', () => {
   /** What the first pass is handed, with the order things happened in. */
   function setup(options: { throwing?: string[]; stopFails?: boolean; noEngine?: boolean } = {}) {
     const order: string[] = []
+    // The same, with the trail's lines and its watch in their places among
+    // them (issue 749): `order` is what a quit does, `told` what it says too.
+    const told: string[] = []
+    const did = (what: string): void => {
+      order.push(what)
+      told.push(what)
+    }
     const gate = quitGate()
     const deps = {
       aborts: ['the export', 'the capture', 'the first-run check'].map((name) => ({
         name,
         run: () => {
-          order.push(name)
+          did(name)
           if (options.throwing?.includes(name)) throw new Error(`${name} broke`)
         },
       })),
       stop: options.noEngine
         ? null
         : () => {
-            order.push('stop')
+            did('stop')
             return options.stopFails ? Promise.reject(new Error('no answer')) : Promise.resolve()
           },
       finished: () => {
-        order.push('finished')
+        did('finished')
         gate.finished()
       },
-      quit: () => order.push('quit'),
-      error: (message: string) => order.push(`error: ${message}`),
+      quit: () => did('quit'),
+      error: (message: string) => did(`error: ${message}`),
+      say: (line: string) => {
+        told.push(`say: ${line}`)
+      },
+      watch: () => {
+        told.push('watch')
+      },
     }
-    return { order, gate, deps }
+    return { order, told, gate, deps }
   }
   const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -414,5 +478,87 @@ describe('shutDown', () => {
     shutDown(deps)
     await settle()
     expect(order).toEqual(['the export', 'the capture', 'the first-run check'])
+  })
+
+  // The quit's trail (issue 749). Each line is said before the step it
+  // names, so a quit that stops at a step has said which.
+  it('says each step before it is taken: what it ends, the stop asked for, and how the stop ended', async () => {
+    const { told, deps } = setup()
+    shutDown(deps)
+    await settle()
+    expect(told).toEqual([
+      'say: ending the export, the capture, the first-run check',
+      'the export',
+      'the capture',
+      'the first-run check',
+      'say: asking the engine to stop',
+      'stop',
+      "say: the engine's stop ended (resolved)",
+      'finished',
+      'watch',
+      'quit',
+    ])
+  })
+
+  it('says a stop that failed as rejected, after the failure itself', async () => {
+    const { told, deps } = setup({ stopFails: true })
+    shutDown(deps)
+    await settle()
+    expect(told.slice(-5)).toEqual([
+      'error: stop failed: no answer',
+      "say: the engine's stop ended (rejected)",
+      'finished',
+      'watch',
+      'quit',
+    ])
+  })
+
+  it('starts the trail’s watch once, as the quit is let go on to Electron: the gate finished, the app not yet asked', async () => {
+    const { told, deps } = setup()
+    shutDown(deps)
+    expect(told, 'not while the engine is still being stopped').not.toContain('watch')
+    await settle()
+    expect(told.filter((what) => what === 'watch')).toHaveLength(1)
+    expect(told.slice(-3)).toEqual(['finished', 'watch', 'quit'])
+  })
+
+  it('starts the watch with no engine to stop too, where Electron is already going on', async () => {
+    const { told, deps } = setup({ noEngine: true })
+    shutDown(deps)
+    await settle()
+    expect(told).toEqual([
+      'say: ending the export, the capture, the first-run check',
+      'the export',
+      'the capture',
+      'the first-run check',
+      'say: no engine to stop: the quit goes on',
+      'watch',
+    ])
+  })
+
+  it('stops the engine, lets the gate go and quits though the trail and its watch throw', async () => {
+    const gone = (): never => {
+      throw new Error('the log is gone')
+    }
+    const { order, gate, deps } = setup()
+    gate.beforeQuit({ preventDefault: () => undefined }, true)
+    shutDown({ ...deps, say: gone, watch: gone })
+    await settle()
+    expect(order).toEqual([
+      'the export',
+      'the capture',
+      'the first-run check',
+      'stop',
+      'finished',
+      'quit',
+    ])
+    const last = { preventDefault: vi.fn() }
+    gate.beforeQuit(last, true)
+    expect(last.preventDefault).not.toHaveBeenCalled()
+
+    // And with no engine: the aborts still run, and nothing is thrown.
+    const none = setup({ noEngine: true })
+    expect(() => shutDown({ ...none.deps, say: gone, watch: gone })).not.toThrow()
+    expect(none.order).toEqual(['the export', 'the capture', 'the first-run check'])
   })
 })

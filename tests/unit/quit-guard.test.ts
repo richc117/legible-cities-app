@@ -13,9 +13,12 @@
 // it makes is not asked about; a second close also cancels what the page had
 // with the engine; the page's report is heard from the listening frame only
 // and goes with the page, as it does when the page says it has stopped
-// listening; a termination signal is the app's own quit; and the three
-// handlers take the top frame's word and refuse a wrong shape. Each was
-// watched failing under its mutation in `quit-guard.mutations.json`.
+// listening; a termination signal is the app's own quit; the three handlers
+// take the top frame's word and refuse a wrong shape; and the guard says
+// which of its answers a quit or a close was given, for the quit's trail in
+// `main.log` (issue 749), before it carries it out and never with a
+// project's name. Each was watched failing under its mutation in
+// `quit-guard.mutations.json`.
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -52,6 +55,14 @@ const event = () => ({ preventDefault: vi.fn() })
 /** The guard over a world a test can move: the exports, the names, the window's frame, the clock, and what was done. */
 function world() {
   const did: string[] = []
+  // What the guard said for the quit's trail (issue 749), and the same lines
+  // among what it did, in the order the two happened.
+  const said: string[] = []
+  const timeline: string[] = []
+  const act = (what: string): void => {
+    did.push(what)
+    timeline.push(what)
+  }
   const asked: AskedQuit[] = []
   // Not at nought: a question's age is a difference, never the clock itself.
   const clock = { now: 50_000 }
@@ -69,14 +80,18 @@ function world() {
     current: (frame) => frame === state.frame,
     ask: (question) => {
       asked.push(question)
-      did.push(`ask ${question.kind}`)
+      act(`ask ${question.kind}`)
     },
-    withdraw: () => did.push('withdraw'),
-    stopExports: () => did.push('stop exports'),
-    cancelRequests: () => did.push('cancel requests'),
-    close: () => did.push('close'),
-    quit: () => did.push('quit'),
+    withdraw: () => act('withdraw'),
+    stopExports: () => act('stop exports'),
+    cancelRequests: () => act('cancel requests'),
+    close: () => act('close'),
+    quit: () => act('quit'),
     now: () => clock.now,
+    say: (line) => {
+      said.push(line)
+      timeline.push(`say: ${line}`)
+    },
   })
   /** A page that listens, with an export of Paris running. */
   const exporting = (): void => {
@@ -87,7 +102,7 @@ function world() {
   const later = (ms = QUESTION_MIN_AGE_MS): void => {
     clock.now += ms
   }
-  return { guard, state, did, asked, exporting, later }
+  return { guard, state, did, said, timeline, asked, exporting, later }
 }
 
 describe('the quit’s question', () => {
@@ -518,7 +533,9 @@ describe('before-quit: the question, then the gate, then the shutdown', () => {
   /** The handler as `index.ts` composes it, over the real gate and the real shutdown. */
   function quitting() {
     const w = world()
-    const gate = quitGate()
+    // The gate and the shutdown say their steps into the guard's own list,
+    // so a test can read the trail of a whole quit in one place.
+    const gate = quitGate((line) => w.said.push(line))
     const order: string[] = []
     let stopped!: () => void
     const handler = onBeforeQuit({
@@ -540,6 +557,8 @@ describe('before-quit: the question, then the gate, then the shutdown', () => {
           },
           quit: () => order.push('quit again'),
           error: (message) => order.push(`error: ${message}`),
+          say: (line) => w.said.push(line),
+          watch: () => w.said.push('(the watch begins)'),
         }),
     })
     const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -617,6 +636,216 @@ describe('before-quit: the question, then the gate, then the shutdown', () => {
     expect(gate.quitting).toBe(true)
     expect(order).toEqual(['abort the export', 'stop the engine'])
     expect(did).toEqual([])
+  })
+
+  // The quit's trail (issue 749), as `main.log` would hold it up to the
+  // moment the quit is Electron's: the quit a repeat of quit-guard.spec.ts
+  // once never finished, a second quit that answers the question during an
+  // export. What follows it - the window's close, `will-quit` - is said by
+  // index.ts and read from its text below.
+  it('says the whole of a second quit that answers the question, in order, and never the project', async () => {
+    const { handler, guard, said, stop, settle, exporting, later } = quitting()
+    exporting()
+    handler(event())
+    later()
+    handler(event())
+    stop()
+    await settle()
+    // The app's own quit, made by the shutdown through the guard as index.ts
+    // makes it, and the `before-quit` it raises.
+    guard.quit()
+    handler(event())
+    expect(said).toEqual([
+      'a quit is held and asked about: 1 export(s), 0 layout(s) running',
+      'a quit is let through as the answer to the question on the screen',
+      "before-quit, the gate's first pass: held while the engine is stopped",
+      'ending the export',
+      'asking the engine to stop',
+      "the engine's stop ended (resolved)",
+      'the gate is finished: the next quit is let through',
+      '(the watch begins)',
+      "the app's own quit is asked",
+      'before-quit again: let through',
+    ])
+    expect(said.join('\n')).not.toMatch(/Paris|paris/)
+  })
+
+  it('says a plain quit, with nothing running, from the gate on', async () => {
+    const { handler, guard, said, stop, settle } = quitting()
+    guard.listening(PAGE)
+    handler(event())
+    stop()
+    await settle()
+    expect(said).toEqual([
+      "before-quit, the gate's first pass: held while the engine is stopped",
+      'ending the export',
+      'asking the engine to stop',
+      "the engine's stop ended (resolved)",
+      'the gate is finished: the next quit is let through',
+      '(the watch begins)',
+    ])
+  })
+})
+
+// What the guard itself says for the quit's trail (issue 749): which of its
+// answers a quit or a close was given, before it is carried out. States
+// only: how many runs, never whose.
+describe('the guard’s lines for the trail', () => {
+  it('says a quit that is asked about, with how many runs and never whose, before it asks', () => {
+    const { guard, said, timeline, exporting } = world()
+    exporting()
+    guard.report(PAGE, [{ project: LYON, started: 2_000 }])
+    guard.beforeQuit(event(), false)
+    expect(timeline).toEqual([
+      'say: a quit is held and asked about: 1 export(s), 1 layout(s) running',
+      'ask quit',
+    ])
+    expect(said.join('\n')).not.toMatch(/Paris|Lyon|paris|lyon/)
+  })
+
+  it('says a second quit held as too soon, then one let through as the answer, before the dialog is taken back', () => {
+    const { guard, timeline, exporting, later } = world()
+    exporting()
+    guard.beforeQuit(event(), false)
+    later(QUESTION_MIN_AGE_MS - 1)
+    guard.beforeQuit(event(), false)
+    later(1)
+    guard.beforeQuit(event(), false)
+    expect(timeline.slice(2)).toEqual([
+      'say: a quit is held: it came too soon after the question to be its answer',
+      'say: a quit is let through as the answer to the question on the screen',
+      'withdraw',
+    ])
+  })
+
+  it('says nothing of a quit that simply goes on: the gate speaks next', () => {
+    const { guard, said } = world()
+    guard.listening(PAGE)
+    guard.beforeQuit(event(), false)
+    guard.beforeQuit(event(), true)
+    expect(said).toEqual([])
+  })
+
+  it('says the app’s own quit before it is made', () => {
+    const { guard, timeline } = world()
+    guard.quit()
+    expect(timeline).toEqual(["say: the app's own quit is asked", 'quit'])
+  })
+
+  it('says a quit of the app’s own that passes an open question, and one whose page can no longer be asked', () => {
+    const own = world()
+    own.exporting()
+    own.guard.beforeQuit(event(), false)
+    own.guard.quit()
+    own.guard.beforeQuit(event(), false)
+    expect(own.said.slice(1)).toEqual([
+      "the app's own quit is asked",
+      "a quit is let through as the app's own, past the question on the screen",
+    ])
+
+    const hung = world()
+    hung.exporting()
+    hung.guard.beforeQuit(event(), false)
+    hung.guard.unresponsive()
+    hung.guard.beforeQuit(event(), false)
+    expect(hung.said.slice(1)).toEqual([
+      'a quit is let through past the question: its page can no longer be asked',
+    ])
+  })
+
+  it('says the window’s close each way it can go: asked about, held, the answer, and Close anyway’s own', () => {
+    const { guard, said, exporting, later } = world()
+    exporting()
+    guard.closing(event(), false)
+    guard.closing(event(), false)
+    later()
+    guard.closing(event(), false)
+    expect(said).toEqual([
+      "the window's close is held and asked about: 1 export(s), 0 layout(s) running",
+      "the window's close is held: it came too soon after the question to be its answer",
+      "the window's close is let through as the answer to the question on the screen",
+    ])
+
+    const confirmed = world()
+    confirmed.exporting()
+    confirmed.guard.closing(event(), false)
+    confirmed.guard.answer(PAGE, 1, 'anyway')
+    confirmed.guard.closing(event(), false)
+    expect(confirmed.said.slice(1)).toEqual([
+      'the question is answered in the page: close anyway',
+      "the window's close is let through: it is the one Close anyway asked for",
+    ])
+  })
+
+  it('says the answer given in the page, before it is carried out, and nothing for an answer it does not hear', () => {
+    const quit = world()
+    quit.exporting()
+    quit.guard.beforeQuit(event(), false)
+    quit.guard.answer(NEXT, 1, 'anyway')
+    quit.guard.answer(PAGE, 2, 'anyway')
+    expect(quit.timeline.slice(2), 'another frame, another question').toEqual([])
+    quit.guard.answer(PAGE, 1, 'anyway')
+    expect(quit.timeline.slice(2)).toEqual([
+      'say: the question is answered in the page: quit anyway',
+      "say: the app's own quit is asked",
+      'quit',
+    ])
+
+    const close = world()
+    close.exporting()
+    close.guard.closing(event(), false)
+    close.guard.answer(PAGE, 1, 'anyway')
+    expect(close.timeline.slice(2)).toEqual([
+      'say: the question is answered in the page: close anyway',
+      'stop exports',
+      'close',
+    ])
+
+    const keep = world()
+    keep.exporting()
+    keep.guard.beforeQuit(event(), false)
+    keep.guard.answer(PAGE, 1, 'keep')
+    expect(keep.said.slice(1)).toEqual(['the question is answered in the page: keep working'])
+  })
+
+  it('says a close that simply goes ahead, and whether a quit under way is what closes the window', () => {
+    const { guard, said } = world()
+    guard.listening(PAGE)
+    guard.closing(event(), false)
+    guard.closing(event(), true)
+    expect(said).toEqual([
+      "the window's close is let through",
+      "the window's close is let through, by the quit under way",
+    ])
+  })
+
+  it('asks, holds, lets through and quits exactly as it did when the trail cannot be said', () => {
+    const did: string[] = []
+    const clock = { now: 50_000 }
+    const guard = new QuitGuard({
+      exports: () => [{ project: PARIS, started: 1_000 }],
+      nameOf: () => 'Paris',
+      current: () => true,
+      ask: () => did.push('ask'),
+      withdraw: () => did.push('withdraw'),
+      stopExports: () => did.push('stop exports'),
+      cancelRequests: () => did.push('cancel requests'),
+      close: () => did.push('close'),
+      quit: () => did.push('quit'),
+      now: () => clock.now,
+      say: () => {
+        throw new Error('the log is gone')
+      },
+    })
+    guard.listening(PAGE)
+    const first = event()
+    expect(guard.beforeQuit(first, false)).toBe(true)
+    expect(first.preventDefault).toHaveBeenCalledTimes(1)
+    clock.now += QUESTION_MIN_AGE_MS
+    expect(guard.beforeQuit(event(), false)).toBe(false)
+    expect(guard.closing(event(), true)).toBe(false)
+    guard.quit()
+    expect(did).toEqual(['ask', 'withdraw', 'quit'])
   })
 })
 

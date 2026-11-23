@@ -1,0 +1,458 @@
+[
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  if (window.isDestroyed())\n    return `${own ? \"the app's own window\" : 'not the window the app holds'}; destroyed`\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "asks a destroyed window nothing more than whether it is destroyed",
+    "why": "A destroyed window asked for the rest of itself: every other read of one throws, and the report loses what it could have said."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (held !== null && !held.isDestroyed()) contents = held\n",
+    "replace": "    if (held !== null) contents = held\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "asks web contents that are gone nothing more than whether they are destroyed",
+    "why": "Destroyed web contents asked for their page: the read throws, and a window whose contents are gone - the one worth seeing - is reported as unreadable."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (own) return \"the interface's, the app's own window\"\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says each window: the app’s own, another of the interface’s, a capture’s and any other",
+    "why": "The app's own window not told from another of the interface's: the report cannot say whether the window left is the one the quit was closing or one made since."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    return live.isOffscreen() ? \"a capture's\" : 'of another kind'\n",
+    "replace": "    return 'of another kind'\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says a capture still live, and what the exporter says is running",
+    "why": "A capture's window not told from any other: the report cannot say that what is left is an export's window."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      return \"the interface's, but not the window the app holds\"\n",
+    "replace": "      return `the interface's, at ${live.getURL()}`\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes no address, whatever page a window holds",
+    "why": "A window's address written into the report: a log a person sends on carries a page's address, and whatever its query holds."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (windows.length === 0) lines.push('windows: none')\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says there is no window, and what else is quiet",
+    "why": "No line where no window is left: a report with no window line cannot be told from one whose windows could not be listed."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  lines.push(`captures still running: ${read(() => String(facts.captures()))}`)\n",
+    "replace": "  lines.push(`captures still running: ${String(facts.captures())}`)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws: a fact that cannot be read costs its own line, and the others are still read",
+    "why": "A fact read unguarded: one that throws takes the whole report with it, at the moment the app is in a state nobody expected."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      const said = read(() => describeWindow(window, own !== null && window === own))\n",
+    "replace": "      const said = describeWindow(window, own !== null && window === own)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws for a window whose every read throws, and still reads the next",
+    "why": "A window read unguarded: one that throws costs every window's line, the readable ones included."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    .sort(([a, n], [b, m]) => m - n || a.localeCompare(b))\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "counts what holds Node’s loop by kind, the most first",
+    "why": "The kinds left in the order Node listed them: two reports of the same state read differently."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (!this.#late) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "logs each line as it is said, and nothing straight to the file while the log files are open",
+    "why": "Every line written straight to the file as well as through the log: each is in main.log twice while the files are open."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    this.#late = true\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes a line straight to the file too, once the log files are closing",
+    "why": "The trail never turns to the file: what a quit does after the log files close is written nowhere, as before."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "        this.#deps.timer(() => this.#report(index, overdue.length), ms).unref()\n",
+    "replace": "        this.#deps.timer(() => this.#report(index, overdue.length), ms)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "arms its timers when the watch begins and not before: one for each bound, each unref’d",
+    "why": "The report's timers left with a hold on the loop: the thing written to find what keeps the process would itself be something that keeps it."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "        this.#deps.timer(() => this.#report(index, overdue.length), ms).unref()\n",
+    "replace": "        this.#deps.timer(() => this.#report(index, overdue.length), ms)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never holds the process: a real timer it arms has no hold on the loop",
+    "why": "The same, on Node's own timer: `hasRef()` stays true."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (this.#watched !== null) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "arms them once, however often the watch is asked for",
+    "why": "A watch begun again arms its timers again: a second report for each bound, and a clock that starts over."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "export const QUIT_OVERDUE_MS = [2 * LOG_WAIT_MS + 1_000, 15_000] as const\n",
+    "replace": "export const QUIT_OVERDUE_MS = [LOG_WAIT_MS, 15_000] as const\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "waits five seconds, then fifteen: the quit’s own two waits and a second over, then three times that",
+    "why": "The first report inside the time a quit may take by its own rules: a healthy quit on a slow disk is reported as one that did not finish."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (this.#reported.has(index)) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes once for each bound: a timer that fires again writes nothing, and the second says it is the last",
+    "why": "A report written every time its timer runs: nothing holds it to once."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    this.#reported.add(index)\n",
+    "replace": "    this.#reported.add(index)\n    this.#deps.timer(() => this.#report(index, of), 1_000)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "reports and does nothing else: it asks for no further timer and reads only what it is handed",
+    "why": "A report that arms a timer of its own: the report acts on the quit it was only to describe."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    for (const line of left) lines.push(`  ${line}`)\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes what is left when a bound passes, with how far the quit got, and says nothing is done about it",
+    "why": "What is left not in the report: it says the quit has not finished and not what holds it."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      const ms = Math.round(step.at - from)\n",
+    "replace": "      const ms = Math.round(step.at)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes what is left when a bound passes, with how far the quit got, and says nothing is done about it",
+    "why": "Each step timed by the clock's own reading: nothing in the report says how long before or after the quit was let go a step was said."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    this.#write(lines)\n  }\n\n  #text(",
+    "replace": "    for (const line of lines) this.#deps.log(line)\n  }\n\n  #text(",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes the report straight to the file, as one piece, once the log files are closing",
+    "why": "The report sent to the log alone: once the files have closed it reaches standard error in development and nowhere else, which is when it is needed."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    let left: readonly string[]\n    try {\n      left = this.#deps.left()\n    } catch {\n      left = [`what is left ${UNREAD}`]\n    }\n",
+    "replace": "    const left = this.#deps.left()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws, whatever it is handed throws: the log, the file, the clock, the timers, the facts",
+    "why": "The facts read unguarded: a throw costs the report its steps, which need no fact to be read."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    for (const line of lines) {\n      try {\n        this.#deps.log(line)\n      } catch {\n        // Nowhere left to say it.\n      }\n    }\n",
+    "replace": "    for (const line of lines) this.#deps.log(line)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws, whatever it is handed throws: the log, the file, the clock, the timers, the facts",
+    "why": "The log called unguarded: a log that throws is thrown into whichever step of the quit said the line."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      try {\n        this.#deps.timer(() => this.#report(index, overdue.length), ms).unref()\n      } catch {\n        // No report at this bound; the quit goes on.\n      }\n",
+    "replace": "      this.#deps.timer(() => this.#report(index, overdue.length), ms).unref()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws, whatever it is handed throws: the log, the file, the clock, the timers, the facts",
+    "why": "A timer armed unguarded: one that cannot be armed is thrown into the shutdown, and costs the other bound its report."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      if (this.#steps.length > STEPS_KEPT) {\n        this.#steps.shift()\n        this.#dropped += 1\n      }\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "keeps the newest steps for the report, and says how many it did not keep",
+    "why": "Every line kept for ever: a shortcut held through a question grows the list without limit."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0)\n",
+    "replace": "  constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never writes through a link planted where the file should be",
+    "why": "The file opened through a link: one planted in the log folder has the app append to whatever it names."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0)\n",
+    "replace": "  constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "opens the file once, to append and create and never through a link, when it is asked to",
+    "why": "The same, read from the flags the open is asked with."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0)\n",
+    "replace": "  constants.O_WRONLY | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "appends to the real file after what the log left there, and makes it where there is none",
+    "why": "The file opened to write and not to append: the quit's last lines are written over the first lines of the log."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (fd !== null || opening || failed) return\n",
+    "replace": "    if (fd !== null || failed) return\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "opens the file for a line said before anyone asked, holds the line, and writes it when the file answers",
+    "why": "A second open while the first is in flight: two handles, and the lines held written twice."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      if (held.length < LATE_HELD) held.push(text)\n",
+    "replace": "      held.push(text)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "holds no more than a bounded number of pieces while the file does not answer",
+    "why": "Lines held without limit while the file does not open: a disk that never answers grows the list for as long as the quit says anything."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "          failed = true\n          held = []\n          return\n",
+    "replace": "          held = []\n          return\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "drops its lines when the file cannot be opened, and does not ask again",
+    "why": "A file that could not be opened asked for again at every line: a refused open repeated for the rest of the quit."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "`${at} [${tag}] ${redactUrls(line)}\\n`",
+    "replace": "`${at} [${tag}] ${line}\\n`",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "redacts an address in a line, as every log line has it",
+    "why": "A line written to main.log by a way in that does not redact: the one door into the log that lets a key in an address through."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    } catch {\n      opening = false\n      failed = true\n      held = []\n    }\n",
+    "replace": "    } catch (error) {\n      throw error\n    }\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws into the quit: not when the open throws, the write throws, the clock does, or the turn’s end cannot be asked for",
+    "why": "An open that throws is thrown on: into will-quit, before the files are closed and the app's last quit is asked for."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  lateQuitLog = lateLog(main.path, QUIT_TAG)\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "sends the late lines to main.log itself, in the folder the log files are in",
+    "why": "No way into main.log for the quit's late lines: after the files close the trail is written nowhere."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        quitTrail.filesClosing()\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
+    "why": "The trail never told the files are closing: its lines after that go to a log that takes none."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    lateQuitLog?.open()\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
+    "why": "The late log not opened as will-quit begins: its first line has to open the file, and the lines said in the quit's last turn are held for an answer that comes after the process has gone."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "          watch: () => quitTrail.watch(),\n",
+    "replace": "          watch: () => undefined,\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "hands the one trail to the guard, the gate and the shutdown",
+    "why": "The shutdown handed no watch: a quit that does not finish writes no report."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "const quit = quitGate((line) => quitTrail.say(line))\n",
+    "replace": "const quit = quitGate()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "hands the one trail to the guard, the gate and the shutdown",
+    "why": "The gate handed no trail: main.log has no line of a before-quit, held or let through."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        if (closed !== null) quitTrail.say(`the log files ${closed}`)\n        quitGuard.quit()\n",
+    "replace": "        if (closed !== null) quitTrail.say(`the log files ${closed}`)\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "still ends will-quit by asking the guard to quit, whatever the trail said",
+    "why": "The quit that ends will-quit taken out with the trail's line put in: the app closes its log files and never goes."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  timer: (run, ms) => setTimeout(run, ms),\n",
+    "replace": "  timer: (run, ms) => setInterval(run, ms),\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "logs under the quit’s tag, on a clock that cannot go back, with timers of Node’s own",
+    "why": "A timer that repeats: the trail holds each report to once, but the timer would fire for as long as the process lives."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "      captures: () => liveCaptures(),\n",
+    "replace": "      captures: () => 0,\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "reads what is left from Electron’s windows, the captures, the exporter and Node",
+    "why": "The captures not read: the report says none is running whatever is."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "    if (quit.quitting) quitTrail.say('the window is reported unresponsive')\n",
+    "replace": "    quitTrail.say('the window is reported unresponsive')\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says a window reported unresponsive, and a renderer gone, only during a quit",
+    "why": "A window reported unresponsive said under the quit's tag at any time: the log speaks of a quit where there is none."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "  app.on('quit', () => quitTrail.say('quit: Electron is ending the process'))\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says the window closed, every window gone, and Electron’s own quit",
+    "why": "Electron's own quit event not said: a process held after it cannot be told from one that never reached it."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      atTurnsEnd()\n",
+    "replace": "      pump()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes what one turn said as one write when the turn ends, in the order said: stamped and tagged",
+    "why": "Each line written as it is said: the lines of a quit's last turn are one write and then four that wait for an answer the loop may never turn to hear, and the last of them - Electron's own quit - is the one that is lost."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      atTurnsEnd()\n",
+    "replace": "      pump()\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "returns at once and waits for nothing: a write that never answers holds up no caller and grows no list",
+    "why": "The write asked for inside the call that says the line, not as the turn ends."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (due) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes what one turn said as one write when the turn ends, in the order said: stamped and tagged",
+    "why": "The end of the turn asked for at every line: one look for each line a turn said, where one serves them all."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (fd === null || writing || held.length === 0) return\n",
+    "replace": "    if (fd === null || held.length === 0) return\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "asks for one write at a time, and keeps the order when the file answers late and out of turn",
+    "why": "A second write asked for beside one in flight: two requests on one descriptor go to two threads and land in either order, and lines stamped the same millisecond then say a quit did what it did not."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      if (answered) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "asks for one write at a time, and keeps the order when the file answers late and out of turn",
+    "why": "An answer heard twice taken for the next write's: the writer thinks nothing is in flight while something is, and asks for a second write beside it."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "      deps.write(fd, text, next)\n",
+    "replace": "      deps.write(fd, text, (error) => {\n        if (error === null) next()\n      })\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "goes on to the lines after a write that failed, and after one that threw",
+    "why": "The next write asked for only when the last succeeded: one failed write, and nothing the quit says afterwards is written."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    } catch {\n      next()\n    }\n",
+    "replace": "    } catch {\n      // Lost.\n    }\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "goes on to the lines after a write that failed, and after one that threw",
+    "why": "A write that throws leaves the writer waiting for an answer that will not come: nothing after it is written."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (fd === null || writing || held.length === 0) return\n",
+    "replace": "    if (fd === null || held.length === 0) return\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "returns at once and waits for nothing: a write that never answers holds up no caller and grows no list",
+    "why": "The same, where the write never answers: every later line is its own request, and they pile up in flight as the process tries to leave."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "        fd = opened\n        pump()\n",
+    "replace": "        fd = opened\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "opens the file for a line said before anyone asked, holds the line, and writes it when the file answers",
+    "why": "Nothing written as the file opens: the lines held for it wait for a later line to be said, and after a quit's last turn none is."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    } catch {\n      // No end of turn to wait for: now, then.\n      look()\n    }\n",
+    "replace": "    } catch {\n      // No end of turn to wait for.\n    }\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "never throws into the quit: not when the open throws, the write throws, the clock does, or the turn’s end cannot be asked for",
+    "why": "A turn's end that cannot be asked for costs every line: none is ever looked at again."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        quitTrail.say('the quit goes on in this file by a handle of its own')\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
+    "why": "No line said by the late handle while the files are still closing: every late line is then in the quit's last turn, and none has time to land on a quit that finishes, so nothing in the built app can check the late path."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        const closing = Promise.all([files.main.close(), files.engine.close()])\n        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n",
+    "replace": "        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n        const closing = Promise.all([files.main.close(), files.engine.close()])\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says will-quit as it is entered, opens the late log, and turns to it before the files are closed",
+    "why": "The first late line said before the files are told to close: the log file takes it too, it is in main.log twice, and the end-to-end check that reads it passes with the late handle gone."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        const closing = Promise.all([files.main.close(), files.engine.close()])\n        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n",
+    "replace": "        // The first line by the trail's own handle alone: the files have been\n        // told to close and take no more. It has the whole of their close to\n        // land in, where the lines after it are said in this quit's last turn.\n        quitTrail.say('the quit goes on in this file by a handle of its own')\n        const closing = Promise.all([files.main.close(), files.engine.close()])\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "says nothing between turning to the late log and telling the files to close, or the line is written twice",
+    "why": "The same, read as the rule it breaks: nothing is said between the trail turning to its own handle and the files' close."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "    if (!this.#late) return\n",
+    "replace": "",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "writes a line said once the log file is told to close exactly once: the late handle’s alone",
+    "why": "Every line sent to the late handle whether or not the files are closing: the file's own last line is in main.log twice."
+  },
+  {
+    "file": "src/main/quit-trail.ts",
+    "find": "  #write(lines: readonly string[]): void {\n    for (const line of lines) {\n",
+    "replace": "  #write(lines: readonly string[]): void {\n    for (const line of this.#late ? [] : lines) {\n",
+    "test": "tests/unit/quit-trail.test.ts",
+    "title": "would write that line twice were it said before the close: the log file still takes it",
+    "why": "The trail no longer hands a late line to the log: standard error loses the quit's last lines, which is where they go when the late handle cannot be opened; the order in index.ts, not this, is what keeps a late line single."
+  }
+]

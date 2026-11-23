@@ -73,7 +73,7 @@
   },
   {
     "file": "src/main/quit-guard.ts",
-    "find": "    if (this.#passing) {\n      this.#passing = false\n      return false\n    }\n",
+    "find": "    if (this.#passing) {\n      this.#say(\"the window's close is let through: it is the one Close anyway asked for\")\n      this.#passing = false\n      return false\n    }\n",
     "replace": "    if (this.#passing) return false\n",
     "test": "tests/unit/quit-guard.test.ts",
     "title": "does not ask about the close it makes itself, with the export still unwinding",
@@ -374,5 +374,109 @@
     "test": "tests/unit/quit-guard.test.ts",
     "title": "installs the termination signals as the guard’s own quit, once the app is ready",
     "why": "The gate's word never passed on: a signal sent during a quit begun from the window asks for the quit again and forces nothing."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#say(\"the app's own quit is asked\")\n    this.#deps.quit()\n",
+    "replace": "    this.#deps.quit()\n    this.#say(\"the app's own quit is asked\")\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says the app’s own quit before it is made",
+    "why": "The line said after the quit it names: a quit that never comes back from Electron never says it was asked for, which is the one thing the trail is for."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    try {\n      this.#deps.say(line)\n    } catch {\n      // Nowhere left to say it.\n    }\n",
+    "replace": "    this.#deps.say(line)\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "asks, holds, lets through and quits exactly as it did when the trail cannot be said",
+    "why": "The trail's line no longer guarded: a log that throws is thrown into before-quit, and the quit it was describing is never held, let through or made."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#sayWhich('a quit', decision, underWay, null)\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a quit that is asked about, with how many runs and never whose, before it asks",
+    "why": "The guard says nothing of a quit: main.log cannot tell a quit that was held for its question from one that never arrived."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#sayWhich('a quit', decision, underWay, null)\n",
+    "replace": "    this.#sayWhich('a quit', decision, underWay, 'a quit goes on')\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says nothing of a quit that simply goes on: the gate speaks next",
+    "why": "A line for every quit the guard lets by: each later before-quit is said twice, once here and once by the gate."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "        `${what} is held and asked about: ${exports} export(s), ${layouts} layout(s) running`,\n",
+    "replace": "        `${what} is held and asked about: ${decision.question.names.join(', ')} (${exports}, ${layouts})`,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a quit that is asked about, with how many runs and never whose, before it asks",
+    "why": "The projects named in the line: a log a person sends on carries the names of what they were working on."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    } else if (decision.hold) {\n      this.#say(`${what} is held: it came too soon after the question to be its answer`)\n",
+    "replace": "    } else if (decision.hold) {\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a second quit held as too soon, then one let through as the answer, before the dialog is taken back",
+    "why": "A quit held as too soon says nothing: a quit that was swallowed by the one-second rule looks in the log like one that was never made."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      const past = this.#own || underWay ? 'own' : this.#pageNow()\n",
+    "replace": "      const past = this.#pageNow()\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a quit of the app’s own that passes an open question, and one whose page can no longer be asked",
+    "why": "The app's own quit past an open question said as the person's answer: the log claims an answer nobody gave."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "          : past === 'ready'\n            ? `${what} is let through as the answer to the question on the screen`\n            : `${what} is let through past the question: its page can no longer be asked`,\n",
+    "replace": "          : `${what} is let through as the answer to the question on the screen`,\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a quit of the app’s own that passes an open question, and one whose page can no longer be asked",
+    "why": "A quit let by because its page stopped answering said as an answer: the log hides that the page was unresponsive at the quit."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      this.#say(\"the window's close is let through: it is the one Close anyway asked for\")\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says the window’s close each way it can go: asked about, held, the answer, and Close anyway’s own",
+    "why": "The close the guard makes itself says nothing: after Close anyway the log has no line of the window's close at all."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "      underWay\n        ? \"the window's close is let through, by the quit under way\"\n        : \"the window's close is let through\",\n",
+    "replace": "      \"the window's close is let through\",\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a close that simply goes ahead, and whether a quit under way is what closes the window",
+    "why": "A window closed by the quit said as any close: the log cannot tell the close a person made from the one the quit made on its way out."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      deps.finished()\n      quietly(deps.watch)\n      deps.quit()\n",
+    "replace": "      quietly(deps.watch)\n      deps.finished()\n      deps.quit()\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says the whole of a second quit that answers the question, in order, and never the project",
+    "why": "The watch begun before the gate is let go: the trail of the quit that once never finished reads in an order it did not happen in."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  sayQuietly(deps.say, () => 'asking the engine to stop')\n",
+    "replace": "",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says a plain quit, with nothing running, from the gate on",
+    "why": "The stop not said as it is asked for: a quit stuck in the engine's stop and one stuck before it leave the same lines."
+  },
+  {
+    "file": "src/main/quit-guard.ts",
+    "find": "    this.#say(\n      `the question is answered in the page: ${answer === 'keep' ? 'keep working' : `${open.kind} anyway`}`,\n    )\n    if (answer === 'keep') return\n",
+    "replace": "    if (answer === 'keep') return\n",
+    "test": "tests/unit/quit-guard.test.ts",
+    "title": "says the answer given in the page, before it is carried out, and nothing for an answer it does not hear",
+    "why": "The answer given in the page not said: the log cannot tell a quit the person confirmed from any other quit of the app's own."
   }
 ]
