@@ -33,16 +33,16 @@ export function destroyEach(
   pages: Iterable<{ destroy(): void }>,
   say: (message: string) => void,
 ): void {
-  // A capture that ends removes itself from the set being walked.
+  // Walk a copy: nothing here should depend on whether a page's end changes the set.
   for (const page of [...pages]) {
     try {
       page.destroy()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
       try {
+        const message = error instanceof Error ? error.message : String(error)
         say(`a capture did not end on quit: ${message}`)
       } catch {
-        // A logger that throws must not stop the walk.
+        // A logger that throws, or an error that cannot be put into words, must not stop the walk.
       }
     }
   }

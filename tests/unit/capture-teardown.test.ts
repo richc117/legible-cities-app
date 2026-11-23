@@ -141,7 +141,7 @@ describe('destroyEach', () => {
     expect(say).toHaveBeenCalledWith('a capture did not end on quit: odd')
   })
 
-  it('walks a copy: a capture that removes itself as it ends skips nobody', () => {
+  it('walks a copy: a page that empties the set as it ends skips nobody', () => {
     const set = new Set<{ destroy(): void }>()
     let calls = 0
     for (let i = 0; i < 3; i++) {
@@ -154,6 +154,23 @@ describe('destroyEach', () => {
       set.add(page)
     }
     destroyEach(set, vi.fn())
+    expect(calls).toBe(3)
+  })
+
+  it('goes on when the error cannot be put into words', () => {
+    let calls = 0
+    const page = {
+      destroy: () => {
+        calls++
+        if (calls === 2)
+          throw {
+            toString() {
+              throw new Error('no words')
+            },
+          }
+      },
+    }
+    expect(() => destroyEach([page, page, page], vi.fn())).not.toThrow()
     expect(calls).toBe(3)
   })
 
@@ -179,5 +196,6 @@ describe('capture-window.ts', () => {
     expect(source).toContain('destroyCaptureWindow(this.#window)')
     expect(source).toContain('destroyEach(live,')
     expect(source).not.toContain('for (const page of live) page.destroy()')
+    expect(source).not.toContain('dbg.isAttached()')
   })
 })

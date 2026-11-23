@@ -68,13 +68,13 @@
     "find": "for (const page of [...pages])",
     "replace": "for (const page of pages)",
     "test": "tests/unit/capture-teardown.test.ts",
-    "title": "walks a copy: a capture that removes itself as it ends skips nobody",
+    "title": "walks a copy: a page that empties the set as it ends skips nobody",
     "why": "The copy dropped: a capture that empties the set as it ends stops the walk."
   },
   {
     "file": "src/main/capture-teardown.ts",
-    "find": "      try {\n        say(`a capture did not end on quit: ${message}`)\n      } catch {\n        // A logger that throws must not stop the walk.\n      }\n",
-    "replace": "      say(`a capture did not end on quit: ${message}`)\n",
+    "find": "      try {\n        const message = error instanceof Error ? error.message : String(error)\n        say(`a capture did not end on quit: ${message}`)\n      } catch {\n        // A logger that throws, or an error that cannot be put into words, must not stop the walk.\n      }\n",
+    "replace": "      const message = error instanceof Error ? error.message : String(error)\n      say(`a capture did not end on quit: ${message}`)\n",
     "test": "tests/unit/capture-teardown.test.ts",
     "title": "goes on when the logger throws",
     "why": "The try around say dropped: a throwing logger stops the walk."
@@ -86,5 +86,21 @@
     "test": "tests/unit/capture-teardown.test.ts",
     "title": "ends its captures through the two functions",
     "why": "The bare loop put back: one capture that throws ends the walk on a quit."
+  },
+  {
+    "file": "src/main/capture-teardown.ts",
+    "find": "      try {\n        const message = error instanceof Error ? error.message : String(error)\n        say(",
+    "replace": "      const message = error instanceof Error ? error.message : String(error)\n      try {\n        say(",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "goes on when the error cannot be put into words",
+    "why": "The message built outside the inner try: an error that cannot be turned into a string escapes and ends the walk."
+  },
+  {
+    "file": "src/main/capture-window.ts",
+    "find": "    destroyCaptureWindow(this.#window)\n",
+    "replace": "    const dbg = this.#window.webContents.debugger\n    if (dbg.isAttached()) dbg.detach()\n    destroyCaptureWindow(this.#window)\n",
+    "test": "tests/unit/capture-teardown.test.ts",
+    "title": "ends its captures through the two functions",
+    "why": "The old unguarded debugger read put back ahead of the call: it throws on gone web contents before the window is destroyed."
   }
 ]
