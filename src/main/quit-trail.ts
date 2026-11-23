@@ -30,8 +30,8 @@
 //   a slow quit and a stuck one can be told apart. It reports and does
 //   nothing else: no window is closed and no exit is forced. A report can
 //   only be written while the main process still runs its timers; a process
-//   held after Electron's own `quit` event writes none, and the trail's last
-//   lines are what say so.
+//   held after Electron's own `quit` event may write none, and the trail's
+//   last lines are what say it came that far.
 //
 // Nothing here may throw into a quit or keep the process: every line and
 // every read is guarded, the timers are unref'd, and nothing is awaited.

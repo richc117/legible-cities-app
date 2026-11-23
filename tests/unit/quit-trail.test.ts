@@ -17,7 +17,7 @@
 // `window-lifecycle.test.ts`. Each was watched failing under its mutation in
 // `quit-trail.mutations.json`.
 
-import { constants, open as openFd, readFileSync, write as writeFd } from 'node:fs'
+import { closeSync, constants, open as openFd, readFileSync, write as writeFd } from 'node:fs'
 import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -498,8 +498,15 @@ function late() {
 }
 
 const roots: string[] = []
+/**
+ * The handles the tests on real files opened. A late log never closes its
+ * own - the process it is written for is on its way out - so the tests do,
+ * before the folder goes: Windows will not remove one that holds an open file.
+ */
+const handles: number[] = []
 
 afterEach(async () => {
+  for (const fd of handles.splice(0)) closeSync(fd)
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 
@@ -526,6 +533,7 @@ function realFile() {
   const deps: LateLogDeps = {
     open: (path, flags, mode, done) =>
       openFd(path, flags, mode, (error, fd) => {
+        if (error === null) handles.push(fd)
         done(error, fd)
         opened()
       }),

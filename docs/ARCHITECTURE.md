@@ -346,7 +346,8 @@ name, a path or an address:
   stop asked for, and how the stop ended, resolved or rejected;
 - and Electron's events as `index.ts` hears them: the window's `closed`,
   `window-all-closed` (which Electron sends only while it is not itself
-  quitting, so after the app's own quit it says that quit was dropped),
+  quitting, so one that follows the app's own quit being let through says
+  that quit was dropped),
   `will-quit` entered, how the wait for the window's place ended, the files
   about to close and how that ended, `will-quit` again, and `quit`. During
   a quit only, a window reported unresponsive and a renderer gone are said
@@ -367,8 +368,9 @@ crashed or not, and which kind it is - the app's own, another of the
 interface's, a capture's, any other - judged from whether it is the window
 the app holds, where its page lives and whether it draws offscreen, the
 address compared and never written; the captures still running and the
-exporter's two counts; every line the quit has said, each with when it
-was said against that moment; and what Node's loop holds, by kind
+exporter's two counts; the lines the quit has said, the newest hundred and
+twenty of them, each with when it was said against that moment; and what
+Node's loop holds, by kind
 (`process.getActiveResourcesInfo`). It writes once more at fifteen seconds,
 inside the twenty the end-to-end suite gives a quit, so that a slow quit
 and a stuck one can be told apart. **It reports and does nothing else**: no
@@ -376,8 +378,8 @@ window is closed and no exit is forced. A destroyed window is asked
 nothing but whether it is destroyed, and web contents nothing before
 whether they are; every read is guarded, and one that throws costs its own
 words. The two timers are unref'd, so they are never what keeps the
-process. Not covered: a process held after Electron's own `quit` event no
-longer runs the main process's timers, so it writes no report, and the
+process. Not covered: a process held after Electron's own `quit` event may
+no longer run the main process's timers, and then writes no report; the
 trail's last lines are what say it came that far.
 
 ## The engine process
