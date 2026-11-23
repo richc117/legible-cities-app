@@ -69,6 +69,14 @@
 # what is missing or does not match. --sources still checks FFmpeg's and
 # zlib's signatures, fetched as before, on every run.
 #
+# The pair is put in place by one rename of its staging folder, tried up to
+# five times, 1, 2, 4 and then 8 seconds apart (VENDOR_PLACE_BACKOFF names
+# another first wait, in seconds): Windows refuses the rename while anything
+# holds a file in the folder open, and the proof has just run both programs
+# from it (issue 744). place(), above the last lines, says the rest;
+# scripts/vendor-python.sh carries the same function, word for word, so that
+# each script is whole in the source archive that carries it.
+#
 # On Windows the proof runs under Git Bash, so as in vendor-python.sh every
 # hash is taken, and every pin read, by the build machine's Python rather
 # than by tools the runners do not agree on.
@@ -163,6 +171,10 @@ fi
 # Refused here, before anything is fetched, as well as by tries().
 case "${VENDOR_FFMPEG_BACKOFF:-15}" in
   *[!0-9]*) echo "VENDOR_FFMPEG_BACKOFF is a whole number of seconds, not '$VENDOR_FFMPEG_BACKOFF'" >&2; exit 2 ;;
+esac
+# The same for place()'s wait, which is not read until the proof has passed.
+case "${VENDOR_PLACE_BACKOFF:-1}" in
+  *[!0-9]*) echo "VENDOR_PLACE_BACKOFF is a whole number of seconds, not '$VENDOR_PLACE_BACKOFF'" >&2; exit 2 ;;
 esac
 
 # From the script's own place rather than from git: under MSYS2 on the
@@ -1003,9 +1015,53 @@ if [ "$staged" != "$(printf 'ffmpeg%s\nffprobe%s' "$exe" "$exe")" ]; then
   exit 1
 fi
 
+# place <stage> <dest>: the staging folder renamed to <dest>, whole or not at
+# all. Windows refuses to rename a folder while anything holds a file in it
+# open, and the checks above ran the programs in it a moment ago: a scanner
+# reading a new executable, or a process not quite gone, refuses the rename
+# once, and the same job passes when it is run again (issue 744). So the
+# rename is tried up to five times, waiting VENDOR_PLACE_BACKOFF seconds (1
+# by default) after the first failure and twice as long after each next,
+# which is 1, 2, 4 and 8: most such holds are over within the first second,
+# and 15 seconds in all is nothing beside the minutes the job has taken. The
+# script ends after the fifth, mv's own words above its own. It is only ever
+# a rename, and nothing is copied where one fails: a copy can stop halfway
+# and a rename cannot. Should anything be at <dest> when a try is due, part
+# of a copy the try before it left, say, it is refused and left as it is: mv
+# would put the staging folder inside it and call that done, and whose it is
+# cannot be told from here.
+place() {
+  local from=$1 to=$2 of=5 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=
+  [ "${GITHUB_ACTIONS:-}" != true ] || warn='::warning::'
+  while :; do
+    if [ -e "$to" ] || [ -L "$to" ]; then
+      if [ "$attempt" -eq 0 ]; then
+        echo "something is at $to again before the staging folder was renamed to it: it is refused, and left as it is" >&2
+      else
+        echo "try $attempt of $of to rename the staging folder to $to failed and left something there: it is refused, never tried over, and left as it is" >&2
+      fi
+      exit 1
+    fi
+    if [ "$attempt" -ge "$of" ]; then
+      echo "could not rename the staging folder to $to in $attempt tries" >&2
+      exit 1
+    fi
+    if [ "$attempt" -gt 0 ]; then
+      echo "try $attempt of $of to rename the staging folder to $to failed; trying again in $wait s" >&2
+      sleep "$wait"
+      wait=$((10#$wait * 2))
+    fi
+    attempt=$((attempt + 1))
+    if mv "$from" "$to"; then
+      [ "$attempt" -eq 1 ] || echo "${warn}the staging folder was renamed to $to on try $attempt of $of" >&2
+      return 0
+    fi
+  done
+}
+
 # Only now is the old pair removed and the new one put in its place.
 rm -rf "$dest"
-mv "$stage" "$dest"
+place "$stage" "$dest"
 stage=
 
 printf 'vendored ffmpeg %s for %s: %s\n' "$reports" "$target" "$(du -sh "$dest" | cut -f1)"

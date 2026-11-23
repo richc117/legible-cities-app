@@ -1,0 +1,154 @@
+[
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "place \"$stage\" \"$dest\"\n",
+    "replace": "mv \"$stage\" \"$dest\"\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "tries the rename again after a refused try, and puts the proven pair in place",
+    "why": "The rename tried once, as it was before issue 744: one refusal by Windows, a file in the folder still held open, fails a vendor job whose every check had passed."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  local from=$1 to=$2 of=5 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "replace": "  local from=$1 to=$2 of=1 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "tries the rename again after a refused try, and puts the proven pair in place",
+    "why": "place() with one try: the function is called and tries nothing again, which is the retry deleted by another road."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  local from=$1 to=$2 of=5 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "replace": "  local from=$1 to=$2 of=9 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "gives up on the pair after five refused tries, and leaves nothing behind",
+    "why": "More tries than five: the waits double, so nine tries hold a job that cannot succeed for over four minutes before it says so."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "      wait=$((10#$wait * 2))\n",
+    "replace": "      wait=$((10#$wait + 1))\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "gives up on the pair after five refused tries, and leaves nothing behind",
+    "why": "The wait growing by a second, not doubling: 1, 2, 3 and 4, ten seconds in all where the header and the comment promise fifteen, and less room for a slow scanner."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  [ -z \"$stage\" ] || rm -rf \"$stage\"\n",
+    "replace": "",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "gives up on the pair after five refused tries, and leaves nothing behind",
+    "why": "The staging folder left behind when the rename is given up: a pair nobody placed sits in vendor/ffmpeg, in the next run's way and in a developer's listing."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "    if [ -e \"$to\" ] || [ -L \"$to\" ]; then\n",
+    "replace": "    if false; then\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "refuses a pair a refused try left part of at the destination, and never tries over it",
+    "why": "A destination a failed try left something at is tried over: mv puts the staging folder inside it and exits 0, and the script reports a vendored pair where ffmpeg is part of a copy."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  *[!0-9]*) echo \"VENDOR_PLACE_BACKOFF is a whole number of seconds, not '$VENDOR_PLACE_BACKOFF'\" >&2; exit 2 ;;\n",
+    "replace": "  *[!0-9]*) ;;\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "refuses a wait that is not a whole number of seconds, before the proof and not after it",
+    "why": "A wait that is not a number is found only when the rename is first refused, after the whole build and proof, by sleep's own complaint, or never."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "place \"$stage\" \"$dest\"\n",
+    "replace": "mv \"$stage\" \"$dest\"\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "tries the rename again after a refused try, and puts the proven runtime in place",
+    "why": "The rename tried once, as it was before issue 744: the runtime's job has the same last two lines the ffmpeg job failed on, after running the interpreter it staged."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "  local from=$1 to=$2 of=5 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "replace": "  local from=$1 to=$2 of=9 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "gives up on the runtime after five refused tries, and leaves nothing behind",
+    "why": "More tries than five in the runtime's script: the same four minutes of waiting on a rename that cannot succeed."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "trap 'rm -rf \"$work\" ${stage:+\"$stage\"}' EXIT\n",
+    "replace": "trap 'rm -rf \"$work\"' EXIT\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "gives up on the runtime after five refused tries, and leaves nothing behind",
+    "why": "The staging folder left behind when the rename is given up: a whole runtime, some hundred megabytes, beside the path the gate and the upload read."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "    if [ -e \"$to\" ] || [ -L \"$to\" ]; then\n",
+    "replace": "    if false; then\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "refuses a runtime a refused try left part of at the destination, and never tries over it",
+    "why": "A destination a failed try left something at is tried over: the runtime lands inside what was left, and the script exits 0 over a folder the app cannot start."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "    if [ -e \"$to\" ] || [ -L \"$to\" ]; then\n",
+    "replace": "    if [ \"$attempt\" -gt 0 ] && { [ -e \"$to\" ] || [ -L \"$to\" ]; }; then\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "refuses a destination that is there again before the first try, and moves nothing into it",
+    "why": "The destination looked at only after a failed try: where the older runtime is still there at the first, mv puts the new one inside it, exits 0, and the older one is what ships."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "  local from=$1 to=$2 of=5 attempt=0 wait=${VENDOR_PLACE_BACKOFF:-1} warn=\n",
+    "replace": "  local from=$1 to=$2 of=5 attempt=0 wait=1 warn=\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "waits as long as VENDOR_PLACE_BACKOFF says, which may be no time at all",
+    "why": "The first wait fixed at a second: nothing could shorten it to nothing, and a runner that needs longer could not be given it without a change to the script."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "      wait=$((10#$wait * 2))\n",
+    "replace": "      wait=$((wait * 2))\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "waits as long as VENDOR_PLACE_BACKOFF says, which may be no time at all",
+    "why": "The wait doubled as the shell reads it: 08 and 09 pass the check for a whole number and are an error in arithmetic, so the script would end at the first refused rename, the one moment the wait is for."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "      [ \"$attempt\" -eq 1 ] || echo",
+    "replace": "      [ \"$attempt\" -eq 0 ] || echo",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "puts the runtime in place at the first try, and says nothing of tries",
+    "why": "A rename that went through at once reported as a retried one: under GitHub Actions a warning on every run, which is how the one that matters stops being read."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "  *[!0-9]*) echo \"VENDOR_PLACE_BACKOFF is a whole number of seconds, not '$VENDOR_PLACE_BACKOFF'\" >&2; exit 2 ;;\n",
+    "replace": "  *[!0-9]*) ;;\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "refuses a wait that is not a whole number of seconds, before anything is fetched",
+    "why": "A wait that is not a number is found only at the rename, after the downloads, the packages and the sidecar's start, or never."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "      wait=$((10#$wait * 2))\n",
+    "replace": "      wait=$((10#$wait * 3))\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "is the same in scripts/vendor-ffmpeg.sh and scripts/vendor-python.sh, word for word",
+    "why": "The two copies of place() apart: the runtime's is run here only as lines cut from its script, so what the whole run of vendor-ffmpeg.sh proves would no longer be proved of it."
+  },
+  {
+    "file": "scripts/vendor-python.sh",
+    "find": "    if mv \"$from\" \"$to\"; then\n",
+    "replace": "    if mv \"$from\" \"$to\" || cp -R \"$from\" \"$to\"; then\n",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "only ever renames: no script copies the staging folder, or moves its files one by one",
+    "why": "A copy where the rename is refused: it can stop halfway, leaving part of a runtime at the path every reader trusts, which staging beside the destination exists to rule out."
+  },
+  {
+    "file": "scripts/vendor-ffmpeg.sh",
+    "find": "  while :; do\n    if [ -e \"$to\" ]",
+    "replace": "  while :;\n    if [ -e \"$to\" ]",
+    "test": "tests/unit/vendor-place.test.ts",
+    "title": "parse under the system bash, whatever its version",
+    "why": "A script the shell cannot parse: every vendor job stops at its first line. On a Mac that is also what a construct newer than bash 3.2 does, which no other test here would see."
+  }
+]
