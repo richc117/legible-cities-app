@@ -243,6 +243,10 @@ export const UNWATCHED = [
     why: "vendor/pins.json records the python-build-standalone release, not their versions; the Windows build's licence records name Expat's and libmpdec's in passing, and watching them waits on a triage of their matches. Its zlib is watched at the version its licence record names.",
   },
   {
+    component: "The macOS system's zlib, which the bundled FFmpeg and Python link on macOS",
+    why: "The macOS installers carry no zlib of their own: vendor/pins.json gives ffmpeg's zlib there as \"system\" and the Python runtime's licence record names none. It is the user's system's library, at whatever version that macOS has, patched by Apple's updates and not by a release of this app.",
+  },
+  {
     component: 'Chromium, inside Electron',
     why: "OSV holds no records keyed to Chromium's versions; its fixes reach the app as Electron releases, which Dependabot proposes.",
   },

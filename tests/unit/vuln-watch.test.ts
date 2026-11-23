@@ -67,6 +67,7 @@ interface Module {
   ): { rating: string | null; by?: string; why?: string }
   cveIdsOf(record: unknown): string[]
   ffmpegConfigure(pins: unknown): string[]
+  UNWATCHED: { component: string; why: string }[]
   validateTriage(triage: unknown): string[]
   addDays(date: string, days: number): string
   sentences(text: string): number
@@ -1123,5 +1124,38 @@ describe('.github/workflows/vuln-watch.yml', () => {
   it('runs the watch and writes its table to the job summary', () => {
     expect(body).toContain('node scripts/vuln-watch.mjs --summary "$GITHUB_STEP_SUMMARY"')
     expect(body).not.toContain('npm ci')
+  })
+})
+
+describe('what the watch does not watch', () => {
+  it('names the macOS system zlib, with why', async () => {
+    const { UNWATCHED } = await load()
+    const rows = UNWATCHED.filter(
+      (r) => r.component.includes('macOS') && r.component.includes('zlib'),
+    )
+    expect(rows).toHaveLength(1)
+    expect(rows[0].why).toContain('Apple')
+    expect(rows[0].why).toContain('not')
+  })
+
+  it('SECURITY.md names every row of it', async () => {
+    const { UNWATCHED } = await load()
+    const text = readFileSync(join(repo, 'SECURITY.md'), 'utf8')
+    const start = text.indexOf('Every run lists what it does not watch')
+    expect(start).toBeGreaterThanOrEqual(0)
+    const paragraph = text
+      .slice(start)
+      .split(/\r?\n\s*\r?\n/)[0]
+      .replace(/\s*\r?\n\s*/g, ' ')
+    const phrases: Record<string, string> = {
+      python: 'inside the Python runtime',
+      macosZlib: 'zlib that FFmpeg and Python link on macOS',
+      chromium: 'Chromium',
+      electronFfmpeg: "Electron's own FFmpeg",
+      bzip2: 'bzip2 1.0.8 in the Windows LOOM tools',
+      gccMingw: 'GCC and mingw-w64 runtime libraries',
+    }
+    expect(Object.keys(phrases)).toHaveLength(UNWATCHED.length)
+    for (const phrase of Object.values(phrases)) expect(paragraph).toContain(phrase)
   })
 })

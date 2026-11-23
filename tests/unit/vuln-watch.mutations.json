@@ -358,5 +358,29 @@
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "asks for a note where nothing rates the vector OSV gives",
     "why": "A vector nothing rates passed without a rating_note: an id rated by hand, with no word on how, turns the run green."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  {\n    component: \"The macOS system's zlib, which the bundled FFmpeg and Python link on macOS\",\n    why: \"The macOS installers carry no zlib of their own: vendor/pins.json gives ffmpeg's zlib there as \\\"system\\\" and the Python runtime's licence record names none. It is the user's system's library, at whatever version that macOS has, patched by Apple's updates and not by a release of this app.\",\n  },\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "names the macOS system zlib, with why",
+    "why": "The macOS system zlib dropped from the list of what the watch does not watch: the run's own account of its gaps is silent about a library the macOS installers link."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  {\n    component: \"The macOS system's zlib, which the bundled FFmpeg and Python link on macOS\",\n    why: \"The macOS installers carry no zlib of their own: vendor/pins.json gives ffmpeg's zlib there as \\\"system\\\" and the Python runtime's licence record names none. It is the user's system's library, at whatever version that macOS has, patched by Apple's updates and not by a release of this app.\",\n  },\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "SECURITY.md names every row of it",
+    "why": "A row gone from the script while SECURITY.md still says it, or one added without a phrase: the two lists part without a test going red."
+  },
+  {
+    "file": "SECURITY.md",
+    "find": "the\nzlib that FFmpeg and Python link on macOS, which is the system's own, is\nnot shipped in the installers and is patched by Apple's updates; bzip2",
+    "replace": "bzip2",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "SECURITY.md names every row of it",
+    "why": "The macOS zlib clause lost from SECURITY.md: the document stops saying what the watch's own table says."
   }
 ]
