@@ -189,12 +189,20 @@ function laidOutFields(h: Home): Record<string, unknown> {
   return { layout: record.layout, made: record.made, drawn: record.drawn, date: record.date }
 }
 
-/** The interface's own windows open, never the export's capture window. */
+/**
+ * The interface's own windows open, never the export's capture window. A
+ * window on its way out is still listed for a moment after its web contents
+ * are destroyed, and reading the address of those throws (issue 742): it is
+ * not an open window, so it is left out before anything of it is read.
+ */
 const appWindows = (app: ElectronApplication): Promise<number> =>
   app.evaluate(
     ({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows().filter((w) =>
-        w.webContents.getURL().startsWith('app://local/ui/'),
+      BrowserWindow.getAllWindows().filter(
+        (w) =>
+          !w.isDestroyed() &&
+          !w.webContents.isDestroyed() &&
+          w.webContents.getURL().startsWith('app://local/ui/'),
       ).length,
   )
 
@@ -202,7 +210,12 @@ const appWindows = (app: ElectronApplication): Promise<number> =>
 function closeAppWindow(app: ElectronApplication): Promise<void> {
   return app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows())
-      if (window.webContents.getURL().startsWith('app://local/ui/')) window.close()
+      if (
+        !window.isDestroyed() &&
+        !window.webContents.isDestroyed() &&
+        window.webContents.getURL().startsWith('app://local/ui/')
+      )
+        window.close()
   })
 }
 
