@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/main/capture-window.ts",
+    "find": "  // Asked to capture for a run already cancelled: no window is made for\n  // it (issue 754). The caller checks too; neither relies on the other.\n  if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)\n",
+    "replace": "",
+    "test": "tests/unit/capture-cancelled.test.ts",
+    "title": "capture() refuses a signal already aborted before it makes a window",
+    "why": "The check dropped: a quit's abort that lands before the capture starts still gets an offscreen window."
+  },
+  {
+    "file": "src/main/capture-window.ts",
+    "find": "  // Asked to capture for a run already cancelled: no window is made for\n  // it (issue 754). The caller checks too; neither relies on the other.\n  if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)\n  const page = new ElectronCapturePage(job)\n",
+    "replace": "  const page = new ElectronCapturePage(job)\n  if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)\n",
+    "test": "tests/unit/capture-cancelled.test.ts",
+    "title": "capture() refuses a signal already aborted before it makes a window",
+    "why": "The check after the window is made: the window exists, if briefly, for a run already cancelled."
+  }
+]

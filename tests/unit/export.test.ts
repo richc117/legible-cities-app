@@ -745,6 +745,19 @@ describe('cancelling', () => {
     expect(h.cap.calls).toHaveLength(0)
   })
 
+  it('while the frames folder is claimed never starts the capture', async () => {
+    const h = harness()
+    const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
+    await settle()
+    // The cancel has to land after the plan's own check and before the
+    // capture starts, which is while the frames folder is claimed: that
+    // claim is real file work, so a callback queued now runs during it.
+    setImmediate(() => h.exporter.abortAll())
+    h.eng.requests[0].resolve(plan())
+    await expect(result).rejects.toMatchObject({ code: ERROR_CODES.cancelled })
+    expect(h.cap.calls, 'no capture was started').toHaveLength(0)
+  })
+
   it('a quit cancels every export', async () => {
     const h = harness()
     const { result } = h.exporter.start('tok-1', 'abcdefghijk1', REEL)
