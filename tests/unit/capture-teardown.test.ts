@@ -36,15 +36,18 @@ function windowLike(
 
 describe('destroyCaptureWindow', () => {
   it('destroys a window whose web contents are already gone', () => {
+    let read = false
     const { window, calls } = windowLike({
       webContents: () => ({
         isDestroyed: () => true,
         get debugger(): never {
+          read = true
           throw new Error('Object has been destroyed')
         },
       }),
     })
     expect(() => destroyCaptureWindow(window)).not.toThrow()
+    expect(read).toBe(false)
     expect(calls).toEqual(['destroy'])
   })
 

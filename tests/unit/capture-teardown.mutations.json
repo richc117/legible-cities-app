@@ -9,16 +9,16 @@
   },
   {
     "file": "src/main/capture-teardown.ts",
-    "find": "  try {\n    const contents",
-    "replace": "  {\n    const contents",
+    "find": "  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n  window.destroy()\n",
+    "replace": "  } catch (error) {\n    throw error\n  }\n  window.destroy()\n",
     "test": "tests/unit/capture-teardown.test.ts",
     "title": "destroys the window when reading its web contents throws",
-    "why": "The try dropped: a throw from a dying page stops the teardown before window.destroy()."
+    "why": "The swallow dropped (the throw rethrown): a throw from a dying page stops the teardown before window.destroy()."
   },
   {
     "file": "src/main/capture-teardown.ts",
-    "find": "    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n  window.destroy()\n",
-    "replace": "    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n    window.destroy()\n  }\n",
+    "find": "      if (dbg.isAttached()) dbg.detach()\n    }\n  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n  window.destroy()\n",
+    "replace": "      if (dbg.isAttached()) dbg.detach()\n    }\n    window.destroy()\n  } catch {\n    // A page on its way out can refuse any of these reads and calls; the window goes anyway.\n  }\n",
     "test": "tests/unit/capture-teardown.test.ts",
     "title": "destroys the window when the detach throws",
     "why": "window.destroy() moved into the try, so a refused detach leaves the window alive."
