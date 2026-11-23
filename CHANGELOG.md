@@ -83,7 +83,7 @@ links are inline, with no images and no reference-style links.
   simplify, sort, straighten, trips, draw, animate and save; the
   diagnostics say what the layout had to compromise on; and each line's
   colour is written once.
-- The app runs on Electron 45.2.3 (Chromium 156.0.8078.80).
+- The app runs on Electron 45.3.2 (Chromium 156.0.8078.100).
 
 ### Fixed
 
