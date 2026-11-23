@@ -803,6 +803,26 @@ describe('the script, as bash 3.2 reads it', () => {
   })
 })
 
+describe('the script, in the wording of a missing patch list', () => {
+  // The fetch cannot run offline here, so the sentence each caller gets is
+  // read from the script: the one under each word of check_patch_list's case.
+  const text = readFileSync(SCRIPT, 'utf8')
+  const arm = (word: string): string | undefined =>
+    new RegExp(`^\\s*${word}\\) fail "([^"]*)" ;;$`, 'm').exec(text)?.[1]
+
+  it('words it for the archive under archive) and for the pins under pins)', () => {
+    const tail = 'patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg'
+    expect(arm('archive')).toBe(`the archive lacks ${tail}`)
+    expect(arm('pins')).toBe(`the pins do not hold ${tail}: add it to electron_files`)
+  })
+
+  it('refuses a call that does not say what it judges, rather than choose a wording', () => {
+    expect(arm('\\*')).toBe(
+      'check_patch_list was called without saying whether it judges the archive or the pins',
+    )
+  })
+})
+
 describe.skipIf(!existsSync('/bin/bash'))('the script, under /bin/bash', () => {
   it('parses under the system bash, whatever its version', () => {
     const r = spawnSync('/bin/bash', ['-n', SCRIPT], { encoding: 'utf8', timeout: 10_000 })
