@@ -1130,12 +1130,19 @@ describe('.github/workflows/vuln-watch.yml', () => {
 describe('what the watch does not watch', () => {
   it('names the macOS system zlib, with why', async () => {
     const { UNWATCHED } = await load()
+    const rows = UNWATCHED.filter((r) => r.component.includes('zlib (/usr/lib/libz)'))
+    expect(rows).toHaveLength(1)
+    for (const name of ['FFmpeg', 'Python', 'LOOM']) expect(rows[0].component).toContain(name)
+    expect(rows[0].why).toContain("Apple's updates")
+    expect(rows[0].why).toContain('not by a release of this app')
+  })
+
+  it("names the macOS system's bzip2 and libedit", async () => {
+    const { UNWATCHED } = await load()
     const rows = UNWATCHED.filter(
-      (r) => r.component.includes('macOS') && r.component.includes('zlib'),
+      (r) => r.component.includes('bzip2') && r.component.includes('libedit'),
     )
     expect(rows).toHaveLength(1)
-    expect(rows[0].why).toContain('Apple')
-    expect(rows[0].why).toContain('not')
   })
 
   it('SECURITY.md names every row of it', async () => {
@@ -1147,15 +1154,21 @@ describe('what the watch does not watch', () => {
       .slice(start)
       .split(/\r?\n\s*\r?\n/)[0]
       .replace(/\s*\r?\n\s*/g, ' ')
-    const phrases: Record<string, string> = {
-      python: 'inside the Python runtime',
-      macosZlib: 'zlib that FFmpeg and Python link on macOS',
-      chromium: 'Chromium',
-      electronFfmpeg: "Electron's own FFmpeg",
-      bzip2: 'bzip2 1.0.8 in the Windows LOOM tools',
-      gccMingw: 'GCC and mingw-w64 runtime libraries',
+    // [a substring of the row's component, the phrase the paragraph must hold for it]
+    const pairs: [string, string][] = [
+      ["The Python runtime's own libraries", 'inside the Python runtime'],
+      ['zlib (/usr/lib/libz)', 'zlib that FFmpeg, Python and the LOOM tools link on macOS'],
+      ['bzip2 (/usr/lib/libbz2)', 'the bzip2 and libedit that LOOM and Python link there'],
+      ['Chromium, inside Electron', 'by commit; Chromium, and'],
+      ["Electron's FFmpeg library", "Electron's own FFmpeg with everything it links"],
+      ['bzip2 1.0.8, in the Windows', 'bzip2 1.0.8 in the Windows LOOM tools'],
+      ["GCC's runtime", 'GCC and mingw-w64 runtime libraries'],
+    ]
+    expect(pairs).toHaveLength(UNWATCHED.length)
+    for (const row of UNWATCHED) {
+      const mine = pairs.filter(([part]) => row.component.includes(part))
+      expect(mine, row.component).toHaveLength(1)
+      expect(paragraph, row.component).toContain(mine[0][1])
     }
-    expect(Object.keys(phrases)).toHaveLength(UNWATCHED.length)
-    for (const phrase of Object.values(phrases)) expect(paragraph).toContain(phrase)
   })
 })
