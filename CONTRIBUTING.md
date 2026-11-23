@@ -325,7 +325,7 @@ ones in place.
   worth its record: the one seen most often (issue 222) turned out to be a
   defect in the app and not in its test.
 - **Record it**: an issue labelled `flaky`, naming the spec and the run's
-  id.
+  id, or the issue the test was returned under, reopened (the cap, below).
 - **Fix or quarantine within 2 working days.** A flake on a required check
   blocks every merge, so it is not left. To quarantine an end-to-end test,
   tag it and link the issue, and keep nothing else about it changed:
@@ -357,8 +357,16 @@ ones in place.
   counts towards the same cap.
 - **The cap**: at most 3 tests quarantined or skipped for flakiness at
   once, and none for more than 7 days. A test still there after 7 days is
-  fixed or deleted, and the issue says which. A test checks the count of
-  tagged end-to-end tests and that each names an issue; the 7 days, and the
+  fixed or deleted, or, for an end-to-end test, returned to the required
+  suite as not reproduced, and the issue says which. It is returned only
+  on the maintainer's word, and only when it has not failed once in the
+  quarantine job in those 7 days and 20 repeats of its spec under load on
+  each system, run for its issue before or during the quarantine, found
+  nothing: a failure that cannot be made to happen again is not a reason
+  to lose the test. Its issue is closed with those numbers, and the next
+  failure reopens it rather than starting a new one, so the history stays
+  in one place. A test checks the count of tagged end-to-end tests and
+  that each names an issue; the 7 days, what a return takes, and the
   counting of an `it.skip` towards the cap, are kept by hand.
 - **Candidates**: no release candidate is tagged while a `flaky` issue names
   a spec the acceptance gate relies on, unless the maintainer accepts that in
