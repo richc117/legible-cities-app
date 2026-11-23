@@ -19,6 +19,7 @@ import {
   type CapturePage,
   type CaptureResult,
 } from './capture'
+import { destroyCaptureWindow, destroyEach } from './capture-teardown'
 import { log } from './log'
 import { registerAppProtocol } from './protocol'
 import { registerAppScheme } from './scheme'
@@ -153,15 +154,7 @@ class ElectronCapturePage implements CapturePage {
     // A destroy from outside (a quit) ends the capture too, rather than
     // leaving it to wait out a frame timeout on a window that is gone.
     this.#goneListener?.('the window was destroyed')
-    const dbg = this.#window.webContents.debugger
-    if (dbg.isAttached()) {
-      try {
-        dbg.detach()
-      } catch {
-        // Detaching a debugger from a dying page can throw; the window goes anyway.
-      }
-    }
-    this.#window.destroy()
+    destroyCaptureWindow(this.#window)
   }
 }
 
@@ -192,7 +185,7 @@ export async function capture(job: CaptureJob, options: CaptureOptions): Promise
 
 /** Destroy every capture window; a quit calls this before the engine stops. */
 export function abortCaptures(): void {
-  for (const page of live) page.destroy()
+  destroyEach(live, (message) => log.warn('capture', message))
 }
 
 /** How many captures are running; the tests read it to prove nothing is left. */
