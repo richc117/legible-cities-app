@@ -171,6 +171,9 @@ export async function capture(job: CaptureJob, options: CaptureOptions): Promise
   if (problem !== null) throw new CaptureError(problem)
   if (!isAbsolute(options.frames))
     throw new CaptureError('the frames directory must be an absolute path')
+  // Asked to capture for a run already cancelled: no window is made for
+  // it (issue 754). The caller checks too; neither relies on the other.
+  if (options.signal?.aborted) throw new CaptureError('the capture was cancelled', true)
   const page = new ElectronCapturePage(job)
   live.add(page)
   try {

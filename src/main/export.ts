@@ -702,6 +702,10 @@ export class Exporter {
     await claimFramesRoot(framesRoot).catch(() =>
       log('the frames folder could not be claimed; leftovers will not be cleared'),
     )
+    // A cancel that landed while the folder was claimed: no capture is
+    // started for it, and no window made (issue 754). Before the file is
+    // claimed below, so there is nothing yet for the `finally` to release.
+    this.#stopIfCancelled(control)
     this.#writing.add(dest)
 
     const frames = join(framesRoot, token)
