@@ -80,7 +80,10 @@ clean.
 Every run lists what it does not watch, and why: the libraries
 inside the Python runtime, OpenSSL, SQLite and the rest, whose versions the
 pins do not record, and Expat and libmpdec, whose versions the Windows
-build's licence records name but whose matches are not yet triaged; bzip2
+build's licence records name but whose matches are not yet triaged; the
+zlib that FFmpeg, Python and the LOOM tools link on macOS, and the bzip2,
+libedit and ncurses that LOOM and Python link there, which are the system's
+own, not shipped in the installers and patched by Apple's updates; bzip2
 1.0.8 in the Windows LOOM tools, which is pinned but which OSV lists only
 by commit; Chromium, and Electron's own FFmpeg with everything it links,
 which reach the app as Electron releases; and the GCC and mingw-w64

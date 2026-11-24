@@ -243,6 +243,16 @@ export const UNWATCHED = [
     why: "vendor/pins.json records the python-build-standalone release, not their versions; the Windows build's licence records name Expat's and libmpdec's in passing, and watching them waits on a triage of their matches. Its zlib is watched at the version its licence record names.",
   },
   {
+    component:
+      "The macOS system's zlib (/usr/lib/libz), which the bundled FFmpeg, the Python runtime and the LOOM tools topo, loom and octi link there",
+    why: "None of them carries a zlib of its own on macOS: vendor/pins.json gives FFmpeg's zlib there as \"system\", scripts/check-vendored.mjs (systemZlibProblems) refuses a macOS runtime whose build metadata links any zlib but the system's, and the vendor job lists what each LOOM tool links. It is the zlib of the Mac the app runs on, at that macOS's version, patched by Apple's updates and not by a release of this app.",
+  },
+  {
+    component:
+      "The macOS system's bzip2 (/usr/lib/libbz2), which the LOOM tools topo, loom and octi link there, and its libedit and ncurses (/usr/lib/libedit, /usr/lib/libncurses and libpanel), which the Python runtime links",
+    why: "As for its zlib: libraries that macOS supplies, not shipped in the installers and patched by Apple's updates. The operating system's own C and C++ runtime, frameworks and system DLLs (libSystem, libc++ and Apple's frameworks on macOS; the Universal C Runtime and Windows' own DLLs, kernel32 among them, on Windows) are not components in this sense and are not listed.",
+  },
+  {
     component: 'Chromium, inside Electron',
     why: "OSV holds no records keyed to Chromium's versions; its fixes reach the app as Electron releases, which Dependabot proposes.",
   },

@@ -67,6 +67,7 @@ interface Module {
   ): { rating: string | null; by?: string; why?: string }
   cveIdsOf(record: unknown): string[]
   ffmpegConfigure(pins: unknown): string[]
+  UNWATCHED: { component: string; why: string }[]
   validateTriage(triage: unknown): string[]
   addDays(date: string, days: number): string
   sentences(text: string): number
@@ -1123,5 +1124,54 @@ describe('.github/workflows/vuln-watch.yml', () => {
   it('runs the watch and writes its table to the job summary', () => {
     expect(body).toContain('node scripts/vuln-watch.mjs --summary "$GITHUB_STEP_SUMMARY"')
     expect(body).not.toContain('npm ci')
+  })
+})
+
+describe('what the watch does not watch', () => {
+  it('names the macOS system zlib, with why', async () => {
+    const { UNWATCHED } = await load()
+    const rows = UNWATCHED.filter((r) => r.component.includes('zlib (/usr/lib/libz)'))
+    expect(rows).toHaveLength(1)
+    for (const name of ['FFmpeg', 'Python', 'LOOM']) expect(rows[0].component).toContain(name)
+    expect(rows[0].why).toContain("Apple's updates")
+    expect(rows[0].why).toContain('not by a release of this app')
+  })
+
+  it("names the macOS system's bzip2, libedit and ncurses", async () => {
+    const { UNWATCHED } = await load()
+    const rows = UNWATCHED.filter((r) =>
+      ['bzip2', 'libedit', 'ncurses'].every((word) => r.component.includes(word)),
+    )
+    expect(rows).toHaveLength(1)
+  })
+
+  it('SECURITY.md names every row of it', async () => {
+    const { UNWATCHED } = await load()
+    const text = readFileSync(join(repo, 'SECURITY.md'), 'utf8')
+    const start = text.indexOf('Every run lists what it does not watch')
+    expect(start).toBeGreaterThanOrEqual(0)
+    const paragraph = text
+      .slice(start)
+      .split(/\r?\n\s*\r?\n/)[0]
+      .replace(/\s*\r?\n\s*/g, ' ')
+    // [a substring of the row's component, the phrase the paragraph must hold for it]
+    const pairs: [string, string][] = [
+      ["The Python runtime's own libraries", 'inside the Python runtime'],
+      ['zlib (/usr/lib/libz)', 'zlib that FFmpeg, Python and the LOOM tools link on macOS'],
+      ['bzip2 (/usr/lib/libbz2)', 'the bzip2, libedit and ncurses that LOOM and Python link there'],
+      ['Chromium, inside Electron', 'by commit; Chromium, and'],
+      ["Electron's FFmpeg library", "Electron's own FFmpeg with everything it links"],
+      ['bzip2 1.0.8, in the Windows', 'bzip2 1.0.8 in the Windows LOOM tools'],
+      ["GCC's runtime", 'GCC and mingw-w64 runtime libraries'],
+    ]
+    expect(pairs).toHaveLength(UNWATCHED.length)
+    const matched: string[] = []
+    for (const row of UNWATCHED) {
+      const mine = pairs.filter(([part]) => row.component.includes(part))
+      expect(mine, row.component).toHaveLength(1)
+      expect(paragraph, row.component).toContain(mine[0][1])
+      matched.push(mine[0][0])
+    }
+    expect(new Set(matched).size).toBe(pairs.length)
   })
 })

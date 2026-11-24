@@ -358,5 +358,61 @@
     "test": "tests/unit/vuln-watch.test.ts",
     "title": "asks for a note where nothing rates the vector OSV gives",
     "why": "A vector nothing rates passed without a rating_note: an id rated by hand, with no word on how, turns the run green."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  {\n    component:\n      \"The macOS system's zlib (/usr/lib/libz), which the bundled FFmpeg, the Python runtime and the LOOM tools topo, loom and octi link there\",\n    why: \"None of them carries a zlib of its own on macOS: vendor/pins.json gives FFmpeg's zlib there as \\\"system\\\", scripts/check-vendored.mjs (systemZlibProblems) refuses a macOS runtime whose build metadata links any zlib but the system's, and the vendor job lists what each LOOM tool links. It is the zlib of the Mac the app runs on, at that macOS's version, patched by Apple's updates and not by a release of this app.\",\n  },\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "SECURITY.md names every row of it",
+    "why": "The zlib row gone from the script while SECURITY.md still says it: the pair count no longer equals the rows."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  {\n    component:\n      \"The macOS system's zlib (/usr/lib/libz), which the bundled FFmpeg, the Python runtime and the LOOM tools topo, loom and octi link there\",\n    why: \"None of them carries a zlib of its own on macOS: vendor/pins.json gives FFmpeg's zlib there as \\\"system\\\", scripts/check-vendored.mjs (systemZlibProblems) refuses a macOS runtime whose build metadata links any zlib but the system's, and the vendor job lists what each LOOM tool links. It is the zlib of the Mac the app runs on, at that macOS's version, patched by Apple's updates and not by a release of this app.\",\n  },\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "names the macOS system zlib, with why",
+    "why": "The macOS system zlib dropped from the list of what the watch does not watch: the run's account of its gaps goes silent about a library the installers' tools link."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "  {\n    component:\n      \"The macOS system's bzip2 (/usr/lib/libbz2), which the LOOM tools topo, loom and octi link there, and its libedit and ncurses (/usr/lib/libedit, /usr/lib/libncurses and libpanel), which the Python runtime links\",\n    why: \"As for its zlib: libraries that macOS supplies, not shipped in the installers and patched by Apple's updates. The operating system's own C and C++ runtime, frameworks and system DLLs (libSystem, libc++ and Apple's frameworks on macOS; the Universal C Runtime and Windows' own DLLs, kernel32 among them, on Windows) are not components in this sense and are not listed.\",\n  },\n",
+    "replace": "",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "names the macOS system's bzip2, libedit and ncurses",
+    "why": "The bzip2, libedit and ncurses row dropped: system libraries the macOS installers link go unnamed."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "which the bundled FFmpeg, the Python runtime and the LOOM tools topo, loom and octi link there",
+    "replace": "which the bundled FFmpeg and the Python runtime link there",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "names the macOS system zlib, with why",
+    "why": "The LOOM tools dropped from the zlib row: three tools that link the system's zlib go unnamed."
+  },
+  {
+    "file": "SECURITY.md",
+    "find": "the\nzlib that FFmpeg, Python and the LOOM tools link on macOS, and the bzip2,\nlibedit and ncurses that LOOM and Python link there, which are the system's\nown, not shipped in the installers and patched by Apple's updates; bzip2",
+    "replace": "bzip2",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "SECURITY.md names every row of it",
+    "why": "The macOS clause lost from SECURITY.md: the document stops saying what the watch's own table says."
+  },
+  {
+    "file": "SECURITY.md",
+    "find": "and the bzip2,\nlibedit and ncurses that LOOM and Python link there",
+    "replace": "and the zlib,\nlibedit and ncurses that LOOM and Python link there",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "SECURITY.md names every row of it",
+    "why": "A row pointing at the wrong phrase: the bzip2 and libedit row is no longer what SECURITY.md says."
+  },
+  {
+    "file": "scripts/vuln-watch.mjs",
+    "find": "and ncurses (/usr/lib/libedit, /usr/lib/libncurses and libpanel)",
+    "replace": "(/usr/lib/libedit)",
+    "test": "tests/unit/vuln-watch.test.ts",
+    "title": "names the macOS system's bzip2, libedit and ncurses",
+    "why": "ncurses dropped from the row's component: the libraries the Python runtime links from the system go unnamed again."
   }
 ]
