@@ -308,14 +308,20 @@ check_ffmpeg_version() {
   [ "$version" = "#define FFMPEG_VERSION \"$ffmpeg_reports\"" ] || fail "$2 says ${version:-no version}, and the pins say $ffmpeg_reports"
 }
 
-# check_patch_list <electron dir>: every patch the packed
+# check_patch_list <electron dir> <what>: <what> is archive or pins, what is
+# being judged, and words the refusal of a missing list: --verify judges an
+# archive, the fetch the pins that name what it fetches. Every patch the packed
 # patches/ffmpeg/.patches lists is a pinned file, and every pinned
 # patches/ffmpeg/*.patch is listed, so the archive holds every change Electron
 # makes to FFmpeg and a bump that pins a new list but misses a patch fails.
 # Offline, so it covers a cached archive too.
 check_patch_list() {
   local listed line pinned key
-  [ -f "$1/patches/ffmpeg/.patches" ] || fail "the archive lacks patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg"
+  [ -f "$1/patches/ffmpeg/.patches" ] || case "${2:-}" in
+    archive) fail "the archive lacks patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg" ;;
+    pins) fail "the pins do not hold patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg: add it to electron_files" ;;
+    *) fail "check_patch_list was called without saying whether it judges the archive or the pins" ;;
+  esac
   listed=$(grep -v -e '^[[:space:]]*$' -e '^[[:space:]]*#' "$1/patches/ffmpeg/.patches" | sed 's/[[:space:]]*$//' || true)
   # The pattern opens with "(": bash 3.2, macOS's /bin/bash, ends a $( ... )
   # at a case pattern's bare ")" and refuses the script as a syntax error.
@@ -353,6 +359,10 @@ pack_archive() {
 # time, which the fetch reads from the commit and the pins do not hold, so
 # --verify cannot learn it offline: it accepts the one time the archive
 # carries, and packs with it again.
+# Python's tarfile takes a bad header after the first entry for the end of
+# the archive, so the listing ends cleanly there and says nothing of what
+# follows; that is why the unpack's own status and the repack's comparison
+# are both needed after it.
 check_listing() {
   local entry part path allowed expected parts exact listed
   listed=$(python3 - "$1" "$archive" <<'PY'
@@ -603,7 +613,7 @@ verify() {
     [ "$found" = "$want" ] || fail "$archive's electron/$path is blob $found, and the pins say $want"
   done <<< "$file_keys"
   echo "electron/: every file its pinned blob"
-  check_patch_list "$root/electron"
+  check_patch_list "$root/electron" archive
   echo "electron/patches/ffmpeg/: every patch its list names is pinned, and every pinned one is listed"
   cmp -s "$root/legible-cities/electron-ffmpeg-source.sh" "$here/scripts/electron-ffmpeg-source.sh" \
     || fail "$archive's legible-cities/electron-ffmpeg-source.sh is not this checkout's scripts/electron-ffmpeg-source.sh"
@@ -849,7 +859,7 @@ while IFS= read -r path; do
   [ "$found" = "$want" ] || fail "Electron's $path at $electron_commit is blob $found, and the pins say $want"
   echo "electron/$path: blob $want"
 done <<< "$file_keys"
-check_patch_list "$root/electron"
+check_patch_list "$root/electron" pins
 
 cp "$here/scripts/electron-ffmpeg-source.sh" "$here/.github/workflows/vendor.yml" "$root/legible-cities/"
 cp "$pins" "$root/legible-cities/pins.json"

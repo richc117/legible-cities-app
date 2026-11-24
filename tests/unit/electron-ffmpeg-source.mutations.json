@@ -33,15 +33,15 @@
   },
   {
     "file": "scripts/electron-ffmpeg-source.sh",
-    "find": "  [ -f \"$1/patches/ffmpeg/.patches\" ] || fail",
-    "replace": "  [ -f \"$1/patches/ffmpeg/.patches\" ] || true",
+    "find": "  [ -f \"$1/patches/ffmpeg/.patches\" ] || case \"${2:-}\" in",
+    "replace": "  true || case \"${2:-}\" in",
     "test": "tests/unit/electron-ffmpeg-source.test.ts",
     "title": "refuses an archive with no patches/ffmpeg/.patches, naming it",
     "why": "A missing list read as an empty one: the pinned patches would then be refused for not being listed, or none checked at all."
   },
   {
     "file": "scripts/electron-ffmpeg-source.sh",
-    "find": "  check_patch_list \"$root/electron\"\n  echo \"electron/patches/ffmpeg/",
+    "find": "  check_patch_list \"$root/electron\" archive\n  echo \"electron/patches/ffmpeg/",
     "replace": "  echo \"electron/patches/ffmpeg/",
     "test": "tests/unit/release.test.ts",
     "title": "checks the list of FFmpeg patches in the fetch and in --verify",
@@ -78,5 +78,45 @@
     "test": "tests/unit/electron-ffmpeg-source.test.ts",
     "title": "finds a bare pattern on the case line and on the lines after it, and nothing else",
     "why": "A case on the same line as its $( unread, so its bare pattern goes unseen."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses an archive that does not unpack, by that name",
+    "find": "--no-same-owner || status=$?",
+    "replace": "--no-same-owner || true",
+    "why": "A tar that refuses the archive read as having unpacked: a damaged archive goes on to the later checks and is refused, if at all, for some other reason."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses an archive that does not unpack, by that name",
+    "find": "  return \"$status\"\n}",
+    "replace": "  return 0\n}",
+    "why": "The unpack's own status dropped: the sentence that names the archive as unreadable is never said."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "  check_patch_list \"$root/electron\" archive\n",
+    "replace": "  check_patch_list \"$root/electron\" pins\n",
+    "test": "tests/unit/release.test.ts",
+    "title": "checks the list of FFmpeg patches in the fetch and in --verify",
+    "why": "The pins' word where an archive is being judged: --verify's refusal would speak of the pins, when what it was given is an archive, and the fetch's would speak of an archive where none exists yet."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "    archive) fail \"the archive lacks patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg\" ;;\n    pins) fail \"the pins do not hold patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg: add it to electron_files\" ;;\n",
+    "replace": "    archive) fail \"the pins do not hold patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg: add it to electron_files\" ;;\n    pins) fail \"the archive lacks patches/ffmpeg/.patches, which says which patches Electron applies to FFmpeg\" ;;\n",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "words it for the archive under archive) and for the pins under pins)",
+    "why": "The two sentences under each other's word: the fetch would say an archive lacks the list where none exists yet, and --verify would say the pins do not hold it when it is judging an archive."
+  },
+  {
+    "file": "scripts/electron-ffmpeg-source.sh",
+    "find": "    *) fail \"check_patch_list was called without saying whether it judges the archive or the pins\" ;;\n",
+    "replace": "",
+    "test": "tests/unit/electron-ffmpeg-source.test.ts",
+    "title": "refuses a call that does not say what it judges, rather than choose a wording",
+    "why": "A third call site that names no word would fall through the case with no refusal, and a missing list would pass."
   }
 ]
