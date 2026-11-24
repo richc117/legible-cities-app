@@ -198,5 +198,85 @@
     "test": "tests/unit/window-lifecycle.test.ts",
     "title": "stops the engine, lets the gate go and quits though the trail and its watch throw",
     "why": "The watch no longer guarded: one that throws skips the app's own quit after the engine has stopped, and leaves a process no quit ends."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "    if (deps.quitting()) {\n      sayQuietly",
+    "replace": "    if (false) {\n      sayQuietly",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "makes none during a quit, and says who asked",
+    "why": "The quitting check removed: a menu command, a second launch or the Dock icon makes a window in an app that is ending."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "    if (deps.quitting()) {\n      sayQuietly",
+    "replace": "    deps.make()\n    if (deps.quitting()) {\n      sayQuietly",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "makes none during a quit, and says who asked",
+    "why": "The window made before the check: it exists during the quit though the answer is no."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n",
+    "replace": "      sayQuietly(deps.say, () => `a window is asked for during the quit (): none is made`)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "makes none during a quit, and says who asked",
+    "why": "The reason dropped from the line: the trail says a window was asked for but not by what."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "  return (why) => {\n    if (deps.quitting()) {",
+    "replace": "  const quitting = deps.quitting()\n  return (why) => {\n    if (quitting) {",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "asks the gate each time, not once",
+    "why": "The gate read once when the maker is built: a quit that begins later is not seen."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n",
+    "replace": "      deps.say(`a window is asked for during the quit (${why}): none is made`)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "does not throw when the line cannot be said",
+    "why": "The line said without the guard: a logger that throws stops the caller, and with it the quit."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "      openAppWindow('a second launch')\n",
+    "replace": "      mainWindow = createWindow()\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "index.ts makes every window after the first through windowMaker",
+    "why": "The second launch makes its window directly: it opens during a quit."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "          openAppWindow('the Dock icon')\n",
+    "replace": "          mainWindow = createWindow()\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "index.ts makes every window after the first through windowMaker",
+    "why": "The Dock icon makes its window directly: it opens during a quit."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "const openAppWindow = windowMaker({\n  quitting: () => quit.quitting,\n",
+    "replace": "const openAppWindow = windowMaker({\n  quitting: () => false,\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "index.ts makes every window after the first through windowMaker",
+    "why": "The gate not handed to windowMaker: it never sees a quit and every window is made during one."
+  },
+  {
+    "file": "src/main/window-lifecycle.ts",
+    "find": "    if (deps.quitting()) {\n      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n",
+    "replace": "      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n    if (deps.quitting()) {\n      sayQuietly(deps.say, () => `a window is asked for during the quit (${why}): none is made`)\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "makes a window and says nothing when no quit is under way",
+    "why": "The refusal line said every time: the trail claims a window was refused when one was made."
+  },
+  {
+    "file": "src/main/index.ts",
+    "find": "        if (!openAppWindow('a menu command')) return\n",
+    "replace": "        mainWindow = createWindow()\n",
+    "test": "tests/unit/window-lifecycle.test.ts",
+    "title": "index.ts makes every window after the first through windowMaker",
+    "why": "The menu command makes its window directly: it opens during a quit."
   }
 ]

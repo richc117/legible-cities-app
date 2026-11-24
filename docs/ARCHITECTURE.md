@@ -382,6 +382,14 @@ process. Not covered: a process held after Electron's own `quit` event may
 no longer run the main process's timers, and then writes no report; the
 trail's last lines are what say it came that far.
 
+**No window is made once a quit is under way** (issue 753). On macOS the app
+can be in the quit's wait with no window at all, and a menu command, a
+second launch or the Dock icon would each make one, whose page would talk
+to an engine being stopped. Every window after the first is made through
+`windowMaker` (`src/main/window-lifecycle.ts`), which asks the gate
+whether it is quitting; if so the request is dropped, a menu command with
+it, and the trail says so in one line naming who asked.
+
 ## The engine process
 
 The engine is `python -m schematic.serve` from the pinned engine

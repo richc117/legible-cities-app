@@ -60,7 +60,7 @@ import { ProjectStore } from './projects'
 import { SettingsStore } from './settings'
 import { HOMES_TIMEOUT_MS, registerSettingsHandlers, SettingsService } from './settings-ipc'
 import { Viewer } from './viewer'
-import { onActivate, onAppWindowClosed, quitGate, shutDown } from './window-lifecycle'
+import { onActivate, onAppWindowClosed, quitGate, shutDown, windowMaker } from './window-lifecycle'
 import {
   onAppWindowClose,
   onBeforeQuit,
@@ -243,6 +243,15 @@ const quitTrail = new QuitTrail({
   timer: (run, ms) => setTimeout(run, ms),
 })
 const quit = quitGate((line) => quitTrail.say(line))
+// Every window after the first is made through this, so none is made
+// while a quit is under way (issue 753).
+const openAppWindow = windowMaker({
+  quitting: () => quit.quitting,
+  make: () => {
+    mainWindow = createWindow()
+  },
+  say: (line) => quitTrail.say(line),
+})
 /** The app window's last place being written as it closed; a quit waits for it (issue 549). */
 let windowKept: Promise<void> = Promise.resolve()
 /**
@@ -578,7 +587,8 @@ const menuCommands = new MenuCommands({
  * src/main/menu.ts). Set before the first window, so no window ever shows
  * the default. The page's commands go to the app's window; with none open,
  * which only macOS allows, the command opens one, as the Dock icon does, and
- * is held until the new page listens.
+ * is held until the new page listens; during a quit none is made and the
+ * command is dropped (issue 753).
  */
 function setAppMenu(help: HelpIpcDeps): void {
   if (process.platform === 'darwin') {
@@ -603,7 +613,9 @@ function setAppMenu(help: HelpIpcDeps): void {
         )
         return
       }
-      if (mainWindow === null || mainWindow.isDestroyed()) mainWindow = createWindow()
+      if (mainWindow === null || mainWindow.isDestroyed()) {
+        if (!openAppWindow('a menu command')) return
+      }
       menuCommands.command(action.command)
     },
   })
@@ -616,12 +628,13 @@ if (!hasLock) {
 } else {
   app.on('second-instance', () => {
     // A second launch focuses the existing window (FR-035); on macOS, where
-    // closing every window leaves the app running, it opens one again.
+    // closing every window leaves the app running, it opens one again; during
+    // a quit none is made and the request is dropped (issue 753).
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
     } else {
-      mainWindow = createWindow()
+      openAppWindow('a second launch')
     }
   })
 
@@ -1079,7 +1092,7 @@ if (!hasLock) {
       onActivate({
         appWindow: () => mainWindow,
         open: () => {
-          mainWindow = createWindow()
+          openAppWindow('the Dock icon')
         },
       }),
     )

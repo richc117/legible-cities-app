@@ -500,6 +500,38 @@ test('closing the window with nothing running closes it at once', async () => {
   })
 })
 
+// Issue 753. Mutation: the `quitting()` check taken out of
+// `windowMaker` (src/main/window-lifecycle.ts) - the Dock press makes a window
+// in the app that is quitting, and the log has no line saying none was made.
+test('a press on the Dock icon during a quit makes no window', async () => {
+  test.skip(process.platform !== 'darwin', 'only macOS keeps running with no window')
+  const h = home({ shutdown_delay_ms: 2_000 })
+  await withApp(h, async (_page, app) => {
+    const child = app.process()
+    await closeAppWindow(app)
+    // The raw count, not `appWindows`, which leaves out a window whose web
+    // contents are destroyed before the app has cleared its own `mainWindow`.
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), {
+        timeout: 20_000,
+        message: 'the window closed unasked',
+      })
+      .toBe(0)
+    // With no run going there is no question; the engine takes about two
+    // seconds to stop, and the press comes inside them.
+    askToQuit(app).catch(() => undefined)
+    await app
+      .evaluate(({ app: electronApp }) => {
+        electronApp.emit('activate')
+      })
+      .catch(() => undefined)
+    await exits(child, 'the app quit, with no window made on the way')
+  })
+  expect(readFileSync(join(h.userData, 'logs', 'main.log'), 'utf8')).toContain(
+    '[quit] a window is asked for during the quit (the Dock icon): none is made',
+  )
+})
+
 // A quit while another dialog is open: the question opens over it, and the
 // dialog behind has focus back when the question is answered. Mutation: the
 // `<QuitDialog />` taken out of `App.tsx` - the quit goes ahead, since no
